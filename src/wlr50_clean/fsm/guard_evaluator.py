@@ -255,9 +255,16 @@ class GuardEvaluator:
                 return GuardEvidence(
                     guard.name,
                     maximum <= threshold and held + 1e-12 >= debounce_s,
-                    {"max_abs_rad_s": maximum, "stable_for_s": held},
+                    {
+                        "max_abs_rad_s": maximum,
+                        "threshold_rad_s": threshold,
+                        "stable_for_s": held,
+                        "reference_tail_peak_rad_s": guard.parameters.get(
+                            "reference_tail_peak_rad_s"
+                        ),
+                    },
                     "sensor.wheel_velocity_debounce",
-                    "velocity must remain below threshold for the full debounce",
+                    "velocity must remain inside the measured v010 post-stop tail plus 15% envelope for the full debounce",
                 )
         return None
 

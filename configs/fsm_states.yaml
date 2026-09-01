@@ -3222,9 +3222,11 @@ states:
     relative_limit: 0.15
   - guard: wheel_targets_zero
   - guard: measured_wheel_velocity_stable_decay
-    absolute_threshold_rad_s: 0.05
+    absolute_threshold_rad_s: 0.256016593426466
     debounce_s: 0.5
     new_fsm_requirement: true
+    reference_tail_peak_rad_s: 0.22262312471866608
+    reference_relative_allowance: 0.15
   reference_sensor_envelope:
     active_channel_actual_result_readback:
       front_left_hip: -5.736817316834296

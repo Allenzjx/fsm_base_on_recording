@@ -276,6 +276,21 @@ def test_measured_wheel_decay_is_debounced_inside_controller(spec, contract) -> 
     assert frame.sim_time_s >= 0.5
 
 
+def test_p13_decay_threshold_is_derived_from_v010_tail(spec, contract) -> None:
+    state = spec.state("P13")
+    guard = next(
+        item
+        for item in state.completion_guards
+        if item.name == "measured_wheel_velocity_stable_decay"
+    )
+    reference_tail_peak = float(guard.parameters["reference_tail_peak_rad_s"])
+    assert reference_tail_peak == pytest.approx(0.22262312471866608)
+    assert guard.parameters["absolute_threshold_rad_s"] == pytest.approx(
+        1.15 * reference_tail_peak
+    )
+    assert guard.parameters["reference_relative_allowance"] == pytest.approx(0.15)
+
+
 def test_hard_abort_is_lifecycle_independent(spec, contract) -> None:
     controller = SensorFsmController(spec, contract)
     blocked_entry = _live_guards(completion=False)

@@ -105,6 +105,8 @@ COMPLETION_GUARDS: dict[str, list[dict[str, Any]]] = {
         {"guard": "wheel_targets_zero"},
         {
             "guard": "measured_wheel_velocity_stable_decay",
+            # Replaced during generation by the measured v010 post-stop tail
+            # envelope plus the same 15% contract allowance used elsewhere.
             "absolute_threshold_rad_s": 0.05,
             "debounce_s": 0.5,
             "new_fsm_requirement": True,
@@ -161,6 +163,23 @@ def build_state_specs(contract: dict[str, Any]) -> dict[str, Any]:
     phases = contract["phases"]
     for index, phase in enumerate(phases):
         state_id = str(phase["state_id"])
+        completion_conditions = [
+            dict(item) for item in COMPLETION_GUARDS[state_id]
+        ]
+        if state_id == "P13":
+            tail_peaks = phase["reference_result_observation"][
+                "wheel_tail_peak_abs_velocity_rad_s"
+            ]
+            reference_tail_peak = max(float(value) for value in tail_peaks.values())
+            threshold = max(0.05, 1.15 * reference_tail_peak)
+            decay_guard = next(
+                item
+                for item in completion_conditions
+                if item["guard"] == "measured_wheel_velocity_stable_decay"
+            )
+            decay_guard["absolute_threshold_rad_s"] = threshold
+            decay_guard["reference_tail_peak_rad_s"] = reference_tail_peak
+            decay_guard["reference_relative_allowance"] = 0.15
         sensor_latency = float(
             phase["completion_evidence"][
                 "sensor_completion_latency_after_motion_s"
@@ -222,7 +241,7 @@ def build_state_specs(contract: dict[str, Any]) -> dict[str, Any]:
                 "carry_out_active_response_channels"
             ],
             "entry_conditions": COMMON_ENTRY,
-            "completion_conditions": COMPLETION_GUARDS[state_id],
+            "completion_conditions": completion_conditions,
             "reference_sensor_envelope": _sensor_envelope(phase),
             "hard_abort_conditions": COMMON_ABORT,
             "max_verify_wait": max_verify_wait,
