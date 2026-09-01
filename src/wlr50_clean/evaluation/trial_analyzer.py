@@ -255,11 +255,22 @@ def _terminal_success(task_rows: Sequence[Mapping[str, Any]]) -> bool:
 
 
 def _recovery_evidence(transitions: Sequence[Mapping[str, Any]]) -> tuple[list[float], dict[str, int]]:
-    rows = [
+    recovery_rows = [
         row for row in transitions
         if str(row.get("from_lifecycle")) == "RECOVERY"
         and str(row.get("to_lifecycle")) == "EXECUTE_MOTION"
     ]
+    # Normal sensor-derived entry corrections are as contract-sensitive as a
+    # recovery correction.  Include every explicitly logged correction vector
+    # in the bound audit, while retry counts remain recovery-only.
+    rows = list(recovery_rows)
+    rows.extend(
+        row
+        for row in transitions
+        if row not in recovery_rows
+        and isinstance(row.get("details"), Mapping)
+        and "correction_fractions" in row["details"]
+    )
     values: list[float] = []
     for row in rows:
         details = row.get("details")
@@ -275,7 +286,51 @@ def _recovery_evidence(transitions: Sequence[Mapping[str, Any]]) -> tuple[list[f
         except (TypeError, ValueError):
             parsed = [math.inf]
         values.extend(item if math.isfinite(item) else math.inf for item in parsed)
-    return values, {phase: sum(_phase(row) == phase for row in rows) for phase in PHASE_IDS}
+    return values, {
+        phase: sum(_phase(row) == phase for row in recovery_rows) for phase in PHASE_IDS
+    }
+
+
+def _reference_wheel_decay_threshold(contract: Mapping[str, Any]) -> float:
+    """Return the v010-relative P13 measured-tail acceptance envelope.
+
+    The successful recording does not settle below 0.05 rad/s.  Its P13
+    result observation instead records the measured tail peak for every
+    wheel, so the runtime and offline analyzer both use the same +15 percent
+    conformance envelope around that physical evidence.
+    """
+
+    phases = contract.get("phases")
+    if isinstance(phases, Sequence) and not isinstance(phases, (str, bytes)):
+        p13 = next(
+            (
+                phase
+                for phase in phases
+                if isinstance(phase, Mapping) and str(phase.get("state_id")) == "P13"
+            ),
+            None,
+        )
+        if p13 is not None:
+            result = p13.get("reference_result_observation")
+            peaks = (
+                result.get("wheel_tail_peak_abs_velocity_rad_s")
+                if isinstance(result, Mapping)
+                else None
+            )
+            if isinstance(peaks, Mapping):
+                finite = []
+                for value in peaks.values():
+                    try:
+                        parsed = abs(float(value))
+                    except (TypeError, ValueError):
+                        continue
+                    if math.isfinite(parsed):
+                        finite.append(parsed)
+                if finite:
+                    return 1.15 * max(finite)
+    # Retain a fail-closed legacy floor for small synthetic contracts that do
+    # not carry the v010 result-tail evidence.
+    return 0.05
 
 
 def analyze_trial(
@@ -324,14 +379,21 @@ def analyze_trial(
     final_command = _vector(
         ordered_commands[-1], "full12", "command_full12", "commanded_full12"
     ) if ordered_commands else None
+    wheel_decay_threshold = _reference_wheel_decay_threshold(contract)
     stable_suffix: list[Mapping[str, Any]] = []
     for row in reversed(ordered_observations):
         vector = _vector(row, "actual_full12")
-        if vector is None or any(abs(value) > 0.05 + 1.0e-9 for value in vector[8:]):
+        if vector is None or any(
+            abs(value) > wheel_decay_threshold + 1.0e-9 for value in vector[8:]
+        ):
             break
         stable_suffix.append(row)
     stable_suffix.reverse()
     stable_span = _time(stable_suffix[-1]) - _time(stable_suffix[0]) if len(stable_suffix) >= 2 else 0.0
+    summary.update(
+        measured_wheel_velocity_decay_threshold_rad_s=wheel_decay_threshold,
+        measured_wheel_velocity_stable_span_s=stable_span,
+    )
 
     checks = {
         "task_result_success": _terminal_success(task_rows),

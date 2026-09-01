@@ -187,6 +187,48 @@ def test_feedback_correction_cannot_exceed_fifteen_percent(contract) -> None:
     assert atomic.full12[1] == pytest.approx(expected_knee)
 
 
+def test_p10_live_entry_lag_scales_only_rr_knee_within_feedback_cap(
+    spec, contract
+) -> None:
+    controller = SensorFsmController(spec, contract)
+    controller.state = spec.state("P10")
+    p10 = contract.phase("P10")
+    guards = _live_guards(completion=False)
+    actual = list(controller.state.reference_actual_start_full12)
+    # Trial010's guard-pass entry is 1.068 degrees behind v010.  Relative to
+    # v010's 4.594 degree measured P10 response, that requests more than the
+    # 15% correction cap while remaining inside the 2 degree entry envelope.
+    actual[7] = -51.465317474601946
+    observation = {"guards": guards, "actual_full12": actual}
+
+    frames = [controller.step(observation, sim_time_s=0.0)]
+    for tick_index in range(1, 17):
+        frames.append(
+            controller.step(observation, sim_time_s=tick_index / 120.0)
+        )
+
+    transition = next(
+        event
+        for event in frames[0].events
+        if event.from_lifecycle == Lifecycle.WAIT_ENTRY.value
+        and event.to_lifecycle == Lifecycle.EXECUTE_MOTION.value
+    )
+    fractions = transition.details["correction_fractions"]
+    assert fractions[7] == pytest.approx(0.15)
+    assert all(value == 0.0 for index, value in enumerate(fractions) if index != 7)
+    assert frames[0].full12[7] == pytest.approx(-34.12)
+    assert frames[8].full12[7] == pytest.approx(-28.025)
+    assert frames[16].full12[7] == pytest.approx(-25.61)
+    assert frames[0].full12[:7] + frames[0].full12[8:] == pytest.approx(
+        p10.waypoints[1].full12[:7] + p10.waypoints[1].full12[8:]
+    )
+
+    other_phase = SensorFsmController(spec, contract)
+    assert other_phase._initial_feedback_correction(observation).fractions == (
+        0.0,
+    ) * 12
+
+
 def test_watchdog_reports_detailed_first_stall() -> None:
     watchdog = ProgressWatchdog(0.5)
     command = (0.0,) * 12

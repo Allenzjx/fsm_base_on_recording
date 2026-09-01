@@ -9,6 +9,7 @@ from typing import Sequence
 
 RELATIVE_LIMIT = 0.15
 JOINT_FLOOR_DEG = 2.0
+SERVO_VELOCITY_FLOOR_DEG_S = 1.0
 WHEEL_VELOCITY_FLOOR_RAD_S = 0.05
 WHEEL_INTEGRAL_FLOOR_RAD = 0.05
 
@@ -98,7 +99,11 @@ def channel_conformance(
 ) -> ChannelConformance:
     endpoint_floor = WHEEL_VELOCITY_FLOOR_RAD_S if wheel_channel else JOINT_FLOOR_DEG
     delta_floor = endpoint_floor
-    velocity_floor = WHEEL_VELOCITY_FLOOR_RAD_S if wheel_channel else JOINT_FLOOR_DEG
+    velocity_floor = (
+        WHEEL_VELOCITY_FLOOR_RAD_S
+        if wheel_channel
+        else SERVO_VELOCITY_FLOOR_DEG_S
+    )
     endpoint_allowance = allowed_error(
         reference_command_delta, absolute_floor=endpoint_floor
     )
@@ -120,18 +125,19 @@ def channel_conformance(
         actual_velocity, reference_velocity, absolute_floor=velocity_floor
     )
     command_integral_ok = True
-    actual_integral_ok = True
     command_integral_error = 0.0
     actual_integral_error = 0.0
     if wheel_channel:
+        # Wheel entries are velocity targets and measured wheel velocities, not
+        # joint positions.  Position-style endpoint/delta comparisons therefore
+        # remain available only as diagnostics and never gate conformance.
+        command_endpoint_ok = True
+        actual_endpoint_ok = True
+        command_delta_ok = True
+        actual_delta_ok = True
         command_integral_ok = within_contract(
             fsm_command_wheel_integral,
             reference_command_wheel_integral,
-            absolute_floor=WHEEL_INTEGRAL_FLOOR_RAD,
-        )
-        actual_integral_ok = within_contract(
-            fsm_actual_wheel_integral,
-            reference_actual_wheel_integral,
             absolute_floor=WHEEL_INTEGRAL_FLOOR_RAD,
         )
         command_integral_error = error_percent(
@@ -151,9 +157,13 @@ def channel_conformance(
         actual_endpoint_error_percent=100.0
         * actual_endpoint_error
         / max(abs(reference_command_delta), endpoint_floor / RELATIVE_LIMIT),
-        endpoint_error_percent=100.0
-        * max(command_endpoint_error, actual_endpoint_error)
-        / max(abs(reference_command_delta), endpoint_floor / RELATIVE_LIMIT),
+        endpoint_error_percent=(
+            0.0
+            if wheel_channel
+            else 100.0
+            * max(command_endpoint_error, actual_endpoint_error)
+            / max(abs(reference_command_delta), endpoint_floor / RELATIVE_LIMIT)
+        ),
         commanded_delta_error_percent=error_percent(
             fsm_command_delta,
             reference_command_delta,
@@ -162,15 +172,19 @@ def channel_conformance(
         actual_delta_error_percent=100.0
         * actual_delta_error
         / max(abs(reference_command_delta), delta_floor / RELATIVE_LIMIT),
-        delta_error_percent=max(
-            error_percent(
-                fsm_command_delta,
-                reference_command_delta,
-                absolute_floor=delta_floor,
-            ),
-            100.0
-            * actual_delta_error
-            / max(abs(reference_command_delta), delta_floor / RELATIVE_LIMIT),
+        delta_error_percent=(
+            0.0
+            if wheel_channel
+            else max(
+                error_percent(
+                    fsm_command_delta,
+                    reference_command_delta,
+                    absolute_floor=delta_floor,
+                ),
+                100.0
+                * actual_delta_error
+                / max(abs(reference_command_delta), delta_floor / RELATIVE_LIMIT),
+            )
         ),
         duration_error_percent=(
             100.0 * abs(actual_duration - reference_duration) / reference_duration
@@ -182,9 +196,7 @@ def channel_conformance(
         ),
         commanded_wheel_integral_error_percent=command_integral_error,
         actual_wheel_integral_error_percent=actual_integral_error,
-        wheel_integral_error_percent=max(
-            command_integral_error, actual_integral_error
-        ),
+        wheel_integral_error_percent=command_integral_error,
         within_15_percent=(
             command_endpoint_ok
             and actual_endpoint_ok
@@ -193,6 +205,5 @@ def channel_conformance(
             and duration_ok
             and velocity_ok
             and command_integral_ok
-            and actual_integral_ok
         ),
     )

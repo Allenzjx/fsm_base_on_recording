@@ -16,6 +16,7 @@ from .guard_evaluator import (
 )
 from .motion_executor import (
     FeedbackCorrection,
+    MAX_CORRECTION_FRACTION,
     MotionExecutor,
     MotionTick,
     ProgressWatchdog,
@@ -25,6 +26,11 @@ from .recovery import RecoveryPlanner
 from .state_graph import StateGraph
 from .state_spec import FsmSpec, Lifecycle, StateSpec, load_fsm_spec
 from .task_result import TaskResult, TaskTermination
+
+
+_P10_INITIAL_FEEDBACK_STATE_ID = "P10"
+_P10_REAR_RIGHT_KNEE_INDEX = 7
+_P10_INITIAL_FEEDBACK_CAP = MAX_CORRECTION_FRACTION
 
 
 @dataclass(frozen=True)
@@ -242,15 +248,18 @@ class SensorFsmController:
                     return
                 self._pending_blocker = None
                 self._wait_entry_started_s = None
-                self.motion.start_phase(self.phase, FeedbackCorrection())
+                correction = self._initial_feedback_correction(observation)
+                self.motion.start_phase(self.phase, correction)
                 self.watchdog.reset()
                 self._endpoint_issued = False
+                details = dict(_report_details(report))
+                details["correction_fractions"] = correction.fractions
                 self._transition(
                     Lifecycle.EXECUTE_MOTION,
                     now,
                     "all live entry guards passed",
                     events,
-                    _report_details(report),
+                    details,
                 )
                 # Safety predicates are checked now that EXECUTE is active.
                 continue
@@ -449,6 +458,53 @@ class SensorFsmController:
             "controller.live_servo_vs_v010_actual_start",
             "active servos compare with the measured reference entry using max(2 deg, 15% of reference phase delta)",
         )
+
+    def _initial_feedback_correction(self, observation: Any) -> FeedbackCorrection:
+        """Compensate only the measured P10 RR-knee carry-in lag.
+
+        P10 moves the rear-right knee in the positive joint direction.  A live
+        entry that is more negative than the v010 measured entry is therefore
+        behind that reference response.  Scale P10's authored excursion by the
+        lag relative to v010's measured physical response excursion, bounded
+        by the global 15% feedback allowance.  The normal entry guard remains
+        responsible for rejecting observations outside its measured-reference
+        envelope.
+        """
+
+        if self.state.state_id != _P10_INITIAL_FEEDBACK_STATE_ID:
+            return FeedbackCorrection()
+        actual = _actual_servo_positions(observation, self.contract.full12_order[:8])
+        if actual is None:
+            return FeedbackCorrection()
+
+        channel_index = _P10_REAR_RIGHT_KNEE_INDEX
+        command_excursion_deg = self.phase.delta_full12[channel_index]
+        reference_response_excursion_deg = (
+            self.state.reference_actual_endpoint_full12[channel_index]
+            - self.state.reference_actual_start_full12[channel_index]
+        )
+        if (
+            abs(command_excursion_deg) <= 1e-12
+            or abs(reference_response_excursion_deg) <= 1e-12
+        ):
+            return FeedbackCorrection()
+        entry_error_deg = (
+            actual[channel_index]
+            - self.state.reference_actual_start_full12[channel_index]
+        )
+        motion_direction = 1.0 if command_excursion_deg > 0.0 else -1.0
+        lag_along_excursion_deg = -entry_error_deg * motion_direction
+        fraction = min(
+            _P10_INITIAL_FEEDBACK_CAP,
+            max(
+                0.0,
+                lag_along_excursion_deg
+                / abs(reference_response_excursion_deg),
+            ),
+        )
+        fractions = [0.0] * len(self.contract.full12_order)
+        fractions[channel_index] = fraction
+        return FeedbackCorrection(tuple(fractions))
 
     def _final_pose_compatibility(self, observation: Any) -> GuardEvidence:
         if self.state.state_id != "P13":

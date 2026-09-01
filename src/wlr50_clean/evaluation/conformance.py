@@ -6,7 +6,7 @@ import math
 from typing import Any, Mapping, Sequence
 
 from wlr50_clean.reference.similarity import (
-    JOINT_FLOOR_DEG,
+    SERVO_VELOCITY_FLOOR_DEG_S,
     WHEEL_VELOCITY_FLOOR_RAD_S,
     channel_conformance,
     error_percent,
@@ -36,7 +36,13 @@ SIMILARITY_COLUMNS = (
     "peak_velocity_error_percent", "command_wheel_integral_error_percent",
     "actual_wheel_integral_error_percent", "trajectory_rmse",
     "trajectory_rmse_percent", "active_sample_count",
+    "reference_measured_average_velocity", "fsm_measured_average_velocity",
+    "measured_average_velocity_error_percent", "reference_measured_peak_velocity",
+    "fsm_measured_peak_velocity", "measured_peak_velocity_error_percent",
 )
+
+
+PHYSICS_DT_S = 1.0 / 120.0
 
 
 class TrialAnalysisError(ValueError):
@@ -155,7 +161,8 @@ def _velocity(row: Mapping[str, Any], channel: str, index: int) -> float | None:
 
 
 def _integral(
-    rows: Sequence[Mapping[str, Any]], index: int, names: Sequence[str], *, trapezoid: bool = False
+    rows: Sequence[Mapping[str, Any]], index: int, names: Sequence[str], *,
+    trapezoid: bool = False, absolute: bool = False,
 ) -> float:
     if len(rows) < 2:
         return 0.0
@@ -164,12 +171,13 @@ def _integral(
         vector = _vector(left, *names)
         if vector is None:
             raise TrialAnalysisError("full12 evidence is missing while integrating a wheel")
-        value = vector[index]
+        value = abs(vector[index]) if absolute else vector[index]
         if trapezoid:
             right_vector = _vector(right, *names)
             if right_vector is None:
                 raise TrialAnalysisError("full12 evidence is missing while integrating a wheel")
-            value = 0.5 * (value + right_vector[index])
+            right_value = abs(right_vector[index]) if absolute else right_vector[index]
+            value = 0.5 * (value + right_value)
         total += value * (_time(right) - _time(left))
     return total
 
@@ -228,7 +236,12 @@ def _similarity_rows(
         start, end = float(clock["motion_start_s"]), float(clock["motion_end_s"])
         completion = float(clock["completion_time_s"])
         command_rows = _samples(commands, phase_id, start, end)
-        active_observations = _samples(observations, phase_id, start, end)
+        # Runtime observations are emitted after each 120 Hz physics step.  The
+        # sample immediately after motion_end is therefore the physical response
+        # to the final nominal command and belongs to the measured phase window.
+        active_observations = _samples(
+            observations, phase_id, start, end + PHYSICS_DT_S
+        )
         result_observations = _samples(observations, phase_id, start, completion)
         if len(command_rows) < 2 or len(active_observations) < 2 or not result_observations:
             raise TrialAnalysisError(f"{phase_id}: insufficient command/observation samples")
@@ -252,13 +265,62 @@ def _similarity_rows(
             ]
             if not velocities:
                 raise TrialAnalysisError(f"{phase_id}/{channel}: measured velocity is missing")
-            fsm_peak = max(velocities)
-            response_floor = WHEEL_VELOCITY_FLOOR_RAD_S if wheel else 1.0
-            response_threshold = max(response_floor, 0.05 * fsm_peak)
-            active_velocities = [value for value in velocities if value >= response_threshold]
-            fsm_average = sum(active_velocities) / len(active_velocities) if active_velocities else 0.0
-            ref_average = float(reference_actual["active_window_average_abs_velocity"][channel])
-            ref_peak = float(reference_actual["peak_abs_velocity"][channel])
+            measured_fsm_average = sum(velocities) / len(velocities)
+            measured_fsm_peak = max(velocities)
+            reference_phase_averages = reference_actual.get(
+                "phase_average_abs_velocity",
+                # Backward compatibility for synthetic/legacy test contracts;
+                # extracted v010 contracts always carry the literal phase mean.
+                reference_actual.get("active_window_average_abs_velocity", {}),
+            )
+            if not isinstance(reference_phase_averages, Mapping):
+                raise TrialAnalysisError(
+                    f"{phase_id}/{channel}: reference phase velocity is missing"
+                )
+            measured_ref_average = float(reference_phase_averages[channel])
+            measured_ref_peak = float(reference_actual["peak_abs_velocity"][channel])
+            command_metrics = phase.get("command_metrics", {})
+            if wheel:
+                try:
+                    ref_average = float(
+                        command_metrics[
+                            "wheel_time_weighted_average_abs_target_rad_s"
+                        ][channel]
+                    )
+                    ref_peak = float(
+                        command_metrics["wheel_peak_abs_target_rad_s"][channel]
+                    )
+                except (KeyError, TypeError, ValueError) as exc:
+                    raise TrialAnalysisError(
+                        f"{phase_id}/{channel}: wheel target metrics are missing"
+                    ) from exc
+                command_abs_integral = _integral(
+                    command_rows,
+                    index,
+                    ("full12", "command_full12", "commanded_full12"),
+                    absolute=True,
+                )
+                fsm_average = command_abs_integral / max(
+                    float(clock["active_duration_s"]), 1.0e-12
+                )
+                fsm_peak = max(
+                    abs(vector[index])
+                    for row in command_rows
+                    if (
+                        vector := _vector(
+                            row,
+                            "full12",
+                            "command_full12",
+                            "commanded_full12",
+                        )
+                    )
+                    is not None
+                )
+            else:
+                ref_average = measured_ref_average
+                ref_peak = measured_ref_peak
+                fsm_average = measured_fsm_average
+                fsm_peak = measured_fsm_peak
             ref_command_integral = float(phase["command_metrics"]["wheel_integral_rad"][channel]) if wheel else 0.0
             ref_actual_integral = float(reference_actual["actual_wheel_integral_rad"][channel]) if wheel else 0.0
             fsm_command_integral = _integral(command_rows, index, ("full12", "command_full12", "commanded_full12")) if wheel else 0.0
@@ -279,9 +341,23 @@ def _similarity_rows(
                 reference_actual_wheel_integral=ref_actual_integral,
                 fsm_actual_wheel_integral=fsm_actual_integral, wheel_channel=wheel,
             )
-            velocity_floor = WHEEL_VELOCITY_FLOOR_RAD_S if wheel else JOINT_FLOOR_DEG
+            velocity_floor = (
+                WHEEL_VELOCITY_FLOOR_RAD_S
+                if wheel
+                else SERVO_VELOCITY_FLOOR_DEG_S
+            )
             peak_error = error_percent(fsm_peak, ref_peak, absolute_floor=velocity_floor)
             peak_ok = within_contract(fsm_peak, ref_peak, absolute_floor=velocity_floor)
+            measured_average_error = error_percent(
+                measured_fsm_average,
+                measured_ref_average,
+                absolute_floor=velocity_floor,
+            )
+            measured_peak_error = error_percent(
+                measured_fsm_peak,
+                measured_ref_peak,
+                absolute_floor=velocity_floor,
+            )
             rmse, rmse_percent = _trajectory_error(phase, active_observations, index, start, end)
             within = conformance.within_15_percent and peak_ok and rmse_percent <= 15.0 + 1.0e-9
             result.append({
@@ -315,6 +391,12 @@ def _similarity_rows(
                 "actual_wheel_integral_error_percent": conformance.actual_wheel_integral_error_percent,
                 "trajectory_rmse": rmse, "trajectory_rmse_percent": rmse_percent,
                 "active_sample_count": len(active_observations),
+                "reference_measured_average_velocity": measured_ref_average,
+                "fsm_measured_average_velocity": measured_fsm_average,
+                "measured_average_velocity_error_percent": measured_average_error,
+                "reference_measured_peak_velocity": measured_ref_peak,
+                "fsm_measured_peak_velocity": measured_fsm_peak,
+                "measured_peak_velocity_error_percent": measured_peak_error,
             })
     return result
 
