@@ -38,7 +38,7 @@
       "source_path": "C:/robotics_sim/wlr_robot/height_based_obstacle_replay/sim_robot_adapter.py",
       "source_sha256": "04966b8100eeb33ea55de78eaa5a74bbc3662030f82ba4d458eb429608ed64d4",
       "destination_path": "src/wlr50_clean/infrastructure/servo_target_mapper.py",
-      "destination_sha256": "cf7a0d95a3f0b4506ffdc6accaee2716a7c17031454e9032913481df153a8440",
+      "destination_sha256": "ca18b55f60994a6d346a559fccd02f7fdef3dbb924e0cc65efd68035cf165ffa",
       "reuse_reason": "Narrow Isaac-free derivation of the mature 150 deg/s servo slew and bounded gain-8, 10-degree, four-tick tracking compensation; replay, UI, state-write, and actuator-configuration code omitted."
     },
     {

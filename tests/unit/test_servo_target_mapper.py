@@ -103,3 +103,53 @@ def test_p03_bias_freezes_through_p04_and_p05_restarts_from_drive_target() -> No
     assert mapping.tracking_compensation_deg[FL_KNEE] == pytest.approx(0.0)
     assert mapping.applied_drive_command_deg[FL_KNEE] == pytest.approx(-14.15)
     assert mapping.nominal_target_reached[FL_KNEE] is False
+
+
+def test_large_transient_bias_retires_when_tracking_ends_at_converged_nominal() -> None:
+    mapper = ServoTargetMapper(_standing())
+    requested = [0.0] * 8
+    requested[FL_KNEE] = -5.0
+    loaded = [0.0] * 8
+    loaded[FL_KNEE] = -10.0
+
+    mapping = None
+    for _ in range(41):
+        mapping = mapper.advance(
+            requested,
+            _rad(loaded),
+            tracking_servo_names=("front_left_knee",),
+        )
+    assert mapping is not None
+    assert mapping.tracking_compensation_deg[FL_KNEE] == pytest.approx(10.0)
+
+    converged = [0.0] * 8
+    converged[FL_KNEE] = -5.0
+    observed = []
+    for _ in range(8):
+        mapping = mapper.advance(requested, _rad(converged))
+        observed.append(mapping.tracking_compensation_deg[FL_KNEE])
+
+    assert observed[:4] == pytest.approx([8.75, 7.5, 6.25, 5.0])
+    assert observed[-1] == pytest.approx(0.0)
+    assert mapping.applied_drive_command_deg[FL_KNEE] == pytest.approx(-5.0)
+    assert mapping.tracking_active[FL_KNEE] is False
+
+
+def test_large_load_bias_still_freezes_when_joint_has_not_converged() -> None:
+    mapper = ServoTargetMapper(_standing())
+    requested = [0.0] * 8
+    requested[FL_KNEE] = -5.0
+    loaded = [0.0] * 8
+    loaded[FL_KNEE] = -10.0
+    for _ in range(41):
+        mapping = mapper.advance(
+            requested,
+            _rad(loaded),
+            tracking_servo_names=("front_left_knee",),
+        )
+    assert mapping.tracking_compensation_deg[FL_KNEE] == pytest.approx(10.0)
+
+    for _ in range(8):
+        mapping = mapper.advance(requested, _rad(loaded))
+    assert mapping.tracking_compensation_deg[FL_KNEE] == pytest.approx(10.0)
+    assert mapping.applied_drive_command_deg[FL_KNEE] == pytest.approx(5.0)

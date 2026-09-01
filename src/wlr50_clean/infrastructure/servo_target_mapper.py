@@ -25,6 +25,12 @@ SERVO_TRACKING_CONVERGENCE_BAND_DEG = 0.75
 SERVO_TRACKING_COMPENSATION_GAIN = 8.0
 SERVO_TRACKING_COMPENSATION_MAX_DEG = 10.0
 SERVO_TRACKING_FEEDBACK_INTERVAL_TICKS = 4
+# A feedback segment may end on a wheel-only waypoint while its sampled
+# high-gain correction is on the opposite side of the nominal target.  Keeping
+# a large transient bias forever makes a sub-degree physical perturbation turn
+# into a cross-state pose error.  The two-degree floor is the contract's joint
+# endpoint allowance; smaller mature carry-over biases remain untouched.
+SERVO_STALE_BIAS_FLOOR_DEG = 2.0
 
 
 class ServoTargetMapperError(ValueError):
@@ -90,6 +96,7 @@ class ServoTargetMapper:
         self._nominal_reached = {name: True for name in SERVO_ORDER}
         self._compensation = {name: 0.0 for name in SERVO_ORDER}
         self._tracking_active = {name: False for name in SERVO_ORDER}
+        self._retiring_stale_bias = {name: False for name in SERVO_ORDER}
         self._feedback_tick = 0
 
     @property
@@ -115,12 +122,38 @@ class ServoTargetMapper:
             raise ServoTargetMapperError(f"unknown tracking servos: {unknown}")
         scheduled_tracking = set(tracking_names)
 
-        # A segment end disables feedback but deliberately preserves its current
-        # bias.  A changed nominal restarts slew and clears that bias; explicit
-        # per-segment names alone own feedback activation.
+        measured_deg = {
+            name: math.degrees(value)
+            for name, value in zip(SERVO_ORDER, measured_rad, strict=True)
+        }
+        ended_tracking = {
+            name
+            for name in SERVO_ORDER
+            if self._tracking_active[name] and name not in scheduled_tracking
+        }
+
+        # A segment end normally preserves the mature carry-over bias.  The
+        # sole exception is a bias larger than the contract's two-degree joint
+        # floor when the measured joint has already converged to nominal.  That
+        # combination is a sampled feedback-phase artifact, not load support;
+        # retire it at the same 150 deg/s target slew instead of freezing it
+        # into later wheel-only phases.
         for name in SERVO_ORDER:
             if name not in scheduled_tracking:
                 self._tracking_active[name] = False
+            if name in ended_tracking and self._nominal_reached[name]:
+                nominal_physical_deg = (
+                    self.standing_pose_deg[name]
+                    + SERVO_COMMAND_SIGN[name] * self._requested[name]
+                )
+                actual_error_deg = nominal_physical_deg - measured_deg[name]
+                if (
+                    abs(actual_error_deg)
+                    <= SERVO_TRACKING_CONVERGENCE_BAND_DEG + 1.0e-12
+                    and abs(self._compensation[name])
+                    > SERVO_STALE_BIAS_FLOOR_DEG + 1.0e-12
+                ):
+                    self._retiring_stale_bias[name] = True
         for name, raw_value in zip(SERVO_ORDER, requested, strict=True):
             lower, upper = servo_limits_deg(name)
             value = _clamp(raw_value, lower, upper)
@@ -132,9 +165,11 @@ class ServoTargetMapper:
             ):
                 self._nominal_reached[name] = False
                 self._compensation[name] = 0.0
+                self._retiring_stale_bias[name] = False
             self._requested[name] = value
         for name in scheduled_tracking:
             self._tracking_active[name] = True
+            self._retiring_stale_bias[name] = False
 
         feedback_names = {
             name
@@ -145,10 +180,6 @@ class ServoTargetMapper:
         sample_feedback = sample_tick % self.feedback_interval_ticks == 0
         self._feedback_tick += 1
 
-        measured_deg = {
-            name: math.degrees(value)
-            for name, value in zip(SERVO_ORDER, measured_rad, strict=True)
-        }
         for name in SERVO_ORDER:
             requested_value = self._requested[name]
             applied = self._applied[name]
@@ -177,6 +208,18 @@ class ServoTargetMapper:
                 lower, upper = servo_limits_deg(name)
                 applied = _clamp(requested_value + correction, lower, upper)
                 self._compensation[name] = applied - requested_value
+            elif self._retiring_stale_bias[name]:
+                previous = self._compensation[name]
+                correction = math.copysign(
+                    max(0.0, abs(previous) - self.maximum_delta_deg),
+                    previous,
+                )
+                lower, upper = servo_limits_deg(name)
+                applied = _clamp(requested_value + correction, lower, upper)
+                self._compensation[name] = applied - requested_value
+                if abs(self._compensation[name]) <= 1.0e-12:
+                    self._compensation[name] = 0.0
+                    self._retiring_stale_bias[name] = False
             lower, upper = servo_limits_deg(name)
             self._applied[name] = _clamp(applied, lower, upper)
 
