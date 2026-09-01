@@ -130,7 +130,7 @@ def _changed(left: tuple[float, ...], right: tuple[float, ...], epsilon: float) 
 
 
 class MotionExecutor:
-    """Stateful rate limiter; response state deliberately survives phase changes."""
+    """Stateful shaper; response state deliberately survives phase changes."""
 
     def __init__(
         self,
@@ -185,14 +185,6 @@ class MotionExecutor:
         elapsed_s = self._tick_index * self.dt_s
         reference = self._nominal_at_tick(phase, self._tick_index)
         nominal = self._apply_correction(phase, reference)
-        shaped = list(nominal)
-        for index in range(SERVO_COUNT):
-            previous = self._last_full12[index]
-            delta = nominal[index] - previous
-            delta = min(max(delta, -self.max_servo_step_deg), self.max_servo_step_deg)
-            shaped[index] = previous + delta
-        # Indices 8:12 are wheel velocity targets and therefore zero-order hold.
-        full12 = tuple(shaped)
         # Offline dispatch times contain harmless floating-point drift around
         # exact 120 Hz boundaries.  Quantize to the authored physics tick so an
         # event is neither delayed nor emitted twice.
@@ -201,6 +193,25 @@ class MotionExecutor:
             for group in phase.atomic_groups
             if round(group.time_s * self.physics_hz) == self._tick_index
         )
+        shaped = list(nominal)
+        source_full12_atomic = any(
+            group.source_full12_atomic for group in atomic_groups
+        )
+        if not source_full12_atomic:
+            for index in range(SERVO_COUNT):
+                previous = self._last_full12[index]
+                delta = nominal[index] - previous
+                delta = min(
+                    max(delta, -self.max_servo_step_deg), self.max_servo_step_deg
+                )
+                shaped[index] = previous + delta
+        # A source full12 event is already an authored, same-physics-tick
+        # command.  Preserve that event by issuing all corrected nominal
+        # channels together instead of stretching its servo changes over later
+        # ticks.  The adapter still performs the single full12 articulation
+        # write used for every MotionTick.
+        # Indices 8:12 are wheel velocity targets and therefore zero-order hold.
+        full12 = tuple(shaped)
         self._source_atomic_emitted += sum(
             1 for group in atomic_groups if group.source_full12_atomic
         )

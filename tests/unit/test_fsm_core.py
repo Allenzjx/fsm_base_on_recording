@@ -76,13 +76,16 @@ def test_all_four_source_atomic_events_emit_as_full12(contract) -> None:
             tick = executor.tick()
             assert len(tick.full12) == 12
             if tick.source_full12_atomic:
+                assert tick.full12 == tick.nominal_full12
                 emitted.append((phase.state_id, tick.tick_index, tick.full12))
     assert [item[0] for item in emitted] == ["P03", "P07", "P09", "P13"]
     assert emitted[0][1] == 0  # the P03 t=0 launch is not skipped
     assert executor.source_atomic_emitted == 4
 
 
-def test_servo_rate_limit_and_response_carry_across_state_boundary(contract) -> None:
+def test_non_atomic_rate_limit_and_source_atomic_bypass_across_boundary(
+    contract,
+) -> None:
     p02 = contract.phase("P02")
     p03 = contract.phase("P03")
     executor = MotionExecutor(
@@ -99,17 +102,31 @@ def test_servo_rate_limit_and_response_carry_across_state_boundary(contract) -> 
     executor.start_phase(p03)
     assert executor.last_full12 == carried
     boundary = executor.tick()
+    assert boundary.source_full12_atomic
+    assert boundary.nominal_full12 == p03.waypoints[1].full12
+    assert boundary.full12 == boundary.nominal_full12
     assert max(
         abs(a - b) for a, b in zip(boundary.full12[:8], carried[:8])
-    ) <= 1.25 + 1e-12
-    assert boundary.source_full12_atomic
+    ) > 1.25
     assert boundary.full12[8:] == boundary.nominal_full12[8:]  # wheel ZOH
 
 
-def test_feedback_correction_cannot_exceed_fifteen_percent() -> None:
+def test_feedback_correction_cannot_exceed_fifteen_percent(contract) -> None:
     FeedbackCorrection((0.15, -0.15) + (0.0,) * 10)
     with pytest.raises(ValueError):
         FeedbackCorrection((0.150001,) + (0.0,) * 11)
+
+    p03 = contract.phase("P03")
+    fractions = (0.0, 0.15) + (0.0,) * 10
+    executor = MotionExecutor(initial_full12=p03.start_full12)
+    executor.start_phase(p03, FeedbackCorrection(fractions))
+    atomic = executor.tick()
+    expected_knee = p03.start_full12[1] + 1.15 * (
+        p03.waypoints[1].full12[1] - p03.start_full12[1]
+    )
+    assert atomic.source_full12_atomic
+    assert atomic.full12 == atomic.nominal_full12
+    assert atomic.full12[1] == pytest.approx(expected_knee)
 
 
 def test_watchdog_reports_detailed_first_stall() -> None:
