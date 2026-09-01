@@ -1,0 +1,138 @@
+{
+  "schema": "wlr50_clean.environment_lock.v1",
+  "source_environment": "C:/robotics_sim/wlr_robot/height_based_obstacle_replay",
+  "source_git_head_at_freeze": "5b10460331e0d337751f76492d313cfb9b8544d1",
+  "freeze_policy": "hash_locked_working_files_matching_the_successful_v010_recording_run",
+  "runtime": {
+    "python": "C:/Users/kskzz/miniconda3/envs/env_isaaclab/python.exe",
+    "python_version": "3.11.15",
+    "isaacsim_version": "5.1.0.0",
+    "isaaclab_version": "0.54.3",
+    "device": "cuda:0"
+  },
+  "robot": {
+    "usd_path": "C:/robotics_sim/wlr_robot/usd/wlr_robot_drive_test.usd",
+    "usd_sha256": "e8a2a2b1485a32a50e851a07b9dd8ac4945b78ec49b7fada2b61c3eeb1e18892",
+    "articulation_root_path": "/World/WLRRobot",
+    "spawn_z_m": 0.04,
+    "grounded_reference_root_pose_xyzw_wxyz": [
+      -0.003959653899073601,
+      -0.0009929761290550232,
+      0.09901974350214005,
+      0.9999808073043823,
+      -0.00001026025438477518,
+      -0.006009926088154316,
+      0.0015246823895722628
+    ]
+  },
+  "physics": {
+    "gravity_m_s2": [0.0, 0.0, -9.81],
+    "physics_dt_s": 0.008333333333333333,
+    "physics_hz": 120.0,
+    "render_interval_physics_steps": 8,
+    "render_fps": 15.0,
+    "substeps": 1,
+    "solver_position_iterations": 8,
+    "solver_velocity_iterations": 2,
+    "contact_offset_m": 0.005,
+    "rest_offset_m": 0.0
+  },
+  "actuators": {
+    "servo_stiffness": 600.0,
+    "servo_damping": 60.0,
+    "servo_armature": 0.005,
+    "servo_effort_limit_nm": 2.7,
+    "servo_reference_velocity_deg_s": 150.0,
+    "wheel_damping": 20.0,
+    "wheel_armature": 0.002,
+    "wheel_reference_velocity_rad_s": 0.5235987755982988,
+    "wheel_velocity_limit_rad_s": 2.0943951023931953,
+    "wheel_radius_m": 0.04998999834060672
+  },
+  "ground": {
+    "prim_path": "/World/defaultGroundPlane",
+    "z_m": 0.0,
+    "static_friction": 1.25,
+    "dynamic_friction": 1.05,
+    "restitution": 0.0
+  },
+  "obstacle": {
+    "prim_path": "/World/Obstacle",
+    "height_m": 0.05,
+    "front_face_x_m": 0.5213121737735307,
+    "center_x_m": 1.5499999523162842,
+    "center_y_m": 0.0,
+    "bottom_z_m": 0.0,
+    "length_m": 2.057375557085507,
+    "width_m": 2.0,
+    "static_friction": 1.2,
+    "dynamic_friction": 1.0,
+    "restitution": 0.0,
+    "kinematic": true
+  },
+  "camera": {
+    "eye_m": [1.45, -1.25, 0.8],
+    "target_m": [0.45, 0.0, 0.12],
+    "resolution": [1280, 720],
+    "fps": 15.0,
+    "source": "active Isaac GUI viewport"
+  },
+  "joint_order_full12": [
+    "front_left_hip",
+    "front_left_knee",
+    "front_left_ankle",
+    "front_right_hip",
+    "front_right_knee",
+    "front_right_ankle",
+    "rear_left_hip",
+    "rear_left_knee",
+    "rear_left_ankle",
+    "rear_right_hip",
+    "rear_right_knee",
+    "rear_right_ankle"
+  ],
+  "servo_order8": [
+    "front_left_hip",
+    "front_left_knee",
+    "front_right_hip",
+    "front_right_knee",
+    "rear_left_hip",
+    "rear_left_knee",
+    "rear_right_hip",
+    "rear_right_knee"
+  ],
+  "wheel_order4": [
+    "front_left_ankle",
+    "front_right_ankle",
+    "rear_left_ankle",
+    "rear_right_ankle"
+  ],
+  "servo_command_signs": {
+    "front_left_hip": 1.0,
+    "front_left_knee": 1.0,
+    "front_right_hip": 1.0,
+    "front_right_knee": 1.0,
+    "rear_left_hip": -1.0,
+    "rear_left_knee": -1.0,
+    "rear_right_hip": -1.0,
+    "rear_right_knee": -1.0
+  },
+  "wheel_forward_signs": {
+    "front_left_ankle": -1.0,
+    "front_right_ankle": 1.0,
+    "rear_left_ankle": -1.0,
+    "rear_right_ankle": 1.0
+  },
+  "prohibited_runtime_mutations": [
+    "root pose write",
+    "root velocity write",
+    "teleport",
+    "external force",
+    "external impulse",
+    "gravity override",
+    "USD edit",
+    "friction edit",
+    "actuator edit"
+  ]
+}
+

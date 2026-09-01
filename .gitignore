@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv/
+build/
+dist/
+*.egg-info/
+
+# Trial directories are immutable and can be very large. Keep manifests and final
+# deliverables under version control only when explicitly added.
+runs/*
+!runs/.gitkeep
+outputs/final/*.mp4
+reference/v010/recording_clean.mp4
+

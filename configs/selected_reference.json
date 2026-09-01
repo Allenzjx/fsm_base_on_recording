@@ -1,0 +1,16 @@
+{
+  "schema": "wlr50_clean.selected_reference.v1",
+  "reference_version": "v010",
+  "version_id": "v010_20260806_220745_363972_manual",
+  "rear_leg_order": "RR_FIRST",
+  "cross_version_splice": false,
+  "runtime_recording_access_authorized": false,
+  "accepted_steps_path": "reference/v010/accepted_steps.jsonl",
+  "accepted_steps_sha256": "f962128da9e9551235a6f6769308eed0c947657fe804c9e0e26025f456c72e92",
+  "metadata_path": "reference/v010/metadata.json",
+  "metadata_sha256": "ed77e79f021eef4fdfa535939aeab6ad696fe58238af9a174f3e21ab0bbca1bf",
+  "recording_video_path": "reference/v010/recording_clean.mp4",
+  "recording_video_sha256": "6b6d2561ef9c9c64f6eca5c009bbe0b4c0de57652b4faa2f83bf786cf2bc4fa3",
+  "reference_policy": "all P01-P13 nominal motion must derive only from this version"
+}
+

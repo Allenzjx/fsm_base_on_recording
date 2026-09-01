@@ -1,0 +1,10 @@
+{
+  "schema": "wlr50_clean.import_manifest.v1",
+  "project": "fsm_50mm_recording_shaped_clean_v1",
+  "source_project": "C:/robotics_sim/wlr_robot/height_based_obstacle_replay",
+  "source_project_policy": "read_only_hash_locked_allowlist",
+  "old_fsm_project": "C:/robotics_sim/wlr_robot/fsm_50mm_recording_sensor_fsm_v1",
+  "old_fsm_policy": "forbidden_runtime_and_source_dependency",
+  "reused_files": []
+}
+

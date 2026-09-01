@@ -1,0 +1,34 @@
+{
+  "schema": "wlr50_clean.reference_source_manifest.v1",
+  "version_id": "v010_20260806_220745_363972_manual",
+  "rear_leg_order": "RR_FIRST",
+  "cross_version_splice": false,
+  "files": [
+    {
+      "role": "accepted event stream (offline preparation only)",
+      "source_path": "C:/robotics_sim/wlr_robot/height_based_obstacle_replay/saved_height_steps_fsm_reference_v2/height_050mm/versions/v010_20260806_220745_363972_manual/accepted_steps.jsonl",
+      "source_sha256": "f962128da9e9551235a6f6769308eed0c947657fe804c9e0e26025f456c72e92",
+      "destination_path": "reference/v010/accepted_steps.jsonl",
+      "destination_sha256": "f962128da9e9551235a6f6769308eed0c947657fe804c9e0e26025f456c72e92",
+      "bytes": 4988513
+    },
+    {
+      "role": "version metadata",
+      "source_path": "C:/robotics_sim/wlr_robot/height_based_obstacle_replay/saved_height_steps_fsm_reference_v2/height_050mm/versions/v010_20260806_220745_363972_manual/metadata.json",
+      "source_sha256": "ed77e79f021eef4fdfa535939aeab6ad696fe58238af9a174f3e21ab0bbca1bf",
+      "destination_path": "reference/v010/metadata.json",
+      "destination_sha256": "ed77e79f021eef4fdfa535939aeab6ad696fe58238af9a174f3e21ab0bbca1bf",
+      "bytes": 1043
+    },
+    {
+      "role": "complete linked v010 active-viewport recording video",
+      "source_path": "C:/robotics_sim/wlr_robot/fsm_50mm_recording_sensor_fsm_v1/runs/recording_instrumented/20260825T220848_736987Z_recording_replays_799b1c3531/v010_20260806_220745_363972_manual/20260825T220848_746981Z_clean_fast_replay_7482ccf1b4/20260825_180939_obstacle-05cm_worker_recording_fast_v010_20260806_220745_363972_manual/actual_viewport_video.mp4",
+      "source_sha256": "6b6d2561ef9c9c64f6eca5c009bbe0b4c0de57652b4faa2f83bf786cf2bc4fa3",
+      "destination_path": "reference/v010/recording_clean.mp4",
+      "destination_sha256": "6b6d2561ef9c9c64f6eca5c009bbe0b4c0de57652b4faa2f83bf786cf2bc4fa3",
+      "bytes": 138901857,
+      "locator_policy": "old project used only to locate the already-bound v010 video and verify its hash"
+    }
+  ]
+}
+
