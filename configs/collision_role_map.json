@@ -1,0 +1,27 @@
+{
+  "schema": "wlr50_clean.collision_role_map.v1",
+  "failure_semantics": {
+    "BODY": "task failure only after exact base_link/obstacle pair plus persistence or collider penetration",
+    "LEG": "allowed traversal contact; diagnostic only",
+    "WHEEL": "allowed traversal/support contact; diagnostic and guard input"
+  },
+  "bodies": {
+    "base_link": "BODY",
+    "front_left_upper": "LEG",
+    "front_right_upper": "LEG",
+    "rear_left_upper": "LEG",
+    "rear_right_upper": "LEG",
+    "front_left_bot": "LEG",
+    "front_right_bot": "LEG",
+    "rear_left_bot": "LEG",
+    "rear_right_bot": "LEG",
+    "front_left_wheel": "WHEEL",
+    "front_right_wheel": "WHEEL",
+    "rear_left_wheel": "WHEEL",
+    "rear_right_wheel": "WHEEL"
+  },
+  "exact_pairs": {
+    "obstacle": "/World/Obstacle",
+    "ground": "/World/defaultGroundPlane/GroundPlane/CollisionPlane"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "schema": "wlr50_clean.reference_keyframes.v1",
+  "video_sha256": "50a82b5417f413114c4b9c4e81e0b41944ca0da6af2dfdb1f6fb0bc7bb023504",
+  "fps": 15.0,
+  "frames": [
+    {"file": "01_initial_pose.png", "video_time_s": 0.0, "semantic_event": "initial pose"},
+    {"file": "02_fr_lift.png", "video_time_s": 15.0, "semantic_event": "FR active lift"},
+    {"file": "03_fr_place.png", "video_time_s": 20.0, "semantic_event": "FR placed on top"},
+    {"file": "04_fl_unload.png", "video_time_s": 21.5, "semantic_event": "FL unload preparation"},
+    {"file": "05_fl_lift.png", "video_time_s": 22.533, "semantic_event": "FL active lift"},
+    {"file": "06_fl_place.png", "video_time_s": 32.0, "semantic_event": "FL placed on top"},
+    {"file": "07_front_advance.png", "video_time_s": 40.0, "semantic_event": "front pair advance"},
+    {"file": "08_rear_entry.png", "video_time_s": 56.0, "semantic_event": "rear-entry alignment"},
+    {"file": "09_rr_lift.png", "video_time_s": 60.0, "semantic_event": "RR active lift"},
+    {"file": "10_rr_place.png", "video_time_s": 65.0, "semantic_event": "RR placed on top"},
+    {"file": "11_second_prepare.png", "video_time_s": 68.0, "semantic_event": "second rear preparation"},
+    {"file": "12_rl_lift.png", "video_time_s": 70.533, "semantic_event": "RL active lift"},
+    {"file": "13_rl_place.png", "video_time_s": 73.0, "semantic_event": "RL placed on top"},
+    {"file": "14_final_advance.png", "video_time_s": 82.0, "semantic_event": "final forward motion"},
+    {"file": "15_final_recovery.png", "video_time_s": 89.5, "semantic_event": "final recovery pose"}
+  ]
+}

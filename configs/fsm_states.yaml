@@ -1,0 +1,3305 @@
+schema: wlr50_clean.fsm_states.v1
+reference_version: v010_20260806_220745_363972_manual
+rear_leg_order: RR_FIRST
+decision_hz: 15.0
+motion_hz: 120.0
+state_progress_watchdog_s: 0.5
+states:
+- state_id: P01
+  macro_phase: 1
+  state_name: INITIAL_LOAD_TRANSFER_FR
+  physical_purpose: Build the v010 diagonal/load structure and approach needed before
+    active FR lift.
+  lifecycle:
+  - WAIT_ENTRY
+  - EXECUTE_MOTION
+  - VERIFY_RESULT
+  - RECOVERY
+  - DONE
+  reference_step:
+  - 1
+  - 2
+  reference_events:
+  - - 1
+    - 0
+  - - 1
+    - 1
+  - - 1
+    - 2
+  - - 1
+    - 3
+  - - 1
+    - 4
+  - - 2
+    - 0
+  - - 2
+    - 1
+  - - 2
+    - 2
+  start_full12:
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  end_full12:
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 37.6
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  command_delta_full12:
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 37.6
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  reference_actual_endpoint_full12:
+  - 0.6337412632541751
+  - -0.19778590658689174
+  - -0.3262529753418445
+  - 0.030582011926173408
+  - 38.94874325029664
+  - 0.10784386450742134
+  - 0.5937129929841682
+  - -0.6566455022230195
+  - -0.03645225241780281
+  - 3.2344425562769175e-05
+  - 0.019256627187132835
+  - -0.0015365174040198326
+  reference_actual_delta_full12:
+  - 0.4941479914315701
+  - 0.1338879427717419
+  - -0.345829433922515
+  - 0.29053315538325397
+  - 38.67221705199293
+  - 0.45745153946552713
+  - 0.35926005293644275
+  - -0.32446274707531375
+  - -0.048984880559146404
+  - -0.018395563994999975
+  - 0.025761567056179047
+  - 0.011951752938330173
+  active_channels:
+  - rear_left_hip
+  - front_left_ankle
+  - front_right_ankle
+  - rear_left_ankle
+  - rear_right_ankle
+  active_duration: 13.266666666666424
+  average_velocity:
+    rear_left_hip: 41.513357359147655
+    front_left_ankle: 0.23219208210918485
+    front_right_ankle: 0.2997146923109371
+    rear_left_ankle: 0.3452571666796491
+    rear_right_ankle: 0.28551554683713587
+  peak_velocity:
+    rear_left_hip: 125.13103268911456
+    front_left_ankle: 0.4794905185699463
+    front_right_ankle: 0.30276817083358765
+    rear_left_ankle: 0.46886542439460754
+    rear_right_ankle: 0.3914879262447357
+  wheel_integral:
+    front_left_ankle: 3.8799999999999275
+    front_right_ankle: 3.8799999999999275
+    rear_left_ankle: 3.8799999999999275
+    rear_right_ankle: 3.8799999999999275
+  estimated_wheel_surface_travel_m:
+    front_left_ankle: 0.19396119356155045
+    front_right_ankle: 0.19396119356155045
+    rear_left_ankle: 0.19396119356155045
+    rear_right_ankle: 0.19396119356155045
+  atomic_channels:
+  - onset_s: 0.33333333333333215
+    channels:
+    - front_left_ankle
+    - front_right_ankle
+    - rear_left_ankle
+    - rear_right_ankle
+    same_120hz_tick: true
+    source_full12_atomic: false
+  - onset_s: 13.266666666666424
+    channels:
+    - front_left_ankle
+    - front_right_ankle
+    - rear_left_ankle
+    - rear_right_ankle
+    same_120hz_tick: true
+    source_full12_atomic: false
+  overlap_timing:
+  - onset_s: 0.33333333333333215
+    end_s: 13.266666666666424
+    overlap_duration_s: 12.933333333333092
+    channels:
+    - front_left_ankle
+    - front_right_ankle
+    - rear_left_ankle
+    - rear_right_ankle
+    evidence: reference command launch intervals
+  carry_in_active_response_channels:
+  - front_left_hip
+  - front_left_knee
+  - front_right_hip
+  - front_right_knee
+  - rear_left_hip
+  - rear_left_knee
+  - rear_right_hip
+  - rear_right_knee
+  carry_out_active_response_channels:
+  - front_left_hip
+  - front_left_knee
+  - front_right_hip
+  - rear_left_hip
+  - rear_left_knee
+  - rear_right_hip
+  - rear_right_knee
+  - rear_left_ankle
+  entry_conditions: &id001
+  - guard: previous_state_done
+  - guard: no_body_obstacle_collision
+  - guard: joint_hard_limits_valid
+  - guard: reference_entry_compatible
+    relative_limit: 0.15
+  - guard: critical_actuators_available
+  completion_conditions:
+  - guard: motion_endpoint_issued
+  - guard: fr_lift_entry_geometry
+  reference_sensor_envelope:
+    active_channel_actual_result_readback:
+      rear_left_hip: 38.94874325029664
+      front_left_ankle: -0.03645225241780281
+      front_right_ankle: 3.2344425562769175e-05
+      rear_left_ankle: 0.019256627187132835
+      rear_right_ankle: -0.0015365174040198326
+    root_result_position_w_m:
+    - 0.16353823244571686
+    - 0.016269154846668243
+    - 0.07275613397359848
+    relevant_wheel_geometry_result:
+      FR:
+        center_w_m:
+        - 0.41675496101379395
+        - -0.30058932304382324
+        - 0.14355382323265076
+        front_face_center_clearance_m: -0.10455721275973673
+        top_surface_wheel_bottom_clearance_m: 0.04356382489204404
+        contact_class: AIR
+        normal_force_n: 0.0
+    latched_leg_events: []
+  hard_abort_conditions: &id002
+  - guard: body_collision_persistent_or_penetrating
+    result: TASK_FAILURE_BODY_COLLISION
+  - guard: wheel_only_climb_detected
+    result: TASK_FAILURE_WHEEL_ONLY_CLIMB
+  - guard: non_finite_observation_or_command
+    result: SAFETY_ABORT
+  - guard: physics_explosion_or_fall
+    result: SAFETY_ABORT
+  - guard: joint_hard_limit_violation
+    result: SAFETY_ABORT
+  max_verify_wait: 0.25
+  retry_budget: 1
+  next_state: P02
+  recovery_state: P01
+  ppo_action_mask:
+  - 1
+  - 1
+  - 0
+  - 0
+  - 1
+  - 0
+  - 0
+  - 0
+  - 1
+  - 1
+  - 1
+  - 1
+  completion_event: fr_lift_entry_ready
+  transition_reason: Reference-compatible load-transfer endpoint and live FR lift-entry
+    geometry are established.
+  elapsed_time_is_not_completion_evidence: true
+- state_id: P02
+  macro_phase: 2
+  state_name: FR_ACTIVE_LIFT
+  physical_purpose: Actively flex the FR leg until its wheel-bottom clearance increases.
+  lifecycle:
+  - WAIT_ENTRY
+  - EXECUTE_MOTION
+  - VERIFY_RESULT
+  - RECOVERY
+  - DONE
+  reference_step:
+  - 3
+  reference_events:
+  - - 3
+    - 0
+  - - 3
+    - 1
+  - - 3
+    - 2
+  - - 3
+    - 3
+  - - 3
+    - 4
+  - - 3
+    - 5
+  start_full12:
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 37.6
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  end_full12:
+  - 0.0
+  - 0.0
+  - 0.0
+  - 45.9
+  - 37.6
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  command_delta_full12:
+  - 0.0
+  - 0.0
+  - 0.0
+  - 45.9
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  reference_actual_endpoint_full12:
+  - 0.6944239722134476
+  - -0.13490438364297758
+  - -0.4063418792391364
+  - 43.14914853346024
+  - 38.903004888519646
+  - 0.12216057133284283
+  - 0.5894007957403631
+  - -0.5630965099470275
+  - -0.039307594299316406
+  - -0.00021530291996896267
+  - 0.043399911373853683
+  - -0.09168632328510284
+  reference_actual_delta_full12:
+  - 0.058678902211519945
+  - 0.05842131603440329
+  - -0.0806433765196794
+  - 43.119623319885356
+  - -0.04452600319930866
+  - 0.017216335571503455
+  - -0.0023475573620745926
+  - 0.09011778271341264
+  - -0.0028565675020217896
+  - -0.00024307809144374914
+  - 0.024492764845490456
+  - -0.09175900556147099
+  active_channels:
+  - front_right_knee
+  active_duration: 0.4666666666666419
+  average_velocity:
+    front_right_knee: 82.80399935179209
+  peak_velocity:
+    front_right_knee: 121.15110878050481
+  wheel_integral:
+    front_left_ankle: 0.0
+    front_right_ankle: 0.0
+    rear_left_ankle: 0.0
+    rear_right_ankle: 0.0
+  estimated_wheel_surface_travel_m:
+    front_left_ankle: 0.0
+    front_right_ankle: 0.0
+    rear_left_ankle: 0.0
+    rear_right_ankle: 0.0
+  atomic_channels: []
+  overlap_timing: []
+  carry_in_active_response_channels:
+  - front_left_hip
+  - front_left_knee
+  - front_right_hip
+  - rear_left_hip
+  - rear_left_knee
+  - rear_right_hip
+  - rear_right_knee
+  carry_out_active_response_channels:
+  - front_left_hip
+  - front_left_knee
+  - front_right_hip
+  - front_right_knee
+  - rear_left_hip
+  - rear_left_knee
+  - rear_right_hip
+  - rear_right_knee
+  - rear_right_ankle
+  entry_conditions: *id001
+  completion_conditions:
+  - guard: reference_like_active_lift
+    leg: FR
+    active_joints:
+    - front_right_knee
+    held_joints:
+    - front_right_hip
+  - guard: wheel_clearance_gain_or_air_history
+    leg: FR
+  reference_sensor_envelope:
+    active_channel_actual_result_readback:
+      front_right_knee: 43.14914853346024
+    root_result_position_w_m:
+    - 0.1636774241924286
+    - 0.016239657998085022
+    - 0.07268935441970825
+    relevant_wheel_geometry_result:
+      FR:
+        center_w_m:
+        - 0.5206500291824341
+        - -0.2914488911628723
+        - 0.19262440502643585
+        front_face_center_clearance_m: -0.0006621445910965917
+        top_surface_wheel_bottom_clearance_m: 0.09263440668582913
+        contact_class: AIR
+        normal_force_n: 0.0
+    latched_leg_events: []
+  hard_abort_conditions: *id002
+  max_verify_wait: 0.25
+  retry_budget: 1
+  next_state: P03
+  recovery_state: P02
+  ppo_action_mask:
+  - 0
+  - 0
+  - 1
+  - 1
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  completion_event: fr_active_lift_observed
+  transition_reason: FR reference-like active joint motion and increased wheel-bottom
+    clearance make front-plane crossing observable.
+  elapsed_time_is_not_completion_evidence: true
+- state_id: P03
+  macro_phase: 3
+  state_name: FR_CROSS_AND_PLACE
+  physical_purpose: Carry FR through the front plane and establish FR obstacle-top
+    contact.
+  lifecycle:
+  - WAIT_ENTRY
+  - EXECUTE_MOTION
+  - VERIFY_RESULT
+  - RECOVERY
+  - DONE
+  reference_step:
+  - 4
+  reference_events:
+  - - 4
+    - 0
+  - - 4
+    - 1
+  - - 4
+    - 2
+  start_full12:
+  - 0.0
+  - 0.0
+  - 0.0
+  - 45.9
+  - 37.6
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  end_full12:
+  - 0.0
+  - -22.9
+  - 0.0
+  - 45.9
+  - 17.5
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  command_delta_full12:
+  - 0.0
+  - -22.9
+  - 0.0
+  - 0.0
+  - -20.1
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  reference_actual_endpoint_full12:
+  - -0.5061552772294675
+  - -23.004344859347274
+  - -0.26636131434625054
+  - 45.503306419593955
+  - 17.75433669911962
+  - 0.36707257538753424
+  - -0.8773636522213635
+  - -0.4955375614016976
+  - 0.0966917872428894
+  - -0.04082576930522919
+  - -0.0030876826494932175
+  - -0.17941541969776154
+  reference_actual_delta_full12:
+  - -1.2008484015848961
+  - -22.869844250608015
+  - 0.1405532335661091
+  - 2.0403380145283094
+  - -21.148784302615915
+  - 0.24462782416251522
+  - -1.4671815163879205
+  - 0.06623784054946136
+  - 0.13624364882707596
+  - -0.04058726422954351
+  - -0.04850427247583866
+  - -0.0861087292432785
+  active_channels:
+  - front_left_knee
+  - rear_left_hip
+  - front_left_ankle
+  - rear_left_ankle
+  active_duration: 1.1999999999999318
+  average_velocity:
+    front_left_knee: 38.150371114039544
+    rear_left_hip: 58.148984578102045
+    front_left_ankle: 0.7635629594326019
+    rear_left_ankle: 0.7412993409153488
+  peak_velocity:
+    front_left_knee: 123.74991379742463
+    rear_left_hip: 168.53540954368486
+    front_left_ankle: 1.0415289402008057
+    rear_left_ankle: 2.0614991188049316
+  wheel_integral:
+    front_left_ankle: -0.9479999999999461
+    front_right_ankle: 0.0
+    rear_left_ankle: 0.7319999999999584
+    rear_right_ankle: 0.0
+  estimated_wheel_surface_travel_m:
+    front_left_ankle: -0.04739051842689247
+    front_right_ankle: 0.0
+    rear_left_ankle: 0.03659267878532203
+    rear_right_ankle: 0.0
+  atomic_channels:
+  - onset_s: 0.0
+    channels:
+    - front_left_hip
+    - front_left_knee
+    - front_right_hip
+    - front_right_knee
+    - rear_left_hip
+    - rear_left_knee
+    - rear_right_hip
+    - rear_right_knee
+    - front_left_ankle
+    - front_right_ankle
+    - rear_left_ankle
+    - rear_right_ankle
+    same_120hz_tick: true
+    source_full12_atomic: true
+  - onset_s: 1.1999999999999318
+    channels:
+    - front_left_ankle
+    - front_right_ankle
+    - rear_left_ankle
+    - rear_right_ankle
+    same_120hz_tick: true
+    source_full12_atomic: false
+  overlap_timing:
+  - onset_s: 0.0
+    end_s: 0.134
+    overlap_duration_s: 0.134
+    channels:
+    - front_left_knee
+    - rear_left_hip
+    - front_left_ankle
+    - rear_left_ankle
+    evidence: reference command launch intervals
+  - onset_s: 0.134
+    end_s: 0.15266666666666664
+    overlap_duration_s: 0.018666666666666637
+    channels:
+    - front_left_knee
+    - front_left_ankle
+    - rear_left_ankle
+    evidence: reference command launch intervals
+  - onset_s: 0.15266666666666664
+    end_s: 1.1999999999999318
+    overlap_duration_s: 1.047333333333265
+    channels:
+    - front_left_ankle
+    - rear_left_ankle
+    evidence: reference command launch intervals
+  carry_in_active_response_channels:
+  - front_left_hip
+  - front_left_knee
+  - front_right_hip
+  - front_right_knee
+  - rear_left_hip
+  - rear_right_hip
+  - rear_right_knee
+  - rear_right_ankle
+  carry_out_active_response_channels:
+  - front_left_knee
+  - front_right_knee
+  - rear_left_hip
+  - rear_left_knee
+  - rear_right_hip
+  - front_left_ankle
+  - rear_right_ankle
+  entry_conditions: *id001
+  completion_conditions:
+  - guard: leg_front_face_crossed_latched
+    leg: FR
+  - guard: leg_top_loaded_latched
+    leg: FR
+  reference_sensor_envelope:
+    active_channel_actual_result_readback:
+      front_left_knee: -23.004344859347274
+      rear_left_hip: 17.75433669911962
+      front_left_ankle: 0.0966917872428894
+      rear_left_ankle: -0.0030876826494932175
+    root_result_position_w_m:
+    - 0.16728822886943817
+    - -0.002881348133087158
+    - 0.0837131217122078
+    relevant_wheel_geometry_result:
+      FR:
+        center_w_m:
+        - 0.5367632508277893
+        - -0.3246440887451172
+        - 0.09973213076591492
+        front_face_center_clearance_m: 0.015451077054258633
+        top_surface_wheel_bottom_clearance_m: -0.000257867574691803
+        contact_class: AIR
+        normal_force_n: 1.142613649368287
+    latched_leg_events:
+    - leg: FR
+      event: FRONT_FACE_CLEARED
+      sim_time_s: 16.258333333333052
+      physics_tick: 1951
+      contact_class: AIR
+      normal_force_n: 0.0
+      front_face_center_clearance_m: 0.002511802743192959
+      top_surface_wheel_bottom_clearance_m: 0.09585711061954495
+      wheel_center_w_m:
+      - 0.5238239765167236
+      - -0.2908335328102112
+      - 0.19584710896015167
+      relative_to_phase_start_s: 0.02499999999999858
+      relative_to_motion_end_s: -1.1749999999999332
+      latched: true
+    - leg: FR
+      event: TOP_LOADED
+      sim_time_s: 16.51666666666637
+      physics_tick: 1982
+      contact_class: OBSTACLE_TOP
+      normal_force_n: 5.438498207944187
+      front_face_center_clearance_m: 0.029361787865873623
+      top_surface_wheel_bottom_clearance_m: -0.0006223872303963013
+      wheel_center_w_m:
+      - 0.5506739616394043
+      - -0.3146636486053467
+      - 0.09936761111021042
+      relative_to_phase_start_s: 0.2833333333333172
+      relative_to_motion_end_s: -0.9166666666666146
+      latched: true
+  hard_abort_conditions: *id002
+  max_verify_wait: 0.25
+  retry_budget: 1
+  next_state: P04
+  recovery_state: P03
+  ppo_action_mask:
+  - 1
+  - 1
+  - 0
+  - 1
+  - 1
+  - 0
+  - 0
+  - 0
+  - 1
+  - 1
+  - 1
+  - 1
+  completion_event: fr_top_loaded
+  transition_reason: Latched FR front-face clearance and top load make FL preparation
+    safe.
+  elapsed_time_is_not_completion_evidence: true
+- state_id: P04
+  macro_phase: 4
+  state_name: FL_UNLOAD_PREP
+  physical_purpose: Change the v010 support geometry so FL can be actively lifted.
+  lifecycle:
+  - WAIT_ENTRY
+  - EXECUTE_MOTION
+  - VERIFY_RESULT
+  - RECOVERY
+  - DONE
+  reference_step:
+  - 5
+  - 6
+  reference_events:
+  - - 5
+    - 0
+  - - 5
+    - 1
+  - - 5
+    - 2
+  - - 6
+    - 0
+  - - 6
+    - 1
+  - - 6
+    - 2
+  - - 6
+    - 3
+  - - 6
+    - 4
+  - - 6
+    - 5
+  - - 6
+    - 6
+  start_full12:
+  - 0.0
+  - -22.9
+  - 0.0
+  - 45.9
+  - 17.5
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  end_full12:
+  - 0.0
+  - -22.9
+  - 0.0
+  - 45.9
+  - 6.9
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  command_delta_full12:
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - -10.6
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  reference_actual_endpoint_full12:
+  - 0.6121925500313139
+  - -13.236134449927903
+  - -0.5706247908074564
+  - 44.99464515663018
+  - 8.365463897145357
+  - 1.030069406486725
+  - -0.8510596865931452
+  - 0.18343908423012004
+  - -0.059043314307928085
+  - -0.0887410119175911
+  - 0.2266872227191925
+  - -0.03231290355324745
+  reference_actual_delta_full12:
+  - 1.1487914478149825
+  - 9.531460684861095
+  - -0.28887247225980195
+  - -0.4858245254738378
+  - -9.404262925721593
+  - 0.6381085822590165
+  - 0.10172360813458647
+  - 0.7245757355827631
+  - -0.10104450955986977
+  - -0.04492754489183426
+  - 0.22878007357940078
+  - 0.20469873771071434
+  active_channels:
+  - rear_left_hip
+  - front_left_ankle
+  - front_right_ankle
+  - rear_left_ankle
+  - rear_right_ankle
+  active_duration: 4.799999999999727
+  average_velocity:
+    rear_left_hip: 13.024553958009228
+    front_left_ankle: 0.3656619828498341
+    front_right_ankle: 0.29054988578326735
+    rear_left_ankle: 0.2992379129802889
+    rear_right_ankle: 0.24593423662980798
+  peak_velocity:
+    rear_left_hip: 40.77779004320147
+    front_left_ankle: 0.7138329744338989
+    front_right_ankle: 0.47630536556243896
+    rear_left_ankle: 0.3030620217323303
+    rear_right_ankle: 0.5082479119300842
+  wheel_integral:
+    front_left_ankle: 1.319999999999925
+    front_right_ankle: 1.319999999999925
+    rear_left_ankle: 1.319999999999925
+    rear_right_ankle: 1.319999999999925
+  estimated_wheel_surface_travel_m:
+    front_left_ankle: 0.06598679780959711
+    front_right_ankle: 0.06598679780959711
+    rear_left_ankle: 0.06598679780959711
+    rear_right_ankle: 0.06598679780959711
+  atomic_channels:
+  - onset_s: 0.0
+    channels:
+    - front_left_ankle
+    - front_right_ankle
+    - rear_left_ankle
+    - rear_right_ankle
+    same_120hz_tick: true
+    source_full12_atomic: false
+  - onset_s: 4.39999999999975
+    channels:
+    - front_left_ankle
+    - front_right_ankle
+    - rear_left_ankle
+    - rear_right_ankle
+    same_120hz_tick: true
+    source_full12_atomic: false
+  overlap_timing:
+  - onset_s: 0.0
+    end_s: 4.39999999999975
+    overlap_duration_s: 4.39999999999975
+    channels:
+    - front_left_ankle
+    - front_right_ankle
+    - rear_left_ankle
+    - rear_right_ankle
+    evidence: reference command launch intervals
+  carry_in_active_response_channels:
+  - front_left_hip
+  - front_left_knee
+  - front_right_hip
+  - front_right_knee
+  - rear_left_hip
+  - rear_left_knee
+  - rear_right_hip
+  - rear_right_knee
+  - rear_right_ankle
+  carry_out_active_response_channels:
+  - front_left_knee
+  - front_right_hip
+  - front_right_knee
+  - rear_left_hip
+  - rear_left_knee
+  - rear_right_hip
+  - rear_right_knee
+  - front_right_ankle
+  - rear_left_ankle
+  entry_conditions: *id001
+  completion_conditions:
+  - guard: motion_endpoint_issued
+  - guard: fl_lift_workspace_geometry
+  reference_sensor_envelope:
+    active_channel_actual_result_readback:
+      rear_left_hip: 8.365463897145357
+      front_left_ankle: -0.059043314307928085
+      front_right_ankle: -0.0887410119175911
+      rear_left_ankle: 0.2266872227191925
+      rear_right_ankle: -0.03231290355324745
+    root_result_position_w_m:
+    - 0.21188019216060638
+    - -0.0043418630957603455
+    - 0.09106390178203583
+    relevant_wheel_geometry_result:
+      FL:
+        center_w_m:
+        - 0.4338485896587372
+        - 0.07165451347827911
+        - 0.050801634788513184
+        front_face_center_clearance_m: -0.08746358411479349
+        top_surface_wheel_bottom_clearance_m: -0.049188363552093536
+        contact_class: GROUND
+        normal_force_n: 5.29460811614995
+    latched_leg_events: []
+  hard_abort_conditions: *id002
+  max_verify_wait: 0.25
+  retry_budget: 1
+  next_state: P05
+  recovery_state: P04
+  ppo_action_mask:
+  - 0
+  - 0
+  - 0
+  - 0
+  - 1
+  - 0
+  - 0
+  - 0
+  - 1
+  - 1
+  - 1
+  - 1
+  completion_event: fl_lift_entry_ready
+  transition_reason: The FL unload workspace matches the v010 entry envelope without
+    a force-only hard gate.
+  elapsed_time_is_not_completion_evidence: true
+- state_id: P05
+  macro_phase: 5
+  state_name: FL_ACTIVE_LIFT_AND_PLACE
+  physical_purpose: Actively lift FL, clear the front plane, and commit the placement
+    posture; top load latches during the immediately continuous P06 wheel advance.
+  lifecycle:
+  - WAIT_ENTRY
+  - EXECUTE_MOTION
+  - VERIFY_RESULT
+  - RECOVERY
+  - DONE
+  reference_step:
+  - 7
+  - 8
+  - 9
+  reference_events:
+  - - 7
+    - 0
+  - - 7
+    - 1
+  - - 7
+    - 2
+  - - 7
+    - 3
+  - - 7
+    - 4
+  - - 7
+    - 5
+  - - 7
+    - 6
+  - - 7
+    - 7
+  - - 7
+    - 8
+  - - 7
+    - 9
+  - - 7
+    - 10
+  - - 7
+    - 11
+  - - 8
+    - 0
+  - - 8
+    - 1
+  - - 8
+    - 2
+  - - 9
+    - 0
+  - - 9
+    - 1
+  - - 9
+    - 2
+  - - 9
+    - 3
+  - - 9
+    - 4
+  - - 9
+    - 5
+  - - 9
+    - 6
+  - - 9
+    - 7
+  - - 9
+    - 8
+  start_full12:
+  - 0.0
+  - -22.9
+  - 0.0
+  - 45.9
+  - 6.9
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  end_full12:
+  - 22.8
+  - -13.4
+  - 0.0
+  - 45.9
+  - 6.9
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  command_delta_full12:
+  - 22.8
+  - 9.499999999999998
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  reference_actual_endpoint_full12:
+  - 26.12578592305117
+  - -12.331225738681361
+  - 0.5261699743209529
+  - 45.3916191662859
+  - 7.143392790468335
+  - 0.44067525417254694
+  - -1.6127704403217535
+  - 0.7313791909654777
+  - -0.00047993927728384733
+  - -0.1748153269290924
+  - 0.08474545180797577
+  - -0.022109057754278183
+  reference_actual_delta_full12:
+  - 25.500208923650128
+  - 0.8715338456409203
+  - 1.0595977149910785
+  - 0.37783581960134427
+  - -1.128802312239559
+  - -0.6157736769100897
+  - -0.7140473458227321
+  - 0.5475818486391559
+  - 0.034689602558501065
+  - -0.08510437607765198
+  - -0.06803534924983978
+  - 0.016212940216064453
+  active_channels:
+  - front_left_hip
+  - front_left_knee
+  - front_left_ankle
+  - front_right_ankle
+  - rear_left_ankle
+  - rear_right_ankle
+  active_duration: 9.733333333332784
+  average_velocity:
+    front_left_hip: 60.573429917891254
+    front_left_knee: 45.85988951354144
+    front_left_ankle: 0.2991428658336039
+    front_right_ankle: 0.1318328744753465
+    rear_left_ankle: 0.33614664974534164
+    rear_right_ankle: 0.3088717409650834
+  peak_velocity:
+    front_left_hip: 120.84047177705263
+    front_left_knee: 109.57826847726699
+    front_left_ankle: 0.3023310601711273
+    front_right_ankle: 0.4817969799041748
+    rear_left_ankle: 0.5847263336181641
+    rear_right_ankle: 0.3983379900455475
+  wheel_integral:
+    front_left_ankle: 2.45999999999986
+    front_right_ankle: 2.45999999999986
+    rear_left_ankle: 2.45999999999986
+    rear_right_ankle: 2.45999999999986
+  estimated_wheel_surface_travel_m:
+    front_left_ankle: 0.12297539591788553
+    front_right_ankle: 0.12297539591788553
+    rear_left_ankle: 0.12297539591788553
+    rear_right_ankle: 0.12297539591788553
+  atomic_channels:
+  - onset_s: 0.8666666666666174
+    channels:
+    - front_left_ankle
+    - front_right_ankle
+    - rear_left_ankle
+    - rear_right_ankle
+    same_120hz_tick: true
+    source_full12_atomic: false
+  - onset_s: 9.066666666666151
+    channels:
+    - front_left_ankle
+    - front_right_ankle
+    - rear_left_ankle
+    - rear_right_ankle
+    same_120hz_tick: true
+    source_full12_atomic: false
+  overlap_timing:
+  - onset_s: 0.8666666666666174
+    end_s: 9.066666666666151
+    overlap_duration_s: 8.199999999999534
+    channels:
+    - front_left_ankle
+    - front_right_ankle
+    - rear_left_ankle
+    - rear_right_ankle
+    evidence: reference command launch intervals
+  carry_in_active_response_channels:
+  - front_left_hip
+  - front_left_knee
+  - front_right_hip
+  - front_right_knee
+  - rear_left_hip
+  - rear_left_knee
+  - rear_right_hip
+  - rear_right_knee
+  - front_right_ankle
+  - rear_left_ankle
+  carry_out_active_response_channels:
+  - front_left_hip
+  - front_left_knee
+  - front_right_hip
+  - front_right_knee
+  - rear_left_hip
+  - rear_left_knee
+  - rear_right_hip
+  - front_right_ankle
+  - rear_left_ankle
+  entry_conditions: *id001
+  completion_conditions:
+  - guard: reference_like_active_lift
+    leg: FL
+    active_joints:
+    - front_left_hip
+    - front_left_knee
+  - guard: leg_front_face_crossed_latched
+    leg: FL
+  - guard: motion_endpoint_issued
+  reference_sensor_envelope:
+    active_channel_actual_result_readback:
+      front_left_hip: 26.12578592305117
+      front_left_knee: -12.331225738681361
+      front_left_ankle: -0.00047993927728384733
+      front_right_ankle: -0.1748153269290924
+      rear_left_ankle: 0.08474545180797577
+      rear_right_ankle: -0.022109057754278183
+    root_result_position_w_m:
+    - 0.32780978083610535
+    - -0.005536235868930817
+    - 0.09068641066551208
+    relevant_wheel_geometry_result:
+      FL:
+        center_w_m:
+        - 0.6080508232116699
+        - 0.07331933081150055
+        - 0.10575202107429504
+        front_face_center_clearance_m: 0.08673864943813925
+        top_surface_wheel_bottom_clearance_m: 0.005762022733688324
+        contact_class: AIR
+        normal_force_n: 0.0
+    latched_leg_events:
+    - leg: FL
+      event: FRONT_FACE_CLEARED
+      sim_time_s: 28.449999999999026
+      physics_tick: 3414
+      contact_class: AIR
+      normal_force_n: 0.0
+      front_face_center_clearance_m: 0.0020046864254439356
+      top_surface_wheel_bottom_clearance_m: 0.05369834303855893
+      wheel_center_w_m:
+      - 0.5233168601989746
+      - 0.07621465623378754
+      - 0.15368834137916565
+      relative_to_phase_start_s: 6.0833333333329875
+      relative_to_motion_end_s: -3.649999999999796
+      latched: true
+  hard_abort_conditions: *id002
+  max_verify_wait: 0.25
+  retry_budget: 1
+  next_state: P06
+  recovery_state: P05
+  ppo_action_mask:
+  - 1
+  - 1
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 1
+  - 1
+  - 1
+  - 1
+  completion_event: fl_front_cleared_and_placement_committed
+  transition_reason: FL has actively cleared the front plane and reached its placement
+    posture; P06 continues wheel motion immediately, without a hold, to latch top
+    load.
+  elapsed_time_is_not_completion_evidence: true
+- state_id: P06
+  macro_phase: 6
+  state_name: FRONT_PAIR_ADVANCE
+  physical_purpose: Continue the v010 wheel relation without a hold, latch FL obstacle-top
+    load, and advance until the rear pair nears the edge.
+  lifecycle:
+  - WAIT_ENTRY
+  - EXECUTE_MOTION
+  - VERIFY_RESULT
+  - RECOVERY
+  - DONE
+  reference_step:
+  - 10
+  reference_events:
+  - - 10
+    - 0
+  - - 10
+    - 1
+  - - 10
+    - 2
+  start_full12:
+  - 22.8
+  - -13.4
+  - 0.0
+  - 45.9
+  - 6.9
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  end_full12:
+  - 22.8
+  - -13.4
+  - 0.0
+  - 45.9
+  - 6.9
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  command_delta_full12:
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  reference_actual_endpoint_full12:
+  - 21.86633993775323
+  - -12.143875357295205
+  - -0.13234617264143034
+  - 45.095923201643124
+  - 6.414274365437705
+  - 0.535999295219949
+  - -0.9667238175454336
+  - 0.5477399768565909
+  - -0.04622725397348404
+  - -0.0556923933327198
+  - 0.03686167672276497
+  - 0.02711913362145424
+  reference_actual_delta_full12:
+  - -3.8902162040508017
+  - 0.17332288037824384
+  - -0.660202936883112
+  - -0.29637215337061207
+  - -0.7307132742018281
+  - 0.09662882062228606
+  - 0.6479265256236602
+  - -0.1836472182368204
+  - -0.04574560929904692
+  - 0.1199563704431057
+  - -0.04872879758477211
+  - 0.05008804239332676
+  active_channels:
+  - front_left_ankle
+  - front_right_ankle
+  - rear_left_ankle
+  - rear_right_ankle
+  active_duration: 25.533333333331882
+  average_velocity:
+    front_left_ankle: 0.26278312413134347
+    front_right_ankle: 0.22533146231060638
+    rear_left_ankle: 0.33141762111305606
+    rear_right_ankle: 0.3205446740053108
+  peak_velocity:
+    front_left_ankle: 0.3847907781600952
+    front_right_ankle: 0.4805694818496704
+    rear_left_ankle: 0.4937291741371155
+    rear_right_ankle: 0.4840041995048523
+  wheel_integral:
+    front_left_ankle: 7.659999999999564
+    front_right_ankle: 7.659999999999564
+    rear_left_ankle: 7.659999999999564
+    rear_right_ankle: 7.659999999999564
+  estimated_wheel_surface_travel_m:
+    front_left_ankle: 0.38292338728902564
+    front_right_ankle: 0.38292338728902564
+    rear_left_ankle: 0.38292338728902564
+    rear_right_ankle: 0.38292338728902564
+  atomic_channels:
+  - onset_s: 0.0
+    channels:
+    - front_left_ankle
+    - front_right_ankle
+    - rear_left_ankle
+    - rear_right_ankle
+    same_120hz_tick: true
+    source_full12_atomic: false
+  - onset_s: 25.533333333331882
+    channels:
+    - front_left_ankle
+    - front_right_ankle
+    - rear_left_ankle
+    - rear_right_ankle
+    same_120hz_tick: true
+    source_full12_atomic: false
+  overlap_timing:
+  - onset_s: 0.0
+    end_s: 25.533333333331882
+    overlap_duration_s: 25.533333333331882
+    channels:
+    - front_left_ankle
+    - front_right_ankle
+    - rear_left_ankle
+    - rear_right_ankle
+    evidence: reference command launch intervals
+  carry_in_active_response_channels:
+  - front_left_hip
+  - front_left_knee
+  - front_right_hip
+  - front_right_knee
+  - rear_left_hip
+  - rear_left_knee
+  - front_right_ankle
+  - rear_left_ankle
+  carry_out_active_response_channels:
+  - front_left_hip
+  - front_left_knee
+  - front_right_hip
+  - rear_left_hip
+  - rear_left_knee
+  - rear_right_hip
+  - rear_right_knee
+  - front_left_ankle
+  entry_conditions: *id001
+  completion_conditions:
+  - guard: leg_top_loaded_latched
+    leg: FL
+  - guard: rear_pair_pre_edge_geometry
+  reference_sensor_envelope:
+    active_channel_actual_result_readback:
+      front_left_ankle: -0.04622725397348404
+      front_right_ankle: -0.0556923933327198
+      rear_left_ankle: 0.03686167672276497
+      rear_right_ankle: 0.02711913362145424
+    root_result_position_w_m:
+    - 0.7019504904747009
+    - -0.008131802082061768
+    - 0.094180628657341
+    relevant_wheel_geometry_result:
+      FL:
+        center_w_m:
+        - 0.9749040603637695
+        - 0.0709911659359932
+        - 0.1004689633846283
+        front_face_center_clearance_m: 0.45359188659023886
+        top_surface_wheel_bottom_clearance_m: 0.0004789650440215759
+        contact_class: OBSTACLE_TOP
+        normal_force_n: 5.648271449124848
+      RL:
+        center_w_m:
+        - 0.38434064388275146
+        - 0.0660790279507637
+        - 0.050508853048086166
+        front_face_center_clearance_m: -0.1369715298907792
+        top_surface_wheel_bottom_clearance_m: -0.049481145292520554
+        contact_class: GROUND
+        normal_force_n: 8.565278053283768
+      RR:
+        center_w_m:
+        - 0.3988635241985321
+        - -0.3306533992290497
+        - 0.04974410682916641
+        front_face_center_clearance_m: -0.12244864957499857
+        top_surface_wheel_bottom_clearance_m: -0.05024589151144031
+        contact_class: GROUND
+        normal_force_n: 6.924122810363832
+    latched_leg_events:
+    - leg: FL
+      event: TOP_LOADED
+      sim_time_s: 32.24999999999881
+      physics_tick: 3870
+      contact_class: OBSTACLE_TOP
+      normal_force_n: 5.993754863739141
+      front_face_center_clearance_m: 0.08469564063381796
+      top_surface_wheel_bottom_clearance_m: 0.0005671426653861694
+      wheel_center_w_m:
+      - 0.6060078144073486
+      - 0.07291846722364426
+      - 0.10055714100599289
+      relative_to_phase_start_s: 0.0833333333333286
+      relative_to_motion_end_s: -25.449999999998553
+      latched: true
+  hard_abort_conditions: *id002
+  max_verify_wait: 0.25
+  retry_budget: 1
+  next_state: P07
+  recovery_state: P06
+  ppo_action_mask:
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 1
+  - 1
+  - 1
+  - 1
+  completion_event: fl_top_loaded_and_rear_pair_pre_edge
+  transition_reason: FL top load is latched and the rear pair has reached the measured
+    pre-edge geometry.
+  elapsed_time_is_not_completion_evidence: true
+- state_id: P07
+  macro_phase: 7
+  state_name: REAR_ENTRY_ALIGNMENT
+  physical_purpose: Align the live front/rear geometry to the v010 first-rear entry
+    without leaving the 15 percent envelope.
+  lifecycle:
+  - WAIT_ENTRY
+  - EXECUTE_MOTION
+  - VERIFY_RESULT
+  - RECOVERY
+  - DONE
+  reference_step:
+  - 11
+  - 12
+  - 13
+  reference_events:
+  - - 11
+    - 0
+  - - 11
+    - 1
+  - - 11
+    - 2
+  - - 11
+    - 3
+  - - 11
+    - 4
+  - - 12
+    - 0
+  - - 12
+    - 1
+  - - 12
+    - 2
+  - - 13
+    - 0
+  - - 13
+    - 1
+  - - 13
+    - 2
+  - - 13
+    - 3
+  - - 13
+    - 4
+  - - 13
+    - 5
+  start_full12:
+  - 22.8
+  - -13.4
+  - 0.0
+  - 45.9
+  - 6.9
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  end_full12:
+  - 38.6
+  - -13.4
+  - 0.0
+  - 31.1
+  - 6.9
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  command_delta_full12:
+  - 15.8
+  - 0.0
+  - 0.0
+  - -14.799999999999997
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  reference_actual_endpoint_full12:
+  - 40.23761244645784
+  - -12.77798072832908
+  - 2.853546848801601
+  - 31.791715321171694
+  - 7.739309720079023
+  - -0.6702791334355336
+  - -0.632235660109437
+  - 0.5871881879752492
+  - 3.981385088991374e-05
+  - 0.012575523927807808
+  - 0.09584160149097443
+  - -0.032681941986083984
+  reference_actual_delta_full12:
+  - 18.37156108419704
+  - -0.634258196516555
+  - 2.9862679347954417
+  - -13.305737842845517
+  - 1.3249760173729035
+  - -1.2083835676628745
+  - 0.3336218439893157
+  - 0.04015433528496115
+  - 0.04609586838341784
+  - 0.06868311949074268
+  - 0.05880999192595482
+  - -0.059770552441477776
+  active_channels:
+  - front_left_hip
+  - front_right_knee
+  - front_right_ankle
+  active_duration: 1.666666666666572
+  average_velocity:
+    front_left_hip: 29.57294361860125
+    front_right_knee: 26.20245663743398
+    front_right_ankle: 0.49711117028079416
+  peak_velocity:
+    front_left_hip: 102.4837373259964
+    front_right_knee: 94.48188384538132
+    front_right_ankle: 0.7847051620483398
+  wheel_integral:
+    front_left_ankle: 0.0
+    front_right_ankle: -0.6299999999999641
+    rear_left_ankle: 0.0
+    rear_right_ankle: 0.0
+  estimated_wheel_surface_travel_m:
+    front_left_ankle: 0.0
+    front_right_ankle: -0.031493698954580436
+    rear_left_ankle: 0.0
+    rear_right_ankle: 0.0
+  atomic_channels:
+  - onset_s: 0.3333333333333144
+    channels:
+    - front_left_hip
+    - front_left_knee
+    - front_right_hip
+    - front_right_knee
+    - rear_left_hip
+    - rear_left_knee
+    - rear_right_hip
+    - rear_right_knee
+    - front_left_ankle
+    - front_right_ankle
+    - rear_left_ankle
+    - rear_right_ankle
+    same_120hz_tick: true
+    source_full12_atomic: true
+  - onset_s: 1.3333333333332575
+    channels:
+    - front_left_ankle
+    - front_right_ankle
+    - rear_left_ankle
+    - rear_right_ankle
+    same_120hz_tick: true
+    source_full12_atomic: false
+  overlap_timing:
+  - onset_s: 0.3333333333333144
+    end_s: 0.43199999999998107
+    overlap_duration_s: 0.09866666666666668
+    channels:
+    - front_right_knee
+    - front_right_ankle
+    evidence: reference command launch intervals
+  carry_in_active_response_channels:
+  - front_left_hip
+  - front_left_knee
+  - front_right_hip
+  - rear_left_hip
+  - rear_left_knee
+  - rear_right_hip
+  - rear_right_knee
+  - front_right_ankle
+  carry_out_active_response_channels:
+  - front_left_hip
+  - front_right_hip
+  - front_right_knee
+  - rear_left_hip
+  - rear_left_knee
+  - rear_right_knee
+  - rear_left_ankle
+  entry_conditions: *id001
+  completion_conditions:
+  - guard: motion_endpoint_issued
+  - guard: rear_entry_alignment
+    relative_limit: 0.15
+  reference_sensor_envelope:
+    active_channel_actual_result_readback:
+      front_left_hip: 40.23761244645784
+      front_right_knee: 31.791715321171694
+      front_right_ankle: 0.012575523927807808
+    root_result_position_w_m:
+    - 0.7008882164955139
+    - -0.00762166827917099
+    - 0.09571192413568497
+    relevant_wheel_geometry_result:
+      RL:
+        center_w_m:
+        - 0.3838350772857666
+        - 0.06634331494569778
+        - 0.050557613372802734
+        front_face_center_clearance_m: -0.13747709648776407
+        top_surface_wheel_bottom_clearance_m: -0.049432384967803986
+        contact_class: GROUND
+        normal_force_n: 14.234454154968391
+      RR:
+        center_w_m:
+        - 0.39750877022743225
+        - -0.3305041790008545
+        - 0.04970141127705574
+        front_face_center_clearance_m: -0.12380340354609842
+        top_surface_wheel_bottom_clearance_m: -0.05028858706355098
+        contact_class: AIR
+        normal_force_n: 1.409013986587537
+    latched_leg_events: []
+  hard_abort_conditions: *id002
+  max_verify_wait: 0.25
+  retry_budget: 1
+  next_state: P08
+  recovery_state: P07
+  ppo_action_mask:
+  - 1
+  - 1
+  - 1
+  - 1
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 1
+  - 0
+  - 0
+  completion_event: rear_entry_aligned
+  transition_reason: The rear-entry pose and wheel relation match the v010 first-rear
+    entry envelope.
+  elapsed_time_is_not_completion_evidence: true
+- state_id: P08
+  macro_phase: 8
+  state_name: FIRST_REAR_LOAD_TRANSFER
+  physical_purpose: Load FL and prepare the FR+RL support structure that unloads RR
+    first.
+  lifecycle:
+  - WAIT_ENTRY
+  - EXECUTE_MOTION
+  - VERIFY_RESULT
+  - RECOVERY
+  - DONE
+  reference_step:
+  - 14
+  reference_events:
+  - - 14
+    - 0
+  - - 14
+    - 1
+  - - 14
+    - 2
+  - - 14
+    - 3
+  - - 14
+    - 4
+  - - 14
+    - 5
+  - - 14
+    - 6
+  - - 14
+    - 7
+  start_full12:
+  - 38.6
+  - -13.4
+  - 0.0
+  - 31.1
+  - 6.9
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  end_full12:
+  - 38.6
+  - -13.4
+  - 0.0
+  - 31.1
+  - 31.2
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  command_delta_full12:
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 24.299999999999997
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  reference_actual_endpoint_full12:
+  - 37.32035327458077
+  - -12.76707035490363
+  - -9.794297568234764
+  - 30.24087988898528
+  - 28.472554705101476
+  - -2.074526539759016
+  - -0.788020669091924
+  - 0.6480049660774096
+  - 0.002242871094495058
+  - -0.3038022518157959
+  - -0.07033434510231018
+  - -0.0020930306054651737
+  reference_actual_delta_full12:
+  - -2.682218702158586
+  - 0.01003354789074784
+  - -12.6513726366295
+  - -1.5493874320823728
+  - 20.733583933160016
+  - -1.401749744882226
+  - -0.15219131562285548
+  - 0.060020180609781315
+  - 0.002198807262175251
+  - -0.3178527858108282
+  - -0.16628005355596542
+  - 0.025523755233734846
+  active_channels:
+  - rear_left_hip
+  active_duration: 0.39999999999997726
+  average_velocity:
+    rear_left_hip: 34.87214516733439
+  peak_velocity:
+    rear_left_hip: 68.14841734947733
+  wheel_integral:
+    front_left_ankle: 0.0
+    front_right_ankle: 0.0
+    rear_left_ankle: 0.0
+    rear_right_ankle: 0.0
+  estimated_wheel_surface_travel_m:
+    front_left_ankle: 0.0
+    front_right_ankle: 0.0
+    rear_left_ankle: 0.0
+    rear_right_ankle: 0.0
+  atomic_channels: []
+  overlap_timing: []
+  carry_in_active_response_channels:
+  - front_left_hip
+  - front_right_hip
+  - front_right_knee
+  - rear_left_hip
+  - rear_left_knee
+  - rear_right_knee
+  - rear_left_ankle
+  carry_out_active_response_channels:
+  - front_left_hip
+  - front_right_hip
+  - front_right_knee
+  - rear_left_hip
+  - rear_left_knee
+  - rear_right_hip
+  - front_right_ankle
+  - rear_left_ankle
+  entry_conditions: *id001
+  completion_conditions:
+  - guard: motion_endpoint_issued
+    active_joints:
+    - rear_left_hip
+  - guard: rr_unload_compatible_geometry
+  reference_sensor_envelope:
+    active_channel_actual_result_readback:
+      rear_left_hip: 28.472554705101476
+    root_result_position_w_m:
+    - 0.74849933385849
+    - -0.00016657263040542603
+    - 0.07491562515497208
+    relevant_wheel_geometry_result:
+      RL:
+        center_w_m:
+        - 0.3931785821914673
+        - 0.07338134944438934
+        - 0.05248884856700897
+        front_face_center_clearance_m: -0.1281335915820634
+        top_surface_wheel_bottom_clearance_m: -0.04750114977359775
+        contact_class: GROUND
+        normal_force_n: 16.074413299560693
+      RR:
+        center_w_m:
+        - 0.45023900270462036
+        - -0.33015522360801697
+        - 0.05409335717558861
+        front_face_center_clearance_m: -0.07107317106891031
+        top_surface_wheel_bottom_clearance_m: -0.04589664116501811
+        contact_class: AIR
+        normal_force_n: 0.0
+    latched_leg_events: []
+  hard_abort_conditions: *id002
+  max_verify_wait: 0.25
+  retry_budget: 1
+  next_state: P09
+  recovery_state: P08
+  ppo_action_mask:
+  - 0
+  - 0
+  - 0
+  - 0
+  - 1
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  completion_event: rr_unload_ready
+  transition_reason: The v010 FR+RL support geometry and active RR-unload preparation
+    are present.
+  elapsed_time_is_not_completion_evidence: true
+- state_id: P09
+  macro_phase: 9
+  state_name: RR_ACTIVE_LIFT_AND_PLACE
+  physical_purpose: Actively lift RR, clear the front plane, and finish the v010 placement
+    action that establishes RR top load.
+  lifecycle:
+  - WAIT_ENTRY
+  - EXECUTE_MOTION
+  - VERIFY_RESULT
+  - RECOVERY
+  - DONE
+  reference_step:
+  - 15
+  - 16
+  - 17
+  - 18
+  reference_events:
+  - - 15
+    - 0
+  - - 15
+    - 1
+  - - 15
+    - 2
+  - - 15
+    - 3
+  - - 15
+    - 4
+  - - 15
+    - 5
+  - - 15
+    - 6
+  - - 15
+    - 7
+  - - 15
+    - 8
+  - - 15
+    - 9
+  - - 15
+    - 10
+  - - 15
+    - 11
+  - - 15
+    - 12
+  - - 15
+    - 13
+  - - 15
+    - 14
+  - - 15
+    - 15
+  - - 16
+    - 0
+  - - 16
+    - 1
+  - - 16
+    - 2
+  - - 16
+    - 3
+  - - 16
+    - 4
+  - - 16
+    - 5
+  - - 16
+    - 6
+  - - 16
+    - 7
+  - - 16
+    - 8
+  - - 16
+    - 9
+  - - 16
+    - 10
+  - - 16
+    - 11
+  - - 16
+    - 12
+  - - 17
+    - 0
+  - - 17
+    - 1
+  - - 17
+    - 2
+  - - 18
+    - 0
+  - - 18
+    - 1
+  - - 18
+    - 2
+  start_full12:
+  - 38.6
+  - -13.4
+  - 0.0
+  - 31.1
+  - 31.2
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  end_full12:
+  - -18.5
+  - -31.4
+  - 0.0
+  - 31.1
+  - 15.4
+  - 19.4
+  - -6.9
+  - -37.8
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  command_delta_full12:
+  - -57.1
+  - -18.0
+  - 0.0
+  - 0.0
+  - -15.799999999999999
+  - 19.4
+  - -6.9
+  - -37.8
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  reference_actual_endpoint_full12:
+  - -18.603565668231575
+  - -32.231841635575286
+  - -0.38874912620618185
+  - 31.39543799081131
+  - 15.442963117946869
+  - 19.735736397650076
+  - -6.763313213703996
+  - -50.63441813188072
+  - 0.12681689858436584
+  - 0.002248492557555437
+  - -0.04800482466816902
+  - -0.1506960093975067
+  reference_actual_delta_full12:
+  - -55.921794753980464
+  - -19.464837875016066
+  - 9.446373336471394
+  - 1.1890812929858612
+  - -13.378265914094586
+  - 21.822080658777097
+  - -5.968565982218373
+  - -51.28197075800818
+  - 0.12413868634030223
+  - 0.3594059613533318
+  - -0.010602761059999466
+  - -0.1485107815824449
+  active_channels:
+  - front_left_hip
+  - front_left_knee
+  - rear_left_hip
+  - rear_left_knee
+  - rear_right_hip
+  - rear_right_knee
+  - front_left_ankle
+  - front_right_ankle
+  - rear_left_ankle
+  - rear_right_ankle
+  active_duration: 7.200000000002284
+  average_velocity:
+    front_left_hip: 54.84748065708952
+    front_left_knee: 26.132516839311407
+    rear_left_hip: 14.10812386627148
+    rear_left_knee: 22.166683721261794
+    rear_right_hip: 44.97710185870321
+    rear_right_knee: 29.090179912248054
+    front_left_ankle: 0.480812247203091
+    front_right_ankle: 0.18426110257429104
+    rear_left_ankle: 0.293577138753223
+    rear_right_ankle: 0.2831379397300212
+  peak_velocity:
+    front_left_hip: 185.19857126927977
+    front_left_knee: 111.63664843648787
+    rear_left_hip: 129.23803909742156
+    rear_left_knee: 115.64180989408082
+    rear_right_hip: 130.68322516352623
+    rear_right_knee: 105.6524943083971
+    front_left_ankle: 1.399324655532837
+    front_right_ankle: 1.0074520111083984
+    rear_left_ankle: 1.0827405452728271
+    rear_right_ankle: 0.8002223372459412
+  wheel_integral:
+    front_left_ankle: -0.9060000000012605
+    front_right_ankle: 1.0200000000002725
+    rear_left_ankle: 1.0200000000002725
+    rear_right_ankle: 1.0200000000002725
+  estimated_wheel_surface_travel_m:
+    front_left_ankle: -0.045290938496652694
+    front_right_ankle: 0.05098979830743247
+    rear_left_ankle: 0.05098979830743247
+    rear_right_ankle: 0.05098979830743247
+  atomic_channels:
+  - onset_s: 1.9333333333332234
+    channels:
+    - front_left_ankle
+    - front_right_ankle
+    - rear_left_ankle
+    - rear_right_ankle
+    same_120hz_tick: true
+    source_full12_atomic: false
+  - onset_s: 5.3333333333341315
+    channels:
+    - front_left_ankle
+    - front_right_ankle
+    - rear_left_ankle
+    - rear_right_ankle
+    same_120hz_tick: true
+    source_full12_atomic: false
+  - onset_s: 5.400000000000851
+    channels:
+    - front_left_hip
+    - front_left_knee
+    - front_right_hip
+    - front_right_knee
+    - rear_left_hip
+    - rear_left_knee
+    - rear_right_hip
+    - rear_right_knee
+    - front_left_ankle
+    - front_right_ankle
+    - rear_left_ankle
+    - rear_right_ankle
+    same_120hz_tick: true
+    source_full12_atomic: true
+  - onset_s: 7.200000000002284
+    channels:
+    - front_left_ankle
+    - front_right_ankle
+    - rear_left_ankle
+    - rear_right_ankle
+    same_120hz_tick: true
+    source_full12_atomic: false
+  overlap_timing:
+  - onset_s: 1.9333333333332234
+    end_s: 5.3333333333341315
+    overlap_duration_s: 3.400000000000908
+    channels:
+    - front_left_ankle
+    - front_right_ankle
+    - rear_left_ankle
+    - rear_right_ankle
+    evidence: reference command launch intervals
+  - onset_s: 5.400000000000851
+    end_s: 5.5053333333341845
+    overlap_duration_s: 0.10533333333333328
+    channels:
+    - front_left_hip
+    - front_left_knee
+    - rear_left_hip
+    - rear_left_knee
+    - front_left_ankle
+    evidence: reference command launch intervals
+  - onset_s: 5.5053333333341845
+    end_s: 5.520000000000851
+    overlap_duration_s: 0.014666666666666828
+    channels:
+    - front_left_hip
+    - front_left_knee
+    - rear_left_knee
+    - front_left_ankle
+    evidence: reference command launch intervals
+  - onset_s: 5.520000000000851
+    end_s: 5.5293333333341845
+    overlap_duration_s: 0.009333333333333194
+    channels:
+    - front_left_hip
+    - rear_left_knee
+    - front_left_ankle
+    evidence: reference command launch intervals
+  - onset_s: 5.5293333333341845
+    end_s: 5.780666666667518
+    overlap_duration_s: 0.2513333333333332
+    channels:
+    - front_left_hip
+    - front_left_ankle
+    evidence: reference command launch intervals
+  carry_in_active_response_channels:
+  - front_left_hip
+  - front_right_hip
+  - front_right_knee
+  - rear_left_hip
+  - rear_left_knee
+  - rear_right_knee
+  - front_right_ankle
+  carry_out_active_response_channels:
+  - front_left_hip
+  - front_right_hip
+  - front_right_knee
+  - rear_left_hip
+  - rear_left_knee
+  - rear_right_hip
+  - rear_right_knee
+  - front_left_ankle
+  - rear_right_ankle
+  entry_conditions: *id001
+  completion_conditions:
+  - guard: reference_like_active_lift
+    leg: RR
+    active_joints:
+    - rear_right_hip
+    - rear_right_knee
+  - guard: leg_front_face_crossed_latched
+    leg: RR
+  - guard: leg_top_loaded_latched
+    leg: RR
+  reference_sensor_envelope:
+    active_channel_actual_result_readback:
+      front_left_hip: -18.603565668231575
+      front_left_knee: -32.231841635575286
+      rear_left_hip: 15.442963117946869
+      rear_left_knee: 19.735736397650076
+      rear_right_hip: -6.763313213703996
+      rear_right_knee: -50.63441813188072
+      front_left_ankle: 0.12681689858436584
+      front_right_ankle: 0.002248492557555437
+      rear_left_ankle: -0.04800482466816902
+      rear_right_ankle: -0.1506960093975067
+    root_result_position_w_m:
+    - 0.8022655844688416
+    - -0.027773946523666382
+    - 0.10592447221279144
+    relevant_wheel_geometry_result:
+      RR:
+        center_w_m:
+        - 0.593390941619873
+        - -0.3305648863315582
+        - 0.09879228472709656
+        front_face_center_clearance_m: 0.07207876784634237
+        top_surface_wheel_bottom_clearance_m: -0.0011977136135101624
+        contact_class: OBSTACLE_TOP
+        normal_force_n: 15.50912189483648
+    latched_leg_events:
+    - leg: RR
+      event: FRONT_FACE_CLEARED
+      sim_time_s: 61.64999999999714
+      physics_tick: 7398
+      contact_class: AIR
+      normal_force_n: 0.0
+      front_face_center_clearance_m: 0.0028792653782332422
+      top_surface_wheel_bottom_clearance_m: 0.02809685170650479
+      wheel_center_w_m:
+      - 0.5241914391517639
+      - -0.31288108229637146
+      - 0.1280868500471115
+      relative_to_phase_start_s: 1.6833333333332376
+      relative_to_motion_end_s: -5.516666666669046
+      latched: true
+    - leg: RR
+      event: TOP_LOADED
+      sim_time_s: 65.5416666666649
+      physics_tick: 7865
+      contact_class: OBSTACLE_TOP
+      normal_force_n: 15.83348083496103
+      front_face_center_clearance_m: 0.09111202103924398
+      top_surface_wheel_bottom_clearance_m: -0.0018314376473427124
+      wheel_center_w_m:
+      - 0.6124241948127747
+      - -0.3240991234779358
+      - 0.09815856069326401
+      relative_to_phase_start_s: 5.5750000000009905
+      relative_to_motion_end_s: -1.6250000000012932
+      latched: true
+  hard_abort_conditions: *id002
+  max_verify_wait: 0.25
+  retry_budget: 1
+  next_state: P10
+  recovery_state: P09
+  ppo_action_mask:
+  - 1
+  - 1
+  - 0
+  - 0
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  completion_event: rr_top_loaded
+  transition_reason: Latched RR active lift, front-face crossing, and top load prove
+    RR-first traversal.
+  elapsed_time_is_not_completion_evidence: true
+- state_id: P10
+  macro_phase: 10
+  state_name: SECOND_REAR_TRANSFER_PREP
+  physical_purpose: Establish the v010 FL+RR-related support/workspace for RL unloading.
+  lifecycle:
+  - WAIT_ENTRY
+  - EXECUTE_MOTION
+  - VERIFY_RESULT
+  - RECOVERY
+  - DONE
+  reference_step:
+  - 19
+  reference_events:
+  - - 19
+    - 0
+  - - 19
+    - 1
+  - - 19
+    - 2
+  - - 19
+    - 3
+  start_full12:
+  - -18.5
+  - -31.4
+  - 0.0
+  - 31.1
+  - 15.4
+  - 19.4
+  - -6.9
+  - -37.8
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  end_full12:
+  - -18.5
+  - -31.4
+  - 0.0
+  - 31.1
+  - 15.4
+  - 19.4
+  - -6.9
+  - -27.2
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  command_delta_full12:
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 10.599999999999998
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  reference_actual_endpoint_full12:
+  - -19.219990240825226
+  - -33.27541257848319
+  - -0.6248128436396931
+  - 31.671644010657456
+  - 15.55783836205002
+  - 20.006187983120483
+  - -6.8883492179711885
+  - -45.80335361494442
+  - 0.28703707456588745
+  - 0.002078559249639511
+  - -0.0392928384244442
+  - -0.26544249057769775
+  reference_actual_delta_full12:
+  - -0.587584098823271
+  - -0.973909843562943
+  - -0.21132493234228378
+  - 0.25265894268252964
+  - 0.10633580009334409
+  - 0.24547699877025764
+  - -0.13242114630726842
+  - 4.594244782939036
+  - 0.017849892377853394
+  - 0.0008954848162829876
+  - -0.031728241592645645
+  - -0.09602972865104675
+  active_channels:
+  - rear_right_knee
+  active_duration: 0.13333333333343944
+  average_velocity:
+    rear_right_knee: 21.647375020830932
+  peak_velocity:
+    rear_right_knee: 28.557487080234164
+  wheel_integral:
+    front_left_ankle: 0.0
+    front_right_ankle: 0.0
+    rear_left_ankle: 0.0
+    rear_right_ankle: 0.0
+  estimated_wheel_surface_travel_m:
+    front_left_ankle: 0.0
+    front_right_ankle: 0.0
+    rear_left_ankle: 0.0
+    rear_right_ankle: 0.0
+  atomic_channels: []
+  overlap_timing: []
+  carry_in_active_response_channels:
+  - front_left_hip
+  - front_right_knee
+  - rear_left_hip
+  - rear_left_knee
+  - rear_right_hip
+  - rear_right_knee
+  - front_left_ankle
+  - rear_right_ankle
+  carry_out_active_response_channels:
+  - front_left_hip
+  - front_left_knee
+  - front_right_hip
+  - front_right_knee
+  - rear_left_hip
+  - rear_right_knee
+  - front_left_ankle
+  - rear_right_ankle
+  entry_conditions: *id001
+  completion_conditions:
+  - guard: motion_endpoint_issued
+    active_joints:
+    - rear_right_knee
+  - guard: rl_workspace_geometry
+  reference_sensor_envelope:
+    active_channel_actual_result_readback:
+      rear_right_knee: -45.80335361494442
+    root_result_position_w_m:
+    - 0.8091459274291992
+    - -0.026473097503185272
+    - 0.10735952854156494
+    relevant_wheel_geometry_result:
+      RL:
+        center_w_m:
+        - 0.43196818232536316
+        - 0.082921601831913
+        - 0.0503019243478775
+        front_face_center_clearance_m: -0.08934399144816751
+        top_surface_wheel_bottom_clearance_m: -0.04968807399272922
+        contact_class: AIR
+        normal_force_n: 0.5056785941124008
+      RR:
+        center_w_m:
+        - 0.5956729650497437
+        - -0.3293476104736328
+        - 0.09893669188022614
+        front_face_center_clearance_m: 0.07436079127621298
+        top_surface_wheel_bottom_clearance_m: -0.0010533064603805847
+        contact_class: OBSTACLE_TOP
+        normal_force_n: 14.448641777038995
+    latched_leg_events: []
+  hard_abort_conditions: *id002
+  max_verify_wait: 0.25
+  retry_budget: 1
+  next_state: P11
+  recovery_state: P10
+  ppo_action_mask:
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 1
+  - 0
+  - 0
+  - 0
+  - 0
+  completion_event: rl_workspace_ready
+  transition_reason: The FL+RR-related workspace is established for the second rear
+    leg.
+  elapsed_time_is_not_completion_evidence: true
+- state_id: P11
+  macro_phase: 11
+  state_name: TRANSFER_TOWARD_FR
+  physical_purpose: Execute the v010 FR-directed load-transfer action before RL lift.
+  lifecycle:
+  - WAIT_ENTRY
+  - EXECUTE_MOTION
+  - VERIFY_RESULT
+  - RECOVERY
+  - DONE
+  reference_step:
+  - 20
+  reference_events:
+  - - 20
+    - 0
+  - - 20
+    - 1
+  - - 20
+    - 2
+  - - 20
+    - 3
+  - - 20
+    - 4
+  - - 20
+    - 5
+  - - 20
+    - 6
+  - - 20
+    - 7
+  - - 20
+    - 8
+  start_full12:
+  - -18.5
+  - -31.4
+  - 0.0
+  - 31.1
+  - 15.4
+  - 19.4
+  - -6.9
+  - -27.2
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  end_full12:
+  - -18.5
+  - -31.4
+  - 3.7
+  - 31.1
+  - 15.4
+  - 19.4
+  - -6.9
+  - -27.2
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  command_delta_full12:
+  - 0.0
+  - 0.0
+  - 3.7
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  reference_actual_endpoint_full12:
+  - -19.38493077154457
+  - -33.558735655444494
+  - 4.79845794255813
+  - 31.715637259101506
+  - 15.534557662264032
+  - 20.022409682399264
+  - -6.852470661147934
+  - -39.76191127519016
+  - 0.12826645374298096
+  - 0.0001870149135356769
+  - -0.004192971624433994
+  - -0.09928181022405624
+  reference_actual_delta_full12:
+  - -0.15936709635661472
+  - -0.2696012269187449
+  - 5.426670459496345
+  - 0.04086843689876929
+  - -0.024655275356453288
+  - 0.011153698914629473
+  - 0.0335204340123072
+  - 5.9266985767926315
+  - -0.23690134286880493
+  - -0.0007710306817898527
+  - 0.002505900338292122
+  - 0.09783206135034561
+  active_channels:
+  - front_right_hip
+  active_duration: 0.46666666666703804
+  average_velocity:
+    front_right_hip: 28.80755434468668
+  peak_velocity:
+    front_right_hip: 65.78188657566214
+  wheel_integral:
+    front_left_ankle: 0.0
+    front_right_ankle: 0.0
+    rear_left_ankle: 0.0
+    rear_right_ankle: 0.0
+  estimated_wheel_surface_travel_m:
+    front_left_ankle: 0.0
+    front_right_ankle: 0.0
+    rear_left_ankle: 0.0
+    rear_right_ankle: 0.0
+  atomic_channels: []
+  overlap_timing: []
+  carry_in_active_response_channels:
+  - front_left_hip
+  - front_left_knee
+  - front_right_hip
+  - front_right_knee
+  - rear_left_hip
+  - rear_right_hip
+  - rear_right_knee
+  - front_left_ankle
+  - rear_right_ankle
+  carry_out_active_response_channels:
+  - front_left_hip
+  - front_left_knee
+  - front_right_hip
+  - front_right_knee
+  - rear_left_hip
+  - rear_left_knee
+  - rear_right_knee
+  - front_left_ankle
+  - rear_right_ankle
+  entry_conditions: *id001
+  completion_conditions:
+  - guard: reference_like_active_joint_change
+    active_joints:
+    - front_right_hip
+  - guard: rl_unload_entry_geometry
+  reference_sensor_envelope:
+    active_channel_actual_result_readback:
+      front_right_hip: 4.79845794255813
+    root_result_position_w_m:
+    - 0.8169753551483154
+    - -0.024528786540031433
+    - 0.10975595563650131
+    relevant_wheel_geometry_result:
+      FR:
+        center_w_m:
+        - 1.136106252670288
+        - -0.371063232421875
+        - 0.17523707449436188
+        front_face_center_clearance_m: 0.6147940788967574
+        top_surface_wheel_bottom_clearance_m: 0.07524707615375516
+        contact_class: AIR
+        normal_force_n: 0.0
+      RL:
+        center_w_m:
+        - 0.4394162595272064
+        - 0.08253899216651917
+        - 0.05085664987564087
+        front_face_center_clearance_m: -0.08189591424632425
+        top_surface_wheel_bottom_clearance_m: -0.04913334846496585
+        contact_class: AIR
+        normal_force_n: 0.0
+    latched_leg_events: []
+  hard_abort_conditions: *id002
+  max_verify_wait: 0.25
+  retry_budget: 1
+  next_state: P12
+  recovery_state: P11
+  ppo_action_mask:
+  - 0
+  - 0
+  - 1
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  completion_event: rl_unload_ready
+  transition_reason: The FR-directed transfer action has reached the v010 RL-unload
+    entry pose.
+  elapsed_time_is_not_completion_evidence: true
+- state_id: P12
+  macro_phase: 12
+  state_name: RL_ACTIVE_LIFT_AND_PLACE
+  physical_purpose: Actively lift RL, clear the front plane, and place RL on the obstacle
+    top.
+  lifecycle:
+  - WAIT_ENTRY
+  - EXECUTE_MOTION
+  - VERIFY_RESULT
+  - RECOVERY
+  - DONE
+  reference_step:
+  - 21
+  - 22
+  - 23
+  - 24
+  reference_events:
+  - - 21
+    - 0
+  - - 21
+    - 1
+  - - 21
+    - 2
+  - - 21
+    - 3
+  - - 21
+    - 4
+  - - 21
+    - 5
+  - - 21
+    - 6
+  - - 22
+    - 0
+  - - 22
+    - 1
+  - - 22
+    - 2
+  - - 23
+    - 0
+  - - 23
+    - 1
+  - - 23
+    - 2
+  - - 23
+    - 3
+  - - 23
+    - 4
+  - - 23
+    - 5
+  - - 23
+    - 6
+  - - 23
+    - 7
+  - - 23
+    - 8
+  - - 23
+    - 9
+  - - 23
+    - 10
+  - - 23
+    - 11
+  - - 23
+    - 12
+  - - 23
+    - 13
+  - - 23
+    - 14
+  - - 23
+    - 15
+  - - 24
+    - 0
+  - - 24
+    - 1
+  - - 24
+    - 2
+  - - 24
+    - 3
+  - - 24
+    - 4
+  - - 24
+    - 5
+  - - 24
+    - 6
+  - - 24
+    - 7
+  - - 24
+    - 8
+  - - 24
+    - 9
+  - - 24
+    - 10
+  - - 24
+    - 11
+  start_full12:
+  - -18.5
+  - -31.4
+  - 3.7
+  - 31.1
+  - 15.4
+  - 19.4
+  - -6.9
+  - -27.2
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  end_full12:
+  - -18.5
+  - -31.4
+  - 3.7
+  - 31.1
+  - -10.1
+  - -18.7
+  - -6.9
+  - -27.2
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  command_delta_full12:
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - -25.5
+  - -38.099999999999994
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  reference_actual_endpoint_full12:
+  - -18.15977583445729
+  - -31.67375029358813
+  - 3.7315183611786695
+  - 32.531254053554825
+  - -0.668506085696107
+  - -19.262278810122616
+  - -6.246787414797775
+  - -26.6340264356899
+  - -0.04543116316199303
+  - -0.22560659050941467
+  - 0.0010134261101484299
+  - -0.09750436246395111
+  reference_actual_delta_full12:
+  - 1.2201910971079748
+  - 1.8749996252897994
+  - -0.8669917698428611
+  - 0.814930360441732
+  - -16.202343163002702
+  - -39.281777124388164
+  - 0.6059739562767081
+  - 13.065911118066143
+  - -0.2316141538321972
+  - -0.227062223944813
+  - 0.006427139043807983
+  - 0.04255610704421997
+  active_channels:
+  - rear_left_hip
+  - rear_left_knee
+  - front_left_ankle
+  - front_right_ankle
+  - rear_left_ankle
+  - rear_right_ankle
+  active_duration: 4.66666666667038
+  average_velocity:
+    rear_left_hip: 43.365320197471334
+    rear_left_knee: 50.441801796655014
+    front_left_ankle: 0.1355763657077011
+    front_right_ankle: 0.24876049837165146
+    rear_left_ankle: 0.309819003116656
+    rear_right_ankle: 0.2758578411198424
+  peak_velocity:
+    rear_left_hip: 106.36460300107346
+    rear_left_knee: 123.44295143574591
+    front_left_ankle: 0.4190062880516052
+    front_right_ankle: 0.5957649946212769
+    rear_left_ankle: 1.2071598768234253
+    rear_right_ankle: 0.6808063983917236
+  wheel_integral:
+    front_left_ankle: -0.6600000000005252
+    front_right_ankle: -0.6600000000005252
+    rear_left_ankle: -0.6600000000005252
+    rear_right_ankle: -0.6600000000005252
+  estimated_wheel_surface_travel_m:
+    front_left_ankle: -0.032993398904826686
+    front_right_ankle: -0.032993398904826686
+    rear_left_ankle: -0.032993398904826686
+    rear_right_ankle: -0.032993398904826686
+  atomic_channels:
+  - onset_s: 0.46666666666703804
+    channels:
+    - front_left_ankle
+    - front_right_ankle
+    - rear_left_ankle
+    - rear_right_ankle
+    same_120hz_tick: true
+    source_full12_atomic: false
+  - onset_s: 2.666666666668789
+    channels:
+    - front_left_ankle
+    - front_right_ankle
+    - rear_left_ankle
+    - rear_right_ankle
+    same_120hz_tick: true
+    source_full12_atomic: false
+  overlap_timing:
+  - onset_s: 0.46666666666703804
+    end_s: 2.666666666668789
+    overlap_duration_s: 2.2000000000017508
+    channels:
+    - front_left_ankle
+    - front_right_ankle
+    - rear_left_ankle
+    - rear_right_ankle
+    evidence: reference command launch intervals
+  carry_in_active_response_channels:
+  - front_left_hip
+  - front_left_knee
+  - front_right_hip
+  - front_right_knee
+  - rear_left_hip
+  - rear_right_hip
+  - front_left_ankle
+  - rear_right_ankle
+  carry_out_active_response_channels:
+  - front_left_hip
+  - front_left_knee
+  - front_right_hip
+  - rear_left_hip
+  - rear_left_knee
+  - rear_right_hip
+  - rear_right_knee
+  - front_left_ankle
+  - front_right_ankle
+  - rear_left_ankle
+  - rear_right_ankle
+  entry_conditions: *id001
+  completion_conditions:
+  - guard: reference_like_active_lift
+    leg: RL
+    active_joints:
+    - rear_left_hip
+    - rear_left_knee
+  - guard: leg_front_face_crossed_latched
+    leg: RL
+  - guard: leg_top_loaded_latched
+    leg: RL
+  reference_sensor_envelope:
+    active_channel_actual_result_readback:
+      rear_left_hip: -0.668506085696107
+      rear_left_knee: -19.262278810122616
+      front_left_ankle: -0.04543116316199303
+      front_right_ankle: -0.22560659050941467
+      rear_left_ankle: 0.0010134261101484299
+      rear_right_ankle: -0.09750436246395111
+    root_result_position_w_m:
+    - 0.8010087013244629
+    - -0.0300583615899086
+    - 0.1293712854385376
+    relevant_wheel_geometry_result:
+      RL:
+        center_w_m:
+        - 0.5587262511253357
+        - 0.06444796919822693
+        - 0.09995647519826889
+        front_face_center_clearance_m: 0.03741407735180502
+        top_surface_wheel_bottom_clearance_m: -3.3523142337829603e-05
+        contact_class: OBSTACLE_TOP
+        normal_force_n: 12.964356422424318
+    latched_leg_events:
+    - leg: RL
+      event: FRONT_FACE_CLEARED
+      sim_time_s: 72.18333333333685
+      physics_tick: 8662
+      contact_class: AIR
+      normal_force_n: 0.0
+      front_face_center_clearance_m: 0.0022504959804976465
+      top_surface_wheel_bottom_clearance_m: 0.028508317470550507
+      wheel_center_w_m:
+      - 0.5235626697540283
+      - 0.06939909607172012
+      - 0.12849831581115723
+      relative_to_phase_start_s: 4.216666666670022
+      relative_to_motion_end_s: -0.4500000000003581
+      latched: true
+    - leg: RL
+      event: TOP_LOADED
+      sim_time_s: 72.49166666667043
+      physics_tick: 8699
+      contact_class: OBSTACLE_TOP
+      normal_force_n: 11.221521377563729
+      front_face_center_clearance_m: 0.036025587151762295
+      top_surface_wheel_bottom_clearance_m: -3.1332671642334e-05
+      wheel_center_w_m:
+      - 0.557337760925293
+      - 0.06623010337352753
+      - 0.09995866566896439
+      relative_to_phase_start_s: 4.525000000003601
+      relative_to_motion_end_s: -0.1416666666667794
+      latched: true
+  hard_abort_conditions: *id002
+  max_verify_wait: 0.25
+  retry_budget: 1
+  next_state: P13
+  recovery_state: P12
+  ppo_action_mask:
+  - 0
+  - 0
+  - 0
+  - 0
+  - 1
+  - 1
+  - 0
+  - 0
+  - 1
+  - 1
+  - 1
+  - 1
+  completion_event: rl_top_loaded
+  transition_reason: Latched RL active lift, front-face crossing, and top load complete
+    the rear order.
+  elapsed_time_is_not_completion_evidence: true
+- state_id: P13
+  macro_phase: 13
+  state_name: FINAL_ADVANCE_AND_RECOVERY
+  physical_purpose: Advance the whole body past the obstacle, recover the v010 final
+    posture, and stop all wheels.
+  lifecycle:
+  - WAIT_ENTRY
+  - EXECUTE_MOTION
+  - VERIFY_RESULT
+  - RECOVERY
+  - DONE
+  reference_step:
+  - 25
+  - 26
+  reference_events:
+  - - 25
+    - 0
+  - - 25
+    - 1
+  - - 25
+    - 2
+  - - 26
+    - 0
+  - - 26
+    - 1
+  - - 26
+    - 2
+  start_full12:
+  - -18.5
+  - -31.4
+  - 3.7
+  - 31.1
+  - -10.1
+  - -18.7
+  - -6.9
+  - -27.2
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  end_full12:
+  - 0.5
+  - -0.7
+  - 3.7
+  - 0.4
+  - -2.6
+  - -3.9
+  - -0.5
+  - -6.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  command_delta_full12:
+  - 19.0
+  - 30.7
+  - 0.0
+  - -30.700000000000003
+  - 7.5
+  - 14.799999999999999
+  - 6.4
+  - 21.2
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  reference_actual_endpoint_full12:
+  - -5.736817316834296
+  - -0.5924460429189305
+  - 4.254834221893529
+  - 0.3464577704717531
+  - -3.8744502464763486
+  - -4.031169977518923
+  - 2.3031654813789664
+  - -4.253348360596835
+  - -0.1680314540863037
+  - -0.0009634793386794627
+  - 0.0003529429668560624
+  - 0.19921796023845673
+  reference_actual_delta_full12:
+  - 12.41853597013541
+  - 31.0701437215654
+  - 0.5143098294073747
+  - -32.19527720836446
+  - -3.1333028578013344
+  - 15.239236757716009
+  - 8.558896175121227
+  - 22.375596414350575
+  - -0.19484801590442657
+  - 0.1990042626275681
+  - -0.02411793393548578
+  - 0.2862899452447891
+  active_channels:
+  - front_left_hip
+  - front_left_knee
+  - front_right_knee
+  - rear_left_hip
+  - rear_left_knee
+  - rear_right_hip
+  - rear_right_knee
+  - front_left_ankle
+  - front_right_ankle
+  - rear_left_ankle
+  - rear_right_ankle
+  active_duration: 17.800000000014165
+  average_velocity:
+    front_left_hip: 34.715999984916685
+    front_left_knee: 54.352247219285324
+    front_right_knee: 31.37820037293065
+    rear_left_hip: 6.281274245218044
+    rear_left_knee: 11.051386061621159
+    rear_right_hip: 9.192141541222073
+    rear_right_knee: 35.8804129540816
+    front_left_ankle: 0.3393145001080251
+    front_right_ankle: 0.22046178569469382
+    rear_left_ankle: 0.29384839655475115
+    rear_right_ankle: 0.2802401847923905
+  peak_velocity:
+    front_left_hip: 107.28926718072061
+    front_left_knee: 142.61404934154277
+    front_right_knee: 124.49231437907
+    rear_left_hip: 62.50534920815864
+    rear_left_knee: 119.50048428454451
+    rear_right_hip: 49.177918684509166
+    rear_right_knee: 122.15147194672322
+    front_left_ankle: 1.242940068244934
+    front_right_ankle: 2.091403007507324
+    rear_left_ankle: 1.1235920190811157
+    rear_right_ankle: 0.7546393275260925
+  wheel_integral:
+    front_left_ankle: 6.110000000004862
+    front_right_ankle: 4.300000000003422
+    rear_left_ankle: 4.590000000003652
+    rear_right_ankle: 4.630000000003684
+  estimated_wheel_surface_travel_m:
+    front_left_ankle: 0.3054388898613501
+    front_right_ankle: 0.21495699286477996
+    rear_left_ankle: 0.2294540923835674
+    rear_right_ankle: 0.23145369231719326
+  atomic_channels:
+  - onset_s: 0.0
+    channels:
+    - front_left_ankle
+    - front_right_ankle
+    - rear_left_ankle
+    - rear_right_ankle
+    same_120hz_tick: true
+    source_full12_atomic: false
+  - onset_s: 16.73333333334665
+    channels:
+    - front_left_ankle
+    - front_right_ankle
+    - rear_left_ankle
+    - rear_right_ankle
+    same_120hz_tick: true
+    source_full12_atomic: false
+  - onset_s: 16.80000000001337
+    channels:
+    - front_left_hip
+    - front_left_knee
+    - front_right_hip
+    - front_right_knee
+    - rear_left_hip
+    - rear_left_knee
+    - rear_right_hip
+    - rear_right_knee
+    - front_left_ankle
+    - front_right_ankle
+    - rear_left_ankle
+    - rear_right_ankle
+    same_120hz_tick: true
+    source_full12_atomic: true
+  - onset_s: 17.800000000014165
+    channels:
+    - front_left_ankle
+    - front_right_ankle
+    - rear_left_ankle
+    - rear_right_ankle
+    same_120hz_tick: true
+    source_full12_atomic: false
+  overlap_timing:
+  - onset_s: 0.0
+    end_s: 16.73333333334665
+    overlap_duration_s: 16.73333333334665
+    channels:
+    - front_left_ankle
+    - front_right_ankle
+    - rear_left_ankle
+    - rear_right_ankle
+    evidence: reference command launch intervals
+  - onset_s: 16.80000000001337
+    end_s: 16.842666666680035
+    overlap_duration_s: 0.04266666666666552
+    channels:
+    - front_left_hip
+    - front_left_knee
+    - front_right_knee
+    - rear_left_hip
+    - rear_left_knee
+    - rear_right_hip
+    - rear_right_knee
+    - front_left_ankle
+    - front_right_ankle
+    - rear_left_ankle
+    - rear_right_ankle
+    evidence: reference command launch intervals
+  - onset_s: 16.842666666680035
+    end_s: 16.85000000001337
+    overlap_duration_s: 0.00733333333333519
+    channels:
+    - front_left_hip
+    - front_left_knee
+    - front_right_knee
+    - rear_left_hip
+    - rear_left_knee
+    - rear_right_knee
+    - front_left_ankle
+    - front_right_ankle
+    - rear_left_ankle
+    - rear_right_ankle
+    evidence: reference command launch intervals
+  - onset_s: 16.85000000001337
+    end_s: 16.898666666680036
+    overlap_duration_s: 0.04866666666666575
+    channels:
+    - front_left_hip
+    - front_left_knee
+    - front_right_knee
+    - rear_left_knee
+    - rear_right_knee
+    - front_left_ankle
+    - front_right_ankle
+    - rear_left_ankle
+    - rear_right_ankle
+    evidence: reference command launch intervals
+  - onset_s: 16.898666666680036
+    end_s: 16.926666666680035
+    overlap_duration_s: 0.027999999999998693
+    channels:
+    - front_left_hip
+    - front_left_knee
+    - front_right_knee
+    - rear_right_knee
+    - front_left_ankle
+    - front_right_ankle
+    - rear_left_ankle
+    - rear_right_ankle
+    evidence: reference command launch intervals
+  - onset_s: 16.926666666680035
+    end_s: 16.9413333333467
+    overlap_duration_s: 0.014666666666666828
+    channels:
+    - front_left_knee
+    - front_right_knee
+    - rear_right_knee
+    - front_left_ankle
+    - front_right_ankle
+    - rear_left_ankle
+    - rear_right_ankle
+    evidence: reference command launch intervals
+  - onset_s: 16.9413333333467
+    end_s: 17.004666666680038
+    overlap_duration_s: 0.06333333333333613
+    channels:
+    - front_left_knee
+    - front_right_knee
+    - front_left_ankle
+    - front_right_ankle
+    - rear_left_ankle
+    - rear_right_ankle
+    evidence: reference command launch intervals
+  - onset_s: 17.004666666680038
+    end_s: 17.800000000014165
+    overlap_duration_s: 0.7953333333341277
+    channels:
+    - front_left_ankle
+    - front_right_ankle
+    - rear_left_ankle
+    - rear_right_ankle
+    evidence: reference command launch intervals
+  carry_in_active_response_channels:
+  - front_left_hip
+  - front_right_hip
+  - rear_left_hip
+  - rear_left_knee
+  - rear_right_hip
+  - front_right_ankle
+  - rear_right_ankle
+  carry_out_active_response_channels:
+  - front_left_hip
+  - front_left_knee
+  - front_right_hip
+  - rear_left_hip
+  - rear_left_knee
+  - rear_right_hip
+  - rear_right_knee
+  entry_conditions: *id001
+  completion_conditions:
+  - guard: all_leg_front_face_crossings_latched
+  - guard: all_wheels_final_top_geometry
+  - guard: final_joint_pose_compatible
+    relative_limit: 0.15
+  - guard: wheel_targets_zero
+  - guard: measured_wheel_velocity_stable_decay
+    absolute_threshold_rad_s: 0.05
+    debounce_s: 0.5
+    new_fsm_requirement: true
+  reference_sensor_envelope:
+    active_channel_actual_result_readback:
+      front_left_hip: -5.736817316834296
+      front_left_knee: -0.5924460429189305
+      front_right_knee: 0.3464577704717531
+      rear_left_hip: -3.8744502464763486
+      rear_left_knee: -4.031169977518923
+      rear_right_hip: 2.3031654813789664
+      rear_right_knee: -4.253348360596835
+      front_left_ankle: -0.1680314540863037
+      front_right_ankle: -0.0009634793386794627
+      rear_left_ankle: 0.0003529429668560624
+      rear_right_ankle: 0.19921796023845673
+    root_result_position_w_m:
+    - 1.1148622035980225
+    - -0.050519995391368866
+    - 0.15697167813777924
+    relevant_wheel_geometry_result:
+      FL:
+        center_w_m:
+        - 1.3545066118240356
+        - 0.019954755902290344
+        - 0.09938672184944153
+        front_face_center_clearance_m: 0.833194438050505
+        top_surface_wheel_bottom_clearance_m: -0.0006032764911651917
+        contact_class: OBSTACLE_TOP
+        normal_force_n: 14.69612888169525
+      FR:
+        center_w_m:
+        - 1.3690378665924072
+        - -0.38006556034088135
+        - 0.10768865793943405
+        front_face_center_clearance_m: 0.8477256928188766
+        top_surface_wheel_bottom_clearance_m: 0.0076986595988273315
+        contact_class: AIR
+        normal_force_n: 0.0
+      RL:
+        center_w_m:
+        - 0.8406995534896851
+        - 0.03965745493769646
+        - 0.10209044814109802
+        front_face_center_clearance_m: 0.3193873797161544
+        top_surface_wheel_bottom_clearance_m: 0.0021004498004913025
+        contact_class: AIR
+        normal_force_n: 0.0
+      RR:
+        center_w_m:
+        - 0.8013688921928406
+        - -0.3553990423679352
+        - 0.09997395426034927
+        front_face_center_clearance_m: 0.2800567184193099
+        top_surface_wheel_bottom_clearance_m: -1.6044080257446303e-05
+        contact_class: OBSTACLE_TOP
+        normal_force_n: 13.985892295837527
+    latched_leg_events: []
+  hard_abort_conditions: *id002
+  max_verify_wait: 1.0
+  retry_budget: 1
+  next_state: TASK_COMPLETE
+  recovery_state: P13
+  ppo_action_mask:
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  completion_event: final_clear_and_stopped
+  transition_reason: All four wheels and the body establish the v010 final top-crossing
+    geometry and final pose; zero wheel targets are applied, then the new FSM must
+    add a measured stable-decay debounce before SUCCESS.
+  elapsed_time_is_not_completion_evidence: true

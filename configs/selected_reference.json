@@ -10,7 +10,8 @@
   "metadata_path": "reference/v010/metadata.json",
   "metadata_sha256": "ed77e79f021eef4fdfa535939aeab6ad696fe58238af9a174f3e21ab0bbca1bf",
   "recording_video_path": "reference/v010/recording_clean.mp4",
-  "recording_video_sha256": "6b6d2561ef9c9c64f6eca5c009bbe0b4c0de57652b4faa2f83bf786cf2bc4fa3",
+  "recording_video_sha256": "50a82b5417f413114c4b9c4e81e0b41944ca0da6af2dfdb1f6fb0bc7bb023504",
+  "recording_video_origin_sha256": "6b6d2561ef9c9c64f6eca5c009bbe0b4c0de57652b4faa2f83bf786cf2bc4fa3",
+  "recording_video_relation": "packet-preserving timeline repair; identical H.264 elementary stream",
   "reference_policy": "all P01-P13 nominal motion must derive only from this version"
 }
-

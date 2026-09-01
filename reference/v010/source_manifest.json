@@ -22,13 +22,40 @@
     },
     {
       "role": "complete linked v010 active-viewport recording video",
-      "source_path": "C:/robotics_sim/wlr_robot/fsm_50mm_recording_sensor_fsm_v1/runs/recording_instrumented/20260825T220848_736987Z_recording_replays_799b1c3531/v010_20260806_220745_363972_manual/20260825T220848_746981Z_clean_fast_replay_7482ccf1b4/20260825_180939_obstacle-05cm_worker_recording_fast_v010_20260806_220745_363972_manual/actual_viewport_video.mp4",
-      "source_sha256": "6b6d2561ef9c9c64f6eca5c009bbe0b4c0de57652b4faa2f83bf786cf2bc4fa3",
+      "source_path": "C:/robotics_sim/wlr_robot/fsm_50mm_recording_sensor_fsm_v1/outputs/reference_recording/v010_50mm_rr_first_recording_clean.mp4",
+      "source_sha256": "50a82b5417f413114c4b9c4e81e0b41944ca0da6af2dfdb1f6fb0bc7bb023504",
       "destination_path": "reference/v010/recording_clean.mp4",
-      "destination_sha256": "6b6d2561ef9c9c64f6eca5c009bbe0b4c0de57652b4faa2f83bf786cf2bc4fa3",
-      "bytes": 138901857,
-      "locator_policy": "old project used only to locate the already-bound v010 video and verify its hash"
+      "destination_sha256": "50a82b5417f413114c4b9c4e81e0b41944ca0da6af2dfdb1f6fb0bc7bb023504",
+      "bytes": 138746819,
+      "origin_viewport_sha256": "6b6d2561ef9c9c64f6eca5c009bbe0b4c0de57652b4faa2f83bf786cf2bc4fa3",
+      "h264_stream_sha256": "94e8268838ec54e307a3059dcecb23a4a3af2d2c291b2bab8896bd0f95883158",
+      "origin_and_clean_h264_stream_equal": true,
+      "container_operation": "packet-preserving remux repairing invalid NVIDIA duration atom; no trim, transcode, splice, or speed change",
+      "locator_policy": "old project used only to locate the explicitly named v010 clean video and verify its origin binding"
+    },
+    {
+      "role": "offline-only successful-v010 atomic dispatch timing evidence",
+      "source_path": "C:/robotics_sim/wlr_robot/fsm_50mm_recording_sensor_fsm_v1/runs/recording_instrumented/20260825T220848_736987Z_recording_replays_799b1c3531/v010_20260806_220745_363972_manual/20260825T220848_746981Z_clean_fast_replay_7482ccf1b4/20260825_180939_obstacle-05cm_worker_recording_fast_v010_20260806_220745_363972_manual/V003_DISPATCH_TRACE.csv",
+      "source_sha256": "377dbc205b9ab054257b723ed78009cb1accc94e943de4682821090afd321f68",
+      "bytes": 71246,
+      "copied": false,
+      "use": "derive compact state waypoints, atomic groups, and active timing only; no old FSM state data"
+    },
+    {
+      "role": "offline-only successful-v010 120 Hz physical observation evidence",
+      "source_path": "C:/robotics_sim/wlr_robot/fsm_50mm_recording_sensor_fsm_v1/runs/recording_instrumented/20260825T220848_736987Z_recording_replays_799b1c3531/v010_20260806_220745_363972_manual/20260825T220848_746981Z_clean_fast_replay_7482ccf1b4/20260825_180939_obstacle-05cm_worker_recording_fast_v010_20260806_220745_363972_manual/compact_authoritative_120hz.jsonl",
+      "source_sha256": "727964e5e434a98373071b03f43a5e69b21f51886ec9fe228fc94e3776cb2287",
+      "bytes": 131713097,
+      "copied": false,
+      "use": "derive reference actual trajectory and sensor completion events only; production runtime access is forbidden"
+    },
+    {
+      "role": "offline-only successful-v010 latched leg traversal event evidence",
+      "source_path": "C:/robotics_sim/wlr_robot/fsm_50mm_recording_sensor_fsm_v1/runs/recording_instrumented/20260825T220848_736987Z_recording_replays_799b1c3531/v010_20260806_220745_363972_manual/20260825T220848_746981Z_clean_fast_replay_7482ccf1b4/20260825_180939_obstacle-05cm_worker_recording_fast_v010_20260806_220745_363972_manual/compact_leg_traversal_events.csv",
+      "source_sha256": "94a9c277136de5832c4dd69259c305b6d10c2b9b5c68d335e579a40cb7c0c417",
+      "bytes": 4390,
+      "copied": false,
+      "use": "bind latched AIR/front-face-clear/TOP events and RR_FIRST semantics; production runtime access is forbidden"
     }
   ]
 }
-

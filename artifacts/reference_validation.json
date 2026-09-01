@@ -1,0 +1,33 @@
+{
+  "schema": "wlr50_clean.reference_validation.v1",
+  "passed": true,
+  "errors": [],
+  "recording": {
+    "schema": "wlr50_clean.recording_validation.v1",
+    "passed": true,
+    "errors": [],
+    "version_id": "v010_20260806_220745_363972_manual",
+    "height_mm": 50,
+    "accepted_steps_sha256": "f962128da9e9551235a6f6769308eed0c947657fe804c9e0e26025f456c72e92",
+    "step_count": 26,
+    "event_count": 168,
+    "recorded_step_duration_sum_s": 326.0666666619218,
+    "first_step": 1,
+    "last_step": 26,
+    "command_continuity": true,
+    "event_time_monotonic_within_steps": true
+  },
+  "video": {
+    "sha256": "50a82b5417f413114c4b9c4e81e0b41944ca0da6af2dfdb1f6fb0bc7bb023504",
+    "decode_to_eof": true,
+    "frame_count": 1345,
+    "duration_s": 89.66666666666667,
+    "rear_leg_order": "RR_FIRST",
+    "stitched": false,
+    "speed_modified": false,
+    "body_obstacle_collision": false,
+    "wheel_only_climb": false
+  },
+  "semantic_keyframe_count": 15,
+  "source_manifest_bound": true
+}

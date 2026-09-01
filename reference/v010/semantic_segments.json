@@ -1,0 +1,4972 @@
+{
+  "schema": "wlr50_clean.semantic_segments.v1",
+  "reference_version": "v010_20260806_220745_363972_manual",
+  "rear_leg_order": "RR_FIRST",
+  "role_mapping": {
+    "FIRST_REAR": "RR",
+    "SECOND_REAR": "RL",
+    "FIRST_LOAD_TARGET_FRONT": "FL",
+    "SECOND_LOAD_TARGET_FRONT": "FR",
+    "FIRST_PREP_DIAGONAL": [
+      "FR",
+      "RL"
+    ],
+    "SECOND_PREP_DIAGONAL": [
+      "FL",
+      "RR"
+    ]
+  },
+  "segments": [
+    {
+      "state_id": "P01",
+      "macro_phase": 1,
+      "state_name": "INITIAL_LOAD_TRANSFER_FR",
+      "physical_purpose": "Build the v010 diagonal/load structure and approach needed before active FR lift.",
+      "reference_steps": [
+        1,
+        2
+      ],
+      "reference_events": [
+        [
+          1,
+          0
+        ],
+        [
+          1,
+          1
+        ],
+        [
+          1,
+          2
+        ],
+        [
+          1,
+          3
+        ],
+        [
+          1,
+          4
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          2,
+          1
+        ],
+        [
+          2,
+          2
+        ]
+      ],
+      "active_duration_s": 13.266666666666424,
+      "start_full12": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "end_full12": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        37.6,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "delta_full12": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        37.6,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "active_channels": [
+        "rear_left_hip",
+        "front_left_ankle",
+        "front_right_ankle",
+        "rear_left_ankle",
+        "rear_right_ankle"
+      ],
+      "atomic_groups": [
+        {
+          "time_s": 0.33333333333333215,
+          "channels": [
+            "front_left_ankle",
+            "front_right_ankle",
+            "rear_left_ankle",
+            "rear_right_ankle"
+          ],
+          "batch_id": "playback-fsm50-gate1-v010_20260806_220745_363972_manual-trial11-0adc798fc6-4-71ea03a3",
+          "same_physics_tick": true,
+          "atomic_batch_ack_valid": true,
+          "reference_applied_physics_tick": 324,
+          "reference_first_motion_physics_tick": 325,
+          "motion_start_skew_s": 0.0,
+          "active_until_next_waypoint_s": 12.933333333333092,
+          "source_full12_atomic": false
+        },
+        {
+          "time_s": 13.266666666666424,
+          "channels": [
+            "front_left_ankle",
+            "front_right_ankle",
+            "rear_left_ankle",
+            "rear_right_ankle"
+          ],
+          "batch_id": "playback-fsm50-gate1-v010_20260806_220745_363972_manual-trial11-0adc798fc6-5-26478b47",
+          "same_physics_tick": true,
+          "atomic_batch_ack_valid": true,
+          "reference_applied_physics_tick": 1876,
+          "reference_first_motion_physics_tick": 1877,
+          "motion_start_skew_s": 0.0,
+          "active_until_next_waypoint_s": 0.0,
+          "source_full12_atomic": false
+        }
+      ],
+      "overlap_timing": [
+        {
+          "onset_s": 0.33333333333333215,
+          "end_s": 13.266666666666424,
+          "overlap_duration_s": 12.933333333333092,
+          "channels": [
+            "front_left_ankle",
+            "front_right_ankle",
+            "rear_left_ankle",
+            "rear_right_ankle"
+          ],
+          "evidence": "reference command launch intervals"
+        }
+      ],
+      "completion_event": "fr_lift_entry_ready",
+      "completion_evidence": {
+        "required_latched_leg_events": [],
+        "sensor_completion_latency_after_motion_s": 0.0,
+        "uses_event_history_not_final_contact_snapshot": false,
+        "live_sensor_predicates": [
+          "reference-compatible joint endpoint",
+          "FR lift-entry wheel/obstacle geometry",
+          "no BODY contact"
+        ],
+        "next_state_safe_reason": "Reference-compatible load-transfer endpoint and live FR lift-entry geometry are established.",
+        "reference_observed": {
+          "active_channel_actual_start": {
+            "rear_left_hip": 0.2765261983037032,
+            "front_left_ankle": 0.012532628141343594,
+            "front_right_ankle": 0.018427908420562744,
+            "rear_left_ankle": -0.006504939869046211,
+            "rear_right_ankle": -0.013488270342350006
+          },
+          "active_channel_actual_motion_readback": {
+            "rear_left_hip": 38.955990081006014,
+            "front_left_ankle": -0.038247592747211456,
+            "front_right_ankle": 0.00029296521097421646,
+            "rear_left_ankle": 0.0802299901843071,
+            "rear_right_ankle": -0.0023179175332188606
+          },
+          "active_channel_actual_result_readback": {
+            "rear_left_hip": 38.94874325029664,
+            "front_left_ankle": -0.03645225241780281,
+            "front_right_ankle": 3.2344425562769175e-05,
+            "rear_left_ankle": 0.019256627187132835,
+            "rear_right_ankle": -0.0015365174040198326
+          },
+          "wheel_geometry_motion_start": {
+            "FL": {
+              "center_w_m": [
+                0.2490156888961792,
+                0.07948585599660873,
+                0.0489078164100647
+              ],
+              "front_face_center_clearance_m": -0.2722964848773515,
+              "top_surface_wheel_bottom_clearance_m": -0.05108218193054202,
+              "contact_class": "GROUND",
+              "normal_force_n": 7.46884489059455
+            },
+            "FR": {
+              "center_w_m": [
+                0.2526593506336212,
+                -0.318805068731308,
+                0.04913879930973053
+              ],
+              "front_face_center_clearance_m": -0.26865282313990946,
+              "top_surface_wheel_bottom_clearance_m": -0.05085119903087619,
+              "contact_class": "GROUND",
+              "normal_force_n": 6.780292034149231
+            },
+            "RL": {
+              "center_w_m": [
+                -0.3046966791152954,
+                0.0729973241686821,
+                0.049916040152311325
+              ],
+              "front_face_center_clearance_m": -0.8260088528888261,
+              "top_surface_wheel_bottom_clearance_m": -0.050073958188295395,
+              "contact_class": "GROUND",
+              "normal_force_n": 6.9671945571900045
+            },
+            "RR": {
+              "center_w_m": [
+                -0.30736783146858215,
+                -0.3233126103878021,
+                0.04987185820937157
+              ],
+              "front_face_center_clearance_m": -0.8286800052421128,
+              "top_surface_wheel_bottom_clearance_m": -0.05011814013123515,
+              "contact_class": "GROUND",
+              "normal_force_n": 7.53684854507453
+            }
+          },
+          "wheel_geometry_motion_readback": {
+            "FL": {
+              "center_w_m": [
+                0.42533358931541443,
+                0.08720001578330994,
+                0.05301974341273308
+              ],
+              "front_face_center_clearance_m": -0.09597858445811625,
+              "top_surface_wheel_bottom_clearance_m": -0.04697025492787364,
+              "contact_class": "GROUND",
+              "normal_force_n": 14.408770561218391
+            },
+            "FR": {
+              "center_w_m": [
+                0.41684383153915405,
+                -0.30056825280189514,
+                0.14362922310829163
+              ],
+              "front_face_center_clearance_m": -0.10446834223437662,
+              "top_surface_wheel_bottom_clearance_m": 0.043639224767684906,
+              "contact_class": "AIR",
+              "normal_force_n": 0.0
+            },
+            "RL": {
+              "center_w_m": [
+                -0.21154066920280457,
+                0.09764313697814941,
+                0.05289008468389511
+              ],
+              "front_face_center_clearance_m": -0.7328528429763352,
+              "top_surface_wheel_bottom_clearance_m": -0.04709991365671161,
+              "contact_class": "GROUND",
+              "normal_force_n": 1.702651143074051
+            },
+            "RR": {
+              "center_w_m": [
+                -0.13453084230422974,
+                -0.31312277913093567,
+                0.046888936311006546
+              ],
+              "front_face_center_clearance_m": -0.6558430160777604,
+              "top_surface_wheel_bottom_clearance_m": -0.053101062029600174,
+              "contact_class": "GROUND",
+              "normal_force_n": 12.414504051208608
+            }
+          },
+          "wheel_geometry_result": {
+            "FL": {
+              "center_w_m": [
+                0.4253544509410858,
+                0.08719389885663986,
+                0.053018856793642044
+              ],
+              "front_face_center_clearance_m": -0.09595772283244486,
+              "top_surface_wheel_bottom_clearance_m": -0.046971141546964676,
+              "contact_class": "GROUND",
+              "normal_force_n": 13.441255569458129
+            },
+            "FR": {
+              "center_w_m": [
+                0.41675496101379395,
+                -0.30058932304382324,
+                0.14355382323265076
+              ],
+              "front_face_center_clearance_m": -0.10455721275973673,
+              "top_surface_wheel_bottom_clearance_m": 0.04356382489204404,
+              "contact_class": "AIR",
+              "normal_force_n": 0.0
+            },
+            "RL": {
+              "center_w_m": [
+                -0.21155859529972076,
+                0.09763912111520767,
+                0.052888620644807816
+              ],
+              "front_face_center_clearance_m": -0.7328707690732514,
+              "top_surface_wheel_bottom_clearance_m": -0.047101377695798904,
+              "contact_class": "GROUND",
+              "normal_force_n": 2.860159158706691
+            },
+            "RR": {
+              "center_w_m": [
+                -0.13464754819869995,
+                -0.3131183087825775,
+                0.046870097517967224
+              ],
+              "front_face_center_clearance_m": -0.6559597219722306,
+              "top_surface_wheel_bottom_clearance_m": -0.053119900822639496,
+              "contact_class": "GROUND",
+              "normal_force_n": 12.45849418640148
+            }
+          },
+          "root_start_position_w_m": [
+            -0.0043569765985012054,
+            -0.0009922757744789124,
+            0.09892100840806961
+          ],
+          "root_result_position_w_m": [
+            0.16353823244571686,
+            0.016269154846668243,
+            0.07275613397359848
+          ]
+        }
+      },
+      "completion_latency_s": 0.0,
+      "next_state_reason": "Reference-compatible load-transfer endpoint and live FR lift-entry geometry are established."
+    },
+    {
+      "state_id": "P02",
+      "macro_phase": 2,
+      "state_name": "FR_ACTIVE_LIFT",
+      "physical_purpose": "Actively flex the FR leg until its wheel-bottom clearance increases.",
+      "reference_steps": [
+        3
+      ],
+      "reference_events": [
+        [
+          3,
+          0
+        ],
+        [
+          3,
+          1
+        ],
+        [
+          3,
+          2
+        ],
+        [
+          3,
+          3
+        ],
+        [
+          3,
+          4
+        ],
+        [
+          3,
+          5
+        ]
+      ],
+      "active_duration_s": 0.4666666666666419,
+      "start_full12": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        37.6,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "end_full12": [
+        0.0,
+        0.0,
+        0.0,
+        45.9,
+        37.6,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "delta_full12": [
+        0.0,
+        0.0,
+        0.0,
+        45.9,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "active_channels": [
+        "front_right_knee"
+      ],
+      "atomic_groups": [],
+      "overlap_timing": [],
+      "completion_event": "fr_active_lift_observed",
+      "completion_evidence": {
+        "required_latched_leg_events": [],
+        "sensor_completion_latency_after_motion_s": 0.0,
+        "uses_event_history_not_final_contact_snapshot": false,
+        "live_sensor_predicates": [
+          "FR leg-joint evidence matches the contract: knee actively changes while hip remains at its reference hold",
+          "FR wheel-bottom clearance increase or latched AIR",
+          "motion endpoint reached"
+        ],
+        "next_state_safe_reason": "FR reference-like active joint motion and increased wheel-bottom clearance make front-plane crossing observable.",
+        "reference_observed": {
+          "active_channel_actual_start": {
+            "front_right_knee": 0.029525213574885828
+          },
+          "active_channel_actual_motion_readback": {
+            "front_right_knee": 40.96066713092895
+          },
+          "active_channel_actual_result_readback": {
+            "front_right_knee": 43.14914853346024
+          },
+          "wheel_geometry_motion_start": {
+            "FL": {
+              "center_w_m": [
+                0.4253580570220947,
+                0.08719339221715927,
+                0.053018588572740555
+              ],
+              "front_face_center_clearance_m": -0.09595411675143595,
+              "top_surface_wheel_bottom_clearance_m": -0.046971409767866165,
+              "contact_class": "GROUND",
+              "normal_force_n": 13.43856716156018
+            },
+            "FR": {
+              "center_w_m": [
+                0.41673997044563293,
+                -0.30059120059013367,
+                0.1435459405183792
+              ],
+              "front_face_center_clearance_m": -0.10457220332789774,
+              "top_surface_wheel_bottom_clearance_m": 0.04355594217777249,
+              "contact_class": "AIR",
+              "normal_force_n": 0.0
+            },
+            "RL": {
+              "center_w_m": [
+                -0.21156296133995056,
+                0.09763893485069275,
+                0.05288919806480408
+              ],
+              "front_face_center_clearance_m": -0.7328751351134812,
+              "top_surface_wheel_bottom_clearance_m": -0.04710080027580264,
+              "contact_class": "GROUND",
+              "normal_force_n": 2.868255615234401
+            },
+            "RR": {
+              "center_w_m": [
+                -0.13466599583625793,
+                -0.3131183087825775,
+                0.046866804361343384
+              ],
+              "front_face_center_clearance_m": -0.6559781696097886,
+              "top_surface_wheel_bottom_clearance_m": -0.053123193979263336,
+              "contact_class": "GROUND",
+              "normal_force_n": 12.447822570800893
+            }
+          },
+          "wheel_geometry_motion_readback": {
+            "FL": {
+              "center_w_m": [
+                0.4257664084434509,
+                0.0871729701757431,
+                0.0530051663517952
+              ],
+              "front_face_center_clearance_m": -0.09554576533007975,
+              "top_surface_wheel_bottom_clearance_m": -0.04698483198881152,
+              "contact_class": "GROUND",
+              "normal_force_n": 13.716355323791626
+            },
+            "FR": {
+              "center_w_m": [
+                0.5164975523948669,
+                -0.2923336625099182,
+                0.18846437335014343
+              ],
+              "front_face_center_clearance_m": -0.00481462137866373,
+              "top_surface_wheel_bottom_clearance_m": 0.08847437500953671,
+              "contact_class": "AIR",
+              "normal_force_n": 0.0
+            },
+            "RL": {
+              "center_w_m": [
+                -0.21142521500587463,
+                0.09763440489768982,
+                0.05289057269692421
+              ],
+              "front_face_center_clearance_m": -0.7327373887794053,
+              "top_surface_wheel_bottom_clearance_m": -0.04709942564368251,
+              "contact_class": "GROUND",
+              "normal_force_n": 2.6262373924255606
+            },
+            "RR": {
+              "center_w_m": [
+                -0.13479465246200562,
+                -0.3131181597709656,
+                0.04684197157621384
+              ],
+              "front_face_center_clearance_m": -0.6561068262355363,
+              "top_surface_wheel_bottom_clearance_m": -0.05314802676439288,
+              "contact_class": "GROUND",
+              "normal_force_n": 12.149703025817981
+            }
+          },
+          "wheel_geometry_result": {
+            "FL": {
+              "center_w_m": [
+                0.42580828070640564,
+                0.08716899901628494,
+                0.053003374487161636
+              ],
+              "front_face_center_clearance_m": -0.09550389306712503,
+              "top_surface_wheel_bottom_clearance_m": -0.046986623853445084,
+              "contact_class": "GROUND",
+              "normal_force_n": 13.874616622924929
+            },
+            "FR": {
+              "center_w_m": [
+                0.5206500291824341,
+                -0.2914488911628723,
+                0.19262440502643585
+              ],
+              "front_face_center_clearance_m": -0.0006621445910965917,
+              "top_surface_wheel_bottom_clearance_m": 0.09263440668582913,
+              "contact_class": "AIR",
+              "normal_force_n": 0.0
+            },
+            "RL": {
+              "center_w_m": [
+                -0.21139521896839142,
+                0.0976254865527153,
+                0.05288924649357796
+              ],
+              "front_face_center_clearance_m": -0.7327073927419221,
+              "top_surface_wheel_bottom_clearance_m": -0.04710075184702876,
+              "contact_class": "GROUND",
+              "normal_force_n": 2.448685407638572
+            },
+            "RR": {
+              "center_w_m": [
+                -0.13479530811309814,
+                -0.31312111020088196,
+                0.046842336654663086
+              ],
+              "front_face_center_clearance_m": -0.6561074818866288,
+              "top_surface_wheel_bottom_clearance_m": -0.053147661685943634,
+              "contact_class": "GROUND",
+              "normal_force_n": 12.376918792724721
+            }
+          },
+          "root_start_position_w_m": [
+            0.16352494060993195,
+            0.016268737614154816,
+            0.07275476306676865
+          ],
+          "root_result_position_w_m": [
+            0.1636774241924286,
+            0.016239657998085022,
+            0.07268935441970825
+          ]
+        }
+      },
+      "completion_latency_s": 0.0,
+      "next_state_reason": "FR reference-like active joint motion and increased wheel-bottom clearance make front-plane crossing observable."
+    },
+    {
+      "state_id": "P03",
+      "macro_phase": 3,
+      "state_name": "FR_CROSS_AND_PLACE",
+      "physical_purpose": "Carry FR through the front plane and establish FR obstacle-top contact.",
+      "reference_steps": [
+        4
+      ],
+      "reference_events": [
+        [
+          4,
+          0
+        ],
+        [
+          4,
+          1
+        ],
+        [
+          4,
+          2
+        ]
+      ],
+      "active_duration_s": 1.1999999999999318,
+      "start_full12": [
+        0.0,
+        0.0,
+        0.0,
+        45.9,
+        37.6,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "end_full12": [
+        0.0,
+        -22.9,
+        0.0,
+        45.9,
+        17.5,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "delta_full12": [
+        0.0,
+        -22.9,
+        0.0,
+        0.0,
+        -20.1,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "active_channels": [
+        "front_left_knee",
+        "rear_left_hip",
+        "front_left_ankle",
+        "rear_left_ankle"
+      ],
+      "atomic_groups": [
+        {
+          "time_s": 0.0,
+          "channels": [
+            "front_left_hip",
+            "front_left_knee",
+            "front_right_hip",
+            "front_right_knee",
+            "rear_left_hip",
+            "rear_left_knee",
+            "rear_right_hip",
+            "rear_right_knee",
+            "front_left_ankle",
+            "rear_left_ankle"
+          ],
+          "batch_id": "playback-fsm50-gate1-v010_20260806_220745_363972_manual-trial11-0adc798fc6-11-248783f4",
+          "same_physics_tick": true,
+          "atomic_batch_ack_valid": true,
+          "reference_applied_physics_tick": 1948,
+          "reference_first_motion_physics_tick": 1949,
+          "motion_start_skew_s": 0.0,
+          "active_until_next_waypoint_s": 1.1999999999999318,
+          "source_full12_atomic": true,
+          "source_step": 4,
+          "source_event": 0,
+          "source_batch_id": "830d02a03e28415da7e28f4e5ffaaa89",
+          "required_runtime_channels": [
+            "front_left_hip",
+            "front_left_knee",
+            "front_right_hip",
+            "front_right_knee",
+            "rear_left_hip",
+            "rear_left_knee",
+            "rear_right_hip",
+            "rear_right_knee",
+            "front_left_ankle",
+            "front_right_ankle",
+            "rear_left_ankle",
+            "rear_right_ankle"
+          ],
+          "source_changed_channels": [
+            "front_left_knee",
+            "rear_left_hip",
+            "front_left_ankle",
+            "rear_left_ankle"
+          ],
+          "source_before_full12": [
+            0.0,
+            0.0,
+            0.0,
+            45.9,
+            37.6,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "source_target_full12": [
+            0.0,
+            -22.9,
+            0.0,
+            45.9,
+            17.5,
+            0.0,
+            0.0,
+            0.0,
+            -0.79,
+            0.0,
+            0.61,
+            0.0
+          ],
+          "servo_velocity_deg_s": 150.0
+        },
+        {
+          "time_s": 1.1999999999999318,
+          "channels": [
+            "front_left_ankle",
+            "front_right_ankle",
+            "rear_left_ankle",
+            "rear_right_ankle"
+          ],
+          "batch_id": "playback-fsm50-gate1-v010_20260806_220745_363972_manual-trial11-0adc798fc6-12-45616934",
+          "same_physics_tick": true,
+          "atomic_batch_ack_valid": true,
+          "reference_applied_physics_tick": 2092,
+          "reference_first_motion_physics_tick": 2093,
+          "motion_start_skew_s": 0.0,
+          "active_until_next_waypoint_s": 0.0,
+          "source_full12_atomic": false
+        }
+      ],
+      "overlap_timing": [
+        {
+          "onset_s": 0.0,
+          "end_s": 0.134,
+          "overlap_duration_s": 0.134,
+          "channels": [
+            "front_left_knee",
+            "rear_left_hip",
+            "front_left_ankle",
+            "rear_left_ankle"
+          ],
+          "evidence": "reference command launch intervals"
+        },
+        {
+          "onset_s": 0.134,
+          "end_s": 0.15266666666666664,
+          "overlap_duration_s": 0.018666666666666637,
+          "channels": [
+            "front_left_knee",
+            "front_left_ankle",
+            "rear_left_ankle"
+          ],
+          "evidence": "reference command launch intervals"
+        },
+        {
+          "onset_s": 0.15266666666666664,
+          "end_s": 1.1999999999999318,
+          "overlap_duration_s": 1.047333333333265,
+          "channels": [
+            "front_left_ankle",
+            "rear_left_ankle"
+          ],
+          "evidence": "reference command launch intervals"
+        }
+      ],
+      "completion_event": "fr_top_loaded",
+      "completion_evidence": {
+        "required_latched_leg_events": [
+          {
+            "leg": "FR",
+            "event": "FRONT_FACE_CLEARED",
+            "sim_time_s": 16.258333333333052,
+            "physics_tick": 1951,
+            "contact_class": "AIR",
+            "normal_force_n": 0.0,
+            "front_face_center_clearance_m": 0.002511802743192959,
+            "top_surface_wheel_bottom_clearance_m": 0.09585711061954495,
+            "wheel_center_w_m": [
+              0.5238239765167236,
+              -0.2908335328102112,
+              0.19584710896015167
+            ],
+            "relative_to_phase_start_s": 0.02499999999999858,
+            "relative_to_motion_end_s": -1.1749999999999332,
+            "latched": true
+          },
+          {
+            "leg": "FR",
+            "event": "TOP_LOADED",
+            "sim_time_s": 16.51666666666637,
+            "physics_tick": 1982,
+            "contact_class": "OBSTACLE_TOP",
+            "normal_force_n": 5.438498207944187,
+            "front_face_center_clearance_m": 0.029361787865873623,
+            "top_surface_wheel_bottom_clearance_m": -0.0006223872303963013,
+            "wheel_center_w_m": [
+              0.5506739616394043,
+              -0.3146636486053467,
+              0.09936761111021042
+            ],
+            "relative_to_phase_start_s": 0.2833333333333172,
+            "relative_to_motion_end_s": -0.9166666666666146,
+            "latched": true
+          }
+        ],
+        "sensor_completion_latency_after_motion_s": 0.0,
+        "uses_event_history_not_final_contact_snapshot": true,
+        "live_sensor_predicates": [
+          "latched FR FRONT_FACE_CLEARED",
+          "latched FR TOP_LOADED",
+          "no BODY contact"
+        ],
+        "next_state_safe_reason": "Latched FR front-face clearance and top load make FL preparation safe.",
+        "reference_observed": {
+          "active_channel_actual_start": {
+            "front_left_knee": -0.1345006087392601,
+            "rear_left_hip": 38.903121001735535,
+            "front_left_ankle": -0.039551861584186554,
+            "rear_left_ankle": 0.045416589826345444
+          },
+          "active_channel_actual_motion_readback": {
+            "front_left_knee": -24.594990049111107,
+            "rear_left_hip": 17.612521481382643,
+            "front_left_ankle": 0.07003968954086304,
+            "rear_left_ankle": -0.001867912127636373
+          },
+          "active_channel_actual_result_readback": {
+            "front_left_knee": -23.004344859347274,
+            "rear_left_hip": 17.75433669911962,
+            "front_left_ankle": 0.0966917872428894,
+            "rear_left_ankle": -0.0030876826494932175
+          },
+          "wheel_geometry_motion_start": {
+            "FL": {
+              "center_w_m": [
+                0.4258157014846802,
+                0.08716882765293121,
+                0.053003162145614624
+              ],
+              "front_face_center_clearance_m": -0.0954964722888505,
+              "top_surface_wheel_bottom_clearance_m": -0.046986836194992096,
+              "contact_class": "GROUND",
+              "normal_force_n": 13.802901268005495
+            },
+            "FR": {
+              "center_w_m": [
+                0.5212355256080627,
+                -0.29131603240966797,
+                0.1932424157857895
+              ],
+              "front_face_center_clearance_m": -7.664816546792963e-05,
+              "top_surface_wheel_bottom_clearance_m": 0.09325241744518277,
+              "contact_class": "AIR",
+              "normal_force_n": 0.0
+            },
+            "RL": {
+              "center_w_m": [
+                -0.21139036118984222,
+                0.09762603044509888,
+                0.05288945883512497
+              ],
+              "front_face_center_clearance_m": -0.7327025349633729,
+              "top_surface_wheel_bottom_clearance_m": -0.04710053950548175,
+              "contact_class": "GROUND",
+              "normal_force_n": 2.5608477592468493
+            },
+            "RR": {
+              "center_w_m": [
+                -0.13479481637477875,
+                -0.3131207823753357,
+                0.04684234410524368
+              ],
+              "front_face_center_clearance_m": -0.6561069901483094,
+              "top_surface_wheel_bottom_clearance_m": -0.05314765423536304,
+              "contact_class": "GROUND",
+              "normal_force_n": 12.255605697631946
+            }
+          },
+          "wheel_geometry_motion_readback": {
+            "FL": {
+              "center_w_m": [
+                0.36233463883399963,
+                0.07294651120901108,
+                0.05065465718507767
+              ],
+              "front_face_center_clearance_m": -0.15897753493953104,
+              "top_surface_wheel_bottom_clearance_m": -0.04933534115552905,
+              "contact_class": "GROUND",
+              "normal_force_n": 15.41979694366469
+            },
+            "FR": {
+              "center_w_m": [
+                0.5412687659263611,
+                -0.32454249262809753,
+                0.09968923032283783
+              ],
+              "front_face_center_clearance_m": 0.01995659215283041,
+              "top_surface_wheel_bottom_clearance_m": -0.0003007680177688904,
+              "contact_class": "AIR",
+              "normal_force_n": 1.3513048887252816
+            },
+            "RL": {
+              "center_w_m": [
+                -0.17058858275413513,
+                0.0743836835026741,
+                0.06521119177341461
+              ],
+              "front_face_center_clearance_m": -0.6919007565276658,
+              "top_surface_wheel_bottom_clearance_m": -0.03477880656719211,
+              "contact_class": "AIR",
+              "normal_force_n": 0.0
+            },
+            "RR": {
+              "center_w_m": [
+                -0.13375955820083618,
+                -0.3246399164199829,
+                0.04881328344345093
+              ],
+              "front_face_center_clearance_m": -0.6550717319743669,
+              "top_surface_wheel_bottom_clearance_m": -0.05117671489715579,
+              "contact_class": "GROUND",
+              "normal_force_n": 12.878404617309686
+            }
+          },
+          "wheel_geometry_result": {
+            "FL": {
+              "center_w_m": [
+                0.36190199851989746,
+                0.07282262295484543,
+                0.05068967118859291
+              ],
+              "front_face_center_clearance_m": -0.1594101752536332,
+              "top_surface_wheel_bottom_clearance_m": -0.04930032715201381,
+              "contact_class": "GROUND",
+              "normal_force_n": 14.024608612060673
+            },
+            "FR": {
+              "center_w_m": [
+                0.5367632508277893,
+                -0.3246440887451172,
+                0.09973213076591492
+              ],
+              "front_face_center_clearance_m": 0.015451077054258633,
+              "top_surface_wheel_bottom_clearance_m": -0.000257867574691803,
+              "contact_class": "AIR",
+              "normal_force_n": 1.142613649368287
+            },
+            "RL": {
+              "center_w_m": [
+                -0.17510314285755157,
+                0.07432154566049576,
+                0.06799730658531189
+              ],
+              "front_face_center_clearance_m": -0.6964153166310822,
+              "top_surface_wheel_bottom_clearance_m": -0.03199269175529483,
+              "contact_class": "AIR",
+              "normal_force_n": 0.0
+            },
+            "RR": {
+              "center_w_m": [
+                -0.135019913315773,
+                -0.3247872591018677,
+                0.04874664172530174
+              ],
+              "front_face_center_clearance_m": -0.6563320870893037,
+              "top_surface_wheel_bottom_clearance_m": -0.05124335661530498,
+              "contact_class": "GROUND",
+              "normal_force_n": 12.841481208801385
+            }
+          },
+          "root_start_position_w_m": [
+            0.16368304193019867,
+            0.016239650547504425,
+            0.07268869131803513
+          ],
+          "root_result_position_w_m": [
+            0.16728822886943817,
+            -0.002881348133087158,
+            0.0837131217122078
+          ]
+        }
+      },
+      "completion_latency_s": 0.0,
+      "next_state_reason": "Latched FR front-face clearance and top load make FL preparation safe."
+    },
+    {
+      "state_id": "P04",
+      "macro_phase": 4,
+      "state_name": "FL_UNLOAD_PREP",
+      "physical_purpose": "Change the v010 support geometry so FL can be actively lifted.",
+      "reference_steps": [
+        5,
+        6
+      ],
+      "reference_events": [
+        [
+          5,
+          0
+        ],
+        [
+          5,
+          1
+        ],
+        [
+          5,
+          2
+        ],
+        [
+          6,
+          0
+        ],
+        [
+          6,
+          1
+        ],
+        [
+          6,
+          2
+        ],
+        [
+          6,
+          3
+        ],
+        [
+          6,
+          4
+        ],
+        [
+          6,
+          5
+        ],
+        [
+          6,
+          6
+        ]
+      ],
+      "active_duration_s": 4.799999999999727,
+      "start_full12": [
+        0.0,
+        -22.9,
+        0.0,
+        45.9,
+        17.5,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "end_full12": [
+        0.0,
+        -22.9,
+        0.0,
+        45.9,
+        6.9,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "delta_full12": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -10.6,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "active_channels": [
+        "rear_left_hip",
+        "front_left_ankle",
+        "front_right_ankle",
+        "rear_left_ankle",
+        "rear_right_ankle"
+      ],
+      "atomic_groups": [
+        {
+          "time_s": 0.0,
+          "channels": [
+            "front_left_ankle",
+            "front_right_ankle",
+            "rear_left_ankle",
+            "rear_right_ankle"
+          ],
+          "batch_id": "playback-fsm50-gate1-v010_20260806_220745_363972_manual-trial11-0adc798fc6-13-1f3a74d9",
+          "same_physics_tick": true,
+          "atomic_batch_ack_valid": true,
+          "reference_applied_physics_tick": 2100,
+          "reference_first_motion_physics_tick": 2101,
+          "motion_start_skew_s": 0.0,
+          "active_until_next_waypoint_s": 4.39999999999975,
+          "source_full12_atomic": false
+        },
+        {
+          "time_s": 4.39999999999975,
+          "channels": [
+            "front_left_ankle",
+            "front_right_ankle",
+            "rear_left_ankle",
+            "rear_right_ankle"
+          ],
+          "batch_id": "playback-fsm50-gate1-v010_20260806_220745_363972_manual-trial11-0adc798fc6-14-3f921ecc",
+          "same_physics_tick": true,
+          "atomic_batch_ack_valid": true,
+          "reference_applied_physics_tick": 2628,
+          "reference_first_motion_physics_tick": 2629,
+          "motion_start_skew_s": 0.0,
+          "active_until_next_waypoint_s": 0.06666666666666288,
+          "source_full12_atomic": false
+        }
+      ],
+      "overlap_timing": [
+        {
+          "onset_s": 0.0,
+          "end_s": 4.39999999999975,
+          "overlap_duration_s": 4.39999999999975,
+          "channels": [
+            "front_left_ankle",
+            "front_right_ankle",
+            "rear_left_ankle",
+            "rear_right_ankle"
+          ],
+          "evidence": "reference command launch intervals"
+        }
+      ],
+      "completion_event": "fl_lift_entry_ready",
+      "completion_evidence": {
+        "required_latched_leg_events": [],
+        "sensor_completion_latency_after_motion_s": 0.0,
+        "uses_event_history_not_final_contact_snapshot": false,
+        "live_sensor_predicates": [
+          "reference-compatible FL unload entry pose",
+          "FL lift workspace/clearance trend",
+          "no BODY contact"
+        ],
+        "next_state_safe_reason": "The FL unload workspace matches the v010 entry envelope without a force-only hard gate.",
+        "reference_observed": {
+          "active_channel_actual_start": {
+            "rear_left_hip": 17.76972682286695,
+            "front_left_ankle": 0.04200119525194168,
+            "front_right_ankle": -0.043813467025756836,
+            "rear_left_ankle": -0.002092850860208273,
+            "rear_right_ankle": -0.2370116412639618
+          },
+          "active_channel_actual_motion_readback": {
+            "rear_left_hip": 8.948009877682098,
+            "front_left_ankle": -0.03800883889198303,
+            "front_right_ankle": -0.1062341183423996,
+            "rear_left_ankle": 0.13266661763191223,
+            "rear_right_ankle": -0.02620556391775608
+          },
+          "active_channel_actual_result_readback": {
+            "rear_left_hip": 8.365463897145357,
+            "front_left_ankle": -0.059043314307928085,
+            "front_right_ankle": -0.0887410119175911,
+            "rear_left_ankle": 0.2266872227191925,
+            "rear_right_ankle": -0.03231290355324745
+          },
+          "wheel_geometry_motion_start": {
+            "FL": {
+              "center_w_m": [
+                0.3618200123310089,
+                0.07279312610626221,
+                0.05069198086857796
+              ],
+              "front_face_center_clearance_m": -0.15949216144252176,
+              "top_surface_wheel_bottom_clearance_m": -0.04929801747202876,
+              "contact_class": "GROUND",
+              "normal_force_n": 14.351731300354134
+            },
+            "FR": {
+              "center_w_m": [
+                0.5361121892929077,
+                -0.32467567920684814,
+                0.09975596517324448
+              ],
+              "front_face_center_clearance_m": 0.014800015519377041,
+              "top_surface_wheel_bottom_clearance_m": -0.00023403316736224367,
+              "contact_class": "AIR",
+              "normal_force_n": 0.7742807865142823
+            },
+            "RL": {
+              "center_w_m": [
+                -0.17577673494815826,
+                0.07431067526340485,
+                0.06840810179710388
+              ],
+              "front_face_center_clearance_m": -0.6970889087216889,
+              "top_surface_wheel_bottom_clearance_m": -0.03158189654350284,
+              "contact_class": "AIR",
+              "normal_force_n": 0.0
+            },
+            "RR": {
+              "center_w_m": [
+                -0.13525325059890747,
+                -0.3248056173324585,
+                0.048733677715063095
+              ],
+              "front_face_center_clearance_m": -0.6565654243724381,
+              "top_surface_wheel_bottom_clearance_m": -0.051256320625543625,
+              "contact_class": "GROUND",
+              "normal_force_n": 13.128197669983027
+            }
+          },
+          "wheel_geometry_motion_readback": {
+            "FL": {
+              "center_w_m": [
+                0.43412575125694275,
+                0.0717218890786171,
+                0.05084340646862984
+              ],
+              "front_face_center_clearance_m": -0.08718642251658792,
+              "top_surface_wheel_bottom_clearance_m": -0.04914659187197688,
+              "contact_class": "GROUND",
+              "normal_force_n": 8.541608810424883
+            },
+            "FR": {
+              "center_w_m": [
+                0.5804415345191956,
+                -0.32558169960975647,
+                0.0996633768081665
+              ],
+              "front_face_center_clearance_m": 0.05912936074566488,
+              "top_surface_wheel_bottom_clearance_m": -0.0003266215324402161,
+              "contact_class": "OBSTACLE_TOP",
+              "normal_force_n": 5.348587512970026
+            },
+            "RL": {
+              "center_w_m": [
+                -0.1115373894572258,
+                0.07099379599094391,
+                0.050271715968847275
+              ],
+              "front_face_center_clearance_m": -0.6328495632307565,
+              "top_surface_wheel_bottom_clearance_m": -0.049718282371759445,
+              "contact_class": "GROUND",
+              "normal_force_n": 6.041366100311334
+            },
+            "RR": {
+              "center_w_m": [
+                -0.09142335504293442,
+                -0.3261197805404663,
+                0.04974563792347908
+              ],
+              "front_face_center_clearance_m": -0.6127355288164651,
+              "top_surface_wheel_bottom_clearance_m": -0.05024436041712764,
+              "contact_class": "GROUND",
+              "normal_force_n": 8.495566368103104
+            }
+          },
+          "wheel_geometry_result": {
+            "FL": {
+              "center_w_m": [
+                0.4338485896587372,
+                0.07165451347827911,
+                0.050801634788513184
+              ],
+              "front_face_center_clearance_m": -0.08746358411479349,
+              "top_surface_wheel_bottom_clearance_m": -0.049188363552093536,
+              "contact_class": "GROUND",
+              "normal_force_n": 5.29460811614995
+            },
+            "FR": {
+              "center_w_m": [
+                0.5802923440933228,
+                -0.3256782591342926,
+                0.09968182444572449
+              ],
+              "front_face_center_clearance_m": 0.05898017031979208,
+              "top_surface_wheel_bottom_clearance_m": -0.0003081738948822327,
+              "contact_class": "OBSTACLE_TOP",
+              "normal_force_n": 7.804752826690744
+            },
+            "RL": {
+              "center_w_m": [
+                -0.1114993467926979,
+                0.0708647221326828,
+                0.05023444443941116
+              ],
+              "front_face_center_clearance_m": -0.6328115205662286,
+              "top_surface_wheel_bottom_clearance_m": -0.04975555390119556,
+              "contact_class": "GROUND",
+              "normal_force_n": 8.605484962463457
+            },
+            "RR": {
+              "center_w_m": [
+                -0.09162106364965439,
+                -0.32620108127593994,
+                0.04976854473352432
+              ],
+              "front_face_center_clearance_m": -0.6129332374231851,
+              "top_surface_wheel_bottom_clearance_m": -0.0502214536070824,
+              "contact_class": "GROUND",
+              "normal_force_n": 6.295256614685115
+            }
+          },
+          "root_start_position_w_m": [
+            0.1667136251926422,
+            -0.0029017403721809387,
+            0.08402330428361893
+          ],
+          "root_result_position_w_m": [
+            0.21188019216060638,
+            -0.0043418630957603455,
+            0.09106390178203583
+          ]
+        }
+      },
+      "completion_latency_s": 0.0,
+      "next_state_reason": "The FL unload workspace matches the v010 entry envelope without a force-only hard gate."
+    },
+    {
+      "state_id": "P05",
+      "macro_phase": 5,
+      "state_name": "FL_ACTIVE_LIFT_AND_PLACE",
+      "physical_purpose": "Actively lift FL, clear the front plane, and commit the placement posture; top load latches during the immediately continuous P06 wheel advance.",
+      "reference_steps": [
+        7,
+        8,
+        9
+      ],
+      "reference_events": [
+        [
+          7,
+          0
+        ],
+        [
+          7,
+          1
+        ],
+        [
+          7,
+          2
+        ],
+        [
+          7,
+          3
+        ],
+        [
+          7,
+          4
+        ],
+        [
+          7,
+          5
+        ],
+        [
+          7,
+          6
+        ],
+        [
+          7,
+          7
+        ],
+        [
+          7,
+          8
+        ],
+        [
+          7,
+          9
+        ],
+        [
+          7,
+          10
+        ],
+        [
+          7,
+          11
+        ],
+        [
+          8,
+          0
+        ],
+        [
+          8,
+          1
+        ],
+        [
+          8,
+          2
+        ],
+        [
+          9,
+          0
+        ],
+        [
+          9,
+          1
+        ],
+        [
+          9,
+          2
+        ],
+        [
+          9,
+          3
+        ],
+        [
+          9,
+          4
+        ],
+        [
+          9,
+          5
+        ],
+        [
+          9,
+          6
+        ],
+        [
+          9,
+          7
+        ],
+        [
+          9,
+          8
+        ]
+      ],
+      "active_duration_s": 9.733333333332784,
+      "start_full12": [
+        0.0,
+        -22.9,
+        0.0,
+        45.9,
+        6.9,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "end_full12": [
+        22.8,
+        -13.4,
+        0.0,
+        45.9,
+        6.9,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "delta_full12": [
+        22.8,
+        9.499999999999998,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "active_channels": [
+        "front_left_hip",
+        "front_left_knee",
+        "front_left_ankle",
+        "front_right_ankle",
+        "rear_left_ankle",
+        "rear_right_ankle"
+      ],
+      "atomic_groups": [
+        {
+          "time_s": 0.8666666666666174,
+          "channels": [
+            "front_left_ankle",
+            "front_right_ankle",
+            "rear_left_ankle",
+            "rear_right_ankle"
+          ],
+          "batch_id": "playback-fsm50-gate1-v010_20260806_220745_363972_manual-trial11-0adc798fc6-32-d1e9a3e9",
+          "same_physics_tick": true,
+          "atomic_batch_ack_valid": true,
+          "reference_applied_physics_tick": 2788,
+          "reference_first_motion_physics_tick": 2789,
+          "motion_start_skew_s": 0.0,
+          "active_until_next_waypoint_s": 8.199999999999534,
+          "source_full12_atomic": false
+        },
+        {
+          "time_s": 9.066666666666151,
+          "channels": [
+            "front_left_ankle",
+            "front_right_ankle",
+            "rear_left_ankle",
+            "rear_right_ankle"
+          ],
+          "batch_id": "playback-fsm50-gate1-v010_20260806_220745_363972_manual-trial11-0adc798fc6-33-5d0798c0",
+          "same_physics_tick": true,
+          "atomic_batch_ack_valid": true,
+          "reference_applied_physics_tick": 3772,
+          "reference_first_motion_physics_tick": 3773,
+          "motion_start_skew_s": 0.0,
+          "active_until_next_waypoint_s": 0.06666666666666288,
+          "source_full12_atomic": false
+        }
+      ],
+      "overlap_timing": [
+        {
+          "onset_s": 0.8666666666666174,
+          "end_s": 9.066666666666151,
+          "overlap_duration_s": 8.199999999999534,
+          "channels": [
+            "front_left_ankle",
+            "front_right_ankle",
+            "rear_left_ankle",
+            "rear_right_ankle"
+          ],
+          "evidence": "reference command launch intervals"
+        }
+      ],
+      "completion_event": "fl_front_cleared_and_placement_committed",
+      "completion_evidence": {
+        "required_latched_leg_events": [
+          {
+            "leg": "FL",
+            "event": "FRONT_FACE_CLEARED",
+            "sim_time_s": 28.449999999999026,
+            "physics_tick": 3414,
+            "contact_class": "AIR",
+            "normal_force_n": 0.0,
+            "front_face_center_clearance_m": 0.0020046864254439356,
+            "top_surface_wheel_bottom_clearance_m": 0.05369834303855893,
+            "wheel_center_w_m": [
+              0.5233168601989746,
+              0.07621465623378754,
+              0.15368834137916565
+            ],
+            "relative_to_phase_start_s": 6.0833333333329875,
+            "relative_to_motion_end_s": -3.649999999999796,
+            "latched": true
+          }
+        ],
+        "sensor_completion_latency_after_motion_s": 0.0,
+        "uses_event_history_not_final_contact_snapshot": true,
+        "live_sensor_predicates": [
+          "FL hip/knee reference-like active delta",
+          "latched FL FRONT_FACE_CLEARED",
+          "placement command endpoint reached"
+        ],
+        "next_state_safe_reason": "FL has actively cleared the front plane and reached its placement posture; P06 continues wheel motion immediately, without a hold, to latch top load.",
+        "reference_observed": {
+          "active_channel_actual_start": {
+            "front_left_hip": 0.6255769994010414,
+            "front_left_knee": -13.202759584322282,
+            "front_left_ankle": -0.03516954183578491,
+            "front_right_ankle": -0.08971095085144043,
+            "rear_left_ankle": 0.15278080105781555,
+            "rear_right_ankle": -0.038321997970342636
+          },
+          "active_channel_actual_motion_readback": {
+            "front_left_hip": 28.761193923733078,
+            "front_left_knee": -12.444958633645829,
+            "front_left_ankle": -0.00028526547248475254,
+            "front_right_ankle": -0.16680055856704712,
+            "rear_left_ankle": 0.07970354706048965,
+            "rear_right_ankle": -0.030692026019096375
+          },
+          "active_channel_actual_result_readback": {
+            "front_left_hip": 26.12578592305117,
+            "front_left_knee": -12.331225738681361,
+            "front_left_ankle": -0.00047993927728384733,
+            "front_right_ankle": -0.1748153269290924,
+            "rear_left_ankle": 0.08474545180797577,
+            "rear_right_ankle": -0.022109057754278183
+          },
+          "wheel_geometry_motion_start": {
+            "FL": {
+              "center_w_m": [
+                0.4338005781173706,
+                0.07164052873849869,
+                0.05079112574458122
+              ],
+              "front_face_center_clearance_m": -0.08751159565616007,
+              "top_surface_wheel_bottom_clearance_m": -0.0491988725960255,
+              "contact_class": "GROUND",
+              "normal_force_n": 5.8283834457397985
+            },
+            "FR": {
+              "center_w_m": [
+                0.5802613496780396,
+                -0.3256973624229431,
+                0.09968595206737518
+              ],
+              "front_face_center_clearance_m": 0.05894917590450888,
+              "top_surface_wheel_bottom_clearance_m": -0.0003040462732315369,
+              "contact_class": "OBSTACLE_TOP",
+              "normal_force_n": 7.599217891693131
+            },
+            "RL": {
+              "center_w_m": [
+                -0.11151361465454102,
+                0.07084181904792786,
+                0.050227925181388855
+              ],
+              "front_face_center_clearance_m": -0.6328257884280717,
+              "top_surface_wheel_bottom_clearance_m": -0.049762073159217865,
+              "contact_class": "GROUND",
+              "normal_force_n": 8.517692565918045
+            },
+            "RR": {
+              "center_w_m": [
+                -0.09166083484888077,
+                -0.3262164890766144,
+                0.049769219011068344
+              ],
+              "front_face_center_clearance_m": -0.6129730086224114,
+              "top_surface_wheel_bottom_clearance_m": -0.050220779329538376,
+              "contact_class": "GROUND",
+              "normal_force_n": 6.595592975616515
+            }
+          },
+          "wheel_geometry_motion_readback": {
+            "FL": {
+              "center_w_m": [
+                0.6119860410690308,
+                0.07364672422409058,
+                0.11306504160165787
+              ],
+              "front_face_center_clearance_m": 0.09067386729550009,
+              "top_surface_wheel_bottom_clearance_m": 0.013075043261051147,
+              "contact_class": "AIR",
+              "normal_force_n": 0.0
+            },
+            "FR": {
+              "center_w_m": [
+                0.6997633576393127,
+                -0.3263602554798126,
+                0.09901387989521027
+              ],
+              "front_face_center_clearance_m": 0.17845118386578207,
+              "top_surface_wheel_bottom_clearance_m": -0.0009761184453964539,
+              "contact_class": "OBSTACLE_TOP",
+              "normal_force_n": 13.260266427340417
+            },
+            "RL": {
+              "center_w_m": [
+                0.008583578281104565,
+                0.06941672414541245,
+                0.05066601559519768
+              ],
+              "front_face_center_clearance_m": -0.5127285954924261,
+              "top_surface_wheel_bottom_clearance_m": -0.04932398274540904,
+              "contact_class": "GROUND",
+              "normal_force_n": 15.621724128723285
+            },
+            "RR": {
+              "center_w_m": [
+                0.02477923221886158,
+                -0.3275340795516968,
+                0.04927089437842369
+              ],
+              "front_face_center_clearance_m": -0.4965329415546691,
+              "top_surface_wheel_bottom_clearance_m": -0.05071910396218303,
+              "contact_class": "AIR",
+              "normal_force_n": 0.7198042273521488
+            }
+          },
+          "wheel_geometry_result": {
+            "FL": {
+              "center_w_m": [
+                0.6080508232116699,
+                0.07331933081150055,
+                0.10575202107429504
+              ],
+              "front_face_center_clearance_m": 0.08673864943813925,
+              "top_surface_wheel_bottom_clearance_m": 0.005762022733688324,
+              "contact_class": "AIR",
+              "normal_force_n": 0.0
+            },
+            "FR": {
+              "center_w_m": [
+                0.6997613906860352,
+                -0.32635530829429626,
+                0.09901229292154312
+              ],
+              "front_face_center_clearance_m": 0.17844921691250448,
+              "top_surface_wheel_bottom_clearance_m": -0.0009777054190635986,
+              "contact_class": "OBSTACLE_TOP",
+              "normal_force_n": 12.869031196677353
+            },
+            "RL": {
+              "center_w_m": [
+                0.008550280705094337,
+                0.06942153722047806,
+                0.0506642684340477
+              ],
+              "front_face_center_clearance_m": -0.5127618930684363,
+              "top_surface_wheel_bottom_clearance_m": -0.04932572990655902,
+              "contact_class": "GROUND",
+              "normal_force_n": 15.14837551116957
+            },
+            "RR": {
+              "center_w_m": [
+                0.024778250604867935,
+                -0.3275316059589386,
+                0.049270521849393845
+              ],
+              "front_face_center_clearance_m": -0.49653392316866274,
+              "top_surface_wheel_bottom_clearance_m": -0.050719476491212875,
+              "contact_class": "AIR",
+              "normal_force_n": 1.1645730733871564
+            }
+          },
+          "root_start_position_w_m": [
+            0.21172678470611572,
+            -0.004365295171737671,
+            0.09113343060016632
+          ],
+          "root_result_position_w_m": [
+            0.32780978083610535,
+            -0.005536235868930817,
+            0.09068641066551208
+          ]
+        }
+      },
+      "completion_latency_s": 0.0,
+      "next_state_reason": "FL has actively cleared the front plane and reached its placement posture; P06 continues wheel motion immediately, without a hold, to latch top load."
+    },
+    {
+      "state_id": "P06",
+      "macro_phase": 6,
+      "state_name": "FRONT_PAIR_ADVANCE",
+      "physical_purpose": "Continue the v010 wheel relation without a hold, latch FL obstacle-top load, and advance until the rear pair nears the edge.",
+      "reference_steps": [
+        10
+      ],
+      "reference_events": [
+        [
+          10,
+          0
+        ],
+        [
+          10,
+          1
+        ],
+        [
+          10,
+          2
+        ]
+      ],
+      "active_duration_s": 25.533333333331882,
+      "start_full12": [
+        22.8,
+        -13.4,
+        0.0,
+        45.9,
+        6.9,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "end_full12": [
+        22.8,
+        -13.4,
+        0.0,
+        45.9,
+        6.9,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "delta_full12": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "active_channels": [
+        "front_left_ankle",
+        "front_right_ankle",
+        "rear_left_ankle",
+        "rear_right_ankle"
+      ],
+      "atomic_groups": [
+        {
+          "time_s": 0.0,
+          "channels": [
+            "front_left_ankle",
+            "front_right_ankle",
+            "rear_left_ankle",
+            "rear_right_ankle"
+          ],
+          "batch_id": "playback-fsm50-gate1-v010_20260806_220745_363972_manual-trial11-0adc798fc6-42-295f82a9",
+          "same_physics_tick": true,
+          "atomic_batch_ack_valid": true,
+          "reference_applied_physics_tick": 3860,
+          "reference_first_motion_physics_tick": 3861,
+          "motion_start_skew_s": 0.0,
+          "active_until_next_waypoint_s": 25.533333333331882,
+          "source_full12_atomic": false
+        },
+        {
+          "time_s": 25.533333333331882,
+          "channels": [
+            "front_left_ankle",
+            "front_right_ankle",
+            "rear_left_ankle",
+            "rear_right_ankle"
+          ],
+          "batch_id": "playback-fsm50-gate1-v010_20260806_220745_363972_manual-trial11-0adc798fc6-43-288778de",
+          "same_physics_tick": true,
+          "atomic_batch_ack_valid": true,
+          "reference_applied_physics_tick": 6924,
+          "reference_first_motion_physics_tick": 6925,
+          "motion_start_skew_s": 0.0,
+          "active_until_next_waypoint_s": 0.0,
+          "source_full12_atomic": false
+        }
+      ],
+      "overlap_timing": [
+        {
+          "onset_s": 0.0,
+          "end_s": 25.533333333331882,
+          "overlap_duration_s": 25.533333333331882,
+          "channels": [
+            "front_left_ankle",
+            "front_right_ankle",
+            "rear_left_ankle",
+            "rear_right_ankle"
+          ],
+          "evidence": "reference command launch intervals"
+        }
+      ],
+      "completion_event": "fl_top_loaded_and_rear_pair_pre_edge",
+      "completion_evidence": {
+        "required_latched_leg_events": [
+          {
+            "leg": "FL",
+            "event": "TOP_LOADED",
+            "sim_time_s": 32.24999999999881,
+            "physics_tick": 3870,
+            "contact_class": "OBSTACLE_TOP",
+            "normal_force_n": 5.993754863739141,
+            "front_face_center_clearance_m": 0.08469564063381796,
+            "top_surface_wheel_bottom_clearance_m": 0.0005671426653861694,
+            "wheel_center_w_m": [
+              0.6060078144073486,
+              0.07291846722364426,
+              0.10055714100599289
+            ],
+            "relative_to_phase_start_s": 0.0833333333333286,
+            "relative_to_motion_end_s": -25.449999999998553,
+            "latched": true
+          }
+        ],
+        "sensor_completion_latency_after_motion_s": 0.0,
+        "uses_event_history_not_final_contact_snapshot": true,
+        "live_sensor_predicates": [
+          "latched FL TOP_LOADED",
+          "rear-pair front-plane distance matches reference pre-edge envelope",
+          "continuous wheel command relation preserved"
+        ],
+        "next_state_safe_reason": "FL top load is latched and the rear pair has reached the measured pre-edge geometry.",
+        "reference_observed": {
+          "active_channel_actual_start": {
+            "front_left_ankle": -0.00048164467443712056,
+            "front_right_ankle": -0.1756487637758255,
+            "rear_left_ankle": 0.08559047430753708,
+            "rear_right_ankle": -0.02296890877187252
+          },
+          "active_channel_actual_motion_readback": {
+            "front_left_ankle": -0.06283886730670929,
+            "front_right_ankle": -0.03837531805038452,
+            "rear_left_ankle": 0.040197934955358505,
+            "rear_right_ankle": 0.03795761987566948
+          },
+          "active_channel_actual_result_readback": {
+            "front_left_ankle": -0.04622725397348404,
+            "front_right_ankle": -0.0556923933327198,
+            "rear_left_ankle": 0.03686167672276497,
+            "rear_right_ankle": 0.02711913362145424
+          },
+          "wheel_geometry_motion_start": {
+            "FL": {
+              "center_w_m": [
+                0.6074655055999756,
+                0.073274627327919,
+                0.10473327338695526
+              ],
+              "front_face_center_clearance_m": 0.08615333182644491,
+              "top_surface_wheel_bottom_clearance_m": 0.004743275046348541,
+              "contact_class": "AIR",
+              "normal_force_n": 0.0
+            },
+            "FR": {
+              "center_w_m": [
+                0.6997607350349426,
+                -0.32635417580604553,
+                0.09901196509599686
+              ],
+              "front_face_center_clearance_m": 0.17844856126141195,
+              "top_surface_wheel_bottom_clearance_m": -0.0009780332446098633,
+              "contact_class": "OBSTACLE_TOP",
+              "normal_force_n": 12.842977051328882
+            },
+            "RL": {
+              "center_w_m": [
+                0.008544175885617733,
+                0.06942282617092133,
+                0.05066395178437233
+              ],
+              "front_face_center_clearance_m": -0.5127679978879129,
+              "top_surface_wheel_bottom_clearance_m": -0.04932604655623439,
+              "contact_class": "GROUND",
+              "normal_force_n": 15.13388919830336
+            },
+            "RR": {
+              "center_w_m": [
+                0.024777095764875412,
+                -0.3275309205055237,
+                0.04927054047584534
+              ],
+              "front_face_center_clearance_m": -0.49653507800865526,
+              "top_surface_wheel_bottom_clearance_m": -0.05071945786476138,
+              "contact_class": "AIR",
+              "normal_force_n": 1.1927982568740954
+            }
+          },
+          "wheel_geometry_motion_readback": {
+            "FL": {
+              "center_w_m": [
+                0.9748823046684265,
+                0.07099342346191406,
+                0.1004703938961029
+              ],
+              "front_face_center_clearance_m": 0.45357013089489584,
+              "top_surface_wheel_bottom_clearance_m": 0.0004803955554961853,
+              "contact_class": "OBSTACLE_TOP",
+              "normal_force_n": 5.510272818567782
+            },
+            "FR": {
+              "center_w_m": [
+                1.0727477073669434,
+                -0.32802915573120117,
+                0.09952633827924728
+              ],
+              "front_face_center_clearance_m": 0.5514355335934127,
+              "top_surface_wheel_bottom_clearance_m": -0.00046366006135943605,
+              "contact_class": "OBSTACLE_TOP",
+              "normal_force_n": 8.580546379089652
+            },
+            "RL": {
+              "center_w_m": [
+                0.38433799147605896,
+                0.06607669591903687,
+                0.05050967261195183
+              ],
+              "front_face_center_clearance_m": -0.1369741822974717,
+              "top_surface_wheel_bottom_clearance_m": -0.04948032572865489,
+              "contact_class": "GROUND",
+              "normal_force_n": 8.468826293945389
+            },
+            "RR": {
+              "center_w_m": [
+                0.3988405168056488,
+                -0.330655962228775,
+                0.04974555969238281
+              ],
+              "front_face_center_clearance_m": -0.12247165696788187,
+              "top_surface_wheel_bottom_clearance_m": -0.05024443864822391,
+              "contact_class": "GROUND",
+              "normal_force_n": 6.1305341720581605
+            }
+          },
+          "wheel_geometry_result": {
+            "FL": {
+              "center_w_m": [
+                0.9749040603637695,
+                0.0709911659359932,
+                0.1004689633846283
+              ],
+              "front_face_center_clearance_m": 0.45359188659023886,
+              "top_surface_wheel_bottom_clearance_m": 0.0004789650440215759,
+              "contact_class": "OBSTACLE_TOP",
+              "normal_force_n": 5.648271449124848
+            },
+            "FR": {
+              "center_w_m": [
+                1.0727885961532593,
+                -0.3280318081378937,
+                0.09952347725629807
+              ],
+              "front_face_center_clearance_m": 0.5514764223797286,
+              "top_surface_wheel_bottom_clearance_m": -0.0004665210843086548,
+              "contact_class": "OBSTACLE_TOP",
+              "normal_force_n": 7.535168186839196
+            },
+            "RL": {
+              "center_w_m": [
+                0.38434064388275146,
+                0.0660790279507637,
+                0.050508853048086166
+              ],
+              "front_face_center_clearance_m": -0.1369715298907792,
+              "top_surface_wheel_bottom_clearance_m": -0.049481145292520554,
+              "contact_class": "GROUND",
+              "normal_force_n": 8.565278053283768
+            },
+            "RR": {
+              "center_w_m": [
+                0.3988635241985321,
+                -0.3306533992290497,
+                0.04974410682916641
+              ],
+              "front_face_center_clearance_m": -0.12244864957499857,
+              "top_surface_wheel_bottom_clearance_m": -0.05024589151144031,
+              "contact_class": "GROUND",
+              "normal_force_n": 6.924122810363832
+            }
+          },
+          "root_start_position_w_m": [
+            0.32780471444129944,
+            -0.005534939467906952,
+            0.09067749232053757
+          ],
+          "root_result_position_w_m": [
+            0.7019504904747009,
+            -0.008131802082061768,
+            0.094180628657341
+          ]
+        }
+      },
+      "completion_latency_s": 0.0,
+      "next_state_reason": "FL top load is latched and the rear pair has reached the measured pre-edge geometry."
+    },
+    {
+      "state_id": "P07",
+      "macro_phase": 7,
+      "state_name": "REAR_ENTRY_ALIGNMENT",
+      "physical_purpose": "Align the live front/rear geometry to the v010 first-rear entry without leaving the 15 percent envelope.",
+      "reference_steps": [
+        11,
+        12,
+        13
+      ],
+      "reference_events": [
+        [
+          11,
+          0
+        ],
+        [
+          11,
+          1
+        ],
+        [
+          11,
+          2
+        ],
+        [
+          11,
+          3
+        ],
+        [
+          11,
+          4
+        ],
+        [
+          12,
+          0
+        ],
+        [
+          12,
+          1
+        ],
+        [
+          12,
+          2
+        ],
+        [
+          13,
+          0
+        ],
+        [
+          13,
+          1
+        ],
+        [
+          13,
+          2
+        ],
+        [
+          13,
+          3
+        ],
+        [
+          13,
+          4
+        ],
+        [
+          13,
+          5
+        ]
+      ],
+      "active_duration_s": 1.666666666666572,
+      "start_full12": [
+        22.8,
+        -13.4,
+        0.0,
+        45.9,
+        6.9,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "end_full12": [
+        38.6,
+        -13.4,
+        0.0,
+        31.1,
+        6.9,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "delta_full12": [
+        15.8,
+        0.0,
+        0.0,
+        -14.799999999999997,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "active_channels": [
+        "front_left_hip",
+        "front_right_knee",
+        "front_right_ankle"
+      ],
+      "atomic_groups": [
+        {
+          "time_s": 0.3333333333333144,
+          "channels": [
+            "front_left_hip",
+            "front_left_knee",
+            "front_right_hip",
+            "front_right_knee",
+            "rear_left_hip",
+            "rear_left_knee",
+            "rear_right_hip",
+            "rear_right_knee",
+            "front_right_ankle"
+          ],
+          "batch_id": "playback-fsm50-gate1-v010_20260806_220745_363972_manual-trial11-0adc798fc6-48-faa350f8",
+          "same_physics_tick": true,
+          "atomic_batch_ack_valid": true,
+          "reference_applied_physics_tick": 6972,
+          "reference_first_motion_physics_tick": 6973,
+          "motion_start_skew_s": 0.0,
+          "active_until_next_waypoint_s": 0.9999999999999432,
+          "source_full12_atomic": true,
+          "source_step": 12,
+          "source_event": 0,
+          "source_batch_id": "cf2796644ae04ddb9f358c923a7796cb",
+          "required_runtime_channels": [
+            "front_left_hip",
+            "front_left_knee",
+            "front_right_hip",
+            "front_right_knee",
+            "rear_left_hip",
+            "rear_left_knee",
+            "rear_right_hip",
+            "rear_right_knee",
+            "front_left_ankle",
+            "front_right_ankle",
+            "rear_left_ankle",
+            "rear_right_ankle"
+          ],
+          "source_changed_channels": [
+            "front_right_knee",
+            "front_right_ankle"
+          ],
+          "source_before_full12": [
+            49.2,
+            -13.4,
+            0.0,
+            45.9,
+            6.9,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "source_target_full12": [
+            49.2,
+            -13.4,
+            0.0,
+            31.1,
+            6.9,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            -0.63,
+            0.0,
+            0.0
+          ],
+          "servo_velocity_deg_s": 150.0
+        },
+        {
+          "time_s": 1.3333333333332575,
+          "channels": [
+            "front_left_ankle",
+            "front_right_ankle",
+            "rear_left_ankle",
+            "rear_right_ankle"
+          ],
+          "batch_id": "playback-fsm50-gate1-v010_20260806_220745_363972_manual-trial11-0adc798fc6-49-9862f881",
+          "same_physics_tick": true,
+          "atomic_batch_ack_valid": true,
+          "reference_applied_physics_tick": 7092,
+          "reference_first_motion_physics_tick": 7093,
+          "motion_start_skew_s": 0.0,
+          "active_until_next_waypoint_s": 0.06666666666666288,
+          "source_full12_atomic": false
+        }
+      ],
+      "overlap_timing": [
+        {
+          "onset_s": 0.3333333333333144,
+          "end_s": 0.43199999999998107,
+          "overlap_duration_s": 0.09866666666666668,
+          "channels": [
+            "front_right_knee",
+            "front_right_ankle"
+          ],
+          "evidence": "reference command launch intervals"
+        }
+      ],
+      "completion_event": "rear_entry_aligned",
+      "completion_evidence": {
+        "required_latched_leg_events": [],
+        "sensor_completion_latency_after_motion_s": 0.0,
+        "uses_event_history_not_final_contact_snapshot": false,
+        "live_sensor_predicates": [
+          "joint endpoint within reference entry envelope",
+          "rear wheel geometry aligned to v010 entry",
+          "no BODY contact"
+        ],
+        "next_state_safe_reason": "The rear-entry pose and wheel relation match the v010 first-rear entry envelope.",
+        "reference_observed": {
+          "active_channel_actual_start": {
+            "front_left_hip": 21.866051362260798,
+            "front_right_knee": 45.09745316401721,
+            "front_right_ankle": -0.056107595562934875
+          },
+          "active_channel_actual_motion_readback": {
+            "front_left_hip": 41.785326482193554,
+            "front_right_knee": 31.79156164191537,
+            "front_right_ankle": 0.026422595605254173
+          },
+          "active_channel_actual_result_readback": {
+            "front_left_hip": 40.23761244645784,
+            "front_right_knee": 31.791715321171694,
+            "front_right_ankle": 0.012575523927807808
+          },
+          "wheel_geometry_motion_start": {
+            "FL": {
+              "center_w_m": [
+                0.9749068021774292,
+                0.07099097222089767,
+                0.10046859085559845
+              ],
+              "front_face_center_clearance_m": 0.4535946284038985,
+              "top_surface_wheel_bottom_clearance_m": 0.0004785925149917297,
+              "contact_class": "OBSTACLE_TOP",
+              "normal_force_n": 5.657383791581408
+            },
+            "FR": {
+              "center_w_m": [
+                1.072793960571289,
+                -0.3280319273471832,
+                0.09952312707901001
+              ],
+              "front_face_center_clearance_m": 0.5514817867977584,
+              "top_surface_wheel_bottom_clearance_m": -0.0004668712615967102,
+              "contact_class": "OBSTACLE_TOP",
+              "normal_force_n": 7.527743229933348
+            },
+            "RL": {
+              "center_w_m": [
+                0.3843376636505127,
+                0.06607891619205475,
+                0.05050857365131378
+              ],
+              "front_face_center_clearance_m": -0.13697451012301798,
+              "top_surface_wheel_bottom_clearance_m": -0.04948142468929294,
+              "contact_class": "GROUND",
+              "normal_force_n": 8.559062957763748
+            },
+            "RR": {
+              "center_w_m": [
+                0.39886611700057983,
+                -0.33065345883369446,
+                0.04974406585097313
+              ],
+              "front_face_center_clearance_m": -0.12244605677295084,
+              "top_surface_wheel_bottom_clearance_m": -0.05024593248963359,
+              "contact_class": "GROUND",
+              "normal_force_n": 6.931532859802308
+            }
+          },
+          "wheel_geometry_motion_readback": {
+            "FL": {
+              "center_w_m": [
+                0.9983094930648804,
+                0.07430915534496307,
+                0.1625952273607254
+              ],
+              "front_face_center_clearance_m": 0.4769973192913497,
+              "top_surface_wheel_bottom_clearance_m": 0.06260522902011868,
+              "contact_class": "AIR",
+              "normal_force_n": 0.0
+            },
+            "FR": {
+              "center_w_m": [
+                1.0488104820251465,
+                -0.3276650905609131,
+                0.0991789773106575
+              ],
+              "front_face_center_clearance_m": 0.5274983082516158,
+              "top_surface_wheel_bottom_clearance_m": -0.0008110210299492188,
+              "contact_class": "OBSTACLE_TOP",
+              "normal_force_n": 13.459782568706848
+            },
+            "RL": {
+              "center_w_m": [
+                0.38381093740463257,
+                0.06634011119604111,
+                0.050551433116197586
+              ],
+              "front_face_center_clearance_m": -0.1375012363688981,
+              "top_surface_wheel_bottom_clearance_m": -0.049438565224409134,
+              "contact_class": "GROUND",
+              "normal_force_n": 14.57104015350355
+            },
+            "RR": {
+              "center_w_m": [
+                0.39749568700790405,
+                -0.3305055499076843,
+                0.049702245742082596
+              ],
+              "front_face_center_clearance_m": -0.12381648676562662,
+              "top_surface_wheel_bottom_clearance_m": -0.050287752598524124,
+              "contact_class": "AIR",
+              "normal_force_n": 1.1616274118423566
+            }
+          },
+          "wheel_geometry_result": {
+            "FL": {
+              "center_w_m": [
+                0.9970094561576843,
+                0.07409538328647614,
+                0.15781544148921967
+              ],
+              "front_face_center_clearance_m": 0.47569728238415365,
+              "top_surface_wheel_bottom_clearance_m": 0.057825443148612946,
+              "contact_class": "AIR",
+              "normal_force_n": 0.0
+            },
+            "FR": {
+              "center_w_m": [
+                1.0488080978393555,
+                -0.3276609182357788,
+                0.0991797223687172
+              ],
+              "front_face_center_clearance_m": 0.5274959240658248,
+              "top_surface_wheel_bottom_clearance_m": -0.0008102759718895264,
+              "contact_class": "OBSTACLE_TOP",
+              "normal_force_n": 13.220571931407092
+            },
+            "RL": {
+              "center_w_m": [
+                0.3838350772857666,
+                0.06634331494569778,
+                0.050557613372802734
+              ],
+              "front_face_center_clearance_m": -0.13747709648776407,
+              "top_surface_wheel_bottom_clearance_m": -0.049432384967803986,
+              "contact_class": "GROUND",
+              "normal_force_n": 14.234454154968391
+            },
+            "RR": {
+              "center_w_m": [
+                0.39750877022743225,
+                -0.3305041790008545,
+                0.04970141127705574
+              ],
+              "front_face_center_clearance_m": -0.12380340354609842,
+              "top_surface_wheel_bottom_clearance_m": -0.05028858706355098,
+              "contact_class": "AIR",
+              "normal_force_n": 1.409013986587537
+            }
+          },
+          "root_start_position_w_m": [
+            0.7019534707069397,
+            -0.008132077753543854,
+            0.09418030828237534
+          ],
+          "root_result_position_w_m": [
+            0.7008882164955139,
+            -0.00762166827917099,
+            0.09571192413568497
+          ]
+        }
+      },
+      "completion_latency_s": 0.0,
+      "next_state_reason": "The rear-entry pose and wheel relation match the v010 first-rear entry envelope."
+    },
+    {
+      "state_id": "P08",
+      "macro_phase": 8,
+      "state_name": "FIRST_REAR_LOAD_TRANSFER",
+      "physical_purpose": "Load FL and prepare the FR+RL support structure that unloads RR first.",
+      "reference_steps": [
+        14
+      ],
+      "reference_events": [
+        [
+          14,
+          0
+        ],
+        [
+          14,
+          1
+        ],
+        [
+          14,
+          2
+        ],
+        [
+          14,
+          3
+        ],
+        [
+          14,
+          4
+        ],
+        [
+          14,
+          5
+        ],
+        [
+          14,
+          6
+        ],
+        [
+          14,
+          7
+        ]
+      ],
+      "active_duration_s": 0.39999999999997726,
+      "start_full12": [
+        38.6,
+        -13.4,
+        0.0,
+        31.1,
+        6.9,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "end_full12": [
+        38.6,
+        -13.4,
+        0.0,
+        31.1,
+        31.2,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "delta_full12": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        24.299999999999997,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "active_channels": [
+        "rear_left_hip"
+      ],
+      "atomic_groups": [],
+      "overlap_timing": [],
+      "completion_event": "rr_unload_ready",
+      "completion_evidence": {
+        "required_latched_leg_events": [],
+        "sensor_completion_latency_after_motion_s": 0.0,
+        "uses_event_history_not_final_contact_snapshot": false,
+        "live_sensor_predicates": [
+          "v010 RL-hip support/load-transfer endpoint",
+          "RR wheel geometry and AIR/contact history compatible with subsequent active lift",
+          "support quantities diagnostic only"
+        ],
+        "next_state_safe_reason": "The v010 FR+RL support geometry and active RR-unload preparation are present.",
+        "reference_observed": {
+          "active_channel_actual_start": {
+            "rear_left_hip": 7.73897077194146
+          },
+          "active_channel_actual_motion_readback": {
+            "rear_left_hip": 26.21615219391628
+          },
+          "active_channel_actual_result_readback": {
+            "rear_left_hip": 28.472554705101476
+          },
+          "wheel_geometry_motion_start": {
+            "FL": {
+              "center_w_m": [
+                0.9967999458312988,
+                0.07406311482191086,
+                0.1570802479982376
+              ],
+              "front_face_center_clearance_m": 0.47548777205776815,
+              "top_surface_wheel_bottom_clearance_m": 0.05709024965763089,
+              "contact_class": "AIR",
+              "normal_force_n": 0.0
+            },
+            "FR": {
+              "center_w_m": [
+                1.04880952835083,
+                -0.3276600241661072,
+                0.09917920082807541
+              ],
+              "front_face_center_clearance_m": 0.5274973545772994,
+              "top_surface_wheel_bottom_clearance_m": -0.000810797512531311,
+              "contact_class": "OBSTACLE_TOP",
+              "normal_force_n": 13.253910701981553
+            },
+            "RL": {
+              "center_w_m": [
+                0.3838387429714203,
+                0.06634396314620972,
+                0.05055875703692436
+              ],
+              "front_face_center_clearance_m": -0.13747343080211039,
+              "top_surface_wheel_bottom_clearance_m": -0.04943124130368236,
+              "contact_class": "GROUND",
+              "normal_force_n": 14.270760536193976
+            },
+            "RR": {
+              "center_w_m": [
+                0.39751213788986206,
+                -0.33050400018692017,
+                0.04970134422183037
+              ],
+              "front_face_center_clearance_m": -0.12380003588366861,
+              "top_surface_wheel_bottom_clearance_m": -0.05028865411877635,
+              "contact_class": "AIR",
+              "normal_force_n": 1.4034576416015752
+            }
+          },
+          "wheel_geometry_motion_readback": {
+            "FL": {
+              "center_w_m": [
+                1.032861351966858,
+                0.0900280550122261,
+                0.143095925450325
+              ],
+              "front_face_center_clearance_m": 0.5115491781933272,
+              "top_surface_wheel_bottom_clearance_m": 0.04310592710971829,
+              "contact_class": "AIR",
+              "normal_force_n": 0.0
+            },
+            "FR": {
+              "center_w_m": [
+                1.0588902235031128,
+                -0.3220459222793579,
+                0.09818167239427567
+              ],
+              "front_face_center_clearance_m": 0.5375780497295821,
+              "top_surface_wheel_bottom_clearance_m": -0.0018083259463310547,
+              "contact_class": "OBSTACLE_TOP",
+              "normal_force_n": 10.946648597717328
+            },
+            "RL": {
+              "center_w_m": [
+                0.3921961784362793,
+                0.0723365917801857,
+                0.05236983299255371
+              ],
+              "front_face_center_clearance_m": -0.12911599533725138,
+              "top_surface_wheel_bottom_clearance_m": -0.04762016534805301,
+              "contact_class": "GROUND",
+              "normal_force_n": 14.648898124694956
+            },
+            "RR": {
+              "center_w_m": [
+                0.4459477663040161,
+                -0.33001190423965454,
+                0.0527263768017292
+              ],
+              "front_face_center_clearance_m": -0.07536440746951456,
+              "top_surface_wheel_bottom_clearance_m": -0.04726362153887752,
+              "contact_class": "AIR",
+              "normal_force_n": 0.0
+            }
+          },
+          "wheel_geometry_result": {
+            "FL": {
+              "center_w_m": [
+                1.037140965461731,
+                0.091537706553936,
+                0.13624167442321777
+              ],
+              "front_face_center_clearance_m": 0.5158287916882003,
+              "top_surface_wheel_bottom_clearance_m": 0.03625167608261105,
+              "contact_class": "AIR",
+              "normal_force_n": 0.0
+            },
+            "FR": {
+              "center_w_m": [
+                1.0617908239364624,
+                -0.3215486705303192,
+                0.09810196608304977
+              ],
+              "front_face_center_clearance_m": 0.5404786501629317,
+              "top_surface_wheel_bottom_clearance_m": -0.0018880322575569458,
+              "contact_class": "OBSTACLE_TOP",
+              "normal_force_n": 13.360000610352081
+            },
+            "RL": {
+              "center_w_m": [
+                0.3931785821914673,
+                0.07338134944438934,
+                0.05248884856700897
+              ],
+              "front_face_center_clearance_m": -0.1281335915820634,
+              "top_surface_wheel_bottom_clearance_m": -0.04750114977359775,
+              "contact_class": "GROUND",
+              "normal_force_n": 16.074413299560693
+            },
+            "RR": {
+              "center_w_m": [
+                0.45023900270462036,
+                -0.33015522360801697,
+                0.05409335717558861
+              ],
+              "front_face_center_clearance_m": -0.07107317106891031,
+              "top_surface_wheel_bottom_clearance_m": -0.04589664116501811,
+              "contact_class": "AIR",
+              "normal_force_n": 0.0
+            }
+          },
+          "root_start_position_w_m": [
+            0.700885534286499,
+            -0.007620818912982941,
+            0.09570490568876266
+          ],
+          "root_result_position_w_m": [
+            0.74849933385849,
+            -0.00016657263040542603,
+            0.07491562515497208
+          ]
+        }
+      },
+      "completion_latency_s": 0.0,
+      "next_state_reason": "The v010 FR+RL support geometry and active RR-unload preparation are present."
+    },
+    {
+      "state_id": "P09",
+      "macro_phase": 9,
+      "state_name": "RR_ACTIVE_LIFT_AND_PLACE",
+      "physical_purpose": "Actively lift RR, clear the front plane, and finish the v010 placement action that establishes RR top load.",
+      "reference_steps": [
+        15,
+        16,
+        17,
+        18
+      ],
+      "reference_events": [
+        [
+          15,
+          0
+        ],
+        [
+          15,
+          1
+        ],
+        [
+          15,
+          2
+        ],
+        [
+          15,
+          3
+        ],
+        [
+          15,
+          4
+        ],
+        [
+          15,
+          5
+        ],
+        [
+          15,
+          6
+        ],
+        [
+          15,
+          7
+        ],
+        [
+          15,
+          8
+        ],
+        [
+          15,
+          9
+        ],
+        [
+          15,
+          10
+        ],
+        [
+          15,
+          11
+        ],
+        [
+          15,
+          12
+        ],
+        [
+          15,
+          13
+        ],
+        [
+          15,
+          14
+        ],
+        [
+          15,
+          15
+        ],
+        [
+          16,
+          0
+        ],
+        [
+          16,
+          1
+        ],
+        [
+          16,
+          2
+        ],
+        [
+          16,
+          3
+        ],
+        [
+          16,
+          4
+        ],
+        [
+          16,
+          5
+        ],
+        [
+          16,
+          6
+        ],
+        [
+          16,
+          7
+        ],
+        [
+          16,
+          8
+        ],
+        [
+          16,
+          9
+        ],
+        [
+          16,
+          10
+        ],
+        [
+          16,
+          11
+        ],
+        [
+          16,
+          12
+        ],
+        [
+          17,
+          0
+        ],
+        [
+          17,
+          1
+        ],
+        [
+          17,
+          2
+        ],
+        [
+          18,
+          0
+        ],
+        [
+          18,
+          1
+        ],
+        [
+          18,
+          2
+        ]
+      ],
+      "active_duration_s": 7.200000000002284,
+      "start_full12": [
+        38.6,
+        -13.4,
+        0.0,
+        31.1,
+        31.2,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "end_full12": [
+        -18.5,
+        -31.4,
+        0.0,
+        31.1,
+        15.4,
+        19.4,
+        -6.9,
+        -37.8,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "delta_full12": [
+        -57.1,
+        -18.0,
+        0.0,
+        0.0,
+        -15.799999999999999,
+        19.4,
+        -6.9,
+        -37.8,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "active_channels": [
+        "front_left_hip",
+        "front_left_knee",
+        "rear_left_hip",
+        "rear_left_knee",
+        "rear_right_hip",
+        "rear_right_knee",
+        "front_left_ankle",
+        "front_right_ankle",
+        "rear_left_ankle",
+        "rear_right_ankle"
+      ],
+      "atomic_groups": [
+        {
+          "time_s": 1.9333333333332234,
+          "channels": [
+            "front_left_ankle",
+            "front_right_ankle",
+            "rear_left_ankle",
+            "rear_right_ankle"
+          ],
+          "batch_id": "playback-fsm50-gate1-v010_20260806_220745_363972_manual-trial11-0adc798fc6-89-231672c4",
+          "same_physics_tick": true,
+          "atomic_batch_ack_valid": true,
+          "reference_applied_physics_tick": 7428,
+          "reference_first_motion_physics_tick": 7429,
+          "motion_start_skew_s": 0.0,
+          "active_until_next_waypoint_s": 3.400000000000908,
+          "source_full12_atomic": false
+        },
+        {
+          "time_s": 5.3333333333341315,
+          "channels": [
+            "front_left_ankle",
+            "front_right_ankle",
+            "rear_left_ankle",
+            "rear_right_ankle"
+          ],
+          "batch_id": "playback-fsm50-gate1-v010_20260806_220745_363972_manual-trial11-0adc798fc6-90-205d0073",
+          "same_physics_tick": true,
+          "atomic_batch_ack_valid": true,
+          "reference_applied_physics_tick": 7836,
+          "reference_first_motion_physics_tick": 7837,
+          "motion_start_skew_s": 0.0,
+          "active_until_next_waypoint_s": 0.06666666666671972,
+          "source_full12_atomic": false
+        },
+        {
+          "time_s": 5.400000000000851,
+          "channels": [
+            "front_left_hip",
+            "front_left_knee",
+            "front_right_hip",
+            "front_right_knee",
+            "rear_left_hip",
+            "rear_left_knee",
+            "rear_right_hip",
+            "rear_right_knee",
+            "front_left_ankle"
+          ],
+          "batch_id": "playback-fsm50-gate1-v010_20260806_220745_363972_manual-trial11-0adc798fc6-91-9cb0cc79",
+          "same_physics_tick": true,
+          "atomic_batch_ack_valid": true,
+          "reference_applied_physics_tick": 7844,
+          "reference_first_motion_physics_tick": 7845,
+          "motion_start_skew_s": 0.0,
+          "active_until_next_waypoint_s": 1.8000000000014325,
+          "source_full12_atomic": true,
+          "source_step": 18,
+          "source_event": 0,
+          "source_batch_id": "e314b6bcdb7e4208bec2af255c0f6561",
+          "required_runtime_channels": [
+            "front_left_hip",
+            "front_left_knee",
+            "front_right_hip",
+            "front_right_knee",
+            "rear_left_hip",
+            "rear_left_knee",
+            "rear_right_hip",
+            "rear_right_knee",
+            "front_left_ankle",
+            "front_right_ankle",
+            "rear_left_ankle",
+            "rear_right_ankle"
+          ],
+          "source_changed_channels": [
+            "front_left_hip",
+            "front_left_knee",
+            "rear_left_hip",
+            "rear_left_knee",
+            "front_left_ankle"
+          ],
+          "source_before_full12": [
+            38.6,
+            -13.4,
+            0.0,
+            31.1,
+            31.2,
+            0.0,
+            -6.9,
+            -37.8,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "source_target_full12": [
+            -18.5,
+            -31.4,
+            0.0,
+            31.1,
+            15.4,
+            19.4,
+            -6.9,
+            -37.8,
+            -1.07,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "servo_velocity_deg_s": 150.0
+        },
+        {
+          "time_s": 7.200000000002284,
+          "channels": [
+            "front_left_ankle",
+            "front_right_ankle",
+            "rear_left_ankle",
+            "rear_right_ankle"
+          ],
+          "batch_id": "playback-fsm50-gate1-v010_20260806_220745_363972_manual-trial11-0adc798fc6-92-273a18d9",
+          "same_physics_tick": true,
+          "atomic_batch_ack_valid": true,
+          "reference_applied_physics_tick": 8060,
+          "reference_first_motion_physics_tick": 8061,
+          "motion_start_skew_s": 0.0,
+          "active_until_next_waypoint_s": 0.0,
+          "source_full12_atomic": false
+        }
+      ],
+      "overlap_timing": [
+        {
+          "onset_s": 1.9333333333332234,
+          "end_s": 5.3333333333341315,
+          "overlap_duration_s": 3.400000000000908,
+          "channels": [
+            "front_left_ankle",
+            "front_right_ankle",
+            "rear_left_ankle",
+            "rear_right_ankle"
+          ],
+          "evidence": "reference command launch intervals"
+        },
+        {
+          "onset_s": 5.400000000000851,
+          "end_s": 5.5053333333341845,
+          "overlap_duration_s": 0.10533333333333328,
+          "channels": [
+            "front_left_hip",
+            "front_left_knee",
+            "rear_left_hip",
+            "rear_left_knee",
+            "front_left_ankle"
+          ],
+          "evidence": "reference command launch intervals"
+        },
+        {
+          "onset_s": 5.5053333333341845,
+          "end_s": 5.520000000000851,
+          "overlap_duration_s": 0.014666666666666828,
+          "channels": [
+            "front_left_hip",
+            "front_left_knee",
+            "rear_left_knee",
+            "front_left_ankle"
+          ],
+          "evidence": "reference command launch intervals"
+        },
+        {
+          "onset_s": 5.520000000000851,
+          "end_s": 5.5293333333341845,
+          "overlap_duration_s": 0.009333333333333194,
+          "channels": [
+            "front_left_hip",
+            "rear_left_knee",
+            "front_left_ankle"
+          ],
+          "evidence": "reference command launch intervals"
+        },
+        {
+          "onset_s": 5.5293333333341845,
+          "end_s": 5.780666666667518,
+          "overlap_duration_s": 0.2513333333333332,
+          "channels": [
+            "front_left_hip",
+            "front_left_ankle"
+          ],
+          "evidence": "reference command launch intervals"
+        }
+      ],
+      "completion_event": "rr_top_loaded",
+      "completion_evidence": {
+        "required_latched_leg_events": [
+          {
+            "leg": "RR",
+            "event": "FRONT_FACE_CLEARED",
+            "sim_time_s": 61.64999999999714,
+            "physics_tick": 7398,
+            "contact_class": "AIR",
+            "normal_force_n": 0.0,
+            "front_face_center_clearance_m": 0.0028792653782332422,
+            "top_surface_wheel_bottom_clearance_m": 0.02809685170650479,
+            "wheel_center_w_m": [
+              0.5241914391517639,
+              -0.31288108229637146,
+              0.1280868500471115
+            ],
+            "relative_to_phase_start_s": 1.6833333333332376,
+            "relative_to_motion_end_s": -5.516666666669046,
+            "latched": true
+          },
+          {
+            "leg": "RR",
+            "event": "TOP_LOADED",
+            "sim_time_s": 65.5416666666649,
+            "physics_tick": 7865,
+            "contact_class": "OBSTACLE_TOP",
+            "normal_force_n": 15.83348083496103,
+            "front_face_center_clearance_m": 0.09111202103924398,
+            "top_surface_wheel_bottom_clearance_m": -0.0018314376473427124,
+            "wheel_center_w_m": [
+              0.6124241948127747,
+              -0.3240991234779358,
+              0.09815856069326401
+            ],
+            "relative_to_phase_start_s": 5.5750000000009905,
+            "relative_to_motion_end_s": -1.6250000000012932,
+            "latched": true
+          }
+        ],
+        "sensor_completion_latency_after_motion_s": 0.0,
+        "uses_event_history_not_final_contact_snapshot": true,
+        "live_sensor_predicates": [
+          "RR hip/knee reference-like active delta",
+          "latched RR FRONT_FACE_CLEARED",
+          "latched RR TOP_LOADED"
+        ],
+        "next_state_safe_reason": "Latched RR active lift, front-face crossing, and top load prove RR-first traversal.",
+        "reference_observed": {
+          "active_channel_actual_start": {
+            "front_left_hip": 37.31822908574889,
+            "front_left_knee": -12.767003760559222,
+            "rear_left_hip": 28.821229032041455,
+            "rear_left_knee": -2.086344261127019,
+            "rear_right_hip": -0.794747231485623,
+            "rear_right_knee": 0.6475526261274549,
+            "front_left_ankle": 0.002678212244063616,
+            "front_right_ankle": -0.35715746879577637,
+            "rear_left_ankle": -0.037402063608169556,
+            "rear_right_ankle": -0.0021852278150618076
+          },
+          "active_channel_actual_motion_readback": {
+            "front_left_hip": -18.513673548565038,
+            "front_left_knee": -31.82770958766939,
+            "rear_left_hip": 15.377553811360242,
+            "rear_left_knee": 19.523324344651847,
+            "rear_right_hip": -6.881728203344507,
+            "rear_right_knee": -51.54189755557613,
+            "front_left_ankle": 0.147003635764122,
+            "front_right_ankle": 0.00029903172980993986,
+            "rear_left_ankle": -0.048413872718811035,
+            "rear_right_ankle": -0.082844078540802
+          },
+          "active_channel_actual_result_readback": {
+            "front_left_hip": -18.603565668231575,
+            "front_left_knee": -32.231841635575286,
+            "rear_left_hip": 15.442963117946869,
+            "rear_left_knee": 19.735736397650076,
+            "rear_right_hip": -6.763313213703996,
+            "rear_right_knee": -50.63441813188072,
+            "front_left_ankle": 0.12681689858436584,
+            "front_right_ankle": 0.002248492557555437,
+            "rear_left_ankle": -0.04800482466816902,
+            "rear_right_ankle": -0.1506960093975067
+          },
+          "wheel_geometry_motion_start": {
+            "FL": {
+              "center_w_m": [
+                1.0379419326782227,
+                0.09176570177078247,
+                0.13488593697547913
+              ],
+              "front_face_center_clearance_m": 0.516629758904692,
+              "top_surface_wheel_bottom_clearance_m": 0.034895938634872406,
+              "contact_class": "AIR",
+              "normal_force_n": 0.0
+            },
+            "FR": {
+              "center_w_m": [
+                1.0623314380645752,
+                -0.3214919865131378,
+                0.09807802736759186
+              ],
+              "front_face_center_clearance_m": 0.5410192642910445,
+              "top_surface_wheel_bottom_clearance_m": -0.001911970973014862,
+              "contact_class": "OBSTACLE_TOP",
+              "normal_force_n": 13.34405326843269
+            },
+            "RL": {
+              "center_w_m": [
+                0.39338552951812744,
+                0.07357531785964966,
+                0.05250163376331329
+              ],
+              "front_face_center_clearance_m": -0.12792664425540323,
+              "top_surface_wheel_bottom_clearance_m": -0.047488364577293427,
+              "contact_class": "GROUND",
+              "normal_force_n": 16.147607803344872
+            },
+            "RR": {
+              "center_w_m": [
+                0.45098721981048584,
+                -0.33016645908355713,
+                0.05451274663209915
+              ],
+              "front_face_center_clearance_m": -0.07032495396304483,
+              "top_surface_wheel_bottom_clearance_m": -0.04547725170850757,
+              "contact_class": "AIR",
+              "normal_force_n": 0.0
+            }
+          },
+          "wheel_geometry_motion_readback": {
+            "FL": {
+              "center_w_m": [
+                0.9407634735107422,
+                0.03847217559814453,
+                0.10009109228849411
+              ],
+              "front_face_center_clearance_m": 0.4194512997372115,
+              "top_surface_wheel_bottom_clearance_m": 0.00010109394788739012,
+              "contact_class": "OBSTACLE_TOP",
+              "normal_force_n": 14.067697337551047
+            },
+            "FR": {
+              "center_w_m": [
+                1.109312891960144,
+                -0.3778703808784485,
+                0.12652398645877838
+              ],
+              "front_face_center_clearance_m": 0.5880007181866134,
+              "top_surface_wheel_bottom_clearance_m": 0.02653398811817166,
+              "contact_class": "AIR",
+              "normal_force_n": 0.0
+            },
+            "RL": {
+              "center_w_m": [
+                0.42548075318336487,
+                0.08325653523206711,
+                0.049928758293390274
+              ],
+              "front_face_center_clearance_m": -0.0958314205901658,
+              "top_surface_wheel_bottom_clearance_m": -0.050061240047216446,
+              "contact_class": "AIR",
+              "normal_force_n": 1.8443588018417525
+            },
+            "RR": {
+              "center_w_m": [
+                0.5927746891975403,
+                -0.3308483958244324,
+                0.09873203188180923
+              ],
+              "front_face_center_clearance_m": 0.07146251542400961,
+              "top_surface_wheel_bottom_clearance_m": -0.0012579664587974854,
+              "contact_class": "OBSTACLE_TOP",
+              "normal_force_n": 17.170395527616407
+            }
+          },
+          "wheel_geometry_result": {
+            "FL": {
+              "center_w_m": [
+                0.9413692951202393,
+                0.03878125548362732,
+                0.10022244602441788
+              ],
+              "front_face_center_clearance_m": 0.4200571213467086,
+              "top_surface_wheel_bottom_clearance_m": 0.0002324476838111572,
+              "contact_class": "OBSTACLE_TOP",
+              "normal_force_n": 13.761159833109156
+            },
+            "FR": {
+              "center_w_m": [
+                1.1108853816986084,
+                -0.3774721324443817,
+                0.12817984819412231
+              ],
+              "front_face_center_clearance_m": 0.5895732079250777,
+              "top_surface_wheel_bottom_clearance_m": 0.028189849853515594,
+              "contact_class": "AIR",
+              "normal_force_n": 0.0
+            },
+            "RL": {
+              "center_w_m": [
+                0.4262838661670685,
+                0.08319031447172165,
+                0.0499420128762722
+              ],
+              "front_face_center_clearance_m": -0.09502830760646219,
+              "top_surface_wheel_bottom_clearance_m": -0.05004798546433452,
+              "contact_class": "AIR",
+              "normal_force_n": 0.5156458020210313
+            },
+            "RR": {
+              "center_w_m": [
+                0.593390941619873,
+                -0.3305648863315582,
+                0.09879228472709656
+              ],
+              "front_face_center_clearance_m": 0.07207876784634237,
+              "top_surface_wheel_bottom_clearance_m": -0.0011977136135101624,
+              "contact_class": "OBSTACLE_TOP",
+              "normal_force_n": 15.50912189483648
+            }
+          },
+          "root_start_position_w_m": [
+            0.7492676973342896,
+            -0.00013149529695510864,
+            0.07401970773935318
+          ],
+          "root_result_position_w_m": [
+            0.8022655844688416,
+            -0.027773946523666382,
+            0.10592447221279144
+          ]
+        }
+      },
+      "completion_latency_s": 0.0,
+      "next_state_reason": "Latched RR active lift, front-face crossing, and top load prove RR-first traversal."
+    },
+    {
+      "state_id": "P10",
+      "macro_phase": 10,
+      "state_name": "SECOND_REAR_TRANSFER_PREP",
+      "physical_purpose": "Establish the v010 FL+RR-related support/workspace for RL unloading.",
+      "reference_steps": [
+        19
+      ],
+      "reference_events": [
+        [
+          19,
+          0
+        ],
+        [
+          19,
+          1
+        ],
+        [
+          19,
+          2
+        ],
+        [
+          19,
+          3
+        ]
+      ],
+      "active_duration_s": 0.13333333333343944,
+      "start_full12": [
+        -18.5,
+        -31.4,
+        0.0,
+        31.1,
+        15.4,
+        19.4,
+        -6.9,
+        -37.8,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "end_full12": [
+        -18.5,
+        -31.4,
+        0.0,
+        31.1,
+        15.4,
+        19.4,
+        -6.9,
+        -27.2,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "delta_full12": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        10.599999999999998,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "active_channels": [
+        "rear_right_knee"
+      ],
+      "atomic_groups": [],
+      "overlap_timing": [],
+      "completion_event": "rl_workspace_ready",
+      "completion_evidence": {
+        "required_latched_leg_events": [],
+        "sensor_completion_latency_after_motion_s": 0.0,
+        "uses_event_history_not_final_contact_snapshot": false,
+        "live_sensor_predicates": [
+          "RR-knee command endpoint issued",
+          "RL workspace geometry compatible",
+          "carry-out response may remain active"
+        ],
+        "next_state_safe_reason": "The FL+RR-related workspace is established for the second rear leg.",
+        "reference_observed": {
+          "active_channel_actual_start": {
+            "rear_right_knee": -50.397598397883456
+          },
+          "active_channel_actual_motion_readback": {
+            "rear_right_knee": -46.620066654759526
+          },
+          "active_channel_actual_result_readback": {
+            "rear_right_knee": -45.80335361494442
+          },
+          "wheel_geometry_motion_start": {
+            "FL": {
+              "center_w_m": [
+                0.9415208101272583,
+                0.038872912526130676,
+                0.10025162249803543
+              ],
+              "front_face_center_clearance_m": 0.4202086363537276,
+              "top_surface_wheel_bottom_clearance_m": 0.0002616241574287109,
+              "contact_class": "OBSTACLE_TOP",
+              "normal_force_n": 13.507048526639338
+            },
+            "FR": {
+              "center_w_m": [
+                1.1112651824951172,
+                -0.37734439969062805,
+                0.12869296967983246
+              ],
+              "front_face_center_clearance_m": 0.5899530087215865,
+              "top_surface_wheel_bottom_clearance_m": 0.02870297133922574,
+              "contact_class": "AIR",
+              "normal_force_n": 0.0
+            },
+            "RL": {
+              "center_w_m": [
+                0.42653048038482666,
+                0.08315590769052505,
+                0.04995094612240791
+              ],
+              "front_face_center_clearance_m": -0.09478169338870401,
+              "top_surface_wheel_bottom_clearance_m": -0.05003905221819881,
+              "contact_class": "AIR",
+              "normal_force_n": 0.058878052979708245
+            },
+            "RR": {
+              "center_w_m": [
+                0.5935438871383667,
+                -0.3305021822452545,
+                0.09880479425191879
+              ],
+              "front_face_center_clearance_m": 0.07223171336483603,
+              "top_surface_wheel_bottom_clearance_m": -0.0011852040886879273,
+              "contact_class": "OBSTACLE_TOP",
+              "normal_force_n": 15.999272346496618
+            }
+          },
+          "wheel_geometry_motion_readback": {
+            "FL": {
+              "center_w_m": [
+                0.9442766308784485,
+                0.03997982293367386,
+                0.10059355199337006
+              ],
+              "front_face_center_clearance_m": 0.4229644571049178,
+              "top_surface_wheel_bottom_clearance_m": 0.0006035536527633362,
+              "contact_class": "OBSTACLE_TOP",
+              "normal_force_n": 12.897994019145669
+            },
+            "FR": {
+              "center_w_m": [
+                1.1168164014816284,
+                -0.3758028447628021,
+                0.13722822070121765
+              ],
+              "front_face_center_clearance_m": 0.5955042277080977,
+              "top_surface_wheel_bottom_clearance_m": 0.03723822236061093,
+              "contact_class": "AIR",
+              "normal_force_n": 0.0
+            },
+            "RL": {
+              "center_w_m": [
+                0.4310610890388489,
+                0.0829816609621048,
+                0.05022749304771423
+              ],
+              "front_face_center_clearance_m": -0.0902510847346818,
+              "top_surface_wheel_bottom_clearance_m": -0.04976250529289249,
+              "contact_class": "AIR",
+              "normal_force_n": 0.25757071375847096
+            },
+            "RR": {
+              "center_w_m": [
+                0.5954811573028564,
+                -0.32951244711875916,
+                0.09893742948770523
+              ],
+              "front_face_center_clearance_m": 0.07416898352932577,
+              "top_surface_wheel_bottom_clearance_m": -0.0010525688529014893,
+              "contact_class": "OBSTACLE_TOP",
+              "normal_force_n": 14.443265914917122
+            }
+          },
+          "wheel_geometry_result": {
+            "FL": {
+              "center_w_m": [
+                0.9449403285980225,
+                0.04018222540616989,
+                0.10062981396913528
+              ],
+              "front_face_center_clearance_m": 0.4236281548244918,
+              "top_surface_wheel_bottom_clearance_m": 0.0006398156285285644,
+              "contact_class": "OBSTACLE_TOP",
+              "normal_force_n": 13.23287192405967
+            },
+            "FR": {
+              "center_w_m": [
+                1.1178802251815796,
+                -0.3754647374153137,
+                0.13906462490558624
+              ],
+              "front_face_center_clearance_m": 0.5965680514080489,
+              "top_surface_wheel_bottom_clearance_m": 0.03907462656497952,
+              "contact_class": "AIR",
+              "normal_force_n": 0.0
+            },
+            "RL": {
+              "center_w_m": [
+                0.43196818232536316,
+                0.082921601831913,
+                0.0503019243478775
+              ],
+              "front_face_center_clearance_m": -0.08934399144816751,
+              "top_surface_wheel_bottom_clearance_m": -0.04968807399272922,
+              "contact_class": "AIR",
+              "normal_force_n": 0.5056785941124008
+            },
+            "RR": {
+              "center_w_m": [
+                0.5956729650497437,
+                -0.3293476104736328,
+                0.09893669188022614
+              ],
+              "front_face_center_clearance_m": 0.07436079127621298,
+              "top_surface_wheel_bottom_clearance_m": -0.0010533064603805847,
+              "contact_class": "OBSTACLE_TOP",
+              "normal_force_n": 14.448641777038995
+            }
+          },
+          "root_start_position_w_m": [
+            0.8026168942451477,
+            -0.02770022302865982,
+            0.10597637295722961
+          ],
+          "root_result_position_w_m": [
+            0.8091459274291992,
+            -0.026473097503185272,
+            0.10735952854156494
+          ]
+        }
+      },
+      "completion_latency_s": 0.0,
+      "next_state_reason": "The FL+RR-related workspace is established for the second rear leg."
+    },
+    {
+      "state_id": "P11",
+      "macro_phase": 11,
+      "state_name": "TRANSFER_TOWARD_FR",
+      "physical_purpose": "Execute the v010 FR-directed load-transfer action before RL lift.",
+      "reference_steps": [
+        20
+      ],
+      "reference_events": [
+        [
+          20,
+          0
+        ],
+        [
+          20,
+          1
+        ],
+        [
+          20,
+          2
+        ],
+        [
+          20,
+          3
+        ],
+        [
+          20,
+          4
+        ],
+        [
+          20,
+          5
+        ],
+        [
+          20,
+          6
+        ],
+        [
+          20,
+          7
+        ],
+        [
+          20,
+          8
+        ]
+      ],
+      "active_duration_s": 0.46666666666703804,
+      "start_full12": [
+        -18.5,
+        -31.4,
+        0.0,
+        31.1,
+        15.4,
+        19.4,
+        -6.9,
+        -27.2,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "end_full12": [
+        -18.5,
+        -31.4,
+        3.7,
+        31.1,
+        15.4,
+        19.4,
+        -6.9,
+        -27.2,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "delta_full12": [
+        0.0,
+        0.0,
+        3.7,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "active_channels": [
+        "front_right_hip"
+      ],
+      "atomic_groups": [],
+      "overlap_timing": [],
+      "completion_event": "rl_unload_ready",
+      "completion_evidence": {
+        "required_latched_leg_events": [],
+        "sensor_completion_latency_after_motion_s": 0.0,
+        "uses_event_history_not_final_contact_snapshot": false,
+        "live_sensor_predicates": [
+          "FR-directed active joint delta",
+          "RL unload-entry geometry compatible",
+          "carry-in/out response does not require settle"
+        ],
+        "next_state_safe_reason": "The FR-directed transfer action has reached the v010 RL-unload entry pose.",
+        "reference_observed": {
+          "active_channel_actual_start": {
+            "front_right_hip": -0.628212516938214
+          },
+          "active_channel_actual_motion_readback": {
+            "front_right_hip": 6.041306911577153
+          },
+          "active_channel_actual_result_readback": {
+            "front_right_hip": 4.79845794255813
+          },
+          "wheel_geometry_motion_start": {
+            "FL": {
+              "center_w_m": [
+                0.9450562596321106,
+                0.04022529721260071,
+                0.1006331741809845
+              ],
+              "front_face_center_clearance_m": 0.4237440858585799,
+              "top_surface_wheel_bottom_clearance_m": 0.0006431758403777771,
+              "contact_class": "OBSTACLE_TOP",
+              "normal_force_n": 13.610419081499302
+            },
+            "FR": {
+              "center_w_m": [
+                1.1180408000946045,
+                -0.3753974437713623,
+                0.13931693136692047
+              ],
+              "front_face_center_clearance_m": 0.5967286263210738,
+              "top_surface_wheel_bottom_clearance_m": 0.03932693302631375,
+              "contact_class": "AIR",
+              "normal_force_n": 0.0
+            },
+            "RL": {
+              "center_w_m": [
+                0.432098925113678,
+                0.08292132616043091,
+                0.0503159798681736
+              ],
+              "front_face_center_clearance_m": -0.0892132486598527,
+              "top_surface_wheel_bottom_clearance_m": -0.04967401847243312,
+              "contact_class": "AIR",
+              "normal_force_n": 0.31655251979828164
+            },
+            "RR": {
+              "center_w_m": [
+                0.5957014560699463,
+                -0.32931429147720337,
+                0.0989345908164978
+              ],
+              "front_face_center_clearance_m": 0.07438928229641562,
+              "top_surface_wheel_bottom_clearance_m": -0.0010554075241089172,
+              "contact_class": "OBSTACLE_TOP",
+              "normal_force_n": 14.492953300476616
+            }
+          },
+          "wheel_geometry_motion_readback": {
+            "FL": {
+              "center_w_m": [
+                0.9511622190475464,
+                0.04190511628985405,
+                0.10037153959274292
+              ],
+              "front_face_center_clearance_m": 0.4298500452740157,
+              "top_surface_wheel_bottom_clearance_m": 0.00038154125213619994,
+              "contact_class": "OBSTACLE_TOP",
+              "normal_force_n": 12.543497556435925
+            },
+            "FR": {
+              "center_w_m": [
+                1.1373957395553589,
+                -0.3711242079734802,
+                0.17959709465503693
+              ],
+              "front_face_center_clearance_m": 0.6160835657818282,
+              "top_surface_wheel_bottom_clearance_m": 0.0796070963144302,
+              "contact_class": "AIR",
+              "normal_force_n": 0.0
+            },
+            "RL": {
+              "center_w_m": [
+                0.4387455880641937,
+                0.08252735435962677,
+                0.05079498142004013
+              ],
+              "front_face_center_clearance_m": -0.08256658570933695,
+              "top_surface_wheel_bottom_clearance_m": -0.04919501692056659,
+              "contact_class": "AIR",
+              "normal_force_n": 0.0
+            },
+            "RR": {
+              "center_w_m": [
+                0.5962674021720886,
+                -0.3282243609428406,
+                0.09883265197277069
+              ],
+              "front_face_center_clearance_m": 0.07495522839855795,
+              "top_surface_wheel_bottom_clearance_m": -0.001157346367836029,
+              "contact_class": "OBSTACLE_TOP",
+              "normal_force_n": 14.364475250244867
+            }
+          },
+          "wheel_geometry_result": {
+            "FL": {
+              "center_w_m": [
+                0.9518119096755981,
+                0.042020708322525024,
+                0.10033116489648819
+              ],
+              "front_face_center_clearance_m": 0.43049973590206747,
+              "top_surface_wheel_bottom_clearance_m": 0.0003411665558814697,
+              "contact_class": "OBSTACLE_TOP",
+              "normal_force_n": 14.630755834107111
+            },
+            "FR": {
+              "center_w_m": [
+                1.136106252670288,
+                -0.371063232421875,
+                0.17523707449436188
+              ],
+              "front_face_center_clearance_m": 0.6147940788967574,
+              "top_surface_wheel_bottom_clearance_m": 0.07524707615375516,
+              "contact_class": "AIR",
+              "normal_force_n": 0.0
+            },
+            "RL": {
+              "center_w_m": [
+                0.4394162595272064,
+                0.08253899216651917,
+                0.05085664987564087
+              ],
+              "front_face_center_clearance_m": -0.08189591424632425,
+              "top_surface_wheel_bottom_clearance_m": -0.04913334846496585,
+              "contact_class": "AIR",
+              "normal_force_n": 0.0
+            },
+            "RR": {
+              "center_w_m": [
+                0.596260130405426,
+                -0.32812049984931946,
+                0.09881652891635895
+              ],
+              "front_face_center_clearance_m": 0.07494795663189535,
+              "top_surface_wheel_bottom_clearance_m": -0.0011734694242477722,
+              "contact_class": "OBSTACLE_TOP",
+              "normal_force_n": 14.504545192396252
+            }
+          },
+          "root_start_position_w_m": [
+            0.8093001842498779,
+            -0.0264308899641037,
+            0.10740087926387787
+          ],
+          "root_result_position_w_m": [
+            0.8169753551483154,
+            -0.024528786540031433,
+            0.10975595563650131
+          ]
+        }
+      },
+      "completion_latency_s": 0.0,
+      "next_state_reason": "The FR-directed transfer action has reached the v010 RL-unload entry pose."
+    },
+    {
+      "state_id": "P12",
+      "macro_phase": 12,
+      "state_name": "RL_ACTIVE_LIFT_AND_PLACE",
+      "physical_purpose": "Actively lift RL, clear the front plane, and place RL on the obstacle top.",
+      "reference_steps": [
+        21,
+        22,
+        23,
+        24
+      ],
+      "reference_events": [
+        [
+          21,
+          0
+        ],
+        [
+          21,
+          1
+        ],
+        [
+          21,
+          2
+        ],
+        [
+          21,
+          3
+        ],
+        [
+          21,
+          4
+        ],
+        [
+          21,
+          5
+        ],
+        [
+          21,
+          6
+        ],
+        [
+          22,
+          0
+        ],
+        [
+          22,
+          1
+        ],
+        [
+          22,
+          2
+        ],
+        [
+          23,
+          0
+        ],
+        [
+          23,
+          1
+        ],
+        [
+          23,
+          2
+        ],
+        [
+          23,
+          3
+        ],
+        [
+          23,
+          4
+        ],
+        [
+          23,
+          5
+        ],
+        [
+          23,
+          6
+        ],
+        [
+          23,
+          7
+        ],
+        [
+          23,
+          8
+        ],
+        [
+          23,
+          9
+        ],
+        [
+          23,
+          10
+        ],
+        [
+          23,
+          11
+        ],
+        [
+          23,
+          12
+        ],
+        [
+          23,
+          13
+        ],
+        [
+          23,
+          14
+        ],
+        [
+          23,
+          15
+        ],
+        [
+          24,
+          0
+        ],
+        [
+          24,
+          1
+        ],
+        [
+          24,
+          2
+        ],
+        [
+          24,
+          3
+        ],
+        [
+          24,
+          4
+        ],
+        [
+          24,
+          5
+        ],
+        [
+          24,
+          6
+        ],
+        [
+          24,
+          7
+        ],
+        [
+          24,
+          8
+        ],
+        [
+          24,
+          9
+        ],
+        [
+          24,
+          10
+        ],
+        [
+          24,
+          11
+        ]
+      ],
+      "active_duration_s": 4.66666666667038,
+      "start_full12": [
+        -18.5,
+        -31.4,
+        3.7,
+        31.1,
+        15.4,
+        19.4,
+        -6.9,
+        -27.2,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "end_full12": [
+        -18.5,
+        -31.4,
+        3.7,
+        31.1,
+        -10.1,
+        -18.7,
+        -6.9,
+        -27.2,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "delta_full12": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -25.5,
+        -38.099999999999994,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "active_channels": [
+        "rear_left_hip",
+        "rear_left_knee",
+        "front_left_ankle",
+        "front_right_ankle",
+        "rear_left_ankle",
+        "rear_right_ankle"
+      ],
+      "atomic_groups": [
+        {
+          "time_s": 0.46666666666703804,
+          "channels": [
+            "front_left_ankle",
+            "front_right_ankle",
+            "rear_left_ankle",
+            "rear_right_ankle"
+          ],
+          "batch_id": "playback-fsm50-gate1-v010_20260806_220745_363972_manual-trial11-0adc798fc6-110-c0638edb",
+          "same_physics_tick": true,
+          "atomic_batch_ack_valid": true,
+          "reference_applied_physics_tick": 8212,
+          "reference_first_motion_physics_tick": 8213,
+          "motion_start_skew_s": 0.0,
+          "active_until_next_waypoint_s": 2.2000000000017508,
+          "source_full12_atomic": false
+        },
+        {
+          "time_s": 2.666666666668789,
+          "channels": [
+            "front_left_ankle",
+            "front_right_ankle",
+            "rear_left_ankle",
+            "rear_right_ankle"
+          ],
+          "batch_id": "playback-fsm50-gate1-v010_20260806_220745_363972_manual-trial11-0adc798fc6-111-94845c50",
+          "same_physics_tick": true,
+          "atomic_batch_ack_valid": true,
+          "reference_applied_physics_tick": 8476,
+          "reference_first_motion_physics_tick": 8477,
+          "motion_start_skew_s": 0.0,
+          "active_until_next_waypoint_s": 0.06666666666671972,
+          "source_full12_atomic": false
+        }
+      ],
+      "overlap_timing": [
+        {
+          "onset_s": 0.46666666666703804,
+          "end_s": 2.666666666668789,
+          "overlap_duration_s": 2.2000000000017508,
+          "channels": [
+            "front_left_ankle",
+            "front_right_ankle",
+            "rear_left_ankle",
+            "rear_right_ankle"
+          ],
+          "evidence": "reference command launch intervals"
+        }
+      ],
+      "completion_event": "rl_top_loaded",
+      "completion_evidence": {
+        "required_latched_leg_events": [
+          {
+            "leg": "RL",
+            "event": "FRONT_FACE_CLEARED",
+            "sim_time_s": 72.18333333333685,
+            "physics_tick": 8662,
+            "contact_class": "AIR",
+            "normal_force_n": 0.0,
+            "front_face_center_clearance_m": 0.0022504959804976465,
+            "top_surface_wheel_bottom_clearance_m": 0.028508317470550507,
+            "wheel_center_w_m": [
+              0.5235626697540283,
+              0.06939909607172012,
+              0.12849831581115723
+            ],
+            "relative_to_phase_start_s": 4.216666666670022,
+            "relative_to_motion_end_s": -0.4500000000003581,
+            "latched": true
+          },
+          {
+            "leg": "RL",
+            "event": "TOP_LOADED",
+            "sim_time_s": 72.49166666667043,
+            "physics_tick": 8699,
+            "contact_class": "OBSTACLE_TOP",
+            "normal_force_n": 11.221521377563729,
+            "front_face_center_clearance_m": 0.036025587151762295,
+            "top_surface_wheel_bottom_clearance_m": -3.1332671642334e-05,
+            "wheel_center_w_m": [
+              0.557337760925293,
+              0.06623010337352753,
+              0.09995866566896439
+            ],
+            "relative_to_phase_start_s": 4.525000000003601,
+            "relative_to_motion_end_s": -0.1416666666667794,
+            "latched": true
+          }
+        ],
+        "sensor_completion_latency_after_motion_s": 0.0,
+        "uses_event_history_not_final_contact_snapshot": true,
+        "live_sensor_predicates": [
+          "RL hip/knee reference-like active delta",
+          "latched RL FRONT_FACE_CLEARED",
+          "latched RL TOP_LOADED"
+        ],
+        "next_state_safe_reason": "Latched RL active lift, front-face crossing, and top load complete the rear order.",
+        "reference_observed": {
+          "active_channel_actual_start": {
+            "rear_left_hip": 15.533837077306595,
+            "rear_left_knee": 20.019498314265547,
+            "front_left_ankle": 0.18618299067020416,
+            "front_right_ankle": 0.0014556334353983402,
+            "rear_left_ankle": -0.0054137129336595535,
+            "rear_right_ankle": -0.14006046950817108
+          },
+          "active_channel_actual_motion_readback": {
+            "rear_left_hip": -0.20346109676103144,
+            "rear_left_knee": -19.232979006130556,
+            "front_left_ankle": -0.23403465747833252,
+            "front_right_ankle": -0.15833638608455658,
+            "rear_left_ankle": 0.06157755106687546,
+            "rear_right_ankle": -0.19251814484596252
+          },
+          "active_channel_actual_result_readback": {
+            "rear_left_hip": -0.668506085696107,
+            "rear_left_knee": -19.262278810122616,
+            "front_left_ankle": -0.04543116316199303,
+            "front_right_ankle": -0.22560659050941467,
+            "rear_left_ankle": 0.0010134261101484299,
+            "rear_right_ankle": -0.09750436246395111
+          },
+          "wheel_geometry_motion_start": {
+            "FL": {
+              "center_w_m": [
+                0.951863706111908,
+                0.04204390197992325,
+                0.1003376841545105
+              ],
+              "front_face_center_clearance_m": 0.4305515323383773,
+              "top_surface_wheel_bottom_clearance_m": 0.00034768581390377806,
+              "contact_class": "OBSTACLE_TOP",
+              "normal_force_n": 14.26587577968649
+            },
+            "FR": {
+              "center_w_m": [
+                1.1358338594436646,
+                -0.3710358142852783,
+                0.17455485463142395
+              ],
+              "front_face_center_clearance_m": 0.6145216856701339,
+              "top_surface_wheel_bottom_clearance_m": 0.07456485629081723,
+              "contact_class": "AIR",
+              "normal_force_n": 0.0
+            },
+            "RL": {
+              "center_w_m": [
+                0.4394455850124359,
+                0.08251088857650757,
+                0.050862107425928116
+              ],
+              "front_face_center_clearance_m": -0.08186658876109476,
+              "top_surface_wheel_bottom_clearance_m": -0.049127890914678604,
+              "contact_class": "AIR",
+              "normal_force_n": 0.0
+            },
+            "RR": {
+              "center_w_m": [
+                0.5962275266647339,
+                -0.3281234800815582,
+                0.09882323443889618
+              ],
+              "front_face_center_clearance_m": 0.07491535289120321,
+              "top_surface_wheel_bottom_clearance_m": -0.0011667639017105408,
+              "contact_class": "OBSTACLE_TOP",
+              "normal_force_n": 13.803364753723631
+            }
+          },
+          "wheel_geometry_motion_readback": {
+            "FL": {
+              "center_w_m": [
+                0.9383848905563354,
+                0.039328303188085556,
+                0.09998027235269547
+              ],
+              "front_face_center_clearance_m": 0.4170727167828048,
+              "top_surface_wheel_bottom_clearance_m": -9.725987911254896e-06,
+              "contact_class": "OBSTACLE_TOP",
+              "normal_force_n": 2.825141405259278
+            },
+            "FR": {
+              "center_w_m": [
+                1.1271319389343262,
+                -0.37513840198516846,
+                0.09989562630653381
+              ],
+              "front_face_center_clearance_m": 0.6058197651607955,
+              "top_surface_wheel_bottom_clearance_m": -9.437203407290651e-05,
+              "contact_class": "OBSTACLE_TOP",
+              "normal_force_n": 9.04444524183101
+            },
+            "RL": {
+              "center_w_m": [
+                0.5584114193916321,
+                0.06454075872898102,
+                0.09997507929801941
+              ],
+              "front_face_center_clearance_m": 0.037099245618101406,
+              "top_surface_wheel_bottom_clearance_m": -1.4919042587310805e-05,
+              "contact_class": "OBSTACLE_TOP",
+              "normal_force_n": 11.792342185974928
+            },
+            "RR": {
+              "center_w_m": [
+                0.555913507938385,
+                -0.3328017294406891,
+                0.09925119578838348
+              ],
+              "front_face_center_clearance_m": 0.034601334164854336,
+              "top_surface_wheel_bottom_clearance_m": -0.0007388025522232361,
+              "contact_class": "OBSTACLE_TOP",
+              "normal_force_n": 5.014248524933867
+            }
+          },
+          "wheel_geometry_result": {
+            "FL": {
+              "center_w_m": [
+                0.937751054763794,
+                0.03933567926287651,
+                0.09998375177383423
+              ],
+              "front_face_center_clearance_m": 0.41643888099026327,
+              "top_surface_wheel_bottom_clearance_m": -6.246566772491469e-06,
+              "contact_class": "OBSTACLE_TOP",
+              "normal_force_n": 1.6523312849141283
+            },
+            "FR": {
+              "center_w_m": [
+                1.126623511314392,
+                -0.37512868642807007,
+                0.0998668223619461
+              ],
+              "front_face_center_clearance_m": 0.6053113375408614,
+              "top_surface_wheel_bottom_clearance_m": -0.00012317597866061403,
+              "contact_class": "OBSTACLE_TOP",
+              "normal_force_n": 9.078192823422212
+            },
+            "RL": {
+              "center_w_m": [
+                0.5587262511253357,
+                0.06444796919822693,
+                0.09995647519826889
+              ],
+              "front_face_center_clearance_m": 0.03741407735180502,
+              "top_surface_wheel_bottom_clearance_m": -3.3523142337829603e-05,
+              "contact_class": "OBSTACLE_TOP",
+              "normal_force_n": 12.964356422424318
+            },
+            "RR": {
+              "center_w_m": [
+                0.5550234913825989,
+                -0.33280014991760254,
+                0.09929653257131577
+              ],
+              "front_face_center_clearance_m": 0.0337113176090682,
+              "top_surface_wheel_bottom_clearance_m": -0.0006934657692909546,
+              "contact_class": "OBSTACLE_TOP",
+              "normal_force_n": 4.166875362396588
+            }
+          },
+          "root_start_position_w_m": [
+            0.8170032501220703,
+            -0.02450764924287796,
+            0.10980472713708878
+          ],
+          "root_result_position_w_m": [
+            0.8010087013244629,
+            -0.0300583615899086,
+            0.1293712854385376
+          ]
+        }
+      },
+      "completion_latency_s": 0.0,
+      "next_state_reason": "Latched RL active lift, front-face crossing, and top load complete the rear order."
+    },
+    {
+      "state_id": "P13",
+      "macro_phase": 13,
+      "state_name": "FINAL_ADVANCE_AND_RECOVERY",
+      "physical_purpose": "Advance the whole body past the obstacle, recover the v010 final posture, and stop all wheels.",
+      "reference_steps": [
+        25,
+        26
+      ],
+      "reference_events": [
+        [
+          25,
+          0
+        ],
+        [
+          25,
+          1
+        ],
+        [
+          25,
+          2
+        ],
+        [
+          26,
+          0
+        ],
+        [
+          26,
+          1
+        ],
+        [
+          26,
+          2
+        ]
+      ],
+      "active_duration_s": 17.800000000014165,
+      "start_full12": [
+        -18.5,
+        -31.4,
+        3.7,
+        31.1,
+        -10.1,
+        -18.7,
+        -6.9,
+        -27.2,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "end_full12": [
+        0.5,
+        -0.7,
+        3.7,
+        0.4,
+        -2.6,
+        -3.9,
+        -0.5,
+        -6.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "delta_full12": [
+        19.0,
+        30.7,
+        0.0,
+        -30.700000000000003,
+        7.5,
+        14.799999999999999,
+        6.4,
+        21.2,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "active_channels": [
+        "front_left_hip",
+        "front_left_knee",
+        "front_right_knee",
+        "rear_left_hip",
+        "rear_left_knee",
+        "rear_right_hip",
+        "rear_right_knee",
+        "front_left_ankle",
+        "front_right_ankle",
+        "rear_left_ankle",
+        "rear_right_ankle"
+      ],
+      "atomic_groups": [
+        {
+          "time_s": 0.0,
+          "channels": [
+            "front_left_ankle",
+            "front_right_ankle",
+            "rear_left_ankle",
+            "rear_right_ankle"
+          ],
+          "batch_id": "playback-fsm50-gate1-v010_20260806_220745_363972_manual-trial11-0adc798fc6-138-c3747e92",
+          "same_physics_tick": true,
+          "atomic_batch_ack_valid": true,
+          "reference_applied_physics_tick": 8724,
+          "reference_first_motion_physics_tick": 8725,
+          "motion_start_skew_s": 0.0,
+          "active_until_next_waypoint_s": 16.73333333334665,
+          "source_full12_atomic": false
+        },
+        {
+          "time_s": 16.73333333334665,
+          "channels": [
+            "front_left_ankle",
+            "front_right_ankle",
+            "rear_left_ankle",
+            "rear_right_ankle"
+          ],
+          "batch_id": "playback-fsm50-gate1-v010_20260806_220745_363972_manual-trial11-0adc798fc6-139-afdc6919",
+          "same_physics_tick": true,
+          "atomic_batch_ack_valid": true,
+          "reference_applied_physics_tick": 10732,
+          "reference_first_motion_physics_tick": 10733,
+          "motion_start_skew_s": 0.0,
+          "active_until_next_waypoint_s": 0.06666666666671972,
+          "source_full12_atomic": false
+        },
+        {
+          "time_s": 16.80000000001337,
+          "channels": [
+            "front_left_hip",
+            "front_left_knee",
+            "front_right_hip",
+            "front_right_knee",
+            "rear_left_hip",
+            "rear_left_knee",
+            "rear_right_hip",
+            "rear_right_knee",
+            "front_left_ankle",
+            "front_right_ankle",
+            "rear_left_ankle",
+            "rear_right_ankle"
+          ],
+          "batch_id": "playback-fsm50-gate1-v010_20260806_220745_363972_manual-trial11-0adc798fc6-140-07c4b729",
+          "same_physics_tick": true,
+          "atomic_batch_ack_valid": true,
+          "reference_applied_physics_tick": 10740,
+          "reference_first_motion_physics_tick": 10741,
+          "motion_start_skew_s": 0.0,
+          "active_until_next_waypoint_s": 1.0000000000007958,
+          "source_full12_atomic": true,
+          "source_step": 26,
+          "source_event": 0,
+          "source_batch_id": "6d3a973231b746c6b7cb20748bd7c7ff",
+          "required_runtime_channels": [
+            "front_left_hip",
+            "front_left_knee",
+            "front_right_hip",
+            "front_right_knee",
+            "rear_left_hip",
+            "rear_left_knee",
+            "rear_right_hip",
+            "rear_right_knee",
+            "front_left_ankle",
+            "front_right_ankle",
+            "rear_left_ankle",
+            "rear_right_ankle"
+          ],
+          "source_changed_channels": [
+            "front_left_hip",
+            "front_left_knee",
+            "front_right_knee",
+            "rear_left_hip",
+            "rear_left_knee",
+            "rear_right_hip",
+            "rear_right_knee",
+            "front_left_ankle",
+            "front_right_ankle",
+            "rear_left_ankle",
+            "rear_right_ankle"
+          ],
+          "source_before_full12": [
+            -18.5,
+            -31.4,
+            3.7,
+            31.1,
+            -10.1,
+            -18.7,
+            -6.9,
+            -27.2,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "source_target_full12": [
+            0.5,
+            -0.7,
+            3.7,
+            0.4,
+            -2.6,
+            -3.9,
+            -0.5,
+            -6.0,
+            1.09,
+            -0.72,
+            -0.43,
+            -0.39
+          ],
+          "servo_velocity_deg_s": 150.0
+        },
+        {
+          "time_s": 17.800000000014165,
+          "channels": [
+            "front_left_ankle",
+            "front_right_ankle",
+            "rear_left_ankle",
+            "rear_right_ankle"
+          ],
+          "batch_id": "playback-fsm50-gate1-v010_20260806_220745_363972_manual-trial11-0adc798fc6-141-6b34389b",
+          "same_physics_tick": true,
+          "atomic_batch_ack_valid": true,
+          "reference_applied_physics_tick": 10860,
+          "reference_first_motion_physics_tick": 10861,
+          "motion_start_skew_s": 0.0,
+          "active_until_next_waypoint_s": 0.0,
+          "source_full12_atomic": false
+        }
+      ],
+      "overlap_timing": [
+        {
+          "onset_s": 0.0,
+          "end_s": 16.73333333334665,
+          "overlap_duration_s": 16.73333333334665,
+          "channels": [
+            "front_left_ankle",
+            "front_right_ankle",
+            "rear_left_ankle",
+            "rear_right_ankle"
+          ],
+          "evidence": "reference command launch intervals"
+        },
+        {
+          "onset_s": 16.80000000001337,
+          "end_s": 16.842666666680035,
+          "overlap_duration_s": 0.04266666666666552,
+          "channels": [
+            "front_left_hip",
+            "front_left_knee",
+            "front_right_knee",
+            "rear_left_hip",
+            "rear_left_knee",
+            "rear_right_hip",
+            "rear_right_knee",
+            "front_left_ankle",
+            "front_right_ankle",
+            "rear_left_ankle",
+            "rear_right_ankle"
+          ],
+          "evidence": "reference command launch intervals"
+        },
+        {
+          "onset_s": 16.842666666680035,
+          "end_s": 16.85000000001337,
+          "overlap_duration_s": 0.00733333333333519,
+          "channels": [
+            "front_left_hip",
+            "front_left_knee",
+            "front_right_knee",
+            "rear_left_hip",
+            "rear_left_knee",
+            "rear_right_knee",
+            "front_left_ankle",
+            "front_right_ankle",
+            "rear_left_ankle",
+            "rear_right_ankle"
+          ],
+          "evidence": "reference command launch intervals"
+        },
+        {
+          "onset_s": 16.85000000001337,
+          "end_s": 16.898666666680036,
+          "overlap_duration_s": 0.04866666666666575,
+          "channels": [
+            "front_left_hip",
+            "front_left_knee",
+            "front_right_knee",
+            "rear_left_knee",
+            "rear_right_knee",
+            "front_left_ankle",
+            "front_right_ankle",
+            "rear_left_ankle",
+            "rear_right_ankle"
+          ],
+          "evidence": "reference command launch intervals"
+        },
+        {
+          "onset_s": 16.898666666680036,
+          "end_s": 16.926666666680035,
+          "overlap_duration_s": 0.027999999999998693,
+          "channels": [
+            "front_left_hip",
+            "front_left_knee",
+            "front_right_knee",
+            "rear_right_knee",
+            "front_left_ankle",
+            "front_right_ankle",
+            "rear_left_ankle",
+            "rear_right_ankle"
+          ],
+          "evidence": "reference command launch intervals"
+        },
+        {
+          "onset_s": 16.926666666680035,
+          "end_s": 16.9413333333467,
+          "overlap_duration_s": 0.014666666666666828,
+          "channels": [
+            "front_left_knee",
+            "front_right_knee",
+            "rear_right_knee",
+            "front_left_ankle",
+            "front_right_ankle",
+            "rear_left_ankle",
+            "rear_right_ankle"
+          ],
+          "evidence": "reference command launch intervals"
+        },
+        {
+          "onset_s": 16.9413333333467,
+          "end_s": 17.004666666680038,
+          "overlap_duration_s": 0.06333333333333613,
+          "channels": [
+            "front_left_knee",
+            "front_right_knee",
+            "front_left_ankle",
+            "front_right_ankle",
+            "rear_left_ankle",
+            "rear_right_ankle"
+          ],
+          "evidence": "reference command launch intervals"
+        },
+        {
+          "onset_s": 17.004666666680038,
+          "end_s": 17.800000000014165,
+          "overlap_duration_s": 0.7953333333341277,
+          "channels": [
+            "front_left_ankle",
+            "front_right_ankle",
+            "rear_left_ankle",
+            "rear_right_ankle"
+          ],
+          "evidence": "reference command launch intervals"
+        }
+      ],
+      "completion_event": "final_clear_and_stopped",
+      "completion_evidence": {
+        "required_latched_leg_events": [],
+        "sensor_completion_latency_after_motion_s": 0.0,
+        "uses_event_history_not_final_contact_snapshot": false,
+        "live_sensor_predicates": [
+          "all four front-face crossings latched",
+          "all four wheels in final top geometry",
+          "final command pose compatible",
+          "wheel targets zero",
+          "new-run measured wheel-speed decay stable over debounce"
+        ],
+        "next_state_safe_reason": "All four wheels and the body establish the v010 final top-crossing geometry and final pose; zero wheel targets are applied, then the new FSM must add a measured stable-decay debounce before SUCCESS.",
+        "reference_observed": {
+          "active_channel_actual_start": {
+            "front_left_hip": -18.155353286969707,
+            "front_left_knee": -31.66258976448433,
+            "front_right_knee": 32.54173497883621,
+            "rear_left_hip": -0.7411473886750141,
+            "rear_left_knee": -19.270406735234932,
+            "rear_right_hip": -6.25573069374226,
+            "rear_right_knee": -26.62894477494741,
+            "front_left_ankle": 0.026816561818122864,
+            "front_right_ankle": -0.19996774196624756,
+            "rear_left_ankle": 0.024470876902341843,
+            "rear_right_ankle": -0.0870719850063324
+          },
+          "active_channel_actual_motion_readback": {
+            "front_left_hip": 1.4722871628337844,
+            "front_left_knee": -0.5435290818569455,
+            "front_right_knee": 0.3207353580987644,
+            "rear_left_hip": -2.6492152681097303,
+            "rear_left_knee": -3.8191767004941823,
+            "rear_right_hip": -0.18086106134441046,
+            "rear_right_knee": -5.978096630751053,
+            "front_left_ankle": 0.01712479628622532,
+            "front_right_ankle": -0.0002994572860188782,
+            "rear_left_ankle": -0.046075884252786636,
+            "rear_right_ankle": -0.009210482239723206
+          },
+          "active_channel_actual_result_readback": {
+            "front_left_hip": -5.736817316834296,
+            "front_left_knee": -0.5924460429189305,
+            "front_right_knee": 0.3464577704717531,
+            "rear_left_hip": -3.8744502464763486,
+            "rear_left_knee": -4.031169977518923,
+            "rear_right_hip": 2.3031654813789664,
+            "rear_right_knee": -4.253348360596835,
+            "front_left_ankle": -0.1680314540863037,
+            "front_right_ankle": -0.0009634793386794627,
+            "rear_left_ankle": 0.0003529429668560624,
+            "rear_right_ankle": 0.19921796023845673
+          },
+          "wheel_geometry_motion_start": {
+            "FL": {
+              "center_w_m": [
+                0.9376534819602966,
+                0.03933953866362572,
+                0.0999917984008789
+              ],
+              "front_face_center_clearance_m": 0.41634130818676596,
+              "top_surface_wheel_bottom_clearance_m": 1.8000602721862657e-06,
+              "contact_class": "OBSTACLE_TOP",
+              "normal_force_n": 1.1532086376793063
+            },
+            "FR": {
+              "center_w_m": [
+                1.1265511512756348,
+                -0.3751243054866791,
+                0.0998564064502716
+              ],
+              "front_face_center_clearance_m": 0.6052389775021041,
+              "top_surface_wheel_bottom_clearance_m": -0.00013359189033511354,
+              "contact_class": "OBSTACLE_TOP",
+              "normal_force_n": 9.564957801684644
+            },
+            "RL": {
+              "center_w_m": [
+                0.5588008761405945,
+                0.06443338841199875,
+                0.09995546191930771
+              ],
+              "front_face_center_clearance_m": 0.03748870236706381,
+              "top_surface_wheel_bottom_clearance_m": -3.4536421299011244e-05,
+              "contact_class": "OBSTACLE_TOP",
+              "normal_force_n": 13.33129692077639
+            },
+            "RR": {
+              "center_w_m": [
+                0.5549145936965942,
+                -0.33280035853385925,
+                0.09930689632892609
+              ],
+              "front_face_center_clearance_m": 0.033602419923063565,
+              "top_surface_wheel_bottom_clearance_m": -0.0006831020116806336,
+              "contact_class": "OBSTACLE_TOP",
+              "normal_force_n": 4.2052585902763475
+            }
+          },
+          "wheel_geometry_motion_readback": {
+            "FL": {
+              "center_w_m": [
+                1.3556342124938965,
+                0.02102305367588997,
+                0.09965430200099945
+              ],
+              "front_face_center_clearance_m": 0.8343220387203658,
+              "top_surface_wheel_bottom_clearance_m": -0.0003356963396072693,
+              "contact_class": "OBSTACLE_TOP",
+              "normal_force_n": 14.707316398621856
+            },
+            "FR": {
+              "center_w_m": [
+                1.3478522300720215,
+                -0.37739622592926025,
+                0.10006928443908691
+              ],
+              "front_face_center_clearance_m": 0.8265400562984908,
+              "top_surface_wheel_bottom_clearance_m": 7.928609848019408e-05,
+              "contact_class": "OBSTACLE_TOP",
+              "normal_force_n": 0.0
+            },
+            "RL": {
+              "center_w_m": [
+                0.8165653944015503,
+                0.04177077114582062,
+                0.09965602308511734
+              ],
+              "front_face_center_clearance_m": 0.2952532206280196,
+              "top_surface_wheel_bottom_clearance_m": -0.0003339752554893799,
+              "contact_class": "OBSTACLE_TOP",
+              "normal_force_n": 1.2318061590194722
+            },
+            "RR": {
+              "center_w_m": [
+                0.7929368615150452,
+                -0.35389676690101624,
+                0.10023462027311325
+              ],
+              "front_face_center_clearance_m": 0.2716246877415145,
+              "top_surface_wheel_bottom_clearance_m": 0.00024462193250653075,
+              "contact_class": "OBSTACLE_TOP",
+              "normal_force_n": 15.401523539475006
+            }
+          },
+          "wheel_geometry_result": {
+            "FL": {
+              "center_w_m": [
+                1.3545066118240356,
+                0.019954755902290344,
+                0.09938672184944153
+              ],
+              "front_face_center_clearance_m": 0.833194438050505,
+              "top_surface_wheel_bottom_clearance_m": -0.0006032764911651917,
+              "contact_class": "OBSTACLE_TOP",
+              "normal_force_n": 14.69612888169525
+            },
+            "FR": {
+              "center_w_m": [
+                1.3690378665924072,
+                -0.38006556034088135,
+                0.10768865793943405
+              ],
+              "front_face_center_clearance_m": 0.8477256928188766,
+              "top_surface_wheel_bottom_clearance_m": 0.0076986595988273315,
+              "contact_class": "AIR",
+              "normal_force_n": 0.0
+            },
+            "RL": {
+              "center_w_m": [
+                0.8406995534896851,
+                0.03965745493769646,
+                0.10209044814109802
+              ],
+              "front_face_center_clearance_m": 0.3193873797161544,
+              "top_surface_wheel_bottom_clearance_m": 0.0021004498004913025,
+              "contact_class": "AIR",
+              "normal_force_n": 0.0
+            },
+            "RR": {
+              "center_w_m": [
+                0.8013688921928406,
+                -0.3553990423679352,
+                0.09997395426034927
+              ],
+              "front_face_center_clearance_m": 0.2800567184193099,
+              "top_surface_wheel_bottom_clearance_m": -1.6044080257446303e-05,
+              "contact_class": "OBSTACLE_TOP",
+              "normal_force_n": 13.985892295837527
+            }
+          },
+          "root_start_position_w_m": [
+            0.8008891940116882,
+            -0.03005925565958023,
+            0.12941274046897888
+          ],
+          "root_result_position_w_m": [
+            1.1148622035980225,
+            -0.050519995391368866,
+            0.15697167813777924
+          ]
+        },
+        "historical_stop_evidence": {
+          "zero_target_applied": true,
+          "strict_0_05_rad_s_stability_established": false,
+          "new_fsm_requirement": "zero targets plus measured wheel-speed stable-decay debounce; historical false is not inherited as success evidence"
+        }
+      },
+      "completion_latency_s": 0.0,
+      "next_state_reason": "All four wheels and the body establish the v010 final top-crossing geometry and final pose; zero wheel targets are applied, then the new FSM must add a measured stable-decay debounce before SUCCESS."
+    }
+  ]
+}

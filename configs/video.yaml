@@ -1,0 +1,24 @@
+schema: wlr50_clean.video.v1
+capture_source: active_isaac_gui_viewport
+width: 1280
+height: 720
+fps: 15
+physics_hz: 120
+render_interval_physics_steps: 8
+codec: h264
+pixel_format: yuv420p
+maximum_action_duration_s: 200
+warmup_renders_before_capture: 3
+one_capture_callback_per_render: true
+allow_extra_renders_while_recording: false
+allow_trial_stitching: false
+allow_speed_modification: false
+allowed_trim:
+  - isaac_startup
+  - pre_action_idle
+  - post_action_idle
+final_outputs:
+  recording: outputs/final/recording_v010_50mm_clean.mp4
+  fsm: outputs/final/fsm_v010_shaped_50mm_clean.mp4
+  comparison: outputs/final/recording_vs_fsm_v010_50mm.mp4
+  diagnostic: outputs/final/fsm_v010_shaped_50mm_diagnostic.mp4

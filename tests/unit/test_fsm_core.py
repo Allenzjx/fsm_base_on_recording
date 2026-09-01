@@ -1,0 +1,318 @@
+from __future__ import annotations
+
+import math
+from pathlib import Path
+
+import pytest
+
+from wlr50_clean.fsm.controller import SensorFsmController
+from wlr50_clean.fsm.motion_executor import (
+    FeedbackCorrection,
+    MotionExecutor,
+    ProgressWatchdog,
+)
+from wlr50_clean.fsm.state_graph import StateGraph
+from wlr50_clean.fsm.state_spec import EXPECTED_STATE_IDS, Lifecycle, load_fsm_spec
+from wlr50_clean.fsm.task_result import TASK_FAILURE_RESULTS, TaskResult
+from wlr50_clean.reference.motion_contract import load_motion_contract
+
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+@pytest.fixture(scope="module")
+def spec():
+    return load_fsm_spec(ROOT / "configs" / "fsm_states.yaml")
+
+
+@pytest.fixture(scope="module")
+def contract():
+    return load_motion_contract(ROOT / "configs" / "recording_motion_contract.json")
+
+
+def _live_guards(*, completion: bool) -> dict[str, bool]:
+    return {
+        "no_body_obstacle_collision": True,
+        "joint_hard_limits_valid": True,
+        "reference_entry_compatible": True,
+        "critical_actuators_available": True,
+        "body_collision_persistent_or_penetrating": False,
+        "wheel_only_climb_detected": False,
+        "non_finite_observation_or_command": False,
+        "physics_explosion_or_fall": False,
+        "joint_hard_limit_violation": False,
+        "fr_lift_entry_geometry": completion,
+    }
+
+
+def test_fixed_state_graph_and_lifecycle(spec) -> None:
+    assert tuple(state.state_id for state in spec.states) == EXPECTED_STATE_IDS
+    assert all(state.lifecycle == tuple(Lifecycle) for state in spec.states)
+    graph = StateGraph(spec)
+    assert graph.next("P01").state_id == "P02"
+    assert graph.next("P13") is None
+    with pytest.raises(ValueError):
+        graph.validate_transition("P01", "P03")
+
+
+def test_decision_and_motion_rates_are_locked(spec) -> None:
+    assert spec.motion_hz == 120.0
+    assert spec.decision_hz == 15.0
+    assert spec.decision_stride == 8
+    assert spec.watchdog_s == 0.5
+
+
+def test_all_four_source_atomic_events_emit_as_full12(contract) -> None:
+    executor = MotionExecutor(
+        physics_hz=contract.physics_hz,
+        servo_rate_limit_deg_s=contract.servo_rate_limit_deg_s,
+        initial_full12=contract.phases[0].start_full12,
+    )
+    emitted = []
+    for phase in contract.phases:
+        executor.start_phase(phase)
+        tick_count = math.ceil(phase.active_duration_s * contract.physics_hz) + 1
+        for _ in range(tick_count):
+            tick = executor.tick()
+            assert len(tick.full12) == 12
+            if tick.source_full12_atomic:
+                emitted.append((phase.state_id, tick.tick_index, tick.full12))
+    assert [item[0] for item in emitted] == ["P03", "P07", "P09", "P13"]
+    assert emitted[0][1] == 0  # the P03 t=0 launch is not skipped
+    assert executor.source_atomic_emitted == 4
+
+
+def test_servo_rate_limit_and_response_carry_across_state_boundary(contract) -> None:
+    p02 = contract.phase("P02")
+    p03 = contract.phase("P03")
+    executor = MotionExecutor(
+        physics_hz=120.0,
+        servo_rate_limit_deg_s=150.0,
+        initial_full12=p02.start_full12,
+    )
+    executor.start_phase(p02)
+    first = executor.tick()
+    assert max(
+        abs(a - b) for a, b in zip(first.full12[:8], p02.start_full12[:8])
+    ) <= 1.25 + 1e-12
+    carried = executor.last_full12
+    executor.start_phase(p03)
+    assert executor.last_full12 == carried
+    boundary = executor.tick()
+    assert max(
+        abs(a - b) for a, b in zip(boundary.full12[:8], carried[:8])
+    ) <= 1.25 + 1e-12
+    assert boundary.source_full12_atomic
+    assert boundary.full12[8:] == boundary.nominal_full12[8:]  # wheel ZOH
+
+
+def test_feedback_correction_cannot_exceed_fifteen_percent() -> None:
+    FeedbackCorrection((0.15, -0.15) + (0.0,) * 10)
+    with pytest.raises(ValueError):
+        FeedbackCorrection((0.150001,) + (0.0,) * 11)
+
+
+def test_watchdog_reports_detailed_first_stall() -> None:
+    watchdog = ProgressWatchdog(0.5)
+    command = (0.0,) * 12
+    assert watchdog.update(
+        sim_time_s=2.0,
+        state_id="P04",
+        lifecycle="EXECUTE_MOTION",
+        target_full12=command,
+        actual_progress=(1.0,),
+    ) is None
+    assert watchdog.update(
+        sim_time_s=2.49,
+        state_id="P04",
+        lifecycle="EXECUTE_MOTION",
+        target_full12=command,
+        actual_progress=(1.0,),
+    ) is None
+    blocker = watchdog.update(
+        sim_time_s=2.5,
+        state_id="P04",
+        lifecycle="EXECUTE_MOTION",
+        target_full12=command,
+        actual_progress=(1.0,),
+    )
+    assert blocker is not None
+    assert blocker.state_id == "P04"
+    assert blocker.no_progress_for_s == pytest.approx(0.5)
+    assert blocker.first_stalled_at_s == 2.0
+
+
+def test_elapsed_time_never_completes_a_state(spec, contract) -> None:
+    controller = SensorFsmController(spec, contract)
+    guards = _live_guards(completion=False)
+    # Actual progress changes every tick, so only the missing live completion
+    # guard can block this trial; elapsed duration itself cannot pass it.
+    for index in range(4000):
+        frame = controller.step(
+            {
+                "guards": guards,
+                "progress_vector": (index * 0.001,),
+                "actual_full12": contract.phase("P01").start_full12,
+            },
+            sim_time_s=index / 120.0,
+        )
+        if frame.termination is not None:
+            break
+    assert frame.termination is not None
+    assert frame.termination.result is TaskResult.INCOMPLETE_CONTROLLER_BLOCKED
+    assert controller.state.state_id == "P01"
+    assert controller.retries_used == 1
+    assert frame.first_blocker["name"] == "fr_lift_entry_geometry"
+
+
+def test_measured_wheel_decay_is_debounced_inside_controller(spec, contract) -> None:
+    controller = SensorFsmController(spec, contract)
+    controller.state = spec.state("P13")
+    controller.lifecycle = Lifecycle.VERIFY_RESULT
+    controller._endpoint_issued = True
+    controller._verify_started_s = 0.0
+    guards = {
+        guard.name: True for guard in controller.state.completion_guards
+    }
+    # Even a supplied True guard cannot bypass measured velocity debounce.
+    first = controller.step(
+        {
+            "guards": guards,
+            "wheel_velocities_rad_s": (0.0,) * 4,
+            "actual_full12": controller.state.reference_actual_endpoint_full12,
+        },
+        sim_time_s=0.0,
+    )
+    assert first.termination is None
+    assert first.lifecycle is Lifecycle.VERIFY_RESULT
+    for index in range(1, 65):
+        frame = controller.step(
+            {
+                "guards": guards,
+                "wheel_velocities_rad_s": (0.0,) * 4,
+                "actual_full12": controller.state.reference_actual_endpoint_full12,
+            },
+            sim_time_s=index / 120.0,
+        )
+        if frame.termination:
+            break
+    assert frame.termination is not None
+    assert frame.termination.result is TaskResult.SUCCESS
+    assert frame.sim_time_s >= 0.5
+
+
+def test_hard_abort_is_lifecycle_independent(spec, contract) -> None:
+    controller = SensorFsmController(spec, contract)
+    blocked_entry = _live_guards(completion=False)
+    blocked_entry["no_body_obstacle_collision"] = False
+    blocked_entry["body_collision_persistent_or_penetrating"] = True
+    observation = {
+        "guards": blocked_entry,
+        "progress_vector": (0.0,),
+        "actual_full12": contract.phase("P01").start_full12,
+    }
+    first = controller.step(observation)
+    assert first.lifecycle is Lifecycle.WAIT_ENTRY
+    assert first.termination is not None
+    assert first.termination.result is TaskResult.TASK_FAILURE_BODY_COLLISION
+
+    verify = SensorFsmController(spec, contract)
+    verify.lifecycle = Lifecycle.VERIFY_RESULT
+    verify._endpoint_issued = True
+    verify._verify_started_s = 0.0
+    frame = verify.step(observation, sim_time_s=0.0)
+    assert frame.termination is not None
+    assert frame.termination.result is TaskResult.TASK_FAILURE_BODY_COLLISION
+
+
+def test_entry_compatibility_uses_active_servos_and_ignores_wheels(spec, contract) -> None:
+    phase = contract.phase("P01")
+    guards = _live_guards(completion=False)
+    probe = SensorFsmController(spec, contract)
+    actual = list(probe.state.reference_actual_start_full12)
+    # P01's active rear-left hip has a 5.64 degree limit.  Wheel readback is
+    # intentionally extreme and must not affect entry compatibility.
+    actual[4] = probe.state.reference_actual_start_full12[4] + 5.6
+    actual[8:] = [100.0, -100.0, 50.0, -50.0]
+    controller = SensorFsmController(spec, contract)
+    frame = controller.step({"guards": guards, "actual_full12": actual})
+    assert frame.lifecycle is Lifecycle.EXECUTE_MOTION
+    assert frame.first_blocker is None
+
+    actual[4] = probe.state.reference_actual_start_full12[4] + 5.7
+    blocked = SensorFsmController(spec, contract)
+    frame = blocked.step({"guards": guards, "actual_full12": actual})
+    assert frame.lifecycle is Lifecycle.WAIT_ENTRY
+    assert frame.first_blocker is None  # transient sensor/entry mismatch is not latched
+
+
+def test_wait_entry_guard_jitter_cannot_extend_past_watchdog(spec, contract) -> None:
+    controller = SensorFsmController(spec, contract)
+    guards = _live_guards(completion=False)
+    guards["critical_actuators_available"] = False
+    frame = None
+    for index in range(61):
+        frame = controller.step(
+            {
+                "guards": guards,
+                # Deliberately changing progress used to keep the generic
+                # no-motion watchdog alive indefinitely.
+                "progress_vector": (index * 1.0e-3,),
+                "actual_full12": controller.state.reference_actual_start_full12,
+            },
+            sim_time_s=index / 120.0,
+        )
+    assert frame is not None and frame.termination is not None
+    assert frame.termination.result is TaskResult.INCOMPLETE_CONTROLLER_BLOCKED
+    assert frame.first_blocker["name"] == "critical_actuators_available"
+
+
+def test_entry_compatibility_uses_measured_reference_start(spec, contract) -> None:
+    controller = SensorFsmController(spec, contract)
+    controller.state = spec.state("P05")
+    actual = controller.state.reference_actual_start_full12
+    # The measured v010 P05 knee entry differs substantially from the command
+    # start due to the continuous physical response carried across P04/P05.
+    assert abs(actual[1] - controller.phase.start_full12[1]) > 2.0
+    evidence = controller._entry_compatibility({"actual_full12": actual})
+    assert evidence.passed is True
+    assert (
+        evidence.value["front_left_knee"]["reference_actual_start_deg"]
+        == actual[1]
+    )
+
+
+def test_initial_sensor_latency_does_not_pollute_first_blocker(spec, contract) -> None:
+    controller = SensorFsmController(spec, contract)
+    guards = _live_guards(completion=False)
+    frame = controller.step({"guards": guards, "progress_vector": (0.0,)})
+    assert frame.lifecycle is Lifecycle.WAIT_ENTRY
+    assert frame.first_blocker is None
+    for index in range(1, 9):
+        frame = controller.step(
+            {
+                "guards": guards,
+                "progress_vector": (float(index),),
+                "actual_full12": contract.phase("P01").start_full12,
+            },
+            sim_time_s=index / 120.0,
+        )
+    assert frame.lifecycle is Lifecycle.EXECUTE_MOTION
+    assert frame.first_blocker is None
+
+
+def test_result_classes_are_disjoint_and_exhaustive() -> None:
+    expected = {
+        "SUCCESS",
+        "TASK_FAILURE_BODY_COLLISION",
+        "TASK_FAILURE_WHEEL_ONLY_CLIMB",
+        "INCOMPLETE_CONTROLLER_BLOCKED",
+        "SAFETY_ABORT",
+        "INFRASTRUCTURE_ERROR",
+        "VIDEO_OR_ARTIFACT_ERROR",
+    }
+    assert {item.value for item in TaskResult} == expected
+    assert TASK_FAILURE_RESULTS == {
+        TaskResult.TASK_FAILURE_BODY_COLLISION,
+        TaskResult.TASK_FAILURE_WHEEL_ONLY_CLIMB,
+    }

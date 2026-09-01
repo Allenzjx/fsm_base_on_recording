@@ -1,0 +1,600 @@
+"""Sensor-driven P01--P13 controller with 120/15 Hz clock separation."""
+
+from __future__ import annotations
+
+from dataclasses import asdict, dataclass
+from pathlib import Path
+from typing import Any, Mapping, Sequence
+
+from wlr50_clean.reference.motion_contract import MotionContract, load_motion_contract
+
+from .guard_evaluator import (
+    GuardEvidence,
+    GuardEvaluator,
+    GuardReport,
+    observation_progress_vector,
+)
+from .motion_executor import (
+    FeedbackCorrection,
+    MotionExecutor,
+    MotionTick,
+    ProgressWatchdog,
+    WatchdogBlocker,
+)
+from .recovery import RecoveryPlanner
+from .state_graph import StateGraph
+from .state_spec import FsmSpec, Lifecycle, StateSpec, load_fsm_spec
+from .task_result import TaskResult, TaskTermination
+
+
+@dataclass(frozen=True)
+class ControllerEvent:
+    sim_time_s: float
+    state_id: str
+    from_lifecycle: str
+    to_lifecycle: str
+    reason: str
+    details: Mapping[str, Any]
+
+
+@dataclass(frozen=True)
+class ControllerFrame:
+    physics_tick: int
+    sim_time_s: float
+    state_id: str
+    lifecycle: Lifecycle
+    full12: tuple[float, ...]
+    decision_tick: bool
+    full12_atomic_write_required: bool
+    atomic_source_event: bool
+    endpoint_issued: bool
+    termination: TaskTermination | None
+    first_blocker: Mapping[str, Any] | None
+    events: tuple[ControllerEvent, ...]
+
+
+class SensorFsmController:
+    """One call per physics tick; always returns one atomic full12 action."""
+
+    def __init__(self, spec: FsmSpec, contract: MotionContract) -> None:
+        _validate_pair(spec, contract)
+        self.spec = spec
+        self.contract = contract
+        self.graph = StateGraph(spec)
+        self.guard_evaluator = GuardEvaluator()
+        self.motion = MotionExecutor(
+            physics_hz=contract.physics_hz,
+            servo_rate_limit_deg_s=contract.servo_rate_limit_deg_s,
+            initial_full12=contract.phases[0].start_full12,
+        )
+        self.recovery = RecoveryPlanner(contract.full12_order)
+        self.watchdog = ProgressWatchdog(spec.watchdog_s)
+        self.state = self.graph.first
+        self.lifecycle = Lifecycle.WAIT_ENTRY
+        self.retries_used = 0
+        self.physics_tick = 0
+        self._last_sim_time_s: float | None = None
+        self._verify_started_s: float | None = None
+        self._wait_entry_started_s: float | None = None
+        self._endpoint_issued = False
+        self._previous_state_done = True
+        self._pending_blocker: GuardEvidence | WatchdogBlocker | None = None
+        self._first_blocker: dict[str, Any] | None = None
+        self.termination: TaskTermination | None = None
+        self.history: list[ControllerEvent] = []
+
+    @classmethod
+    def from_paths(cls, fsm_path: Path, motion_contract_path: Path) -> "SensorFsmController":
+        return cls(load_fsm_spec(fsm_path), load_motion_contract(motion_contract_path))
+
+    @property
+    def phase(self):
+        return self.contract.phase(self.state.state_id)
+
+    @property
+    def first_blocker(self) -> Mapping[str, Any] | None:
+        return self._first_blocker
+
+    def step(self, observation: Any, *, sim_time_s: float | None = None) -> ControllerFrame:
+        now = (
+            self.physics_tick / self.spec.motion_hz
+            if sim_time_s is None
+            else float(sim_time_s)
+        )
+        events: list[ControllerEvent] = []
+        decision_tick = self.physics_tick % self.spec.decision_stride == 0
+        if self._last_sim_time_s is not None and now + 1e-12 < self._last_sim_time_s:
+            self._terminate(
+                TaskResult.INFRASTRUCTURE_ERROR,
+                now,
+                "simulation time moved backwards",
+                {"previous_sim_time_s": self._last_sim_time_s},
+            )
+        self._last_sim_time_s = now
+
+        if self.termination is None and decision_tick:
+            self._run_decision_transitions(observation, now, events)
+
+        motion_tick: MotionTick | None = None
+        if self.termination is None and self.lifecycle is Lifecycle.EXECUTE_MOTION:
+            motion_tick = self.motion.tick()
+            command = motion_tick.full12
+            if motion_tick.endpoint_issued:
+                self._endpoint_issued = True
+                self._verify_started_s = now
+                self._transition(
+                    Lifecycle.VERIFY_RESULT,
+                    now,
+                    "compact motion endpoint issued; awaiting live result guards",
+                    events,
+                    {"motion_elapsed_s": motion_tick.elapsed_s},
+                )
+            else:
+                blocker = self.watchdog.update(
+                    sim_time_s=now,
+                    state_id=self.state.state_id,
+                    lifecycle=self.lifecycle.value,
+                    target_full12=command,
+                    actual_progress=observation_progress_vector(observation),
+                )
+                if blocker is not None:
+                    self._remember_blocker(blocker)
+                    self._recover_or_terminate(blocker, now, events)
+        else:
+            command = self._held_or_safe_command()
+            if (
+                self.termination is None
+                and self.lifecycle is Lifecycle.WAIT_ENTRY
+            ):
+                if self._wait_entry_started_s is None:
+                    self._wait_entry_started_s = now
+                blocker = self.watchdog.update(
+                    sim_time_s=now,
+                    state_id=self.state.state_id,
+                    lifecycle=self.lifecycle.value,
+                    target_full12=command,
+                    actual_progress=observation_progress_vector(observation),
+                )
+                if blocker is not None:
+                    self._remember_blocker(self._pending_blocker or blocker)
+                    self._terminate_blocked(blocker, now)
+                elif (
+                    self._pending_blocker is not None
+                    and now - self._wait_entry_started_s + 1e-12
+                    >= self.spec.watchdog_s
+                ):
+                    # Allow only the explicit short carry-over budget.  Live
+                    # jitter must not keep an incompatible entry alive until
+                    # the trial-wide timeout.
+                    self._remember_blocker(self._pending_blocker)
+                    self._terminate_blocked(self._pending_blocker, now)
+
+        frame = ControllerFrame(
+            physics_tick=self.physics_tick,
+            sim_time_s=now,
+            state_id=self.state.state_id,
+            lifecycle=self.lifecycle,
+            full12=command,
+            decision_tick=decision_tick,
+            full12_atomic_write_required=True,
+            atomic_source_event=bool(
+                motion_tick is not None and motion_tick.source_full12_atomic
+            ),
+            endpoint_issued=self._endpoint_issued,
+            termination=self.termination,
+            first_blocker=self._first_blocker,
+            events=tuple(events),
+        )
+        self.physics_tick += 1
+        return frame
+
+    def _run_decision_transitions(
+        self, observation: Any, now: float, events: list[ControllerEvent]
+    ) -> None:
+        # DONE and a ready next-state entry may collapse into the same decision
+        # tick.  Both lifecycle transitions remain explicit in the event log,
+        # while no artificial 15 Hz pause is injected into the 120 Hz motion.
+        for _ in range(4):
+            # Task failures and safety aborts are lifecycle-independent.  A
+            # collision that first becomes persistent on the endpoint tick,
+            # for example, must not be downgraded to a VERIFY/next-entry
+            # blocker merely because EXECUTE_MOTION has just ended.
+            abort = self.guard_evaluator.first_hard_abort(
+                self.state.hard_abort_guards,
+                observation,
+                state_id=self.state.state_id,
+                sim_time_s=now,
+                local_facts=self._local_facts(observation),
+            )
+            if abort is not None:
+                self._remember_blocker(abort.evidence)
+                self._terminate(
+                    abort.result,
+                    now,
+                    f"hard guard asserted: {abort.evidence.name}",
+                    {"evidence": asdict(abort.evidence)},
+                )
+                return
+
+            if self.lifecycle is Lifecycle.EXECUTE_MOTION:
+                return
+
+            if self.lifecycle is Lifecycle.WAIT_ENTRY:
+                report = self.guard_evaluator.evaluate_all(
+                    self.state.entry_guards,
+                    observation,
+                    state_id=self.state.state_id,
+                    sim_time_s=now,
+                    local_facts=self._local_facts(observation),
+                )
+                if not report.passed:
+                    # Sensor startup/settling latency is not a trial blocker.
+                    # Latch this only if the no-progress watchdog actually fires.
+                    self._pending_blocker = report.first_blocker
+                    return
+                self._pending_blocker = None
+                self._wait_entry_started_s = None
+                self.motion.start_phase(self.phase, FeedbackCorrection())
+                self.watchdog.reset()
+                self._endpoint_issued = False
+                self._transition(
+                    Lifecycle.EXECUTE_MOTION,
+                    now,
+                    "all live entry guards passed",
+                    events,
+                    _report_details(report),
+                )
+                # Safety predicates are checked now that EXECUTE is active.
+                continue
+
+            if self.lifecycle is Lifecycle.VERIFY_RESULT:
+                report = self.guard_evaluator.evaluate_all(
+                    self.state.completion_guards,
+                    observation,
+                    state_id=self.state.state_id,
+                    sim_time_s=now,
+                    local_facts=self._local_facts(observation),
+                )
+                if report.passed:
+                    self._transition(
+                        Lifecycle.DONE,
+                        now,
+                        self.state.transition_reason,
+                        events,
+                        _report_details(report),
+                    )
+                    next_state = self.graph.next(self.state.state_id)
+                    if next_state is None:
+                        self._terminate(
+                            TaskResult.SUCCESS,
+                            now,
+                            "P13 live completion guards passed",
+                            {"completion_event": self.state.completion_event},
+                        )
+                        return
+                    self._enter_next_state(next_state, now, events)
+                    continue
+                self._pending_blocker = report.first_blocker
+                verify_start = (
+                    now if self._verify_started_s is None else self._verify_started_s
+                )
+                verify_elapsed = now - verify_start
+                if verify_elapsed + 1e-12 >= self.state.max_verify_wait_s:
+                    self._recover_or_terminate(report.first_blocker, now, events)
+                return
+
+            if self.lifecycle is Lifecycle.RECOVERY:
+                if self.retries_used >= self.state.retry_budget:
+                    self._terminate_blocked(self._pending_blocker, now)
+                    return
+                blocker_name = _blocker_name(self._pending_blocker)
+                try:
+                    plan = self.recovery.plan(
+                        phase=self.phase,
+                        observation=observation,
+                        blocked_guard=blocker_name,
+                    )
+                except (TypeError, ValueError) as exc:
+                    self._terminate(
+                        TaskResult.INFRASTRUCTURE_ERROR,
+                        now,
+                        "invalid recovery feedback interface",
+                        {"error": str(exc), "blocked_guard": blocker_name},
+                    )
+                    return
+                self.retries_used += 1
+                self.motion.start_phase(self.phase, plan.correction)
+                self.guard_evaluator.reset_state(self.state.state_id)
+                self.watchdog.reset()
+                self._endpoint_issued = False
+                self._verify_started_s = None
+                self._transition(
+                    Lifecycle.EXECUTE_MOTION,
+                    now,
+                    plan.reason,
+                    events,
+                    {
+                        "retry": self.retries_used,
+                        "blocked_guard": blocker_name,
+                        "correction_fractions": plan.correction.fractions,
+                    },
+                )
+                continue
+
+            return
+
+    def _enter_next_state(
+        self, next_state: StateSpec, now: float, events: list[ControllerEvent]
+    ) -> None:
+        previous = self.state.state_id
+        self.graph.validate_transition(previous, next_state.state_id)
+        self.state = next_state
+        self.lifecycle = Lifecycle.WAIT_ENTRY
+        self.retries_used = 0
+        self._endpoint_issued = False
+        self._verify_started_s = None
+        self._previous_state_done = True
+        self._pending_blocker = None
+        self._wait_entry_started_s = now
+        self.guard_evaluator.reset_state(next_state.state_id)
+        self.watchdog.reset()
+        event = ControllerEvent(
+            sim_time_s=now,
+            state_id=next_state.state_id,
+            from_lifecycle=Lifecycle.DONE.value,
+            to_lifecycle=Lifecycle.WAIT_ENTRY.value,
+            reason=f"advance fixed graph {previous}->{next_state.state_id}",
+            details={},
+        )
+        events.append(event)
+        self.history.append(event)
+
+    def _recover_or_terminate(
+        self,
+        blocker: GuardEvidence | WatchdogBlocker | None,
+        now: float,
+        events: list[ControllerEvent],
+    ) -> None:
+        self._pending_blocker = blocker
+        self._remember_blocker(blocker)
+        if self.retries_used >= self.state.retry_budget:
+            self._terminate_blocked(blocker, now)
+            return
+        self._transition(
+            Lifecycle.RECOVERY,
+            now,
+            "live result/progress blocked; enter bounded recovery",
+            events,
+            _blocker_details(blocker),
+        )
+
+    def _terminate_blocked(
+        self, blocker: GuardEvidence | WatchdogBlocker | None, now: float
+    ) -> None:
+        self._terminate(
+            TaskResult.INCOMPLETE_CONTROLLER_BLOCKED,
+            now,
+            "controller exhausted its one reference-bounded retry",
+            {
+                "current_blocker": _blocker_details(blocker),
+                "first_blocker": self._first_blocker,
+                "retries_used": self.retries_used,
+            },
+        )
+
+    def _local_facts(self, observation: Any) -> dict[str, Any]:
+        held = self.motion.held_full12(self.phase.start_full12)
+        return {
+            "previous_state_done": self._previous_state_done,
+            "motion_endpoint_issued": self._endpoint_issued,
+            "wheel_targets_zero": all(abs(value) <= 1e-9 for value in held[8:]),
+            "reference_entry_compatible": self._entry_compatibility(observation),
+            "final_joint_pose_compatible": self._final_pose_compatibility(observation),
+        }
+
+    def _entry_compatibility(self, observation: Any) -> GuardEvidence:
+        actual = _actual_servo_positions(observation, self.contract.full12_order[:8])
+        active = set(self.phase.active_channels)
+        checked = [
+            index
+            for index, channel in enumerate(self.contract.full12_order[:8])
+            if channel in active
+        ]
+        if not checked:
+            return GuardEvidence(
+                "reference_entry_compatible",
+                True,
+                {"checked_servo_channels": ()},
+                "controller.phase_context",
+                "phase has no active servo entry constraint",
+            )
+        if actual is None:
+            return GuardEvidence(
+                "reference_entry_compatible",
+                False,
+                source="controller.phase_context",
+                reason="live servo readback unavailable",
+            )
+        errors = {}
+        passed = True
+        for index in checked:
+            channel = self.contract.full12_order[index]
+            reference_actual_start = self.state.reference_actual_start_full12[index]
+            error = actual[index] - reference_actual_start
+            limit = max(2.0, 0.15 * abs(self.phase.delta_full12[index]))
+            errors[channel] = {
+                "actual_deg": actual[index],
+                "reference_actual_start_deg": reference_actual_start,
+                "error_deg": error,
+                "limit_deg": limit,
+            }
+            passed = passed and abs(error) <= limit + 1e-12
+        return GuardEvidence(
+            "reference_entry_compatible",
+            passed,
+            errors,
+            "controller.live_servo_vs_v010_actual_start",
+            "active servos compare with the measured reference entry using max(2 deg, 15% of reference phase delta)",
+        )
+
+    def _final_pose_compatibility(self, observation: Any) -> GuardEvidence:
+        if self.state.state_id != "P13":
+            return GuardEvidence(
+                "final_joint_pose_compatible",
+                False,
+                source="controller.phase_context",
+                reason="final pose guard is only valid in P13",
+            )
+        actual = _actual_servo_positions(observation, self.contract.full12_order[:8])
+        if actual is None:
+            return GuardEvidence(
+                "final_joint_pose_compatible",
+                False,
+                source="controller.phase_context",
+                reason="live servo readback unavailable",
+            )
+        reference = self.state.reference_actual_endpoint_full12
+        errors = {}
+        passed = True
+        for index, channel in enumerate(self.contract.full12_order[:8]):
+            error = actual[index] - reference[index]
+            limit = max(2.0, 0.15 * abs(self.phase.delta_full12[index]))
+            errors[channel] = {"error_deg": error, "limit_deg": limit}
+            passed = passed and abs(error) <= limit + 1e-12
+        return GuardEvidence(
+            "final_joint_pose_compatible",
+            passed,
+            errors,
+            "controller.live_servo_vs_v010_actual_endpoint",
+            "all final servos use max(2 deg, 15% of phase delta)",
+        )
+
+    def _held_or_safe_command(self) -> tuple[float, ...]:
+        held = self.motion.held_full12(self.phase.start_full12)
+        if self.termination is None:
+            return held
+        return held[:8] + (0.0, 0.0, 0.0, 0.0)
+
+    def _transition(
+        self,
+        destination: Lifecycle,
+        now: float,
+        reason: str,
+        events: list[ControllerEvent],
+        details: Mapping[str, Any],
+    ) -> None:
+        source = self.lifecycle
+        self.lifecycle = destination
+        event = ControllerEvent(
+            sim_time_s=now,
+            state_id=self.state.state_id,
+            from_lifecycle=source.value,
+            to_lifecycle=destination.value,
+            reason=reason,
+            details=details,
+        )
+        events.append(event)
+        self.history.append(event)
+
+    def _remember_blocker(
+        self, blocker: GuardEvidence | WatchdogBlocker | None
+    ) -> None:
+        if blocker is not None and self._first_blocker is None:
+            self._first_blocker = _blocker_details(blocker)
+
+    def _terminate(
+        self,
+        result: TaskResult,
+        now: float,
+        reason: str,
+        details: Mapping[str, Any],
+    ) -> None:
+        if self.termination is None:
+            self.termination = TaskTermination(
+                result=result,
+                state_id=self.state.state_id,
+                lifecycle=self.lifecycle.value,
+                sim_time_s=now,
+                reason=reason,
+                details=details,
+            )
+
+    def abort_infrastructure(self, reason: str, *, sim_time_s: float) -> None:
+        self._terminate(TaskResult.INFRASTRUCTURE_ERROR, sim_time_s, reason, {})
+
+    def abort_video_or_artifact(self, reason: str, *, sim_time_s: float) -> None:
+        self._terminate(TaskResult.VIDEO_OR_ARTIFACT_ERROR, sim_time_s, reason, {})
+
+
+def _validate_pair(spec: FsmSpec, contract: MotionContract) -> None:
+    if spec.reference_version != contract.reference_version:
+        raise ValueError("FSM and motion contract reference versions differ")
+    if spec.rear_leg_order != contract.rear_leg_order:
+        raise ValueError("FSM and motion contract rear-leg order differs")
+    if spec.motion_hz != contract.physics_hz or spec.decision_hz != contract.decision_hz:
+        raise ValueError("FSM and motion-contract rates differ")
+    spec_ids = tuple(state.state_id for state in spec.states)
+    phase_ids = tuple(phase.state_id for phase in contract.phases)
+    if spec_ids != phase_ids:
+        raise ValueError("FSM states and compact motion phases differ")
+    for state, phase in zip(spec.states, contract.phases, strict=True):
+        if state.completion_event != phase.completion_event:
+            raise ValueError(f"{state.state_id}: completion-event contract mismatch")
+
+
+def _actual_servo_positions(
+    observation: Any, servo_order: Sequence[str]
+) -> tuple[float, ...] | None:
+    if isinstance(observation, Mapping):
+        direct = observation.get("actual_full12")
+        joints = observation.get("joints")
+    else:
+        direct = getattr(observation, "actual_full12", None)
+        joints = getattr(observation, "joints", None)
+    if direct is not None:
+        try:
+            values = tuple(float(item) for item in direct)
+        except (TypeError, ValueError):
+            return None
+        return values[:8] if len(values) >= 8 else None
+    if not isinstance(joints, Mapping):
+        return None
+    values = []
+    for channel in servo_order:
+        if channel not in joints:
+            return None
+        joint = joints[channel]
+        value = (
+            joint.get("position_deg")
+            if isinstance(joint, Mapping)
+            else getattr(joint, "position_deg", None)
+        )
+        if value is None:
+            return None
+        try:
+            values.append(float(value))
+        except (TypeError, ValueError):
+            return None
+    return tuple(values)
+
+
+def _report_details(report: GuardReport) -> Mapping[str, Any]:
+    return {"guards": tuple(asdict(item) for item in report.evidence)}
+
+
+def _blocker_name(blocker: GuardEvidence | WatchdogBlocker | None) -> str:
+    if isinstance(blocker, GuardEvidence):
+        return blocker.name
+    if isinstance(blocker, WatchdogBlocker):
+        return "state_progress_watchdog"
+    return "unknown_live_guard"
+
+
+def _blocker_details(
+    blocker: GuardEvidence | WatchdogBlocker | None,
+) -> dict[str, Any]:
+    if blocker is None:
+        return {"name": "unknown_live_guard"}
+    details = asdict(blocker)
+    details.setdefault("name", _blocker_name(blocker))
+    return details

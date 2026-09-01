@@ -1,0 +1,49 @@
+schema: wlr50_clean.sensors.v1
+sample_hz: 120.0
+physics_dt_s: 0.008333333333333333
+decision_hz: 15.0
+contact:
+  implementation: one_isaaclab_contact_sensor_per_exact_rigid_body
+  update_period_s: 0.0
+  force_recompute: true
+  history_length: 3
+  force_on_n: 0.25
+  force_off_n: 0.12
+  track_pose: true
+  track_contact_points: true
+  track_friction_forces: true
+  track_air_time: true
+  max_contact_data_count_per_prim: 8
+  filter_order:
+    - pair_kind: obstacle
+      prim_path: /World/Obstacle
+    - pair_kind: ground
+      prim_path: /World/defaultGroundPlane/GroundPlane/CollisionPlane
+body_collision:
+  exact_sensor_body: base_link
+  exact_other_body: /World/Obstacle
+  persistence_ticks: 2
+  collider_penetration_threshold_m: 0.001
+  rule: exact_pair_active AND (persistent OR live_collider_penetration)
+wheel_geometry:
+  source: cached_live_enabled_collider_bounds
+  nominal_radius_fallback_allowed: false
+  unavailable_policy: mark_unverified
+center_of_mass:
+  source: articulation.body_com_pos_w
+  mass_source: articulation.data.default_mass
+  require_all_13_bodies: true
+support:
+  source_priority:
+    - exact_pair_contact_point
+    - live_collider_bottom_for_verified_active_wheel_pair
+  geometry_alone_creates_contact: false
+imu:
+  source: live_base_link_kinematics
+  signals:
+    - orientation_wxyz
+    - angular_velocity_body_rad_s
+    - linear_acceleration_body_m_s2
+    - specific_force_body_m_s2
+    - projected_gravity_body
+

@@ -5,6 +5,55 @@
   "source_project_policy": "read_only_hash_locked_allowlist",
   "old_fsm_project": "C:/robotics_sim/wlr_robot/fsm_50mm_recording_sensor_fsm_v1",
   "old_fsm_policy": "forbidden_runtime_and_source_dependency",
-  "reused_files": []
+  "reused_files": [
+    {
+      "source_path": "C:/robotics_sim/wlr_robot/height_based_obstacle_replay/command_model.py",
+      "source_sha256": "70f1e4183fc711f1dcded5d44a45c661960a383634b252c944ca21705c86e905",
+      "destination_path": "src/wlr50_clean/infrastructure/command_batch.py",
+      "destination_sha256": "dbcee551cd1eba697b06b5f29439325cc9e36938ecdfaaa30ca718632937f0db",
+      "reuse_reason": "Narrow clean derivation of canonical 8+4 ordering, command signs, and physical command limits; no mature imports."
+    },
+    {
+      "source_path": "C:/robotics_sim/wlr_robot/height_based_obstacle_replay/sim_obstacle_scene.py",
+      "source_sha256": "ed42de331eedc36919af1775b6d754457dda283386a3e3cb9984c8e2de0fe471",
+      "destination_path": "src/wlr50_clean/infrastructure/scene_factory.py",
+      "destination_sha256": "02df57b900fc4208ff4959e9db6fb9b39116210a4fe58d9848e6e1aa06b7fca1",
+      "reuse_reason": "Narrow clean derivation of the hash-locked robot spawn, fixed 50 mm scene, physics, actuators, lighting, and camera; mutation and save routes omitted."
+    },
+    {
+      "source_path": "C:/robotics_sim/wlr_robot/height_based_obstacle_replay/config/environment_reference.yaml",
+      "source_sha256": "822c8e47d75de92e2165a99875a2de484425b25cf15e7404481b60cf05f81604",
+      "destination_path": "src/wlr50_clean/infrastructure/scene_factory.py",
+      "destination_sha256": "02df57b900fc4208ff4959e9db6fb9b39116210a4fe58d9848e6e1aa06b7fca1",
+      "reuse_reason": "Hash-locked obstacle front plane, dimensions, and frozen environment constants."
+    },
+    {
+      "source_path": "C:/robotics_sim/wlr_robot/height_based_obstacle_replay/sim_robot_adapter.py",
+      "source_sha256": "04966b8100eeb33ea55de78eaa5a74bbc3662030f82ba4d458eb429608ed64d4",
+      "destination_path": "src/wlr50_clean/infrastructure/robot_adapter.py",
+      "destination_sha256": "4bec3dd2ec66da350cb4a2adcf3d573be020f838b01d054e3680745a0aeb2c81",
+      "reuse_reason": "Narrow clean derivation of exact live-name resolution, command-space conversion, and one-write full12 application; restore, respawn, correction, and root-write routes omitted."
+    },
+    {
+      "source_path": "C:/robotics_sim/wlr_robot/height_based_obstacle_replay/config/real_robot_motion_reference.yaml",
+      "source_sha256": "143bbb71fe50fcde22360901552f36b397b9d102bde21172213bf3a316333747",
+      "destination_path": "src/wlr50_clean/infrastructure/command_batch.py",
+      "destination_sha256": "dbcee551cd1eba697b06b5f29439325cc9e36938ecdfaaa30ca718632937f0db",
+      "reuse_reason": "Hash-locked 150 deg/s servo reference and wheel reference/limit constants."
+    },
+    {
+      "source_path": "C:/robotics_sim/wlr_robot/height_based_obstacle_replay/fsm_50mm_recording_derived_v3/viewport_buffer_video.py",
+      "source_sha256": "9812b3896b843eda3db20a517856dc45b3637c91894172ffe9def613b6409a2b",
+      "destination_path": "src/wlr50_clean/infrastructure/video_capture.py",
+      "destination_sha256": "515da79117bdea229a8d7d03c90c14b1bd9fde3cd92b2d0744df2b1654de9dd4",
+      "reuse_reason": "Narrow clean derivation of the proven active-viewport render-product callback and encoder lifecycle; no replay or FSM logic."
+    },
+    {
+      "source_path": "C:/robotics_sim/wlr_robot/height_based_obstacle_replay/sim_worker_process.py",
+      "source_sha256": "580412309695e1454bd6ccf8470fa5c79a5b573ad57301205d815ce6273e4394",
+      "destination_path": "src/wlr50_clean/infrastructure/app_runtime.py",
+      "destination_sha256": "713ceb9fa7c4d40846d4b1885743dd858a320a65e5ebb5584cc62e544e51d932",
+      "reuse_reason": "Narrow clean derivation of AppLauncher ownership, one initial application update, anti-throttling, and finalization-before-close lifecycle; replay scheduling and legacy controller paths omitted."
+    }
+  ]
 }
-
