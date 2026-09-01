@@ -63,6 +63,7 @@ def test_exact_render_cadence_is_one_per_eight_completed_physics_ticks() -> None
     assert source.index("_configure_active_viewport()") < source.index("for _ in range(config.warmup_renders)")
     assert "ActiveViewportVideoRecorder(config.run_dir)" in source
     assert "viewport_provider=" not in source
+    assert "create_live_sensing_backends(\n                sim=sim, robot=robot\n            )" in source
     assert source.index("_validate_initial_observation(current_observation)") < source.index("recorder.start()")
 
 

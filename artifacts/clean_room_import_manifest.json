@@ -52,7 +52,7 @@
       "source_path": "C:/robotics_sim/wlr_robot/height_based_obstacle_replay/sim_worker_process.py",
       "source_sha256": "580412309695e1454bd6ccf8470fa5c79a5b573ad57301205d815ce6273e4394",
       "destination_path": "src/wlr50_clean/infrastructure/app_runtime.py",
-      "destination_sha256": "713ceb9fa7c4d40846d4b1885743dd858a320a65e5ebb5584cc62e544e51d932",
+      "destination_sha256": "85005b411938df66efc085d36661da303f6141ff8aa171f2e708711f26cbe806",
       "reuse_reason": "Narrow clean derivation of AppLauncher ownership, one initial application update, anti-throttling, and finalization-before-close lifecycle; replay scheduling and legacy controller paths omitted."
     }
   ]

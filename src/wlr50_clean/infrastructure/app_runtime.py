@@ -351,7 +351,12 @@ def _run_live(config: RuntimeConfig, simulation_app: Any) -> int:
 
     try:
         _append_artifact(writer, "task_event", {"event": "TRIAL_START", "result": None, "reference_version": "v010_20260806_220745_363972_manual", "rear_leg_order": "RR_FIRST"})
-        scene = create_scene(simulation_app=simulation_app, before_reset=create_live_sensing_backends)
+        scene = create_scene(
+            simulation_app=simulation_app,
+            before_reset=lambda sim, robot: create_live_sensing_backends(
+                sim=sim, robot=robot
+            ),
+        )
         adapter = RobotAdapter.from_scene(scene)
         backends = scene.instrumentation
         if backends is None or not backends.contact_backend.initialized:
