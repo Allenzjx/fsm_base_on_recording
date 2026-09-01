@@ -199,14 +199,19 @@ class UsdCollisionBoundsProvider:
             return None, ()
         colliders = [
             prim
-            for prim in Usd.PrimRange(body)
+            for prim in Usd.PrimRange(body, Usd.TraverseInstanceProxies())
             if prim.IsValid() and prim.HasAPI(UsdPhysics.CollisionAPI)
         ]
         if not colliders:
             return None, ()
         cache = UsdGeom.BBoxCache(
             Usd.TimeCode.Default(),
-            [UsdGeom.Tokens.default_, UsdGeom.Tokens.render, UsdGeom.Tokens.proxy],
+            [
+                UsdGeom.Tokens.default_,
+                UsdGeom.Tokens.render,
+                UsdGeom.Tokens.proxy,
+                UsdGeom.Tokens.guide,
+            ],
             useExtentsHint=False,
         )
         minima = [math.inf, math.inf, math.inf]
@@ -265,4 +270,3 @@ def _optional_vec3(values: Sequence[float] | None) -> Vec3 | None:
     if len(converted) != 3 or not all(math.isfinite(value) for value in converted):
         return None
     return converted  # type: ignore[return-value]
-

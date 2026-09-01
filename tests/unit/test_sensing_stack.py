@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from dataclasses import replace
 from pathlib import Path
-from types import SimpleNamespace
+import sys
+from types import ModuleType, SimpleNamespace
 
 import numpy as np
 import pytest
@@ -27,6 +28,7 @@ from wlr50_clean.sensing.geometry import (
     Aabb,
     ColliderGeometryCache,
     GeometrySnapshot,
+    UsdCollisionBoundsProvider,
     WheelGeometry,
 )
 from wlr50_clean.sensing.guard_state import LiveGuardTracker
@@ -148,6 +150,79 @@ def test_wheel_bottom_uses_cached_measured_collider_extent() -> None:
     second = cache.sample(moved)
     assert second.wheels["front_left_ankle"].bottom_w_m == pytest.approx((0.3, 0.0, 0.021))
     assert provider.calls["front_left_wheel"] == 1
+
+
+def test_usd_bounds_traverse_instance_proxies_and_include_guide(monkeypatch) -> None:
+    traversal_token = object()
+    collision_api = object()
+    calls: dict[str, object] = {}
+
+    class FakePath:
+        pathString = "/World/WLRRobot/front_left_wheel/collisions/mesh"
+
+    class FakePrim:
+        def IsValid(self) -> bool:
+            return True
+
+        def HasAPI(self, api) -> bool:
+            return api is collision_api
+
+        def GetPath(self) -> FakePath:
+            return FakePath()
+
+    class FakeStage:
+        def GetPrimAtPath(self, path: str) -> FakePrim:
+            calls["body_path"] = path
+            return FakePrim()
+
+    class FakeRange:
+        def GetMin(self):
+            return (0.1, -0.1, 0.0)
+
+        def GetMax(self):
+            return (0.2, 0.1, 0.1)
+
+    class FakeBound:
+        def ComputeAlignedRange(self) -> FakeRange:
+            return FakeRange()
+
+    class FakeBBoxCache:
+        def __init__(self, _time, purposes, *, useExtentsHint: bool):
+            calls["purposes"] = tuple(purposes)
+            calls["use_extents_hint"] = useExtentsHint
+
+        def ComputeWorldBound(self, _prim: FakePrim) -> FakeBound:
+            return FakeBound()
+
+    fake_usd = SimpleNamespace(
+        PrimRange=lambda root, predicate: (
+            calls.update(root=root, predicate=predicate) or [FakePrim()]
+        ),
+        TimeCode=SimpleNamespace(Default=lambda: 0),
+        TraverseInstanceProxies=lambda: traversal_token,
+    )
+    fake_usd_geom = SimpleNamespace(
+        BBoxCache=FakeBBoxCache,
+        Tokens=SimpleNamespace(
+            default_="default", render="render", proxy="proxy", guide="guide"
+        ),
+    )
+    pxr = ModuleType("pxr")
+    pxr.Usd = fake_usd
+    pxr.UsdGeom = fake_usd_geom
+    pxr.UsdPhysics = SimpleNamespace(CollisionAPI=collision_api)
+    monkeypatch.setitem(sys.modules, "pxr", pxr)
+
+    bounds, paths = UsdCollisionBoundsProvider(FakeStage()).collision_bounds(
+        "front_left_wheel"
+    )
+
+    assert calls["body_path"] == "/World/WLRRobot/front_left_wheel"
+    assert calls["predicate"] is traversal_token
+    assert calls["purposes"] == ("default", "render", "proxy", "guide")
+    assert calls["use_extents_hint"] is False
+    assert bounds == Aabb((0.1, -0.1, 0.0), (0.2, 0.1, 0.1))
+    assert paths == ("/World/WLRRobot/front_left_wheel/collisions/mesh",)
 
 
 def test_full_body_com_and_support_polygon() -> None:
