@@ -30,6 +30,7 @@ from wlr50_clean.sensing.geometry import (
     GeometrySnapshot,
     UsdCollisionBoundsProvider,
     WheelGeometry,
+    _world_bounds_from_body_local_points,
 )
 from wlr50_clean.sensing.guard_state import LiveGuardTracker
 from wlr50_clean.sensing.observation import ContactClass
@@ -128,7 +129,13 @@ class _Bounds:
     def __init__(self) -> None:
         self.calls: dict[str, int] = {}
 
-    def collision_bounds(self, body_name: str):
+    def collision_bounds(
+        self,
+        body_name: str,
+        *,
+        body_position_w_m=None,
+        body_orientation_wxyz=None,
+    ):
         self.calls[body_name] = self.calls.get(body_name, 0) + 1
         center_x = 0.1 if body_name != BASE_BODY else 0.0
         return Aabb((center_x - 0.04, -0.04, 0.001), (center_x + 0.04, 0.04, 0.099)), (
@@ -225,6 +232,19 @@ def test_usd_bounds_traverse_instance_proxies_and_include_guide(monkeypatch) -> 
     assert paths == ("/World/WLRRobot/front_left_wheel/collisions/mesh",)
 
 
+def test_body_local_collider_points_use_live_pose_before_geometry_is_cached() -> None:
+    half = 2.0**-0.5
+    bounds = _world_bounds_from_body_local_points(
+        ((-0.05, 0.0, 0.0), (0.05, 0.0, 0.0), (0.0, 0.0, -0.05), (0.0, 0.0, 0.05)),
+        position_w_m=(0.25, -0.3, 0.05),
+        orientation_wxyz=(half, 0.0, half, 0.0),
+    )
+
+    assert bounds is not None
+    assert bounds.minimum_m == pytest.approx((0.2, -0.3, 0.0))
+    assert bounds.maximum_m == pytest.approx((0.3, -0.3, 0.1))
+
+
 def test_full_body_com_and_support_polygon() -> None:
     positions = {name: (float(index), 0.1, 0.2) for index, name in enumerate(SENSED_BODIES)}
     velocities = {name: (1.0, 0.0, 0.0) for name in SENSED_BODIES}
@@ -286,7 +306,8 @@ class _FakeContactBackend:
 
 
 class _FakeGeometryBackend:
-    def sample(self, body_positions_w_m):
+    def sample(self, body_positions_w_m, body_orientations_wxyz=None):
+        assert body_orientations_wxyz is not None
         wheels = {}
         for name, body in zip(WHEEL_ORDER, WHEEL_BODIES, strict=True):
             center = tuple(body_positions_w_m[body])

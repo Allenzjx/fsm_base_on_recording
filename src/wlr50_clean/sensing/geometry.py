@@ -48,7 +48,13 @@ class GeometrySnapshot:
 
 
 class BoundsProvider(Protocol):
-    def collision_bounds(self, body_name: str) -> tuple[Aabb | None, tuple[str, ...]]: ...
+    def collision_bounds(
+        self,
+        body_name: str,
+        *,
+        body_position_w_m: Sequence[float] | None = None,
+        body_orientation_wxyz: Sequence[float] | None = None,
+    ) -> tuple[Aabb | None, tuple[str, ...]]: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,9 +109,14 @@ class ColliderGeometryCache:
         self._shapes: dict[str, _MeasuredShape] = {}
         self._failures: dict[str, str] = {}
 
-    def sample(self, body_positions_w_m: Mapping[str, Sequence[float]]) -> GeometrySnapshot:
+    def sample(
+        self,
+        body_positions_w_m: Mapping[str, Sequence[float]],
+        body_orientations_wxyz: Mapping[str, Sequence[float]] | None = None,
+    ) -> GeometrySnapshot:
         body_bounds: dict[str, Aabb] = {}
         quality: list[str] = []
+        orientations = body_orientations_wxyz or {}
         for body_name in (BASE_BODY, *WHEEL_BODIES):
             center = _optional_vec3(body_positions_w_m.get(body_name))
             if center is None:
@@ -113,7 +124,11 @@ class ColliderGeometryCache:
                 continue
             shape = self._shapes.get(body_name)
             if shape is None and body_name not in self._failures:
-                bounds, paths = self.bounds_provider.collision_bounds(body_name)
+                bounds, paths = self.bounds_provider.collision_bounds(
+                    body_name,
+                    body_position_w_m=center,
+                    body_orientation_wxyz=orientations.get(body_name),
+                )
                 if bounds is None:
                     self._failures[body_name] = "no finite enabled collider bound"
                 else:
@@ -180,6 +195,8 @@ class UsdCollisionBoundsProvider:
     def __init__(self, stage: Any, *, robot_prim_path: str = "/World/WLRRobot") -> None:
         self.stage = stage
         self.robot_prim_path = robot_prim_path.rstrip("/")
+        self._body_local_points: dict[str, tuple[Vec3, ...]] = {}
+        self._collider_paths: dict[str, tuple[str, ...]] = {}
 
     @classmethod
     def from_current_stage(cls, *, robot_prim_path: str = "/World/WLRRobot") -> "UsdCollisionBoundsProvider":
@@ -187,7 +204,13 @@ class UsdCollisionBoundsProvider:
 
         return cls(omni.usd.get_context().get_stage(), robot_prim_path=robot_prim_path)
 
-    def collision_bounds(self, body_name: str) -> tuple[Aabb | None, tuple[str, ...]]:
+    def collision_bounds(
+        self,
+        body_name: str,
+        *,
+        body_position_w_m: Sequence[float] | None = None,
+        body_orientation_wxyz: Sequence[float] | None = None,
+    ) -> tuple[Aabb | None, tuple[str, ...]]:
         # These imports remain inside the runtime path so unit tests and config
         # tools do not initialize Kit or Isaac modules.
         from pxr import Usd, UsdGeom, UsdPhysics  # type: ignore
@@ -200,10 +223,41 @@ class UsdCollisionBoundsProvider:
         colliders = [
             prim
             for prim in Usd.PrimRange(body, Usd.TraverseInstanceProxies())
-            if prim.IsValid() and prim.HasAPI(UsdPhysics.CollisionAPI)
+            if (
+                prim.IsValid()
+                and prim.HasAPI(UsdPhysics.CollisionAPI)
+                and _collision_enabled(prim, UsdPhysics)
+            )
         ]
         if not colliders:
             return None, ()
+        paths = tuple(collider.GetPath().pathString for collider in colliders)
+
+        live_position = _optional_vec3(body_position_w_m)
+        live_orientation = _optional_quat(body_orientation_wxyz)
+        if live_position is not None and live_orientation is not None:
+            from pxr import Gf  # type: ignore
+
+            points = self._body_local_points.get(body_name)
+            if points is None:
+                points = _body_local_collider_points(
+                    body,
+                    colliders,
+                    Usd=Usd,
+                    UsdGeom=UsdGeom,
+                    Gf=Gf,
+                )
+                if not points:
+                    return None, ()
+                self._body_local_points[body_name] = points
+                self._collider_paths[body_name] = paths
+            bounds = _world_bounds_from_body_local_points(
+                points,
+                position_w_m=live_position,
+                orientation_wxyz=live_orientation,
+            )
+            return bounds, self._collider_paths.get(body_name, paths)
+
         cache = UsdGeom.BBoxCache(
             Usd.TimeCode.Default(),
             [
@@ -216,7 +270,7 @@ class UsdCollisionBoundsProvider:
         )
         minima = [math.inf, math.inf, math.inf]
         maxima = [-math.inf, -math.inf, -math.inf]
-        paths: list[str] = []
+        valid_paths: list[str] = []
         for collider in colliders:
             aligned = cache.ComputeWorldBound(collider).ComputeAlignedRange()
             low, high = aligned.GetMin(), aligned.GetMax()
@@ -226,10 +280,10 @@ class UsdCollisionBoundsProvider:
             for index in range(3):
                 minima[index] = min(minima[index], values[index])
                 maxima[index] = max(maxima[index], values[index + 3])
-            paths.append(collider.GetPath().pathString)
-        if not paths:
+            valid_paths.append(collider.GetPath().pathString)
+        if not valid_paths:
             return None, ()
-        return Aabb(tuple(minima), tuple(maxima)), tuple(paths)  # type: ignore[arg-type]
+        return Aabb(tuple(minima), tuple(maxima)), tuple(valid_paths)  # type: ignore[arg-type]
 
 
 def aabb_intersection_depth(first: Aabb | None, second: Aabb | None) -> float:
@@ -270,3 +324,123 @@ def _optional_vec3(values: Sequence[float] | None) -> Vec3 | None:
     if len(converted) != 3 or not all(math.isfinite(value) for value in converted):
         return None
     return converted  # type: ignore[return-value]
+
+
+def _optional_quat(values: Sequence[float] | None) -> tuple[float, float, float, float] | None:
+    if values is None:
+        return None
+    converted = tuple(float(value) for value in values)
+    if len(converted) != 4 or not all(math.isfinite(value) for value in converted):
+        return None
+    norm = math.sqrt(sum(value * value for value in converted))
+    if norm <= 1.0e-12:
+        return None
+    return tuple(value / norm for value in converted)  # type: ignore[return-value]
+
+
+def _collision_enabled(prim: Any, UsdPhysics: Any) -> bool:
+    try:
+        attribute = UsdPhysics.CollisionAPI(prim).GetCollisionEnabledAttr()
+        value = attribute.Get() if attribute else None
+    except Exception:
+        value = None
+    return True if value is None else bool(value)
+
+
+def _body_local_collider_points(
+    body: Any,
+    colliders: Sequence[Any],
+    *,
+    Usd: Any,
+    UsdGeom: Any,
+    Gf: Any,
+) -> tuple[Vec3, ...]:
+    """Resolve exact enabled collider mesh vertices into the rigid-body frame."""
+
+    xforms = UsdGeom.XformCache(Usd.TimeCode.Default())
+    try:
+        world_to_body = xforms.GetLocalToWorldTransform(body).GetInverse()
+    except Exception:
+        return ()
+    result: list[Vec3] = []
+    for collider in colliders:
+        meshes = [
+            prim
+            for prim in Usd.PrimRange(collider, Usd.TraverseInstanceProxies())
+            if prim.IsValid() and prim.IsA(UsdGeom.Mesh)
+        ]
+        if not meshes:
+            return ()
+        collider_point_count = 0
+        for mesh_prim in meshes:
+            points = UsdGeom.Mesh(mesh_prim).GetPointsAttr().Get()
+            if points is None:
+                try:
+                    prototype = mesh_prim.GetPrimInPrototype()
+                    points = UsdGeom.Mesh(prototype).GetPointsAttr().Get()
+                except Exception:
+                    points = None
+            if points is None:
+                return ()
+            try:
+                mesh_to_world = xforms.GetLocalToWorldTransform(mesh_prim)
+            except Exception:
+                return ()
+            for point in points:
+                try:
+                    world = mesh_to_world.Transform(
+                        Gf.Vec3d(float(point[0]), float(point[1]), float(point[2]))
+                    )
+                    local = world_to_body.Transform(world)
+                    values = tuple(float(local[index]) for index in range(3))
+                except Exception:
+                    return ()
+                if not all(math.isfinite(value) and abs(value) < 1000.0 for value in values):
+                    return ()
+                result.append(values)  # type: ignore[arg-type]
+                collider_point_count += 1
+        if collider_point_count == 0:
+            return ()
+    return tuple(result)
+
+
+def _world_bounds_from_body_local_points(
+    points_body_m: Sequence[Sequence[float]],
+    *,
+    position_w_m: Sequence[float],
+    orientation_wxyz: Sequence[float],
+) -> Aabb | None:
+    position = _optional_vec3(position_w_m)
+    quaternion = _optional_quat(orientation_wxyz)
+    if position is None or quaternion is None or not points_body_m:
+        return None
+    minima = [math.inf, math.inf, math.inf]
+    maxima = [-math.inf, -math.inf, -math.inf]
+    for point in points_body_m:
+        local = _optional_vec3(point)
+        if local is None:
+            return None
+        rotated = _quat_rotate(quaternion, local)
+        world = tuple(position[index] + rotated[index] for index in range(3))
+        if not all(math.isfinite(value) and abs(value) < 1000.0 for value in world):
+            return None
+        for index in range(3):
+            minima[index] = min(minima[index], world[index])
+            maxima[index] = max(maxima[index], world[index])
+    return Aabb(tuple(minima), tuple(maxima))  # type: ignore[arg-type]
+
+
+def _quat_rotate(
+    quaternion_wxyz: Sequence[float],
+    vector: Sequence[float],
+) -> Vec3:
+    w, x, y, z = (float(value) for value in quaternion_wxyz)
+    vx, vy, vz = (float(value) for value in vector)
+    tx = 2.0 * (y * vz - z * vy)
+    ty = 2.0 * (z * vx - x * vz)
+    tz = 2.0 * (x * vy - y * vx)
+    return (
+        vx + w * tx + (y * tz - z * ty),
+        vy + w * ty + (z * tx - x * tz),
+        vz + w * tz + (x * ty - y * tx),
+    )

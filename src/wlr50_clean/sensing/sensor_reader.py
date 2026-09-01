@@ -61,7 +61,11 @@ class ContactBackend(Protocol):
 
 
 class GeometryBackend(Protocol):
-    def sample(self, body_positions_w_m: Mapping[str, Sequence[float]]) -> GeometrySnapshot: ...
+    def sample(
+        self,
+        body_positions_w_m: Mapping[str, Sequence[float]],
+        body_orientations_wxyz: Mapping[str, Sequence[float]] | None = None,
+    ) -> GeometrySnapshot: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -262,7 +266,10 @@ class SensorReader:
         bodies, link_positions, com_positions, com_velocities, masses = _body_state(self.robot)
         if BASE_BODY not in bodies:
             raise SensingContractError("live base_link state is unavailable")
-        geometry = self.geometry_backend.sample(link_positions)
+        geometry = self.geometry_backend.sample(
+            link_positions,
+            {name: body.orientation_wxyz for name, body in bodies.items()},
+        )
         raw_contacts = self.contact_backend.sample(self.physics_dt_s)
         contacts = self.contact_classifier.classify(raw_contacts)
         center_of_mass = compute_full_body_com(
