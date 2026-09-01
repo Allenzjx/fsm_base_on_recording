@@ -22,8 +22,9 @@ The frozen reference is validated independently with:
 ```
 
 The runtime contract contains ordered P01–P13 and a small phase-relative
-waypoint set. Relative time shapes the continuous 120 Hz action inside a state;
-it cannot complete or advance a state. The 15 Hz controller advances only after
+waypoint set. Waypoint time causally launches each authored request; the mature
+adapter mapping turns servo requests into continuous 120 Hz drive targets. Time
+cannot complete or advance a state. The 15 Hz controller advances only after
 the matching live geometry/contact/history guard is observed.
 
 The environment is fixed at 120 Hz physics, 15 Hz decisions/rendering, the

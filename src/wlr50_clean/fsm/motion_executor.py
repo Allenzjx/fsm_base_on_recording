@@ -200,9 +200,10 @@ class MotionExecutor:
             for group in phase.atomic_groups
             if round(group.time_s * self.physics_hz) == self._tick_index
         )
-        # The logical request remains a complete same-tick Full12.  The adapter
-        # applies the mature 120 Hz servo slew while wheels retain their ZOH
-        # request, then stages all twelve physical targets in one write.
+        # The logical request remains a complete same-tick Full12.  Authored
+        # waypoint times are causal source-dispatch onsets, so requests hold
+        # until the next event.  The adapter alone creates the mature smooth
+        # 120 Hz servo-drive path, then stages all twelve targets in one write.
         full12 = nominal
         waypoint = phase.waypoints[self._waypoint_index_at_tick(phase, self._tick_index)]
         tracking_servo_names = tuple(
@@ -235,26 +236,8 @@ class MotionExecutor:
     def _nominal_at_tick(
         self, phase: MotionPhase, tick_index: int
     ) -> tuple[float, ...]:
-        waypoint_ticks = tuple(
-            round(waypoint.time_s * self.physics_hz) for waypoint in phase.waypoints
-        )
         left_index = self._waypoint_index_at_tick(phase, tick_index)
-        left = phase.waypoints[left_index]
-        left_tick = waypoint_ticks[left_index]
-        if left_index + 1 >= len(phase.waypoints):
-            return left.full12
-        right = phase.waypoints[left_index + 1]
-        right_tick = waypoint_ticks[left_index + 1]
-        if right_tick <= left_tick:
-            return right.full12
-        progress = min(
-            max((tick_index - left_tick) / (right_tick - left_tick), 0.0), 1.0
-        )
-        values = list(left.full12)
-        for index in range(SERVO_COUNT):
-            values[index] += progress * (right.full12[index] - left.full12[index])
-        # Wheel targets intentionally remain at the left waypoint (ZOH).
-        return tuple(values)
+        return phase.waypoints[left_index].full12
 
     def _waypoint_index_at_tick(self, phase: MotionPhase, tick_index: int) -> int:
         left_index = 0

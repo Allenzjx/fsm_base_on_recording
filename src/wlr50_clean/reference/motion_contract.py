@@ -61,7 +61,7 @@ class MotionPhase:
     action_mask_full12: tuple[int, ...]
 
     def nominal_at(self, elapsed_s: float) -> tuple[float, ...]:
-        """Sample a smooth full action without advancing any FSM state."""
+        """Sample the causal source request without advancing FSM state."""
 
         time_s = min(max(float(elapsed_s), 0.0), self.active_duration_s)
         if time_s >= self.active_duration_s:
@@ -73,23 +73,11 @@ class MotionPhase:
             else:
                 break
         left = self.waypoints[left_index]
-        if left_index + 1 >= len(self.waypoints):
-            return left.full12
-        right = self.waypoints[left_index + 1]
-        span = right.time_s - left.time_s
-        if span <= 1e-12:
-            return right.full12
-        progress = min(max((time_s - left.time_s) / span, 0.0), 1.0)
-        # A stateful 150 deg/s limiter in MotionExecutor follows this continuous
-        # interpolation. Linear blending avoids the 1.875x peak of a quintic
-        # while remaining monotonic and closer to the frozen v010 target slew.
-        blend = progress
-        values = list(left.full12)
-        for index in range(SERVO_COUNT):
-            values[index] += blend * (right.full12[index] - left.full12[index])
-        # Wheel targets are velocities. Preserve the event onset and integral by
-        # holding each reference value until its next compact waypoint.
-        return tuple(values)
+        # Waypoint timestamps are source dispatch onsets, not future target
+        # arrival times.  The mature runtime mapper owns the continuous 120 Hz
+        # servo-drive slew after each request; all logical channels therefore
+        # hold their latest authored value until the next waypoint.
+        return left.full12
 
     def atomic_groups_between(
         self, previous_elapsed_s: float, elapsed_s: float

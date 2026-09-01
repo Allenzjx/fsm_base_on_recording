@@ -344,6 +344,11 @@ class SensorFsmController:
         self._previous_state_done = True
         self._pending_blocker = None
         self._wait_entry_started_s = now
+        # The completed phase's final servo segment remains active through its
+        # bounded VERIFY tail, then freezes exactly at the next phase boundary.
+        # A blocked next entry must not keep accumulating the prior phase's
+        # tracking compensation.
+        self._tracking_servo_names = ()
         self.guard_evaluator.reset_state(next_state.state_id)
         self.watchdog.reset()
         event = ControllerEvent(

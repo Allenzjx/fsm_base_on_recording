@@ -1071,7 +1071,7 @@ def build_contract(
         "execution_semantics": {
             "full12_output_each_physics_tick": True,
             "full12_output_atomic_write": True,
-            "servo_profile": "120 Hz monotonic continuous interpolation followed by a stateful hard 150 deg/s per-tick slew limit; this is the measured-response-like alternative to quintic shaping",
+            "servo_profile": "causal authored-request zero-order hold followed by the mature stateful 150 deg/s per-physics-tick drive-target slew and bounded tracking correction; physical servo targets remain continuous at 120 Hz",
             "wheel_profile": "zero-order hold between compact launch/stop waypoints",
             "duplicate_time_phase_entry_then_launch": "phase_entry establishes the pre-command vector; all t=0 launch waypoints are then applied deterministically on the first physics tick",
             "state_transition_source": "live sensor completion evidence; compact timing never advances the FSM",

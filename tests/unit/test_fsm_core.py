@@ -138,6 +138,37 @@ def test_tracking_names_follow_waypoint_segments_not_phase_union(contract) -> No
     assert executor.tick().tracking_servo_names == ()
 
 
+def test_p12_servo_requests_switch_only_at_authored_causal_ticks(contract) -> None:
+    p12 = contract.phase("P12")
+    executor = MotionExecutor(initial_full12=p12.start_full12)
+    executor.start_phase(p12)
+    samples = {}
+    for tick_index in range(561):
+        tick = executor.tick()
+        if tick_index in (0, 31, 32, 39, 40, 552, 559, 560):
+            samples[tick_index] = tick.full12[4]
+
+    assert samples[0] == pytest.approx(15.4)
+    assert samples[31] == pytest.approx(15.4)
+    assert samples[32] == pytest.approx(13.2)
+    assert samples[39] == pytest.approx(13.2)
+    assert samples[40] == pytest.approx(0.5)
+    assert samples[552] == pytest.approx(-7.9)
+    assert samples[559] == pytest.approx(-7.9)
+    assert samples[560] == pytest.approx(-10.1)
+    assert p12.nominal_at(31.0 / 120.0)[4] == pytest.approx(15.4)
+    assert p12.nominal_at(32.0 / 120.0)[4] == pytest.approx(13.2)
+
+
+def test_next_phase_boundary_freezes_completed_tracking_owner(spec, contract) -> None:
+    controller = SensorFsmController(spec, contract)
+    controller._tracking_servo_names = ("rear_left_hip",)
+    events = []
+    controller._enter_next_state(spec.state("P02"), 1.0, events)
+    assert controller.lifecycle is Lifecycle.WAIT_ENTRY
+    assert controller._tracking_servo_names == ()
+
+
 def test_feedback_correction_cannot_exceed_fifteen_percent(contract) -> None:
     FeedbackCorrection((0.15, -0.15) + (0.0,) * 10)
     with pytest.raises(ValueError):
