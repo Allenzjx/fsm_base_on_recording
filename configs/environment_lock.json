@@ -49,6 +49,19 @@
     "wheel_velocity_limit_rad_s": 2.0943951023931953,
     "wheel_radius_m": 0.04998999834060672
   },
+  "authoritative_command_space_joint_limits": {
+    "hip_command_deg": [-135.0, 135.0],
+    "knee_command_deg": [-60.0, 210.0],
+    "mapping": "standing_pose_deg + servo_command_sign * command_deg",
+    "live_initialization_required": true,
+    "write_scope": "eight named RevoluteJoint limits on the live USD session layer only",
+    "physx_safe_range_rad": [-6.283185307179586, 6.283185307179586],
+    "target_quantization_margin_rad": 0.00001,
+    "source_robot_usd_asset_must_remain_hash_unchanged": true,
+    "stage_save_permitted": false,
+    "baseline_exception_to_usd_edit_prohibition": "the frozen mature UI-command-space mapping may author only these eight limit attributes on the ephemeral live session layer; no FSM state may author USD",
+    "source": "mature SimRobotAdapter command-space limit initialization"
+  },
   "ground": {
     "prim_path": "/World/defaultGroundPlane",
     "z_m": 0.0,

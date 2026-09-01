@@ -31,8 +31,8 @@
       "source_path": "C:/robotics_sim/wlr_robot/height_based_obstacle_replay/sim_robot_adapter.py",
       "source_sha256": "04966b8100eeb33ea55de78eaa5a74bbc3662030f82ba4d458eb429608ed64d4",
       "destination_path": "src/wlr50_clean/infrastructure/robot_adapter.py",
-      "destination_sha256": "4bec3dd2ec66da350cb4a2adcf3d573be020f838b01d054e3680745a0aeb2c81",
-      "reuse_reason": "Narrow clean derivation of exact live-name resolution, command-space conversion, and one-write full12 application; restore, respawn, correction, and root-write routes omitted."
+      "destination_sha256": "78872e13ff9c0c28d3c03b12ba2e47f7c91ec8f1b050acd8bcc6e6f78e10e1d7",
+      "reuse_reason": "Narrow clean derivation of exact live-name resolution, authoritative command-space limits on the ephemeral live session layer, command-space conversion, and one-write full12 application; source-asset save/edit, restore, respawn, correction, and root-write routes omitted."
     },
     {
       "source_path": "C:/robotics_sim/wlr_robot/height_based_obstacle_replay/config/real_robot_motion_reference.yaml",
@@ -52,8 +52,8 @@
       "source_path": "C:/robotics_sim/wlr_robot/height_based_obstacle_replay/sim_worker_process.py",
       "source_sha256": "580412309695e1454bd6ccf8470fa5c79a5b573ad57301205d815ce6273e4394",
       "destination_path": "src/wlr50_clean/infrastructure/app_runtime.py",
-      "destination_sha256": "85005b411938df66efc085d36661da303f6141ff8aa171f2e708711f26cbe806",
-      "reuse_reason": "Narrow clean derivation of AppLauncher ownership, one initial application update, anti-throttling, and finalization-before-close lifecycle; replay scheduling and legacy controller paths omitted."
+      "destination_sha256": "ce3075975044584e1a689f4df232a54506cd96a11bea43f7f0113673cdd9ff46",
+      "reuse_reason": "Narrow clean derivation of AppLauncher ownership, one initial application update, frozen environment-integrity checks, anti-throttling, and finalization-before-close lifecycle; replay scheduling and legacy controller paths omitted."
     }
   ]
 }

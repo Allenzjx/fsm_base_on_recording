@@ -84,3 +84,12 @@ def test_execution_projection_hides_absolute_reference_provenance() -> None:
         assert not (forbidden_attributes & set(vars(phase)))
         for group in phase.atomic_groups:
             assert "source_batch_id" not in vars(group)
+
+
+def test_p04_p05_boundary_and_atomic_ticks_remain_frozen() -> None:
+    contract = load_motion_contract(ROOT / "configs" / "recording_motion_contract.json")
+    p04 = next(phase for phase in contract.phases if phase.state_id == "P04")
+    p05 = next(phase for phase in contract.phases if phase.state_id == "P05")
+    assert p04.end_full12 == p05.start_full12
+    assert [round(group.time_s * 120) for group in p04.atomic_groups] == [0, 528]
+    assert [round(group.time_s * 120) for group in p05.atomic_groups] == [104, 1088]

@@ -16,6 +16,7 @@ from typing import Any, Mapping, Sequence
 from .command_batch import (
     FULL12_ORDER,
     PHYSICS_DT_S,
+    SERVO_COMMAND_SIGN,
     SERVO_ORDER,
     WHEEL_FORWARD_SIGN,
     WHEEL_ORDER,
@@ -25,7 +26,15 @@ from .command_batch import (
     build_physical_batch,
     logical_readback_from_physical,
     resolve_joint_indices,
+    servo_limits_deg,
 )
+
+
+ROBOT_PRIM_PATH = "/World/WLRRobot"
+PHYSX_SAFE_LIMIT_MIN_RAD = -2.0 * math.pi
+PHYSX_SAFE_LIMIT_MAX_RAD = 2.0 * math.pi
+PHYSX_WRITE_LIMIT_MARGIN_RAD = 1.0e-6
+PHYSX_TARGET_QUANTIZATION_MARGIN_RAD = 1.0e-5
 
 
 class RobotAdapterError(RuntimeError):
@@ -43,6 +52,91 @@ class JointStateSnapshot:
 
     def by_name(self) -> dict[str, float]:
         return dict(zip(FULL12_ORDER, self.full12, strict=True))
+
+
+@dataclass(frozen=True, slots=True)
+class LiveServoLimitRecord:
+    """Evidence for one authoritative limit authored on the live session layer."""
+
+    joint_name: str
+    joint_id: int
+    standing_pose_deg: float
+    command_min_deg: float
+    command_max_deg: float
+    desired_actual_min_deg: float
+    desired_actual_max_deg: float
+    runtime_min_rad: float
+    runtime_max_rad: float
+    runtime_joint_prim_path: str
+    runtime_authoring_layer: str
+    write_source: str = "runtime_usd_session_layer_override"
+    applied: bool = True
+    source_asset_modified: bool = False
+    stage_saved: bool = False
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "joint_name": self.joint_name,
+            "joint_id": self.joint_id,
+            "standing_pose_deg": self.standing_pose_deg,
+            "command_min_deg": self.command_min_deg,
+            "command_max_deg": self.command_max_deg,
+            "desired_actual_min_deg": self.desired_actual_min_deg,
+            "desired_actual_max_deg": self.desired_actual_max_deg,
+            "runtime_min_rad": self.runtime_min_rad,
+            "runtime_max_rad": self.runtime_max_rad,
+            "runtime_joint_prim_path": self.runtime_joint_prim_path,
+            "runtime_authoring_layer": self.runtime_authoring_layer,
+            "write_source": self.write_source,
+            "applied": self.applied,
+            "source_asset_modified": self.source_asset_modified,
+            "stage_saved": self.stage_saved,
+        }
+
+
+def authoritative_servo_limits_rad(
+    joint_name: str,
+    standing_pose_deg: float,
+) -> tuple[float, float]:
+    """Map canonical command limits to strict, PhysX-safe physical limits.
+
+    The imported asset contains stale native limits (notably a zero-radian
+    lower stop on the front-left knee).  The successful mature environment
+    treats command-space limits as authoritative.  This pure helper preserves
+    that exact standing-pose/sign mapping and its float32 endpoint envelope.
+    """
+
+    if not math.isfinite(float(standing_pose_deg)):
+        raise RobotAdapterError(f"standing pose for {joint_name} is not finite")
+    try:
+        command_min_deg, command_max_deg = servo_limits_deg(joint_name)
+        sign = float(SERVO_COMMAND_SIGN[joint_name])
+    except (CommandBatchError, KeyError) as exc:
+        raise RobotAdapterError(f"unknown servo joint: {joint_name!r}") from exc
+    actual_a = float(standing_pose_deg) + sign * float(command_min_deg)
+    actual_b = float(standing_pose_deg) + sign * float(command_max_deg)
+    desired_min_rad = max(
+        math.radians(min(actual_a, actual_b)),
+        PHYSX_SAFE_LIMIT_MIN_RAD,
+    )
+    desired_max_rad = min(
+        math.radians(max(actual_a, actual_b)),
+        PHYSX_SAFE_LIMIT_MAX_RAD,
+    )
+    runtime_min_rad = max(
+        desired_min_rad - PHYSX_TARGET_QUANTIZATION_MARGIN_RAD,
+        PHYSX_SAFE_LIMIT_MIN_RAD + PHYSX_WRITE_LIMIT_MARGIN_RAD,
+    )
+    runtime_max_rad = min(
+        desired_max_rad + PHYSX_TARGET_QUANTIZATION_MARGIN_RAD,
+        PHYSX_SAFE_LIMIT_MAX_RAD - PHYSX_WRITE_LIMIT_MARGIN_RAD,
+    )
+    if runtime_min_rad >= runtime_max_rad:
+        raise RobotAdapterError(
+            f"authoritative physical limits are empty for {joint_name}: "
+            f"[{runtime_min_rad}, {runtime_max_rad}]"
+        )
+    return runtime_min_rad, runtime_max_rad
 
 
 class RobotAdapter:
@@ -82,6 +176,11 @@ class RobotAdapter:
             name: math.degrees(value)
             for name, value in zip(SERVO_ORDER, standing_first_row, strict=True)
         }
+        # This frozen environment initialization must precede the 1.5 s
+        # zero-command settle. It changes only the live USD session layer and
+        # Isaac Lab's limit caches; it cannot save or modify the source asset.
+        self.live_servo_limit_records = self._install_authoritative_servo_limits()
+        self._physx_servo_limits_verified = False
         self.write_count = 0
         self._last_physics_tick: int | None = None
         self.last_ack: dict[str, Any] | None = None
@@ -188,6 +287,199 @@ class RobotAdapter:
     def wheel_physical_signs(self) -> dict[str, float]:
         return {name: float(WHEEL_FORWARD_SIGN[name]) for name in WHEEL_ORDER}
 
+    def joint_limit_initialization_evidence(self) -> dict[str, Any]:
+        records = [record.as_dict() for record in self.live_servo_limit_records]
+        return {
+            "schema": "wlr50_clean.authoritative_servo_limit_initialization.v1",
+            "source_environment_invariant": "mature_command_space_limits",
+            "runtime_authoring_layer": "session_layer",
+            "session_limits_authored_joint_count": len(records),
+            "physx_limits_verified": self._physx_servo_limits_verified,
+            "all_eight_servo_limits_applied": (
+                len(records) == len(SERVO_ORDER)
+                and self._physx_servo_limits_verified
+            ),
+            "source_asset_modified": False,
+            "stage_saved": False,
+            "records": records,
+        }
+
+    def verify_authoritative_servo_limits_adopted(self) -> None:
+        """Fail closed unless the live PhysX articulation adopted all limits."""
+
+        self._physx_servo_limits_verified = False
+        try:
+            live_limits = self.robot.root_physx_view.get_dof_limits()
+            shape = tuple(live_limits.shape)
+        except Exception as exc:
+            raise RobotAdapterError("live PhysX DOF limits are unavailable") from exc
+        if len(shape) != 3 or shape[0] != 1 or shape[2] != 2:
+            raise RobotAdapterError(
+                f"live PhysX DOF limits must have shape (1, joints, 2); received {shape}"
+            )
+        for record in self.live_servo_limit_records:
+            actual_min = _scalar_float(live_limits[0, record.joint_id, 0])
+            actual_max = _scalar_float(live_limits[0, record.joint_id, 1])
+            if not math.isclose(
+                actual_min,
+                record.runtime_min_rad,
+                rel_tol=0.0,
+                abs_tol=2.0e-6,
+            ):
+                raise RobotAdapterError(
+                    f"PhysX lower limit did not adopt session value for {record.joint_name}: "
+                    f"expected {record.runtime_min_rad}, received {actual_min}"
+                )
+            if not math.isclose(
+                actual_max,
+                record.runtime_max_rad,
+                rel_tol=0.0,
+                abs_tol=2.0e-6,
+            ):
+                raise RobotAdapterError(
+                    f"PhysX upper limit did not adopt session value for {record.joint_name}: "
+                    f"expected {record.runtime_max_rad}, received {actual_max}"
+                )
+        self._physx_servo_limits_verified = True
+
+    def _install_authoritative_servo_limits(self) -> tuple[LiveServoLimitRecord, ...]:
+        """Install eight command-space-derived limits on the live session only."""
+
+        try:
+            from isaaclab.sim import get_current_stage  # type: ignore
+            from pxr import Usd, UsdPhysics  # type: ignore
+        except Exception as exc:
+            raise RobotAdapterError("live USD APIs are unavailable for servo-limit initialization") from exc
+
+        try:
+            stage = get_current_stage()
+            root_prim = stage.GetPrimAtPath(ROBOT_PRIM_PATH)
+            if not root_prim.IsValid():
+                raise RobotAdapterError(f"runtime robot prim is missing: {ROBOT_PRIM_PATH}")
+            session_layer = stage.GetSessionLayer()
+            if session_layer is None:
+                raise RobotAdapterError("live USD stage has no session layer")
+            layer_identifier = str(
+                getattr(session_layer, "identifier", "")
+                or getattr(session_layer, "GetIdentifier", lambda: "")()
+                or "anonymous_session_layer"
+            )
+
+            # Resolve every exact RevoluteJoint before authoring anything, so
+            # bad stage topology cannot leave a partial initialization behind.
+            resolved: list[tuple[str, int, Any, float, float, float, float, float]] = []
+            for joint_name, joint_id in zip(
+                SERVO_ORDER,
+                self.joint_map.servo_ids,
+                strict=True,
+            ):
+                matches = [
+                    prim
+                    for prim in Usd.PrimRange(root_prim)
+                    if prim.GetName() == joint_name and prim.IsA(UsdPhysics.RevoluteJoint)
+                ]
+                if len(matches) != 1:
+                    paths = [str(prim.GetPath()) for prim in matches]
+                    raise RobotAdapterError(
+                        f"expected one RevoluteJoint prim named {joint_name}, found {paths}"
+                    )
+                standing_deg = float(self.standing_pose_deg[joint_name])
+                command_min_deg, command_max_deg = servo_limits_deg(joint_name)
+                sign = float(SERVO_COMMAND_SIGN[joint_name])
+                desired_a = standing_deg + sign * float(command_min_deg)
+                desired_b = standing_deg + sign * float(command_max_deg)
+                runtime_min_rad, runtime_max_rad = authoritative_servo_limits_rad(
+                    joint_name,
+                    standing_deg,
+                )
+                resolved.append(
+                    (
+                        joint_name,
+                        int(joint_id),
+                        matches[0],
+                        standing_deg,
+                        min(desired_a, desired_b),
+                        max(desired_a, desired_b),
+                        runtime_min_rad,
+                        runtime_max_rad,
+                    )
+                )
+
+            hard_limits = _joint_limit_matrix(self.robot, "joint_pos_limits")
+            soft_limits = _joint_limit_matrix(self.robot, "soft_joint_pos_limits")
+            soft_factor = float(
+                getattr(getattr(self.robot, "cfg", None), "soft_joint_pos_limit_factor", 1.0)
+            )
+            if not math.isfinite(soft_factor) or not 0.0 < soft_factor <= 1.0:
+                raise RobotAdapterError(
+                    f"soft_joint_pos_limit_factor must be in (0, 1]; received {soft_factor}"
+                )
+
+            records: list[LiveServoLimitRecord] = []
+            edit_target = Usd.EditTarget(session_layer)
+            with Usd.EditContext(stage, edit_target):
+                for (
+                    joint_name,
+                    joint_id,
+                    prim,
+                    standing_deg,
+                    desired_min_deg,
+                    desired_max_deg,
+                    runtime_min_rad,
+                    runtime_max_rad,
+                ) in resolved:
+                    joint = UsdPhysics.RevoluteJoint(prim)
+                    lower_attr = joint.CreateLowerLimitAttr()
+                    upper_attr = joint.CreateUpperLimitAttr()
+                    lower_deg = math.degrees(runtime_min_rad)
+                    upper_deg = math.degrees(runtime_max_rad)
+                    if not lower_attr.Set(float(lower_deg)) or not upper_attr.Set(float(upper_deg)):
+                        raise RobotAdapterError(f"failed to author live limits for {joint_name}")
+                    authored_lower = float(lower_attr.Get())
+                    authored_upper = float(upper_attr.Get())
+                    # USD Physics limit attributes are float32; verification
+                    # therefore allows only their expected degree-space ULPs.
+                    if not math.isclose(authored_lower, lower_deg, rel_tol=0.0, abs_tol=2.0e-5):
+                        raise RobotAdapterError(f"live lower-limit verification failed for {joint_name}")
+                    if not math.isclose(authored_upper, upper_deg, rel_tol=0.0, abs_tol=2.0e-5):
+                        raise RobotAdapterError(f"live upper-limit verification failed for {joint_name}")
+
+                    # Keep Isaac Lab's hard/soft diagnostic cache identical to
+                    # the authored limits without writing state or wheel DOFs.
+                    hard_limits[:, joint_id, 0] = float(runtime_min_rad)
+                    hard_limits[:, joint_id, 1] = float(runtime_max_rad)
+                    midpoint = 0.5 * (runtime_min_rad + runtime_max_rad)
+                    half_range = 0.5 * (runtime_max_rad - runtime_min_rad) * soft_factor
+                    soft_limits[:, joint_id, 0] = midpoint - half_range
+                    soft_limits[:, joint_id, 1] = midpoint + half_range
+                    command_min_deg, command_max_deg = servo_limits_deg(joint_name)
+                    records.append(
+                        LiveServoLimitRecord(
+                            joint_name=joint_name,
+                            joint_id=joint_id,
+                            standing_pose_deg=standing_deg,
+                            command_min_deg=float(command_min_deg),
+                            command_max_deg=float(command_max_deg),
+                            desired_actual_min_deg=desired_min_deg,
+                            desired_actual_max_deg=desired_max_deg,
+                            runtime_min_rad=runtime_min_rad,
+                            runtime_max_rad=runtime_max_rad,
+                            runtime_joint_prim_path=str(prim.GetPath()),
+                            runtime_authoring_layer=layer_identifier,
+                        )
+                    )
+        except RobotAdapterError:
+            raise
+        except Exception as exc:
+            raise RobotAdapterError(
+                f"authoritative live servo-limit initialization failed: {type(exc).__name__}: {exc}"
+            ) from exc
+        if len(records) != len(SERVO_ORDER):
+            raise RobotAdapterError(
+                f"expected {len(SERVO_ORDER)} applied live servo limits; received {len(records)}"
+            )
+        return tuple(records)
+
     def _coerce_command(
         self,
         command: Full12Command | Sequence[float] | Mapping[str, float],
@@ -238,6 +530,19 @@ def _joint_matrix(robot: Any, field: str) -> Any:
     return value
 
 
+def _joint_limit_matrix(robot: Any, field: str) -> Any:
+    try:
+        value = getattr(robot.data, field)
+        shape = tuple(value.shape)
+    except Exception as exc:
+        raise RobotAdapterError(f"robot.data.{field} is unavailable") from exc
+    if len(shape) != 3 or shape[0] < 1 or shape[2] != 2:
+        raise RobotAdapterError(
+            f"robot.data.{field} must have shape (instances, joints, 2); received {shape}"
+        )
+    return value
+
+
 def _clone_tensor(value: Any) -> Any:
     clone = getattr(value, "clone", None)
     if callable(clone):
@@ -267,4 +572,21 @@ def _row_values(value: Any) -> tuple[float, ...]:
         raise RobotAdapterError("failed to read joint tensor row") from exc
     if any(not math.isfinite(item) for item in result):
         raise RobotAdapterError("joint tensor row contains non-finite values")
+    return result
+
+
+def _scalar_float(value: Any) -> float:
+    try:
+        detach = getattr(value, "detach", None)
+        if callable(detach):
+            value = detach()
+        cpu = getattr(value, "cpu", None)
+        if callable(cpu):
+            value = cpu()
+        item = getattr(value, "item", None)
+        result = float(item() if callable(item) else value)
+    except Exception as exc:
+        raise RobotAdapterError("failed to read live PhysX limit scalar") from exc
+    if not math.isfinite(result):
+        raise RobotAdapterError("live PhysX limit scalar is not finite")
     return result

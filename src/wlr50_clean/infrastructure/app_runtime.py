@@ -320,7 +320,11 @@ def _run_live(config: RuntimeConfig, simulation_app: Any) -> int:
     from wlr50_clean.fsm.task_result import TaskResult, TaskTermination
     from wlr50_clean.infrastructure.command_batch import Full12Command
     from wlr50_clean.infrastructure.robot_adapter import RobotAdapter
-    from wlr50_clean.infrastructure.scene_factory import create_scene
+    from wlr50_clean.infrastructure.scene_factory import (
+        ROBOT_USD_SHA256,
+        create_scene,
+        verify_robot_asset,
+    )
     from wlr50_clean.infrastructure.video_capture import ActiveViewportVideoRecorder, VideoArtifactError
     from wlr50_clean.ppo.residual_interface import ResidualInterface
     from wlr50_clean.sensing.sensor_reader import SensorReader, create_live_sensing_backends
@@ -343,6 +347,15 @@ def _run_live(config: RuntimeConfig, simulation_app: Any) -> int:
     control_steps = 0
     first_blocker_written = False
     previous_action: tuple[float, ...] = (0.0,) * 12
+    environment_initialization: dict[str, Any] = {
+        "schema": "wlr50_clean.authoritative_servo_limit_initialization.v1",
+        "all_eight_servo_limits_applied": False,
+        "source_asset_modified": None,
+        "stage_saved": None,
+        "robot_source_asset_sha256_before": None,
+        "robot_source_asset_sha256_after": None,
+        "robot_source_asset_hash_unchanged": False,
+    }
 
     def terminate(result: TaskResult, reason: str, details: Mapping[str, Any] | None = None) -> TaskTermination:
         state_id = controller.state.state_id if controller is not None else "P01"
@@ -351,6 +364,8 @@ def _run_live(config: RuntimeConfig, simulation_app: Any) -> int:
 
     try:
         _append_artifact(writer, "task_event", {"event": "TRIAL_START", "result": None, "reference_version": "v010_20260806_220745_363972_manual", "rear_leg_order": "RR_FIRST"})
+        source_asset_sha256_before = verify_robot_asset()
+        environment_initialization["robot_source_asset_sha256_before"] = source_asset_sha256_before
         scene = create_scene(
             simulation_app=simulation_app,
             before_reset=lambda sim, robot: create_live_sensing_backends(
@@ -358,6 +373,20 @@ def _run_live(config: RuntimeConfig, simulation_app: Any) -> int:
             ),
         )
         adapter = RobotAdapter.from_scene(scene)
+        source_asset_sha256_after = verify_robot_asset()
+        source_asset_hash_unchanged = bool(
+            source_asset_sha256_before
+            == source_asset_sha256_after
+            == ROBOT_USD_SHA256
+        )
+        environment_initialization.update(
+            {
+                "robot_source_asset_sha256_after": source_asset_sha256_after,
+                "robot_source_asset_hash_unchanged": source_asset_hash_unchanged,
+            }
+        )
+        if not source_asset_hash_unchanged:
+            raise RuntimeError("source robot USD hash changed during live servo-limit initialization")
         backends = scene.instrumentation
         if backends is None or not backends.contact_backend.initialized:
             raise RuntimeError("the exact 13-body ContactSensor bank did not initialize at scene reset")
@@ -369,6 +398,13 @@ def _run_live(config: RuntimeConfig, simulation_app: Any) -> int:
             adapter.apply_full12(zero, physics_tick=settle_tick)
             scene.sim.step(render=False)
             adapter.update_readback()
+        adapter.verify_authoritative_servo_limits_adopted()
+        environment_initialization = {
+            **adapter.joint_limit_initialization_evidence(),
+            "robot_source_asset_sha256_before": source_asset_sha256_before,
+            "robot_source_asset_sha256_after": source_asset_sha256_after,
+            "robot_source_asset_hash_unchanged": True,
+        }
 
         viewport = _configure_active_viewport()
         for _ in range(config.warmup_renders):
@@ -630,6 +666,8 @@ def _run_live(config: RuntimeConfig, simulation_app: Any) -> int:
         and rear_order == "RR_FIRST"
         and duration_s <= MAX_CONTROL_SECONDS
         and video_manifest.get("valid") is True
+        and environment_initialization.get("all_eight_servo_limits_applied") is True
+        and environment_initialization.get("robot_source_asset_hash_unchanged") is True
         and analysis.get("checks")
         and all(bool(value) for value in analysis["checks"].values())
     )
@@ -648,6 +686,12 @@ def _run_live(config: RuntimeConfig, simulation_app: Any) -> int:
         "external_force_count": 0,
         "external_impulse_count": 0,
         "runtime_raw_recording_access": False,
+        "authoritative_servo_limits_installed": bool(
+            environment_initialization.get("all_eight_servo_limits_applied")
+        ),
+        "source_robot_usd_unchanged": bool(
+            environment_initialization.get("robot_source_asset_hash_unchanged")
+        ),
     }
     first_blocker = None if controller is None else controller.first_blocker
     if first_blocker is None and terminal.result is not TaskResult.SUCCESS:
@@ -678,6 +722,7 @@ def _run_live(config: RuntimeConfig, simulation_app: Any) -> int:
         "analysis_checks": analysis.get("checks", {}),
         "conformance": analysis.get("conformance_summary", {}),
         "anti_throttle_settings": anti_throttle,
+        "environment_initialization": environment_initialization,
         "video": video_manifest,
         "success_evidence": success_evidence,
     }
