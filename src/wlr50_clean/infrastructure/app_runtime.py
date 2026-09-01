@@ -411,6 +411,13 @@ def _run_live(config: RuntimeConfig, simulation_app: Any) -> int:
             scene.sim.render()
         reader = SensorReader.from_live_scene(scene, adapter, backends=backends)
         controller = SensorFsmController.from_paths(config.fsm_path, config.motion_contract_path)
+        if not math.isclose(
+            adapter.servo_target_mapper.servo_rate_deg_s,
+            controller.motion.servo_rate_limit_deg_s,
+            rel_tol=0.0,
+            abs_tol=1.0e-12,
+        ):
+            raise RuntimeError("motion contract and mature servo target mapper rates differ")
         residual = ResidualInterface(residual_enabled=False)
         current_observation = reader.read(physics_tick=0, simulation_time_s=0.0, commanded_full12=zero)
         _validate_initial_observation(current_observation)
@@ -441,7 +448,11 @@ def _run_live(config: RuntimeConfig, simulation_app: Any) -> int:
             executing_command = lifecycle_before == "EXECUTE_MOTION" or entering_execute
 
             ppo_frame, action = _ppo_payload(residual, controller, frame, current_observation, previous_action)
-            ack = adapter.apply_full12(action, physics_tick=config.settle_ticks + control_tick)
+            ack = adapter.apply_full12(
+                action,
+                physics_tick=config.settle_ticks + control_tick,
+                tracking_servo_names=frame.tracking_servo_names,
+            )
             if ack["articulation_writes_this_call"] != 1 or ack["motion_start_skew_s"] != 0.0:
                 raise RuntimeError("atomic Full12 articulation write contract failed")
             _append_artifact(
@@ -452,7 +463,10 @@ def _run_live(config: RuntimeConfig, simulation_app: Any) -> int:
                     "state_id": frame.state_id, "lifecycle": frame.lifecycle.value,
                     "nominal_full12": list(frame.full12), "residual_full12": [0.0] * 12,
                     "full12": list(action), "commanded_full12": list(action),
-                    "applied_full12": list(action), "atomic_ack": ack, "ppo": ppo_frame,
+                    "applied_full12": list(ack["applied_full12"]),
+                    "drive_target_full12": list(ack["drive_target_full12"]),
+                    "atomic_ack": ack, "ppo": ppo_frame,
+                    "tracking_servo_names": list(frame.tracking_servo_names),
                     "source_full12_atomic": frame.atomic_source_event,
                     "atomic_source_event": frame.atomic_source_event,
                     "motion_tick_index": controller.motion._tick_index - 1 if executing_command else None,
@@ -496,7 +510,7 @@ def _run_live(config: RuntimeConfig, simulation_app: Any) -> int:
             next_observation = reader.read(
                 physics_tick=control_steps,
                 simulation_time_s=control_steps * PHYSICS_DT_S,
-                commanded_full12=action,
+                commanded_full12=ack["drive_target_full12"],
             )
             _observation_log(writer, next_observation, frame.state_id)
             _append_leg_latches(
@@ -668,6 +682,9 @@ def _run_live(config: RuntimeConfig, simulation_app: Any) -> int:
         and video_manifest.get("valid") is True
         and environment_initialization.get("all_eight_servo_limits_applied") is True
         and environment_initialization.get("robot_source_asset_hash_unchanged") is True
+        and environment_initialization.get("servo_target_mapping", {}).get(
+            "source_environment_invariant"
+        ) == "mature_ui_command_space_to_drive_target"
         and analysis.get("checks")
         and all(bool(value) for value in analysis["checks"].values())
     )
@@ -691,6 +708,12 @@ def _run_live(config: RuntimeConfig, simulation_app: Any) -> int:
         ),
         "source_robot_usd_unchanged": bool(
             environment_initialization.get("robot_source_asset_hash_unchanged")
+        ),
+        "mature_servo_target_mapping": bool(
+            environment_initialization.get("servo_target_mapping", {}).get(
+                "source_environment_invariant"
+            )
+            == "mature_ui_command_space_to_drive_target"
         ),
     }
     first_blocker = None if controller is None else controller.first_blocker

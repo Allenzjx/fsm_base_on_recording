@@ -83,7 +83,7 @@ def test_all_four_source_atomic_events_emit_as_full12(contract) -> None:
     assert executor.source_atomic_emitted == 4
 
 
-def test_non_atomic_rate_limit_and_source_atomic_bypass_across_boundary(
+def test_source_atomic_request_is_immediate_but_physical_slew_is_adapter_owned(
     contract,
 ) -> None:
     p02 = contract.phase("P02")
@@ -95,9 +95,7 @@ def test_non_atomic_rate_limit_and_source_atomic_bypass_across_boundary(
     )
     executor.start_phase(p02)
     first = executor.tick()
-    assert max(
-        abs(a - b) for a, b in zip(first.full12[:8], p02.start_full12[:8])
-    ) <= 1.25 + 1e-12
+    assert first.full12 == first.nominal_full12
     carried = executor.last_full12
     executor.start_phase(p03)
     assert executor.last_full12 == carried
@@ -105,10 +103,39 @@ def test_non_atomic_rate_limit_and_source_atomic_bypass_across_boundary(
     assert boundary.source_full12_atomic
     assert boundary.nominal_full12 == p03.waypoints[1].full12
     assert boundary.full12 == boundary.nominal_full12
-    assert max(
-        abs(a - b) for a, b in zip(boundary.full12[:8], carried[:8])
-    ) > 1.25
+    assert tuple(boundary.tracking_servo_names) == tuple(contract.full12_order[:8])
     assert boundary.full12[8:] == boundary.nominal_full12[8:]  # wheel ZOH
+
+
+def test_tracking_names_follow_waypoint_segments_not_phase_union(contract) -> None:
+    executor = MotionExecutor(initial_full12=contract.phase("P03").start_full12)
+    executor.start_phase(contract.phase("P03"))
+    launch = executor.tick()
+    assert launch.tracking_servo_names == tuple(contract.full12_order[:8])
+    for _ in range(143):
+        assert executor.tick().tracking_servo_names == tuple(
+            contract.full12_order[:8]
+        )
+    wheel_stop = executor.tick()
+    assert wheel_stop.tick_index == 144
+    assert wheel_stop.tracking_servo_names == ()
+
+    executor.start_phase(contract.phase("P04"))
+    assert executor.tick().tracking_servo_names == ()
+    for _ in range(535):
+        tick = executor.tick()
+    assert tick.tick_index == 535
+    assert tick.tracking_servo_names == ()
+    assert executor.tick().tracking_servo_names == ("rear_left_hip",)
+
+    executor.start_phase(contract.phase("P05"))
+    assert executor.tick().tracking_servo_names == ("front_left_knee",)
+    for _ in range(31):
+        executor.tick()
+    assert executor.tick().tracking_servo_names == ("front_left_hip",)
+    for _ in range(71):
+        executor.tick()
+    assert executor.tick().tracking_servo_names == ()
 
 
 def test_feedback_correction_cannot_exceed_fifteen_percent(contract) -> None:

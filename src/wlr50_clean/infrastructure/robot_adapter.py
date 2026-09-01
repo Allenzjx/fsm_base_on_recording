@@ -28,6 +28,13 @@ from .command_batch import (
     resolve_joint_indices,
     servo_limits_deg,
 )
+from .servo_target_mapper import (
+    SERVO_TRACKING_COMPENSATION_GAIN,
+    SERVO_TRACKING_COMPENSATION_MAX_DEG,
+    SERVO_TRACKING_FEEDBACK_INTERVAL_TICKS,
+    ServoTargetMapper,
+    ServoTargetMapperError,
+)
 
 
 ROBOT_PRIM_PATH = "/World/WLRRobot"
@@ -176,6 +183,10 @@ class RobotAdapter:
             name: math.degrees(value)
             for name, value in zip(SERVO_ORDER, standing_first_row, strict=True)
         }
+        self.servo_target_mapper = ServoTargetMapper(
+            self.standing_pose_deg,
+            physics_dt_s=self.physics_dt_s,
+        )
         # This frozen environment initialization must precede the 1.5 s
         # zero-command settle. It changes only the live USD session layer and
         # Isaac Lab's limit caches; it cannot save or modify the source asset.
@@ -194,6 +205,7 @@ class RobotAdapter:
         command: Full12Command | Sequence[float] | Mapping[str, float],
         *,
         physics_tick: int | None = None,
+        tracking_servo_names: Sequence[str] = (),
     ) -> dict[str, Any]:
         """Stage all 12 targets and issue exactly one articulation write.
 
@@ -204,7 +216,23 @@ class RobotAdapter:
 
         requested = self._coerce_command(command)
         tick = self._validate_tick(physics_tick)
-        physical = build_physical_batch(requested, self.standing_pose_deg)
+        logical_applied = requested.clamped()
+        measured_servo_rad = _row_values(
+            _joint_matrix(self.robot, "joint_pos")[:, list(self.joint_map.servo_ids)]
+        )
+        try:
+            mapping = self.servo_target_mapper.advance(
+                logical_applied.servo_deg,
+                measured_servo_rad,
+                tracking_servo_names=tracking_servo_names,
+            )
+        except ServoTargetMapperError as exc:
+            raise RobotAdapterError(f"invalid servo target mapping: {exc}") from exc
+        drive_command = Full12Command(
+            mapping.applied_drive_command_deg,
+            logical_applied.wheel_rad_s,
+        )
+        physical = build_physical_batch(drive_command, self.standing_pose_deg)
 
         # Finish both tensors before mutating either articulation target buffer.
         position_targets = _clone_tensor(self._standing_servo_tensor)
@@ -221,7 +249,6 @@ class RobotAdapter:
 
         self.write_count += 1
         self._last_physics_tick = tick
-        applied = physical.applied_logical
         ack: dict[str, Any] = {
             "schema": "wlr50_clean.atomic_full12_ack.v1",
             "physics_tick": tick,
@@ -230,8 +257,24 @@ class RobotAdapter:
             "articulation_writes_this_call": 1,
             "canonical_order": list(FULL12_ORDER),
             "requested_full12": list(requested.to_full12()),
-            "applied_full12": list(applied.to_full12()),
-            "command_was_clamped": requested != applied,
+            # Logical applied remains the canonical FSM/PPO command after hard
+            # limits.  The separate drive fields expose mature target shaping.
+            "applied_full12": list(logical_applied.to_full12()),
+            "drive_target_full12": list(drive_command.to_full12()),
+            "command_was_clamped": requested != logical_applied,
+            "servo_applied_drive_command_deg": list(
+                mapping.applied_drive_command_deg
+            ),
+            "servo_tracking_compensation_deg": list(
+                mapping.tracking_compensation_deg
+            ),
+            "servo_nominal_target_reached": list(
+                mapping.nominal_target_reached
+            ),
+            "servo_tracking_active": list(mapping.tracking_active),
+            "tracking_servo_names": list(tracking_servo_names),
+            "servo_tracking_feedback_sample_tick": mapping.feedback_sample_tick,
+            "servo_tracking_feedback_sampled": mapping.feedback_sampled,
             "servo_joint_ids": list(self.joint_map.servo_ids),
             "wheel_joint_ids": list(self.joint_map.wheel_ids),
             "servo_target_physical_rad": list(physical.servo_target_rad),
@@ -302,6 +345,14 @@ class RobotAdapter:
             "source_asset_modified": False,
             "stage_saved": False,
             "records": records,
+            "servo_target_mapping": {
+                "source_environment_invariant": "mature_ui_command_space_to_drive_target",
+                "servo_rate_deg_s": self.servo_target_mapper.servo_rate_deg_s,
+                "tracking_gain": SERVO_TRACKING_COMPENSATION_GAIN,
+                "tracking_limit_deg": SERVO_TRACKING_COMPENSATION_MAX_DEG,
+                "feedback_interval_ticks": SERVO_TRACKING_FEEDBACK_INTERVAL_TICKS,
+                "changes_actuator_properties": False,
+            },
         }
 
     def verify_authoritative_servo_limits_adopted(self) -> None:

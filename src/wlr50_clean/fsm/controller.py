@@ -47,6 +47,7 @@ class ControllerFrame:
     decision_tick: bool
     full12_atomic_write_required: bool
     atomic_source_event: bool
+    tracking_servo_names: tuple[str, ...]
     endpoint_issued: bool
     termination: TaskTermination | None
     first_blocker: Mapping[str, Any] | None
@@ -80,6 +81,7 @@ class SensorFsmController:
         self._previous_state_done = True
         self._pending_blocker: GuardEvidence | WatchdogBlocker | None = None
         self._first_blocker: dict[str, Any] | None = None
+        self._tracking_servo_names: tuple[str, ...] = ()
         self.termination: TaskTermination | None = None
         self.history: list[ControllerEvent] = []
 
@@ -119,6 +121,7 @@ class SensorFsmController:
         if self.termination is None and self.lifecycle is Lifecycle.EXECUTE_MOTION:
             motion_tick = self.motion.tick()
             command = motion_tick.full12
+            self._tracking_servo_names = motion_tick.tracking_servo_names
             if motion_tick.endpoint_issued:
                 self._endpoint_issued = True
                 self._verify_started_s = now
@@ -169,6 +172,10 @@ class SensorFsmController:
                     self._remember_blocker(self._pending_blocker)
                     self._terminate_blocked(self._pending_blocker, now)
 
+        tracking_servo_names = (
+            () if self.termination is not None else self._tracking_servo_names
+        )
+
         frame = ControllerFrame(
             physics_tick=self.physics_tick,
             sim_time_s=now,
@@ -180,6 +187,7 @@ class SensorFsmController:
             atomic_source_event=bool(
                 motion_tick is not None and motion_tick.source_full12_atomic
             ),
+            tracking_servo_names=tracking_servo_names,
             endpoint_issued=self._endpoint_issued,
             termination=self.termination,
             first_blocker=self._first_blocker,

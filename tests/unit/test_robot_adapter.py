@@ -196,6 +196,36 @@ def test_adapter_authors_all_limits_on_session_layer_and_syncs_caches(
     assert evidence["source_asset_modified"] is False
     assert evidence["stage_saved"] is False
 
+    staged: dict[str, object] = {"writes": 0}
+    robot.set_joint_position_target = (  # type: ignore[attr-defined]
+        lambda targets, joint_ids: staged.update(position=targets.copy(), servo_ids=joint_ids)
+    )
+    robot.set_joint_velocity_target = (  # type: ignore[attr-defined]
+        lambda targets, joint_ids: staged.update(velocity=targets.copy(), wheel_ids=joint_ids)
+    )
+    robot.write_data_to_sim = (  # type: ignore[attr-defined]
+        lambda: staged.update(writes=int(staged["writes"]) + 1)
+    )
+    p03 = [0.0] * 12
+    p03[1] = -22.9
+    p03[8:] = [-0.79, 0.0, 0.61, 0.0]
+    ack = adapter.apply_full12(
+        p03,
+        physics_tick=0,
+        tracking_servo_names=SERVO_ORDER,
+    )
+    assert staged["writes"] == 1
+    assert ack["articulation_writes_this_call"] == 1
+    assert ack["motion_start_skew_s"] == 0.0
+    assert ack["requested_full12"] == p03
+    assert ack["applied_full12"] == p03
+    assert ack["drive_target_full12"] == pytest.approx(
+        [0.0, -1.25, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -0.79, 0.0, 0.61, 0.0]
+    )
+    assert ack["servo_applied_drive_command_deg"][1] == pytest.approx(-1.25)
+    assert staged["position"][0, 1] == pytest.approx(math.radians(-1.25))
+    assert staged["velocity"][0].tolist() == pytest.approx([0.79, 0.0, -0.61, 0.0])
+
     data.joint_pos_limits[0, 0, 0] = 0.0
     with pytest.raises(RobotAdapterError, match="PhysX lower limit"):
         adapter.verify_authoritative_servo_limits_adopted()

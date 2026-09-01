@@ -1,10 +1,11 @@
-"""120 Hz full-action execution for the compact v010 motion contract."""
+"""120 Hz logical full-action execution for the compact v010 contract."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Sequence
 
+from wlr50_clean.infrastructure.command_batch import SERVO_ORDER
 from wlr50_clean.reference.motion_contract import AtomicGroup, MotionPhase
 
 
@@ -41,6 +42,7 @@ class MotionTick:
     full12: tuple[float, ...]
     nominal_full12: tuple[float, ...]
     atomic_groups: tuple[AtomicGroup, ...]
+    tracking_servo_names: tuple[str, ...]
     endpoint_issued: bool
     target_progressed: bool
 
@@ -130,7 +132,12 @@ def _changed(left: tuple[float, ...], right: tuple[float, ...], epsilon: float) 
 
 
 class MotionExecutor:
-    """Stateful shaper; response state deliberately survives phase changes."""
+    """Emit canonical nominal requests; response state survives phase changes.
+
+    The Isaac adapter owns the mature 150 deg/s requested-to-drive mapping and
+    tracking compensation.  Keeping that physical shaping below this logical
+    executor preserves source Full12 dispatch provenance and one atomic write.
+    """
 
     def __init__(
         self,
@@ -193,25 +200,14 @@ class MotionExecutor:
             for group in phase.atomic_groups
             if round(group.time_s * self.physics_hz) == self._tick_index
         )
-        shaped = list(nominal)
-        source_full12_atomic = any(
-            group.source_full12_atomic for group in atomic_groups
+        # The logical request remains a complete same-tick Full12.  The adapter
+        # applies the mature 120 Hz servo slew while wheels retain their ZOH
+        # request, then stages all twelve physical targets in one write.
+        full12 = nominal
+        waypoint = phase.waypoints[self._waypoint_index_at_tick(phase, self._tick_index)]
+        tracking_servo_names = tuple(
+            name for name in waypoint.atomic_channels if name in SERVO_ORDER
         )
-        if not source_full12_atomic:
-            for index in range(SERVO_COUNT):
-                previous = self._last_full12[index]
-                delta = nominal[index] - previous
-                delta = min(
-                    max(delta, -self.max_servo_step_deg), self.max_servo_step_deg
-                )
-                shaped[index] = previous + delta
-        # A source full12 event is already an authored, same-physics-tick
-        # command.  Preserve that event by issuing all corrected nominal
-        # channels together instead of stretching its servo changes over later
-        # ticks.  The adapter still performs the single full12 articulation
-        # write used for every MotionTick.
-        # Indices 8:12 are wheel velocity targets and therefore zero-order hold.
-        full12 = tuple(shaped)
         self._source_atomic_emitted += sum(
             1 for group in atomic_groups if group.source_full12_atomic
         )
@@ -228,6 +224,7 @@ class MotionExecutor:
             full12=full12,
             nominal_full12=nominal,
             atomic_groups=atomic_groups,
+            tracking_servo_names=tracking_servo_names,
             endpoint_issued=endpoint_issued,
             target_progressed=target_progressed,
         )
@@ -241,12 +238,7 @@ class MotionExecutor:
         waypoint_ticks = tuple(
             round(waypoint.time_s * self.physics_hz) for waypoint in phase.waypoints
         )
-        left_index = 0
-        for index, waypoint_tick in enumerate(waypoint_ticks):
-            if waypoint_tick <= tick_index:
-                left_index = index
-            else:
-                break
+        left_index = self._waypoint_index_at_tick(phase, tick_index)
         left = phase.waypoints[left_index]
         left_tick = waypoint_ticks[left_index]
         if left_index + 1 >= len(phase.waypoints):
@@ -263,6 +255,15 @@ class MotionExecutor:
             values[index] += progress * (right.full12[index] - left.full12[index])
         # Wheel targets intentionally remain at the left waypoint (ZOH).
         return tuple(values)
+
+    def _waypoint_index_at_tick(self, phase: MotionPhase, tick_index: int) -> int:
+        left_index = 0
+        for index, waypoint in enumerate(phase.waypoints):
+            if round(waypoint.time_s * self.physics_hz) <= tick_index:
+                left_index = index
+            else:
+                break
+        return left_index
 
     def held_full12(self, fallback: Sequence[float]) -> tuple[float, ...]:
         return self._last_full12 or _full12(fallback, "fallback")
