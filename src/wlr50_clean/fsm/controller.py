@@ -384,7 +384,18 @@ class SensorFsmController:
                 # A retry is a distinct, bounded correction attempt.  Reapplying
                 # the state's nominal shaping here would silently spend that
                 # fraction twice while the transition ledger records one retry.
-                self.motion.start_phase(self.phase, retry_correction)
+                terminal_pose_retry = (
+                    self.state.state_id == "P13"
+                    and blocker_name == "final_joint_pose_compatible"
+                )
+                if terminal_pose_retry:
+                    # P13 has already established final top geometry and zero
+                    # wheel targets.  Correct only its held endpoint; replaying
+                    # the 17.8 s advance would duplicate wheel travel and change
+                    # the support state that produced the live pose evidence.
+                    self.motion.start_phase_at_endpoint(self.phase, retry_correction)
+                else:
+                    self.motion.start_phase(self.phase, retry_correction)
                 self.guard_evaluator.reset_state(self.state.state_id)
                 self.watchdog.reset()
                 self._endpoint_issued = False
@@ -399,6 +410,11 @@ class SensorFsmController:
                         "blocked_guard": blocker_name,
                         "correction_fractions": retry_correction.fractions,
                         "recovery_correction_fractions": retry_correction.fractions,
+                        "recovery_motion": (
+                            "terminal_endpoint_hold"
+                            if terminal_pose_retry
+                            else "full_phase_retry"
+                        ),
                     },
                 )
                 continue

@@ -185,6 +185,22 @@ class MotionExecutor:
         if self._last_full12 is None:
             self._last_full12 = phase.start_full12
 
+    def start_phase_at_endpoint(
+        self,
+        phase: MotionPhase,
+        correction: FeedbackCorrection | None = None,
+    ) -> None:
+        """Issue one corrected endpoint without replaying the phase body.
+
+        This is the bounded terminal-pose recovery primitive.  P13's endpoint
+        waypoint keeps stopped wheels stopped and, because its authored atomic
+        channels are wheel-only, does not restart servo tracking segments.
+        Physical target slew remains owned by the adapter during VERIFY_RESULT.
+        """
+
+        self.start_phase(phase, correction)
+        self._tick_index = round(phase.active_duration_s * self.physics_hz)
+
     def tick(self) -> MotionTick:
         if self._phase is None or self._last_full12 is None:
             raise RuntimeError("start_phase must be called before tick")

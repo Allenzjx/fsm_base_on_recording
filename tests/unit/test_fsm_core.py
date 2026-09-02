@@ -232,6 +232,26 @@ def test_feedback_correction_cannot_exceed_fifteen_percent(contract) -> None:
     assert atomic.full12[1] == pytest.approx(expected_knee)
 
 
+def test_p13_endpoint_recovery_skips_advance_and_servo_tracking(contract) -> None:
+    phase = contract.phase("P13")
+    fractions = (0.0,) * 6 + (0.15,) + (0.0,) * 5
+    executor = MotionExecutor(initial_full12=phase.end_full12)
+
+    executor.start_phase_at_endpoint(phase, FeedbackCorrection(fractions))
+    tick = executor.tick()
+
+    endpoint_tick = round(phase.active_duration_s * contract.physics_hz)
+    expected = list(phase.end_full12)
+    expected[6] = phase.start_full12[6] + 1.15 * phase.delta_full12[6]
+    assert tick.tick_index == endpoint_tick == 2136
+    assert tick.elapsed_s == pytest.approx(phase.active_duration_s)
+    assert tick.full12 == pytest.approx(expected)
+    assert tick.full12[8:] == (0.0,) * 4
+    assert tick.tracking_servo_names == ()
+    assert tick.endpoint_issued is True
+    assert tick.source_full12_atomic is False
+
+
 def test_p03_normal_response_shaping_is_single_channel_and_bounded(
     spec, contract
 ) -> None:
@@ -427,7 +447,19 @@ def test_controller_ledgers_live_final_pose_recovery_correction(spec, contract) 
     assert event.details["correction_fractions"] == pytest.approx(
         (-0.15, 0.0, 0.0, 0.0, 0.0, 0.0, 0.15, 0.0, 0.0, 0.0, 0.0, 0.0)
     )
-    assert controller.history[-1] == event
+    assert event.details["recovery_motion"] == "terminal_endpoint_hold"
+    assert event in controller.history
+    assert controller.history[-1].from_lifecycle == Lifecycle.EXECUTE_MOTION.value
+    assert controller.history[-1].to_lifecycle == Lifecycle.VERIFY_RESULT.value
+    expected = list(contract.phase("P13").end_full12)
+    expected[0] = -2.35
+    expected[6] = 0.46
+    assert frame.full12 == pytest.approx(expected)
+    assert frame.full12[8:] == (0.0,) * 4
+    assert frame.tracking_servo_names == ()
+    assert frame.atomic_source_event is False
+    assert frame.endpoint_issued is True
+    assert frame.lifecycle is Lifecycle.VERIFY_RESULT
 
 
 @pytest.mark.parametrize(
@@ -465,6 +497,7 @@ def test_p03_retry_executes_only_its_actual_bounded_correction(
     )
     assert event.details["correction_fractions"] == pytest.approx(correction)
     assert event.details["recovery_correction_fractions"] == pytest.approx(correction)
+    assert event.details["recovery_motion"] == "full_phase_retry"
     assert controller.motion._correction.fractions == pytest.approx(correction)
     assert frame.full12[10] == pytest.approx(expected_rear_left_wheel)
     assert frame.atomic_source_event is True
