@@ -108,7 +108,7 @@ def test_p09_carry_phase_feedback_is_compact_and_strictly_reference_bounded() ->
     assert feedback.probe_channel_index == 7
     assert feedback.correction_channel == "rear_left_knee"
     assert feedback.correction_channel_index == 5
-    assert feedback.first_bias_tick == 872
+    assert feedback.first_bias_tick == 874
     assert feedback.last_bias_tick == 879
     assert feedback.teardown_tick == 880
     assert feedback.logical_bias_deg == 1.25

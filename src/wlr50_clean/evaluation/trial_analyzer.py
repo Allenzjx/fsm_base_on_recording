@@ -709,7 +709,7 @@ def _drive_feedback_ledger_valid(
                     or abs(actual[probe_index] - observed) > 1.0e-9
                 ):
                     return False
-        if first_bias_tick != trigger_tick + 1:
+        if first_bias_tick != trigger_tick + 3:
             return False
         last_bias_index = row_index_by_attempt_tick[
             (phase_id, trigger_attempt, last_bias_tick)

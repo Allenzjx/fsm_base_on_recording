@@ -322,7 +322,10 @@ def test_p09_teardown_and_p10_velocity_gate_share_tick_880_safely(
     frames = {}
     for tick in range(feedback.teardown_tick + 1):
         completing = tick == feedback.teardown_tick
-        physical_completion_ready = tick >= feedback.first_bias_tick
+        physical_completion_ready = (
+            tick
+            >= round(p09.active_duration_s * 120.0) + spec.decision_stride
+        )
         guards = _live_guards(completion=False)
         for name in (
             "reference_like_active_lift:RR",
@@ -358,6 +361,17 @@ def test_p09_teardown_and_p10_velocity_gate_share_tick_880_safely(
             sim_time_s=tick / 120.0,
         )
 
+    for tick in range(
+        feedback.probe_samples[-1].motion_tick + 1,
+        feedback.first_bias_tick,
+    ):
+        armed = frames[tick]
+        assert armed.state_id == "P09"
+        assert armed.lifecycle is Lifecycle.VERIFY_RESULT
+        assert armed.drive_feedback_bias_full12 == pytest.approx((0.0,) * 12)
+        assert not any(
+            event.to_lifecycle == Lifecycle.DONE.value for event in armed.events
+        )
     held = frames[feedback.first_bias_tick]
     assert held.state_id == "P09"
     assert held.lifecycle is Lifecycle.VERIFY_RESULT

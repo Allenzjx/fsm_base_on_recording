@@ -62,13 +62,13 @@ def test_unknown_servo_limit_fails_closed() -> None:
 
 
 def test_p09_positive_verify_tail_bias_restores_at_880_and_preserves_final_slew() -> None:
-    base = {871: 18.885057, 880: 18.885057}
-    previous = base[871]
+    base = {873: 18.885057, 880: 18.885057}
+    previous = base[873]
     observed: dict[int, float] = {}
-    for tick in range(872, 881):
+    for tick in range(874, 881):
         native_tick = max(item for item in base if item <= tick)
         native = base[native_tick]
-        bias = 1.25 if 872 <= tick <= 879 else 0.0
+        bias = 1.25 if 874 <= tick <= 879 else 0.0
         final = bounded_drive_feedback_step(
             previous_deg=previous,
             native_deg=native,
@@ -81,7 +81,7 @@ def test_p09_positive_verify_tail_bias_restores_at_880_and_preserves_final_slew(
         observed[tick] = final
         previous = final
 
-    assert observed[872] == pytest.approx(20.135057)
+    assert observed[874] == pytest.approx(20.135057)
     assert observed[879] == pytest.approx(20.135057)
     assert observed[880] == pytest.approx(18.885057)
 

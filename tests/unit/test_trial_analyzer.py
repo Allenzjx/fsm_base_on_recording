@@ -252,7 +252,7 @@ def _feedback_ledger_rows(*, residual_after_window: float = 0.0) -> list[dict]:
     rows = []
     for tick in range(870, 880):
         latched = tick >= 871
-        active = 872 <= tick <= 879
+        active = 874 <= tick <= 879
         reference = {
             870: -50.8511468644344,
             871: -50.63441813188072,

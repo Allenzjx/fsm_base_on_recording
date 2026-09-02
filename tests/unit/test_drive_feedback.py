@@ -44,6 +44,17 @@ def test_p09_two_sample_live_deficit_latches_bounded_carry_phase_bias() -> None:
         ),
         spec=spec,
     )
+    armed_gap = [
+        feedback.update(
+            state_id="P09",
+            motion_tick_index=tick,
+            actual_full12=_actual(
+                spec.probe_channel_index, second.reference_actual_deg
+            ),
+            spec=spec,
+        )
+        for tick in range(second.motion_tick + 1, spec.first_bias_tick)
+    ]
     active = feedback.update(
         state_id="P09",
         motion_tick_index=spec.first_bias_tick,
@@ -60,6 +71,9 @@ def test_p09_two_sample_live_deficit_latches_bounded_carry_phase_bias() -> None:
     assert probe_a.active is False
     assert probe_b.just_triggered is True
     assert probe_b.active is False
+    assert len(armed_gap) == 2
+    assert all(not item.active for item in armed_gap)
+    assert all(item.trigger_tick == second.motion_tick for item in armed_gap)
     assert active.bias_full12[spec.correction_channel_index] == pytest.approx(1.25)
     assert active.cumulative_fraction_of_reference == pytest.approx(2.5 / 19.4)
     assert restored.bias_full12 == pytest.approx((0.0,) * 12)

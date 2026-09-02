@@ -297,7 +297,7 @@ def _validate_phases(
                 not probe_ticks
                 or any(right != left + 1 for left, right in zip(probe_ticks, probe_ticks[1:]))
                 or feedback.required_consecutive_samples != len(probe_ticks)
-                or feedback.first_bias_tick != probe_ticks[-1] + 1
+                or feedback.first_bias_tick <= probe_ticks[-1]
                 or feedback.last_bias_tick < feedback.first_bias_tick
                 or feedback.teardown_tick != feedback.last_bias_tick + 1
             ):
@@ -305,13 +305,14 @@ def _validate_phases(
             endpoint_tick = round(phase.active_duration_s * 120.0)
             decision_stride = 8
             if (
-                feedback.first_bias_tick != endpoint_tick + decision_stride
+                probe_ticks[-1] != endpoint_tick + decision_stride - 1
+                or feedback.first_bias_tick != endpoint_tick + decision_stride + 2
                 or feedback.last_bias_tick
                 != endpoint_tick + 2 * decision_stride - 1
                 or feedback.teardown_tick != endpoint_tick + 2 * decision_stride
             ):
                 raise ValueError(
-                    f"{phase.state_id}: drive feedback does not occupy the bounded second verify quantum"
+                    f"{phase.state_id}: drive feedback does not match the bounded armed second-verify pulse"
                 )
             peak = abs(feedback.logical_bias_deg) / abs(feedback.reference_excursion_deg)
             cumulative = 2.0 * peak

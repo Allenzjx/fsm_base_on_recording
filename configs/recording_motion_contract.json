@@ -18779,7 +18779,7 @@
         "correction_channel": "rear_left_knee",
         "correction_channel_index": 5,
         "goal": "preserve the late P09 support release until the signed rear-right-knee rebound reaches the live P10 entry corridor",
-        "source": "two-sample locked-v010 rear-right-knee endpoint corridor plus the measured Trial014 eight-tick carry response",
+        "source": "two-sample locked-v010 rear-right-knee endpoint deficit plus the measured Trial015 relative-six carry response",
         "probe_samples": [
           {
             "motion_tick": 870,
@@ -18792,7 +18792,7 @@
         ],
         "lag_threshold_deg": 2.4,
         "required_consecutive_samples": 2,
-        "first_bias_tick": 872,
+        "first_bias_tick": 874,
         "last_bias_tick": 879,
         "teardown_tick": 880,
         "logical_bias_deg": 1.25,
