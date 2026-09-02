@@ -345,6 +345,7 @@ class SensorFsmController:
                         phase=self.phase,
                         observation=observation,
                         blocked_guard=blocker_name,
+                        blocker_evidence=self._pending_blocker,
                     )
                 except (TypeError, ValueError) as exc:
                     self._terminate(

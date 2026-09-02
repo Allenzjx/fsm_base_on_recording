@@ -6,11 +6,13 @@ from pathlib import Path
 import pytest
 
 from wlr50_clean.fsm.controller import SensorFsmController
+from wlr50_clean.fsm.guard_evaluator import GuardEvidence
 from wlr50_clean.fsm.motion_executor import (
     FeedbackCorrection,
     MotionExecutor,
     ProgressWatchdog,
 )
+from wlr50_clean.fsm.recovery import RecoveryPlanner
 from wlr50_clean.fsm.state_graph import StateGraph
 from wlr50_clean.fsm.state_spec import EXPECTED_STATE_IDS, Lifecycle, load_fsm_spec
 from wlr50_clean.fsm.task_result import TASK_FAILURE_RESULTS, TaskResult
@@ -43,6 +45,49 @@ def _live_guards(*, completion: bool) -> dict[str, bool]:
         "joint_hard_limit_violation": False,
         "fr_lift_entry_geometry": completion,
     }
+
+
+def _trial022_final_pose_evidence() -> GuardEvidence:
+    return GuardEvidence(
+        name="final_joint_pose_compatible",
+        passed=False,
+        value={
+            "front_left_hip": {
+                "error_deg": 3.7130408835372597,
+                "limit_deg": 2.85,
+            },
+            "front_left_knee": {
+                "error_deg": -0.48214470769763984,
+                "limit_deg": 4.605,
+            },
+            "front_right_hip": {
+                "error_deg": -0.3057982413120488,
+                "limit_deg": 2.0,
+            },
+            "front_right_knee": {
+                "error_deg": 0.46865118874460343,
+                "limit_deg": 4.605,
+            },
+            "rear_left_hip": {
+                "error_deg": 0.5812128129881193,
+                "limit_deg": 2.0,
+            },
+            "rear_left_knee": {
+                "error_deg": 0.9630558191981522,
+                "limit_deg": 2.22,
+            },
+            "rear_right_hip": {
+                "error_deg": -2.5992413152633658,
+                "limit_deg": 2.0,
+            },
+            "rear_right_knee": {
+                "error_deg": -1.7863087651435432,
+                "limit_deg": 3.18,
+            },
+        },
+        source="controller.live_servo_vs_v010_actual_endpoint",
+        reason="all final servos use max(2 deg, 15% of phase delta)",
+    )
 
 
 def test_fixed_state_graph_and_lifecycle(spec) -> None:
@@ -185,6 +230,161 @@ def test_feedback_correction_cannot_exceed_fifteen_percent(contract) -> None:
     assert atomic.source_full12_atomic
     assert atomic.full12 == atomic.nominal_full12
     assert atomic.full12[1] == pytest.approx(expected_knee)
+
+
+def test_p13_live_final_pose_recovery_uses_trial022_blocker(contract) -> None:
+    planner = RecoveryPlanner(contract.full12_order)
+    plan = planner.plan(
+        phase=contract.phase("P13"),
+        observation={},
+        blocked_guard="final_joint_pose_compatible",
+        blocker_evidence=_trial022_final_pose_evidence(),
+    )
+
+    assert plan.reason == "live final-pose corridor correction"
+    assert plan.correction.fractions == pytest.approx(
+        (-0.15, 0.0, 0.0, 0.0, 0.0, 0.0, 0.15, 0.0, 0.0, 0.0, 0.0, 0.0)
+    )
+
+
+def test_p13_live_final_pose_recovery_clips_and_ignores_inactive_servo(
+    contract,
+) -> None:
+    evidence = GuardEvidence(
+        name="final_joint_pose_compatible",
+        passed=False,
+        value={
+            "front_left_hip": {"error_deg": 100.0, "limit_deg": 2.0},
+            # P13 front-right hip is inactive (and has zero command delta), so
+            # even malformed channel evidence must not activate recovery.
+            "front_right_hip": "ignored inactive evidence",
+            "rear_right_hip": {"error_deg": -100.0, "limit_deg": 2.0},
+        },
+    )
+    plan = RecoveryPlanner(contract.full12_order).plan(
+        phase=contract.phase("P13"),
+        observation={},
+        blocked_guard="final_joint_pose_compatible",
+        blocker_evidence=evidence,
+    )
+
+    assert plan.correction.fractions[0] == pytest.approx(-0.15)
+    assert plan.correction.fractions[2] == 0.0
+    assert plan.correction.fractions[6] == pytest.approx(0.15)
+    assert plan.correction.fractions[8:] == (0.0,) * 4
+
+
+def test_p13_live_final_pose_recovery_uses_unclipped_signed_target_error(
+    contract,
+) -> None:
+    evidence = GuardEvidence(
+        name="final_joint_pose_compatible",
+        passed=False,
+        value={
+            "front_left_hip": {"error_deg": 2.5, "limit_deg": 2.0},
+            # P13 front-right knee has a negative reference excursion; the
+            # fraction must therefore have the opposite sign from FL hip.
+            "front_right_knee": {"error_deg": 3.0, "limit_deg": 2.0},
+        },
+    )
+    plan = RecoveryPlanner(contract.full12_order).plan(
+        phase=contract.phase("P13"),
+        observation={},
+        blocked_guard="final_joint_pose_compatible",
+        blocker_evidence=evidence,
+    )
+
+    assert plan.correction.fractions[0] == pytest.approx(-2.5 / 19.0)
+    assert plan.correction.fractions[3] == pytest.approx(-3.0 / -30.7)
+
+
+def test_explicit_recovery_provider_rejects_nonfinite_fraction(contract) -> None:
+    with pytest.raises(ValueError, match="finite fractions"):
+        RecoveryPlanner(contract.full12_order).plan(
+            phase=contract.phase("P13"),
+            observation={"recovery_correction_fractions": [math.nan] * 12},
+            blocked_guard="final_joint_pose_compatible",
+            blocker_evidence=_trial022_final_pose_evidence(),
+        )
+
+
+@pytest.mark.parametrize(
+    "channel_evidence",
+    (
+        {"error_deg": math.nan, "limit_deg": 2.0},
+        {"error_deg": 3.0, "limit_deg": math.inf},
+        {"error_deg": 3.0, "limit_deg": -0.1},
+        {"error_deg": "not-a-number", "limit_deg": 2.0},
+        {"error_deg": 3.0},
+    ),
+)
+def test_p13_live_final_pose_recovery_rejects_malformed_active_evidence(
+    contract, channel_evidence
+) -> None:
+    evidence = GuardEvidence(
+        name="final_joint_pose_compatible",
+        passed=False,
+        value={"front_left_hip": channel_evidence},
+    )
+    with pytest.raises(ValueError):
+        RecoveryPlanner(contract.full12_order).plan(
+            phase=contract.phase("P13"),
+            observation={},
+            blocked_guard="final_joint_pose_compatible",
+            blocker_evidence=evidence,
+        )
+
+
+def test_explicit_recovery_provider_precedes_live_final_pose_law(contract) -> None:
+    explicit = {"front_left_hip": 0.025, "rear_right_hip": -0.04}
+
+    class Observation:
+        def recovery_correction(self, state_id, blocked_guard):
+            assert state_id == "P13"
+            assert blocked_guard == "final_joint_pose_compatible"
+            return explicit
+
+    plan = RecoveryPlanner(contract.full12_order).plan(
+        phase=contract.phase("P13"),
+        observation=Observation(),
+        blocked_guard="final_joint_pose_compatible",
+        blocker_evidence=_trial022_final_pose_evidence(),
+    )
+
+    expected = [0.0] * 12
+    expected[0] = 0.025
+    expected[6] = -0.04
+    assert plan.reason == "one reference-bounded feedback retry"
+    assert plan.correction.fractions == pytest.approx(expected)
+
+
+def test_controller_ledgers_live_final_pose_recovery_correction(spec, contract) -> None:
+    controller = SensorFsmController(spec, contract)
+    controller.state = spec.state("P13")
+    controller.lifecycle = Lifecycle.RECOVERY
+    controller._pending_blocker = _trial022_final_pose_evidence()
+
+    frame = controller.step(
+        {
+            "guards": _live_guards(completion=False),
+            "actual_full12": controller.state.reference_actual_endpoint_full12,
+            "progress_vector": (0.0,),
+        },
+        sim_time_s=0.0,
+    )
+
+    event = next(
+        item
+        for item in frame.events
+        if item.from_lifecycle == Lifecycle.RECOVERY.value
+        and item.to_lifecycle == Lifecycle.EXECUTE_MOTION.value
+    )
+    assert event.reason == "live final-pose corridor correction"
+    assert event.details["blocked_guard"] == "final_joint_pose_compatible"
+    assert event.details["correction_fractions"] == pytest.approx(
+        (-0.15, 0.0, 0.0, 0.0, 0.0, 0.0, 0.15, 0.0, 0.0, 0.0, 0.0, 0.0)
+    )
+    assert controller.history[-1] == event
 
 
 def test_p10_entry_keeps_the_unmodified_reference_motion(
