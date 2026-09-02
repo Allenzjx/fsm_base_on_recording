@@ -88,6 +88,7 @@ class SensorFsmController:
         self._first_blocker: dict[str, Any] | None = None
         self._tracking_servo_names: tuple[str, ...] = ()
         self._drive_feedback_tick_index: int | None = None
+        self._decision_lattice_origin_tick = 0
         self.termination: TaskTermination | None = None
         self.history: list[ControllerEvent] = []
 
@@ -110,7 +111,7 @@ class SensorFsmController:
             else float(sim_time_s)
         )
         events: list[ControllerEvent] = []
-        decision_tick = self.physics_tick % self.spec.decision_stride == 0
+        decision_tick = self._decision_due()
         if self._last_sim_time_s is not None and now + 1e-12 < self._last_sim_time_s:
             self._terminate(
                 TaskResult.INFRASTRUCTURE_ERROR,
@@ -245,6 +246,12 @@ class SensorFsmController:
         # tick.  Both lifecycle transitions remain explicit in the event log,
         # while no artificial 15 Hz pause is injected into the 120 Hz motion.
         for _ in range(4):
+            # A velocity-aligned entry may move the 15 Hz decision lattice
+            # after the preceding phase completes.  Re-check here because
+            # DONE -> WAIT_ENTRY can otherwise collapse into the old lattice's
+            # decision and consume the live carry-over sample too early.
+            if self.lifecycle is Lifecycle.WAIT_ENTRY and not self._decision_due():
+                return
             # Task failures and safety aborts are lifecycle-independent.  A
             # collision that first becomes persistent on the endpoint tick,
             # for example, must not be downgraded to a VERIFY/next-entry
@@ -428,6 +435,11 @@ class SensorFsmController:
         self.graph.validate_transition(previous, next_state.state_id)
         self.state = next_state
         self.lifecycle = Lifecycle.WAIT_ENTRY
+        alignment = self.phase.entry_velocity_alignment
+        if alignment is not None:
+            self._decision_lattice_origin_tick = (
+                self.physics_tick + alignment.first_decision_delay_ticks
+            )
         self.retries_used = 0
         self._endpoint_issued = False
         self._verify_started_s = None
@@ -452,6 +464,13 @@ class SensorFsmController:
         )
         events.append(event)
         self.history.append(event)
+
+    def _decision_due(self) -> bool:
+        origin = self._decision_lattice_origin_tick
+        return (
+            self.physics_tick >= origin
+            and (self.physics_tick - origin) % self.spec.decision_stride == 0
+        )
 
     def _recover_or_terminate(
         self,

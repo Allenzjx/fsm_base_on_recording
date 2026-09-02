@@ -77,10 +77,14 @@ def test_state_specs_have_required_contract_fields() -> None:
     assert p03["normal_correction_fractions"] == pytest.approx(
         (0.0,) * 10 + (-0.149, 0.0)
     )
+    p09 = next(state for state in payload["states"] if state["state_id"] == "P09")
+    assert p09["normal_correction_fractions"] == pytest.approx(
+        (0.0,) * 10 + (0.106929411767305, 0.0)
+    )
     assert all(
         state["normal_correction_fractions"] == [0.0] * 12
         for state in payload["states"]
-        if state["state_id"] != "P03"
+        if state["state_id"] not in {"P03", "P09"}
     )
 
 
@@ -232,6 +236,7 @@ def test_p09_wheel_rebound_is_compact_and_strictly_reference_bounded() -> None:
         23.585333053160202
     )
     assert alignment.relative_limit == 0.15
+    assert alignment.first_decision_delay_ticks == 2
     assert all(
         phase.entry_velocity_alignment is None
         for phase in contract.phases

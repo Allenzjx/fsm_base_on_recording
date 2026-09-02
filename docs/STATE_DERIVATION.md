@@ -20,4 +20,4 @@ All nominal motion is derived offline from the single frozen v010 RR_FIRST recor
 
 ## Bounded nominal response shaping
 
-P03 scales only the rear-left wheel excursion by -14.9%. This is the first strict Trial025 measured-response correction: it remains inside the v010 command envelope, preserves the source same-tick Full12 launch, and requires no runtime Recording access. All other normal-entry correction fractions are zero.
+P03 scales only the rear-left wheel excursion by -14.9%, correcting Trial025's first strict measured-response mismatch. P09 restores the same 0.109068 rad of rear-left wheel travel (+10.692941%) after Trial039 localized the corresponding 5.45 mm second-rear support deficit there. P10 samples its signed live carry-in after a two-physics-tick offset and then retains one decision every eight physics ticks. Both motion corrections remain inside their phase-local v010 command envelopes, preserve source same-tick Full12 launches, and require no runtime Recording access. All other normal-entry correction fractions are zero.

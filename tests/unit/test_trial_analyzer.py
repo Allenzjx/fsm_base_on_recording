@@ -288,6 +288,32 @@ def test_normal_shaping_and_actual_retry_vectors_share_one_cumulative_budget() -
     assert math.isinf(max(values))
 
 
+def test_p09_normal_wheel_shaping_and_drive_feedback_use_independent_channels() -> None:
+    normal = [0.0] * 12
+    normal[10] = 0.106929411767305
+    transition = {
+        "state_id": "P09",
+        "from_lifecycle": "WAIT_ENTRY",
+        "to_lifecycle": "EXECUTE_MOTION",
+        "details": {"correction_fractions": normal},
+    }
+    command = {
+        "state_id": "P09",
+        "drive_feedback": {
+            "just_triggered": True,
+            "correction_channel_index": 8,
+            "cumulative_fraction_of_reference": 0.0588668,
+        },
+    }
+
+    values, retry_counts = _recovery_evidence([transition], [command])
+
+    assert sorted(value for value in values if value > 0.0) == pytest.approx(
+        [0.0588668, 0.106929411767305]
+    )
+    assert retry_counts["P09"] == 0
+
+
 def _contract_with_feedback(spec: dict) -> dict:
     contract = json.loads(
         (ROOT / "configs" / "recording_motion_contract.json").read_text(

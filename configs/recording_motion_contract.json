@@ -22202,6 +22202,7 @@
         "channel_index": 7,
         "reference_velocity_deg_s": 23.585333053160202,
         "relative_limit": 0.15,
+        "first_decision_delay_ticks": 2,
         "signed_positive_rebound_required": true,
         "raw_recording_runtime_access_required": false
       },

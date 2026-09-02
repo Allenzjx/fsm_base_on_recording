@@ -153,6 +153,7 @@ class EntryVelocityAlignmentSpec:
     channel_index: int
     reference_velocity_deg_s: float
     relative_limit: float
+    first_decision_delay_ticks: int
 
 
 @dataclass(frozen=True)
@@ -310,6 +311,9 @@ def _parse_phase(value: Mapping[str, Any]) -> MotionPhase:
                 raw_alignment["reference_velocity_deg_s"]
             ),
             relative_limit=float(raw_alignment["relative_limit"]),
+            first_decision_delay_ticks=int(
+                raw_alignment["first_decision_delay_ticks"]
+            ),
         )
     return MotionPhase(
         state_id=str(value["state_id"]),
@@ -570,6 +574,7 @@ def _validate_phases(
                 or alignment.channel not in phase.active_channels
                 or alignment.reference_velocity_deg_s <= 0.0
                 or abs(alignment.relative_limit - 0.15) > 1.0e-12
+                or alignment.first_decision_delay_ticks != 2
             ):
                 raise ValueError(
                     f"{phase.state_id}: invalid entry-velocity alignment"

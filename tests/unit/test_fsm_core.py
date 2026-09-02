@@ -295,6 +295,28 @@ def test_p03_normal_response_shaping_is_single_channel_and_bounded(
     assert endpoint.full12[10] == pytest.approx(0.0)
 
 
+def test_p09_restores_p03_rear_left_wheel_travel_inside_phase_bound(
+    spec, contract
+) -> None:
+    phase = contract.phase("P09")
+    fractions = spec.state("P09").normal_correction_fractions
+    assert fractions == pytest.approx(
+        (0.0,) * 10 + (0.106929411767305, 0.0)
+    )
+    executor = MotionExecutor(initial_full12=phase.start_full12)
+    executor.start_phase(phase, FeedbackCorrection(fractions))
+
+    samples = [executor.tick() for _ in range(641)]
+
+    expected_speed = 0.3 * (1.0 + fractions[10])
+    assert samples[231].full12[10] == pytest.approx(0.0)
+    assert samples[232].full12[10] == pytest.approx(expected_speed)
+    assert samples[639].full12[10] == pytest.approx(expected_speed)
+    assert samples[640].full12[10] == pytest.approx(0.0)
+    added_integral = (expected_speed - 0.3) * (640 - 232) / 120.0
+    assert added_integral == pytest.approx(0.10906800000268)
+
+
 def test_p13_live_final_pose_recovery_uses_trial022_blocker(contract) -> None:
     planner = RecoveryPlanner(contract.full12_order)
     plan = planner.plan(
@@ -704,8 +726,9 @@ def test_p09_wheel_rebound_is_zero_at_the_delayed_p10_entry_decision(
     assert feedback is not None and alignment is not None
     controller.motion.start_phase(p09)
 
+    entry_tick = feedback.teardown_tick + alignment.first_decision_delay_ticks
     frames = {}
-    for tick in range(feedback.teardown_tick + 1):
+    for tick in range(entry_tick + 1):
         completing = tick == feedback.teardown_tick
         physical_completion_ready = (
             tick
@@ -720,7 +743,7 @@ def test_p09_wheel_rebound_is_zero_at_the_delayed_p10_entry_decision(
             guards[name] = physical_completion_ready
         actual = list(
             controller.state.reference_actual_start_full12
-            if not completing
+            if tick < feedback.teardown_tick
             else spec.state("P10").reference_actual_start_full12
         )
         probe = next(
@@ -732,7 +755,7 @@ def test_p09_wheel_rebound_is_zero_at_the_delayed_p10_entry_decision(
                 probe.reference_actual_deg - feedback.lag_threshold_deg
             )
         velocity = [0.0] * 12
-        if completing:
+        if tick >= feedback.teardown_tick:
             velocity[alignment.channel_index] = (
                 alignment.reference_velocity_deg_s * velocity_scale
             )
@@ -796,14 +819,20 @@ def test_p09_wheel_rebound_is_zero_at_the_delayed_p10_entry_decision(
             assert active.drive_feedback_details[
                 "active_segment_index"
             ] == segment_index
-    frame = frames[feedback.teardown_tick]
+    transition_frame = frames[feedback.teardown_tick]
+    assert transition_frame.state_id == "P10"
+    assert transition_frame.lifecycle is Lifecycle.WAIT_ENTRY
+    assert transition_frame.decision_tick is True
+    assert frames[feedback.teardown_tick + 1].decision_tick is False
+    frame = frames[entry_tick]
     assert frame.state_id == "P10"
     assert frame.lifecycle is expected_lifecycle
+    assert frame.decision_tick is True
     assert frame.drive_feedback_bias_full12 == pytest.approx((0.0,) * 12)
     assert frame.drive_feedback_details["tick_index"] == expected_motion_tick
     assert any(
         event.state_id == "P09" and event.to_lifecycle == Lifecycle.DONE.value
-        for event in frame.events
+        for event in transition_frame.events
     )
     if expected_lifecycle is Lifecycle.EXECUTE_MOTION:
         assert any(
@@ -819,7 +848,7 @@ def test_p09_wheel_rebound_is_zero_at_the_delayed_p10_entry_decision(
         )
 
 
-def test_p09_without_live_deficit_does_not_add_a_verify_quantum(
+def test_p09_without_live_deficit_uses_only_two_tick_entry_alignment_delay(
     spec, contract
 ) -> None:
     controller = SensorFsmController(spec, contract)
@@ -832,7 +861,9 @@ def test_p09_without_live_deficit_does_not_add_a_verify_quantum(
     controller.motion.start_phase(p09)
 
     decision_tick = round(p09.active_duration_s * 120.0) + spec.decision_stride
-    for tick in range(decision_tick + 1):
+    entry_tick = decision_tick + alignment.first_decision_delay_ticks
+    frames = {}
+    for tick in range(entry_tick + 1):
         completing = tick == decision_tick
         guards = _live_guards(completion=False)
         for name in (
@@ -843,7 +874,7 @@ def test_p09_without_live_deficit_does_not_add_a_verify_quantum(
             guards[name] = completing
         actual = list(
             spec.state("P10").reference_actual_start_full12
-            if completing
+            if tick >= decision_tick
             else controller.state.reference_actual_start_full12
         )
         probe = next(
@@ -853,9 +884,9 @@ def test_p09_without_live_deficit_does_not_add_a_verify_quantum(
         if probe is not None:
             actual[feedback.probe_channel_index] = probe.reference_actual_deg
         velocity = [0.0] * 12
-        if completing:
+        if tick >= decision_tick:
             velocity[alignment.channel_index] = alignment.reference_velocity_deg_s
-        frame = controller.step(
+        frames[tick] = controller.step(
             {
                 "guards": guards,
                 "actual_full12": actual,
@@ -865,9 +896,17 @@ def test_p09_without_live_deficit_does_not_add_a_verify_quantum(
             sim_time_s=tick / 120.0,
         )
 
-    assert frame.state_id == "P10"
-    assert frame.lifecycle is Lifecycle.EXECUTE_MOTION
-    assert frame.drive_feedback_bias_full12 == pytest.approx((0.0,) * 12)
+    assert frames[decision_tick].state_id == "P10"
+    assert frames[decision_tick].lifecycle is Lifecycle.WAIT_ENTRY
+    assert frames[decision_tick + 1].decision_tick is False
+    assert frames[entry_tick].state_id == "P10"
+    assert frames[entry_tick].lifecycle is Lifecycle.EXECUTE_MOTION
+    assert frames[entry_tick].decision_tick is True
+    assert frames[entry_tick].drive_feedback_bias_full12 == pytest.approx((0.0,) * 12)
+    controller.physics_tick = entry_tick + 6
+    assert controller._decision_due() is False
+    controller.physics_tick = entry_tick + spec.decision_stride
+    assert controller._decision_due() is True
 
 
 @pytest.mark.parametrize(

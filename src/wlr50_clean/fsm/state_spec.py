@@ -17,6 +17,8 @@ ACTION_COUNT = 12
 MAX_NORMAL_CORRECTION_FRACTION = 0.15
 P03_RL_WHEEL_CORRECTION_FRACTION = -0.149
 P03_RL_WHEEL_CHANNEL_INDEX = 10
+P09_RL_WHEEL_CORRECTION_FRACTION = 0.106929411767305
+P09_RL_WHEEL_CHANNEL_INDEX = 10
 
 
 class Lifecycle(str, Enum):
@@ -223,6 +225,10 @@ def _validate(spec: FsmSpec, raw_states: Sequence[Mapping[str, Any]]) -> None:
         if state.state_id == "P03":
             expected_normal_correction[P03_RL_WHEEL_CHANNEL_INDEX] = (
                 P03_RL_WHEEL_CORRECTION_FRACTION
+            )
+        elif state.state_id == "P09":
+            expected_normal_correction[P09_RL_WHEEL_CHANNEL_INDEX] = (
+                P09_RL_WHEEL_CORRECTION_FRACTION
             )
         if (
             len(state.normal_correction_fractions) != ACTION_COUNT
