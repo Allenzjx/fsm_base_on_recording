@@ -127,8 +127,13 @@ def test_p09_wheel_rebound_is_compact_and_strictly_reference_bounded() -> None:
         )
         for segment in feedback.bias_segments
     ] == [
-        (860, 871, 0.33),
-        (872, 873, 0.12),
+        (860, 865, 0.33),
+        (866, 867, 0.28),
+        (868, 869, 0.38),
+        (870, 870, 0.28),
+        (871, 871, 0.38),
+        (872, 872, 0.17),
+        (873, 873, 0.07),
         (874, 875, 0.22),
         (876, 876, 0.12),
         (877, 878, 0.22),
@@ -142,8 +147,13 @@ def test_p09_wheel_rebound_is_compact_and_strictly_reference_bounded() -> None:
     )
     assert feedback.additional_wheel_integral_rad == pytest.approx(
         (
-            0.33 * 12.0
-            + 0.12 * 2.0
+            0.33 * 6.0
+            + 0.28 * 2.0
+            + 0.38 * 2.0
+            + 0.28
+            + 0.38
+            + 0.17
+            + 0.07
             + 0.22 * 2.0
             + 0.12
             + 0.22 * 2.0
@@ -185,7 +195,9 @@ def test_p09_wheel_rebound_is_compact_and_strictly_reference_bounded() -> None:
         assert native == pytest.approx(0.0)
         assert native + primary.logical_bias_rad_s == pytest.approx(0.33)
     for segment, expected_final in zip(
-        tail, (0.12, 0.22, 0.12, 0.22, 0.12), strict=True
+        tail,
+        (0.28, 0.38, 0.28, 0.38, 0.17, 0.07, 0.22, 0.12, 0.22, 0.12),
+        strict=True,
     ):
         for tick in range(segment.first_bias_tick, segment.last_bias_tick + 1):
             native = contract.phase("P09").end_full12[8]
@@ -248,15 +260,23 @@ def test_p09_wheel_rebound_contract_fails_closed(
     ("segment_index", "field", "invalid_value"),
     (
         (0, "first_bias_tick", 861),
-        (0, "last_bias_tick", 870),
+        (0, "last_bias_tick", 864),
         (0, "logical_bias_rad_s", 1.07),
-        (1, "first_bias_tick", 873),
-        (1, "logical_bias_rad_s", 0.22),
-        (2, "logical_bias_rad_s", 0.12),
-        (3, "last_bias_tick", 877),
-        (4, "logical_bias_rad_s", 0.12),
-        (5, "last_bias_tick", 880),
-        (5, "logical_bias_rad_s", 0.22),
+        (1, "first_bias_tick", 865),
+        (1, "logical_bias_rad_s", 0.27),
+        (2, "last_bias_tick", 870),
+        (2, "logical_bias_rad_s", 0.37),
+        (3, "logical_bias_rad_s", 0.27),
+        (4, "logical_bias_rad_s", 0.37),
+        (5, "logical_bias_rad_s", 0.16),
+        (6, "logical_bias_rad_s", 0.08),
+        (7, "first_bias_tick", 873),
+        (7, "logical_bias_rad_s", 0.21),
+        (8, "logical_bias_rad_s", 0.13),
+        (9, "last_bias_tick", 879),
+        (9, "logical_bias_rad_s", 0.21),
+        (10, "last_bias_tick", 880),
+        (10, "logical_bias_rad_s", 0.13),
     ),
 )
 def test_p09_wheel_rebound_segments_fail_closed(

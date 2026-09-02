@@ -33,8 +33,13 @@ REBOUND_LAG_THRESHOLD_DEG = 1.7
 REBOUND_CORRECTION_CHANNEL = "front_left_ankle"
 REBOUND_CORRECTION_CHANNEL_INDEX = 8
 REBOUND_BIAS_SEGMENTS = (
-    (860, 871, 0.33),
-    (872, 873, 0.12),
+    (860, 865, 0.33),
+    (866, 867, 0.28),
+    (868, 869, 0.38),
+    (870, 870, 0.28),
+    (871, 871, 0.38),
+    (872, 872, 0.17),
+    (873, 873, 0.07),
     (874, 875, 0.22),
     (876, 876, 0.12),
     (877, 878, 0.22),
@@ -45,7 +50,12 @@ REBOUND_PRE_ENDPOINT_FINAL_RAD_S = -0.74
 REBOUND_POST_ENDPOINT_NATIVE_RAD_S = 0.0
 REBOUND_POST_ENDPOINT_FINAL_RAD_S_BY_SEGMENT = (
     0.33,
-    0.12,
+    0.28,
+    0.38,
+    0.28,
+    0.38,
+    0.17,
+    0.07,
     0.22,
     0.12,
     0.22,
@@ -429,8 +439,13 @@ def _validate_phases(
                 or feedback.first_bias_tick != endpoint_tick - 4
                 or endpoint_relative_segments
                 != (
-                    (-4, DECISION_STRIDE - 1, 0.33),
-                    (DECISION_STRIDE, DECISION_STRIDE + 1, 0.12),
+                    (-4, 1, 0.33),
+                    (2, 3, 0.28),
+                    (4, 5, 0.38),
+                    (6, 6, 0.28),
+                    (7, 7, 0.38),
+                    (DECISION_STRIDE, DECISION_STRIDE, 0.17),
+                    (DECISION_STRIDE + 1, DECISION_STRIDE + 1, 0.07),
                     (DECISION_STRIDE + 2, DECISION_STRIDE + 3, 0.22),
                     (DECISION_STRIDE + 4, DECISION_STRIDE + 4, 0.12),
                     (DECISION_STRIDE + 5, DECISION_STRIDE + 6, 0.22),
@@ -442,7 +457,7 @@ def _validate_phases(
             ):
                 raise ValueError(
                     f"{phase.state_id}: drive-feedback does not match the "
-                    "bounded multi-segment identification waveform"
+                    "bounded shifted-copy identification waveform"
                 )
             values = (
                 feedback.lag_threshold_deg,

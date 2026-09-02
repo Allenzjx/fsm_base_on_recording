@@ -803,13 +803,38 @@ _WHEEL_REBOUND_BIAS = 0.33
 _WHEEL_REBOUND_SEGMENTS = [
     {
         "first_bias_tick": 860,
-        "last_bias_tick": 871,
+        "last_bias_tick": 865,
         "logical_bias_rad_s": _WHEEL_REBOUND_BIAS,
     },
     {
+        "first_bias_tick": 866,
+        "last_bias_tick": 867,
+        "logical_bias_rad_s": 0.28,
+    },
+    {
+        "first_bias_tick": 868,
+        "last_bias_tick": 869,
+        "logical_bias_rad_s": 0.38,
+    },
+    {
+        "first_bias_tick": 870,
+        "last_bias_tick": 870,
+        "logical_bias_rad_s": 0.28,
+    },
+    {
+        "first_bias_tick": 871,
+        "last_bias_tick": 871,
+        "logical_bias_rad_s": 0.38,
+    },
+    {
         "first_bias_tick": 872,
+        "last_bias_tick": 872,
+        "logical_bias_rad_s": 0.17,
+    },
+    {
+        "first_bias_tick": 873,
         "last_bias_tick": 873,
-        "logical_bias_rad_s": 0.12,
+        "logical_bias_rad_s": 0.07,
     },
     {
         "first_bias_tick": 874,
@@ -1085,13 +1110,7 @@ def test_wheel_rebound_feedback_accepts_exact_partial_counteraction_and_reversal
         assert row["atomic_ack"]["wheel_target_physical_rad_s"][0] == pytest.approx(
             0.74
         )
-    for row in rows[6:14]:
-        assert row["native_drive_target_full12"][8] == 0.0
-        assert row["drive_target_full12"][8] == pytest.approx(0.33)
-        assert row["atomic_ack"]["wheel_target_physical_rad_s"][0] == pytest.approx(
-            -0.33
-        )
-    for row in rows[14:22]:
+    for row in rows[6:22]:
         tick = row["motion_tick_index"]
         assert tick is not None
         segment_index = _wheel_rebound_segment_index(tick)
@@ -1307,7 +1326,7 @@ def test_wheel_rebound_feedback_ledger_fails_closed(mutation: str) -> None:
         _sync_wheel_rebound_atomic_ack(rows[6])
     elif mutation == "wrong_hold_native":
         rows[14]["native_drive_target_full12"][8] = 0.01
-        rows[14]["drive_target_full12"][8] = 0.13
+        rows[14]["drive_target_full12"][8] = 0.18
         _sync_wheel_rebound_atomic_ack(rows[14])
     elif mutation == "wrong_hold_final":
         rows[14]["drive_target_full12"][8] = 0.21
@@ -1374,7 +1393,7 @@ def test_wheel_rebound_feedback_ledger_fails_closed(mutation: str) -> None:
                 "tick_index": 880,
                 "trigger_tick": 859,
                 "bias_segments": json.loads(json.dumps(_WHEEL_REBOUND_SEGMENTS)),
-                "active_segment_index": 5,
+                "active_segment_index": 10,
                 "active_segment_first_bias_tick": 879,
                 "active_segment_last_bias_tick": 879,
                 "logical_bias_rad_s": 0.12,
