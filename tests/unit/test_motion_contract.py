@@ -77,14 +77,10 @@ def test_state_specs_have_required_contract_fields() -> None:
     assert p03["normal_correction_fractions"] == pytest.approx(
         (0.0,) * 10 + (-0.149, 0.0)
     )
-    p09 = next(state for state in payload["states"] if state["state_id"] == "P09")
-    assert p09["normal_correction_fractions"] == pytest.approx(
-        (0.0,) * 10 + (0.106929411767305, 0.0)
-    )
     assert all(
         state["normal_correction_fractions"] == [0.0] * 12
         for state in payload["states"]
-        if state["state_id"] not in {"P03", "P09"}
+        if state["state_id"] != "P03"
     )
 
 
@@ -127,7 +123,7 @@ def test_p09_wheel_rebound_is_compact_and_strictly_reference_bounded() -> None:
         (858, -51.055799822535),
         (859, -51.191638624749),
     ]
-    assert feedback.lag_threshold_deg == 0.35
+    assert feedback.lag_threshold_deg == 1.7
     assert feedback.required_consecutive_samples == 2
     assert feedback.probe_channel == "rear_right_knee"
     assert feedback.probe_channel_index == 7
@@ -249,7 +245,7 @@ def test_p09_wheel_rebound_is_compact_and_strictly_reference_bounded() -> None:
     (
         ("kind", "verify_tail_carry_alignment"),
         ("probe_channel", "rear_left_knee"),
-        ("lag_threshold_deg", 0.34),
+        ("lag_threshold_deg", 1.69),
         ("correction_channel_index", 5),
         ("teardown_tick", 873),
         ("additional_wheel_integral_rad", 0.107),

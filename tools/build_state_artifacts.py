@@ -139,15 +139,6 @@ RELEVANT_LEGS = {
 P03_RL_WHEEL_CORRECTION_FRACTION = -0.149
 P03_RL_WHEEL_CHANNEL_INDEX = 10
 
-# The P03 measured-response correction removes 0.109068 rad of rear-left
-# wheel travel.  Trial039 showed the resulting 5.45 mm support-placement
-# deficit only when the same wheel reached the end of P09.  Restore that exact
-# travel in P09's authored rear-left-wheel interval, where both the command
-# integral and peak remain inside the v010 +/-15% envelope.
-P09_RL_WHEEL_CORRECTION_FRACTION = 0.106929411767305
-P09_RL_WHEEL_CHANNEL_INDEX = 10
-
-
 def _phase_velocity(phase: dict[str, Any], key: str) -> dict[str, float]:
     source = phase["reference_actual"][key]
     return {
@@ -281,10 +272,6 @@ def build_state_specs(contract: dict[str, Any]) -> dict[str, Any]:
             normal_correction[P03_RL_WHEEL_CHANNEL_INDEX] = (
                 P03_RL_WHEEL_CORRECTION_FRACTION
             )
-        elif state_id == "P09":
-            normal_correction[P09_RL_WHEEL_CHANNEL_INDEX] = (
-                P09_RL_WHEEL_CORRECTION_FRACTION
-            )
         state["normal_correction_fractions"] = normal_correction
         if state_id == "P13":
             # Recovery restarts the measured wheel-decay evidence.  Preserve
@@ -344,7 +331,7 @@ def _write_docs(specs: dict[str, Any], derivation: Path, transitions: Path) -> N
                 "",
                 "## Bounded nominal response shaping",
                 "",
-                "P03 scales only the rear-left wheel excursion by -14.9%, correcting Trial025's first strict measured-response mismatch. P09 restores the same 0.109068 rad of rear-left wheel travel (+10.692941%) after Trial039 localized the corresponding 5.45 mm second-rear support deficit there. P10 samples its signed live carry-in after a two-physics-tick offset and then retains one decision every eight physics ticks. Both motion corrections remain inside their phase-local v010 command envelopes, preserve source same-tick Full12 launches, and require no runtime Recording access. All other normal-entry correction fractions are zero.",
+                "P03 scales only the rear-left wheel excursion by -14.9%, correcting Trial025's first strict measured-response mismatch while remaining inside its v010 command envelope. Trial041 rejected redistributing that travel into P09 because it changed the live support branch; all other normal-entry correction fractions remain zero. P10 samples its signed live carry-in after a two-physics-tick offset and then retains one decision every eight physics ticks. The correction preserves the source same-tick Full12 launch and requires no runtime Recording access.",
             ]
         )
     derivation.parent.mkdir(parents=True, exist_ok=True)

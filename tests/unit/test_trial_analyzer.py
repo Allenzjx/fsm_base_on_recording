@@ -288,32 +288,6 @@ def test_normal_shaping_and_actual_retry_vectors_share_one_cumulative_budget() -
     assert math.isinf(max(values))
 
 
-def test_p09_normal_wheel_shaping_and_drive_feedback_use_independent_channels() -> None:
-    normal = [0.0] * 12
-    normal[10] = 0.106929411767305
-    transition = {
-        "state_id": "P09",
-        "from_lifecycle": "WAIT_ENTRY",
-        "to_lifecycle": "EXECUTE_MOTION",
-        "details": {"correction_fractions": normal},
-    }
-    command = {
-        "state_id": "P09",
-        "drive_feedback": {
-            "just_triggered": True,
-            "correction_channel_index": 8,
-            "cumulative_fraction_of_reference": 0.0588668,
-        },
-    }
-
-    values, retry_counts = _recovery_evidence([transition], [command])
-
-    assert sorted(value for value in values if value > 0.0) == pytest.approx(
-        [0.0588668, 0.106929411767305]
-    )
-    assert retry_counts["P09"] == 0
-
-
 def _contract_with_feedback(spec: dict) -> dict:
     contract = json.loads(
         (ROOT / "configs" / "recording_motion_contract.json").read_text(
@@ -936,7 +910,7 @@ def _wheel_rebound_feedback_spec() -> dict:
             {"motion_tick": 858, "reference_actual_deg": -51.055799822535},
             {"motion_tick": 859, "reference_actual_deg": -51.191638624749},
         ],
-        "lag_threshold_deg": 0.35,
+        "lag_threshold_deg": 1.7,
         "required_consecutive_samples": 2,
         "bias_segments": json.loads(json.dumps(_WHEEL_REBOUND_SEGMENTS)),
         "teardown_tick": 872,
@@ -1010,7 +984,7 @@ def _wheel_rebound_feedback_ledger_rows(
             else 0.0
         )
         reference = references.get(tick)
-        observed = None if reference is None else reference - 0.35
+        observed = None if reference is None else reference - 1.7
         requested = [0.0] * 12
         realized = [0.0] * 12
         if active:
@@ -1609,7 +1583,7 @@ def test_wheel_rebound_contract_is_exact_and_not_a_same_sign_carry() -> None:
     )
 
     wrong_lag = _wheel_rebound_feedback_contract()
-    wrong_lag["phases"][8]["drive_feedback"]["lag_threshold_deg"] = 0.34
+    wrong_lag["phases"][8]["drive_feedback"]["lag_threshold_deg"] = 1.69
     assert not _drive_feedback_ledger_valid(rows, wrong_lag, observations)
 
     mutable_nominal = _wheel_rebound_feedback_contract()

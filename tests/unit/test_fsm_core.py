@@ -295,28 +295,6 @@ def test_p03_normal_response_shaping_is_single_channel_and_bounded(
     assert endpoint.full12[10] == pytest.approx(0.0)
 
 
-def test_p09_restores_p03_rear_left_wheel_travel_inside_phase_bound(
-    spec, contract
-) -> None:
-    phase = contract.phase("P09")
-    fractions = spec.state("P09").normal_correction_fractions
-    assert fractions == pytest.approx(
-        (0.0,) * 10 + (0.106929411767305, 0.0)
-    )
-    executor = MotionExecutor(initial_full12=phase.start_full12)
-    executor.start_phase(phase, FeedbackCorrection(fractions))
-
-    samples = [executor.tick() for _ in range(641)]
-
-    expected_speed = 0.3 * (1.0 + fractions[10])
-    assert samples[231].full12[10] == pytest.approx(0.0)
-    assert samples[232].full12[10] == pytest.approx(expected_speed)
-    assert samples[639].full12[10] == pytest.approx(expected_speed)
-    assert samples[640].full12[10] == pytest.approx(0.0)
-    added_integral = (expected_speed - 0.3) * (640 - 232) / 120.0
-    assert added_integral == pytest.approx(0.10906800000268)
-
-
 def test_p13_live_final_pose_recovery_uses_trial022_blocker(contract) -> None:
     planner = RecoveryPlanner(contract.full12_order)
     plan = planner.plan(
@@ -822,7 +800,7 @@ def test_p09_wheel_rebound_is_zero_at_the_delayed_p10_entry_decision(
     transition_frame = frames[feedback.teardown_tick]
     assert transition_frame.state_id == "P10"
     assert transition_frame.lifecycle is Lifecycle.WAIT_ENTRY
-    assert transition_frame.decision_tick is True
+    assert transition_frame.decision_tick is False
     assert frames[feedback.teardown_tick + 1].decision_tick is False
     frame = frames[entry_tick]
     assert frame.state_id == "P10"
@@ -898,6 +876,7 @@ def test_p09_without_live_deficit_uses_only_two_tick_entry_alignment_delay(
 
     assert frames[decision_tick].state_id == "P10"
     assert frames[decision_tick].lifecycle is Lifecycle.WAIT_ENTRY
+    assert frames[decision_tick].decision_tick is False
     assert frames[decision_tick + 1].decision_tick is False
     assert frames[entry_tick].state_id == "P10"
     assert frames[entry_tick].lifecycle is Lifecycle.EXECUTE_MOTION
@@ -907,6 +886,51 @@ def test_p09_without_live_deficit_uses_only_two_tick_entry_alignment_delay(
     assert controller._decision_due() is False
     controller.physics_tick = entry_tick + spec.decision_stride
     assert controller._decision_due() is True
+
+
+def test_p10_phase_local_lattice_selects_trial026_grounded_entry(
+    spec, contract
+) -> None:
+    controller = SensorFsmController(spec, contract)
+    controller.state = spec.state("P10")
+    controller.lifecycle = Lifecycle.WAIT_ENTRY
+    controller.physics_tick = 7784
+    controller._decision_lattice_origin_tick = 7786
+    alignment = controller.phase.entry_velocity_alignment
+    assert alignment is not None
+    frames = {}
+
+    for tick in range(7784, 7795):
+        actual = list(controller.state.reference_actual_start_full12)
+        velocity = [0.0] * 12
+        if tick == 7786:
+            actual[7] = -52.34644260474687
+            velocity[7] = 27.54523286589897
+        elif tick == 7794:
+            actual[7] = -49.76294397219275
+            velocity[7] = 23.822530453401227
+        else:
+            velocity[7] = alignment.reference_velocity_deg_s
+        frames[tick] = controller.step(
+            {
+                "guards": _live_guards(completion=False),
+                "actual_full12": actual,
+                "velocity_full12": velocity,
+                "progress_vector": (float(tick),),
+            },
+            sim_time_s=tick / 120.0,
+        )
+
+    assert frames[7784].decision_tick is False
+    assert frames[7786].decision_tick is True
+    assert frames[7786].lifecycle is Lifecycle.WAIT_ENTRY
+    assert frames[7794].decision_tick is True
+    assert frames[7794].lifecycle is Lifecycle.EXECUTE_MOTION
+    assert any(
+        event.state_id == "P10"
+        and event.to_lifecycle == Lifecycle.EXECUTE_MOTION.value
+        for event in frames[7794].events
+    )
 
 
 @pytest.mark.parametrize(

@@ -216,6 +216,10 @@ class SensorFsmController:
         tracking_servo_names = (
             () if self.termination is not None else self._tracking_servo_names
         )
+        # A same-tick transition may deliberately move the decision lattice.
+        # Do not label the newly entered state as if it had already consumed
+        # an entry decision on the preceding state's lattice.
+        decision_tick = decision_tick and self._decision_due()
 
         frame = ControllerFrame(
             physics_tick=self.physics_tick,
