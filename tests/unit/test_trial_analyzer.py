@@ -39,7 +39,7 @@ def _make_success(tmp_path: Path) -> tuple[Path, Path]:
     for index, phase_id in enumerate(PHASE_IDS):
         start_time = index * 1.2
         end_time = start_time + 1.0
-        completion_time = end_time + 0.1
+        completion_time = end_time + (0.6 if phase_id == "P13" else 0.1)
         start_value = index * 10.0
         end_value = start_value + 10.0
         start = [0.0] * 12
@@ -90,12 +90,29 @@ def _make_success(tmp_path: Path) -> tuple[Path, Path]:
             observations.append({
                 "state_id": phase_id, "simulation_time_s": when,
                 "physics_tick": int(when * 120), "actual_full12": full12,
+                "commanded_full12": full12,
                 "velocity_full12": [10.0] + [0.0] * 11,
                 "body_collision": {"detected": False}, "guards": {},
             })
+        if phase_id == "P13":
+            for tick in range(1, 72):
+                when = end_time + tick / 120.0
+                observations.append({
+                    "state_id": phase_id,
+                    "simulation_time_s": when,
+                    "physics_tick": int(round(when * 120)),
+                    "actual_full12": end,
+                    "commanded_full12": end,
+                    "velocity_full12": (
+                        [10.0] + [0.0] * 11 if tick == 1 else [0.0] * 12
+                    ),
+                    "body_collision": {"detected": False},
+                    "guards": {},
+                })
         observations.append({
             "state_id": phase_id, "simulation_time_s": completion_time,
             "physics_tick": int(completion_time * 120), "actual_full12": end,
+            "commanded_full12": end,
             "velocity_full12": [0.0] * 12, "body_collision": {"detected": False},
             "guards": {},
         })

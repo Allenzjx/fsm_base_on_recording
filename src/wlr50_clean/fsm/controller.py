@@ -120,6 +120,14 @@ class SensorFsmController:
             )
         self._last_sim_time_s = now
 
+        if self.termination is None and self.lifecycle is Lifecycle.VERIFY_RESULT:
+            self.guard_evaluator.observe_continuous_completion_guards(
+                self.state.completion_guards,
+                observation,
+                state_id=self.state.state_id,
+                sim_time_s=now,
+            )
+
         if self.termination is None and decision_tick:
             self._run_decision_transitions(observation, now, events)
 

@@ -8,6 +8,7 @@ from typing import Any, Mapping, Protocol, Sequence, runtime_checkable
 
 from .state_spec import GuardSpec
 from .task_result import TaskResult
+from .wheel_decay import WheelDecayDebounce
 
 
 @runtime_checkable
@@ -84,12 +85,36 @@ class GuardEvaluator:
     """
 
     def __init__(self) -> None:
-        self._debounce_start: dict[tuple[str, str], float] = {}
+        self._wheel_decay: dict[tuple[str, str], WheelDecayDebounce] = {}
 
     def reset_state(self, state_id: str) -> None:
-        for key in tuple(self._debounce_start):
+        for key in tuple(self._wheel_decay):
             if key[0] == state_id:
-                del self._debounce_start[key]
+                del self._wheel_decay[key]
+
+    def observe_continuous_completion_guards(
+        self,
+        guards: Sequence[GuardSpec],
+        observation: Any,
+        *,
+        state_id: str,
+        sim_time_s: float,
+    ) -> None:
+        """Feed physics-rate evidence without allowing a state transition.
+
+        State decisions remain 15 Hz, but a debounce described as continuous
+        must see every 120 Hz observation.  Currently only final wheel decay
+        has that requirement.
+        """
+
+        for guard in guards:
+            if guard.name == "measured_wheel_velocity_stable_decay":
+                self._infer(
+                    guard,
+                    observation,
+                    state_id=state_id,
+                    sim_time_s=sim_time_s,
+                )
 
     def evaluate_all(
         self,
@@ -242,23 +267,28 @@ class GuardEvaluator:
                         _member(wheel, "velocity_rad_s") for wheel in wheels.values()
                     )
             flat = _numeric_vector(velocities)
-            if flat:
+            commands = _wheel_command_vector(observation)
+            if len(flat) == 4 and len(commands) == 4:
                 threshold = float(guard.parameters["absolute_threshold_rad_s"])
                 debounce_s = float(guard.parameters["debounce_s"])
-                maximum = max(abs(item) for item in flat)
                 key = (state_id, guard.name)
-                if maximum <= threshold:
-                    self._debounce_start.setdefault(key, sim_time_s)
-                else:
-                    self._debounce_start.pop(key, None)
-                held = sim_time_s - self._debounce_start.get(key, sim_time_s)
+                debounce = self._wheel_decay.setdefault(key, WheelDecayDebounce())
+                status = debounce.update(
+                    sim_time_s=sim_time_s,
+                    measured_velocity_rad_s=flat,
+                    commanded_velocity_rad_s=commands,
+                    threshold_rad_s=threshold,
+                    debounce_s=debounce_s,
+                )
                 return GuardEvidence(
                     guard.name,
-                    maximum <= threshold and held + 1e-12 >= debounce_s,
+                    status.passed,
                     {
-                        "max_abs_rad_s": maximum,
+                        "zero_command_readback": status.eligible,
+                        "max_abs_rad_s": status.maximum_abs_velocity_rad_s,
                         "threshold_rad_s": threshold,
-                        "stable_for_s": held,
+                        "stable_for_s": status.stable_for_s,
+                        "stable_since_s": status.stable_since_s,
                         "reference_tail_peak_rad_s": guard.parameters.get(
                             "reference_tail_peak_rad_s"
                         ),
@@ -306,6 +336,22 @@ def _numeric_vector(value: Any) -> tuple[float, ...]:
     except (TypeError, ValueError):
         return ()
     return result if all(math.isfinite(item) for item in result) else ()
+
+
+def _wheel_command_vector(observation: Any) -> tuple[float, ...]:
+    for field in ("commanded_full12", "command_full12", "full12"):
+        values = _numeric_vector(_member(observation, field))
+        if len(values) == 12:
+            return values[8:]
+    wheels = _member(observation, "wheels")
+    if isinstance(wheels, Mapping):
+        result = tuple(
+            _member(wheel, "command_rad_s") for wheel in wheels.values()
+        )
+        values = _numeric_vector(result)
+        if len(values) == 4:
+            return values
+    return ()
 
 
 def observation_progress_vector(observation: Any) -> tuple[float, ...]:

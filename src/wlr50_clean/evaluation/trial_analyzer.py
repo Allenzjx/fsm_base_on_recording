@@ -12,6 +12,8 @@ from dataclasses import asdict, is_dataclass
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+from wlr50_clean.fsm.wheel_decay import WheelDecayDebounce, WheelDecayStatus
+
 from .comparison import PHASE_IDS
 from .conformance import (
     SIMILARITY_COLUMNS,
@@ -19,6 +21,7 @@ from .conformance import (
     _number,
     _phase,
     _phase_windows,
+    _samples,
     _similarity_rows,
     _summary,
     _time,
@@ -380,16 +383,29 @@ def analyze_trial(
         ordered_commands[-1], "full12", "command_full12", "commanded_full12"
     ) if ordered_commands else None
     wheel_decay_threshold = _reference_wheel_decay_threshold(contract)
-    stable_suffix: list[Mapping[str, Any]] = []
-    for row in reversed(ordered_observations):
-        vector = _vector(row, "actual_full12")
-        if vector is None or any(
-            abs(value) > wheel_decay_threshold + 1.0e-9 for value in vector[8:]
-        ):
-            break
-        stable_suffix.append(row)
-    stable_suffix.reverse()
-    stable_span = _time(stable_suffix[-1]) - _time(stable_suffix[0]) if len(stable_suffix) >= 2 else 0.0
+    wheel_decay = WheelDecayDebounce()
+    wheel_decay_status = WheelDecayStatus(False, False, math.inf, 0.0, None)
+    p13_decay_rows = _samples(
+        ordered_observations,
+        "P13",
+        windows["P13"]["motion_end_s"],
+        windows["P13"]["completion_time_s"],
+    )
+    for row in p13_decay_rows:
+        measured = _vector(row, "actual_full12")
+        commanded = _vector(row, "commanded_full12", "command_full12", "full12")
+        if measured is None or commanded is None:
+            wheel_decay.reset()
+            wheel_decay_status = WheelDecayStatus(False, False, math.inf, 0.0, None)
+            continue
+        wheel_decay_status = wheel_decay.update(
+            sim_time_s=_time(row),
+            measured_velocity_rad_s=measured[8:],
+            commanded_velocity_rad_s=commanded[8:],
+            threshold_rad_s=wheel_decay_threshold,
+            debounce_s=0.5,
+        )
+    stable_span = wheel_decay_status.stable_for_s
     summary.update(
         measured_wheel_velocity_decay_threshold_rad_s=wheel_decay_threshold,
         measured_wheel_velocity_stable_span_s=stable_span,
@@ -414,7 +430,7 @@ def analyze_trial(
         and all(count <= 1 for count in retry_counts.values()),
         "final_wheel_targets_zero": final_command is not None
         and all(abs(value) <= 1.0e-9 for value in final_command[8:]),
-        "measured_wheel_velocity_stable_decay": stable_span >= 0.5 - 1.0 / 120.0 - 1.0e-9,
+        "measured_wheel_velocity_stable_decay": wheel_decay_status.passed,
         "duration_below_200_s": windows["P13"]["completion_time_s"]
         - windows["P01"]["entry_time_s"] <= 200.0,
     }

@@ -296,6 +296,7 @@ def test_measured_wheel_decay_is_debounced_inside_controller(spec, contract) -> 
         {
             "guards": guards,
             "wheel_velocities_rad_s": (0.0,) * 4,
+            "commanded_full12": (0.0,) * 12,
             "actual_full12": controller.state.reference_actual_endpoint_full12,
         },
         sim_time_s=0.0,
@@ -307,6 +308,7 @@ def test_measured_wheel_decay_is_debounced_inside_controller(spec, contract) -> 
             {
                 "guards": guards,
                 "wheel_velocities_rad_s": (0.0,) * 4,
+                "commanded_full12": (0.0,) * 12,
                 "actual_full12": controller.state.reference_actual_endpoint_full12,
             },
             sim_time_s=index / 120.0,
@@ -316,6 +318,44 @@ def test_measured_wheel_decay_is_debounced_inside_controller(spec, contract) -> 
     assert frame.termination is not None
     assert frame.termination.result is TaskResult.SUCCESS
     assert frame.sim_time_s >= 0.5
+
+
+def test_nondecision_wheel_velocity_spike_resets_continuous_debounce(
+    spec, contract
+) -> None:
+    controller = SensorFsmController(spec, contract)
+    controller.state = spec.state("P13")
+    controller.lifecycle = Lifecycle.VERIFY_RESULT
+    controller._endpoint_issued = True
+    controller._verify_started_s = 0.0
+    guards = {guard.name: True for guard in controller.state.completion_guards}
+    endpoint = controller.state.reference_actual_endpoint_full12
+    threshold = next(
+        float(guard.parameters["absolute_threshold_rad_s"])
+        for guard in controller.state.completion_guards
+        if guard.name == "measured_wheel_velocity_stable_decay"
+    )
+
+    frame = None
+    for index in range(105):
+        # Tick 36 is not a 15 Hz decision tick.  It must still reset the
+        # continuous evidence, exactly like Trial011's missed tick 10636.
+        velocity = (threshold + 0.01, 0.0, 0.0, 0.0) if index == 36 else (0.0,) * 4
+        frame = controller.step(
+            {
+                "guards": guards,
+                "wheel_velocities_rad_s": velocity,
+                "commanded_full12": (0.0,) * 12,
+                "actual_full12": endpoint,
+            },
+            sim_time_s=index / 120.0,
+        )
+        if frame.termination is not None:
+            break
+
+    assert frame is not None and frame.termination is not None
+    assert frame.termination.result is TaskResult.SUCCESS
+    assert frame.sim_time_s >= (36.0 / 120.0 + 0.5)
 
 
 def test_p13_decay_threshold_is_derived_from_v010_tail(spec, contract) -> None:
