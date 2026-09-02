@@ -70,7 +70,11 @@ _WHEEL_REBOUND_LAST_TICK = 879
 _WHEEL_REBOUND_TEARDOWN_TICK = 880
 _WHEEL_REBOUND_BIAS_SEGMENTS = (
     (860, 871, 0.33),
-    (872, 879, 0.17),
+    (872, 873, 0.12),
+    (874, 875, 0.22),
+    (876, 876, 0.12),
+    (877, 878, 0.22),
+    (879, 879, 0.12),
 )
 _WHEEL_REFERENCE_INTEGRAL_RAD = -0.9060000000012605
 _WHEEL_REBOUND_ADDITIONAL_INTEGRAL_RAD = 0.044333333333333336
@@ -484,7 +488,7 @@ def _wheel_feedback_segments(
         except (KeyError, TypeError, ValueError):
             return None
         segments = tuple(parsed)
-        # Trial020's shape is deliberately immutable: accepting a shifted,
+        # The P09 rebound shape is deliberately immutable: accepting a shifted,
         # shortened, extended, or re-amplituded segment would make its signed
         # integral look valid while changing the actual physical timing.
         if segments != _WHEEL_REBOUND_BIAS_SEGMENTS:

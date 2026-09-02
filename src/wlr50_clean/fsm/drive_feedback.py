@@ -30,7 +30,11 @@ REBOUND_CORRECTION_CHANNEL = "front_left_ankle"
 REBOUND_CORRECTION_CHANNEL_INDEX = 8
 REBOUND_BIAS_SEGMENTS = (
     (860, 871, 0.33),
-    (872, 879, 0.17),
+    (872, 873, 0.12),
+    (874, 875, 0.22),
+    (876, 876, 0.12),
+    (877, 878, 0.22),
+    (879, 879, 0.12),
 )
 REBOUND_TEARDOWN_TICK = 880
 REBOUND_REFERENCE_INTEGRAL_RAD = -0.9060000000012605
@@ -119,10 +123,10 @@ class ReferenceBoundedDriveFeedback:
 
     Two locked pre-endpoint rear-right-knee samples arm a counter-command.  It
     partially counteracts four remaining native wheel ticks, reverses the wheel
-    request for the eight ticks after the nominal endpoint, retains a smaller
-    P09-owned entry-alignment tail for another eight ticks, and tears down
-    before the live P10 entry decision without changing the frozen nominal
-    command.
+    request for the eight ticks after the nominal endpoint, applies a bounded
+    timing-identification rebound through the final eight P09-owned ticks, and
+    tears down before the live P10 entry decision without changing the frozen
+    nominal command.
     """
 
     def __init__(self) -> None:
@@ -291,7 +295,7 @@ class ReferenceBoundedDriveFeedback:
             reason=(
                 f"live {state_id} {spec.probe_channel} pre-endpoint deficit "
                 f"requests {spec.correction_channel} pre-endpoint partial "
-                "counteraction and two-segment opposite-direction wheel rebound"
+                "counteraction and bounded timing-identification rebound"
                 if triggered and spec is not None
                 else "no live reference-corridor deficit latched"
             ),

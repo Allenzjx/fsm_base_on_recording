@@ -18778,8 +18778,8 @@
         "probe_channel_index": 7,
         "correction_channel": "front_left_ankle",
         "correction_channel_index": 8,
-        "goal": "partially counteract the final four native front-left wheel ticks, request an eight-tick primary rebound, then retain a lower eight-tick P09-owned entry-alignment tail before the live P10 entry decision when the rear-right-knee deficit predicts a weak rebound",
-        "source": "two-sample locked-v010 rear-right-knee pre-endpoint deficit plus a bounded two-segment front-left wheel counter-command whose signed phase integral remains inside the v010 contract",
+        "goal": "partially counteract the final four native front-left wheel ticks, request an eight-tick primary rebound, then apply an eight-tick alternating-amplitude P09-owned identification tail before the live P10 entry decision when the rear-right-knee deficit predicts a weak rebound",
+        "source": "two-sample locked-v010 rear-right-knee pre-endpoint deficit plus a bounded multi-segment front-left wheel identification waveform whose signed phase integral remains inside the v010 contract",
         "probe_samples": [
           {
             "motion_tick": 858,
@@ -18800,8 +18800,28 @@
           },
           {
             "first_bias_tick": 872,
+            "last_bias_tick": 873,
+            "logical_bias_rad_s": 0.12
+          },
+          {
+            "first_bias_tick": 874,
+            "last_bias_tick": 875,
+            "logical_bias_rad_s": 0.22
+          },
+          {
+            "first_bias_tick": 876,
+            "last_bias_tick": 876,
+            "logical_bias_rad_s": 0.12
+          },
+          {
+            "first_bias_tick": 877,
+            "last_bias_tick": 878,
+            "logical_bias_rad_s": 0.22
+          },
+          {
+            "first_bias_tick": 879,
             "last_bias_tick": 879,
-            "logical_bias_rad_s": 0.17
+            "logical_bias_rad_s": 0.12
           }
         ],
         "teardown_tick": 880,

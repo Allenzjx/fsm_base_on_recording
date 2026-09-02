@@ -800,7 +800,6 @@ def test_wheel_tail_feedback_contract_timing_and_integral_are_pinned() -> None:
 
 
 _WHEEL_REBOUND_BIAS = 0.33
-_WHEEL_REBOUND_HOLD_BIAS = 0.17
 _WHEEL_REBOUND_SEGMENTS = [
     {
         "first_bias_tick": 860,
@@ -809,13 +808,44 @@ _WHEEL_REBOUND_SEGMENTS = [
     },
     {
         "first_bias_tick": 872,
+        "last_bias_tick": 873,
+        "logical_bias_rad_s": 0.12,
+    },
+    {
+        "first_bias_tick": 874,
+        "last_bias_tick": 875,
+        "logical_bias_rad_s": 0.22,
+    },
+    {
+        "first_bias_tick": 876,
+        "last_bias_tick": 876,
+        "logical_bias_rad_s": 0.12,
+    },
+    {
+        "first_bias_tick": 877,
+        "last_bias_tick": 878,
+        "logical_bias_rad_s": 0.22,
+    },
+    {
+        "first_bias_tick": 879,
         "last_bias_tick": 879,
-        "logical_bias_rad_s": _WHEEL_REBOUND_HOLD_BIAS,
+        "logical_bias_rad_s": 0.12,
     },
 ]
 _WHEEL_REBOUND_ADDITIONAL_INTEGRAL = 0.044333333333333336
 _WHEEL_REBOUND_RESULTING_INTEGRAL = -0.8616666666679271
 _WHEEL_REBOUND_FRACTION = 0.04893303899919609
+
+
+def _wheel_rebound_segment_index(tick: int) -> int | None:
+    return next(
+        (
+            index
+            for index, segment in enumerate(_WHEEL_REBOUND_SEGMENTS)
+            if segment["first_bias_tick"] <= tick <= segment["last_bias_tick"]
+        ),
+        None,
+    )
 
 
 def _wheel_rebound_feedback_spec() -> dict:
@@ -895,8 +925,7 @@ def _wheel_rebound_feedback_ledger_rows(
     }
     for tick in range(858, 880):
         latched = tick >= 859
-        active = 860 <= tick <= 871
-        segment_index = 0 if active else 1 if 872 <= tick <= 879 else None
+        segment_index = _wheel_rebound_segment_index(tick)
         active = segment_index is not None
         logical_bias = (
             _WHEEL_REBOUND_SEGMENTS[segment_index]["logical_bias_rad_s"]
@@ -1063,10 +1092,23 @@ def test_wheel_rebound_feedback_accepts_exact_partial_counteraction_and_reversal
             -0.33
         )
     for row in rows[14:22]:
+        tick = row["motion_tick_index"]
+        assert tick is not None
+        segment_index = _wheel_rebound_segment_index(tick)
+        assert segment_index is not None
+        segment = _WHEEL_REBOUND_SEGMENTS[segment_index]
+        expected_bias = segment["logical_bias_rad_s"]
         assert row["native_drive_target_full12"][8] == 0.0
-        assert row["drive_target_full12"][8] == pytest.approx(0.17)
+        assert row["drive_target_full12"][8] == pytest.approx(expected_bias)
+        assert row["drive_feedback"]["active_segment_index"] == segment_index
+        assert row["drive_feedback"]["active_segment_first_bias_tick"] == segment[
+            "first_bias_tick"
+        ]
+        assert row["drive_feedback"]["active_segment_last_bias_tick"] == segment[
+            "last_bias_tick"
+        ]
         assert row["atomic_ack"]["wheel_target_physical_rad_s"][0] == pytest.approx(
-            -0.17
+            -expected_bias
         )
     teardown = rows[22]
     assert teardown["drive_feedback_bias_realized_full12"][8] == 0.0
@@ -1265,7 +1307,7 @@ def test_wheel_rebound_feedback_ledger_fails_closed(mutation: str) -> None:
         _sync_wheel_rebound_atomic_ack(rows[6])
     elif mutation == "wrong_hold_native":
         rows[14]["native_drive_target_full12"][8] = 0.01
-        rows[14]["drive_target_full12"][8] = 0.23
+        rows[14]["drive_target_full12"][8] = 0.13
         _sync_wheel_rebound_atomic_ack(rows[14])
     elif mutation == "wrong_hold_final":
         rows[14]["drive_target_full12"][8] = 0.21
@@ -1327,15 +1369,15 @@ def test_wheel_rebound_feedback_ledger_fails_closed(mutation: str) -> None:
         teardown["drive_feedback"].update(
             {
                 "kind": "pre_endpoint_wheel_rebound_alignment",
-                "bias_full12": [0.0] * 8 + [0.17, 0.0, 0.0, 0.0],
+                "bias_full12": [0.0] * 8 + [0.12, 0.0, 0.0, 0.0],
                 "active": True,
                 "tick_index": 880,
                 "trigger_tick": 859,
                 "bias_segments": json.loads(json.dumps(_WHEEL_REBOUND_SEGMENTS)),
-                "active_segment_index": 1,
-                "active_segment_first_bias_tick": 872,
+                "active_segment_index": 5,
+                "active_segment_first_bias_tick": 879,
                 "active_segment_last_bias_tick": 879,
-                "logical_bias_rad_s": 0.17,
+                "logical_bias_rad_s": 0.12,
                 "cumulative_fraction_of_reference": _WHEEL_REBOUND_FRACTION,
                 "reference_wheel_integral_rad": _WHEEL_REFERENCE_INTEGRAL,
                 "additional_wheel_integral_rad": _WHEEL_REBOUND_ADDITIONAL_INTEGRAL,
@@ -1349,9 +1391,9 @@ def test_wheel_rebound_feedback_ledger_fails_closed(mutation: str) -> None:
                 "correction_channel_index": 8,
             }
         )
-        teardown["drive_feedback_bias_requested_full12"][8] = 0.17
-        teardown["drive_feedback_bias_realized_full12"][8] = 0.17
-        teardown["drive_target_full12"][8] = 0.17
+        teardown["drive_feedback_bias_requested_full12"][8] = 0.12
+        teardown["drive_feedback_bias_realized_full12"][8] = 0.12
+        teardown["drive_target_full12"][8] = 0.12
         _sync_wheel_rebound_atomic_ack(teardown)
     elif mutation == "untriggered_correction":
         for row, observation in zip(rows[:-1], observations[:-1], strict=True):

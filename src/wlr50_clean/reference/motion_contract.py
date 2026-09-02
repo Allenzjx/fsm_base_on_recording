@@ -34,13 +34,23 @@ REBOUND_CORRECTION_CHANNEL = "front_left_ankle"
 REBOUND_CORRECTION_CHANNEL_INDEX = 8
 REBOUND_BIAS_SEGMENTS = (
     (860, 871, 0.33),
-    (872, 879, 0.17),
+    (872, 873, 0.12),
+    (874, 875, 0.22),
+    (876, 876, 0.12),
+    (877, 878, 0.22),
+    (879, 879, 0.12),
 )
 REBOUND_PRE_ENDPOINT_NATIVE_RAD_S = -1.07
 REBOUND_PRE_ENDPOINT_FINAL_RAD_S = -0.74
 REBOUND_POST_ENDPOINT_NATIVE_RAD_S = 0.0
-REBOUND_PRIMARY_POST_ENDPOINT_FINAL_RAD_S = 0.33
-REBOUND_SECONDARY_POST_ENDPOINT_FINAL_RAD_S = 0.17
+REBOUND_POST_ENDPOINT_FINAL_RAD_S_BY_SEGMENT = (
+    0.33,
+    0.12,
+    0.22,
+    0.12,
+    0.22,
+    0.12,
+)
 
 
 def _vector(value: Sequence[Any], *, label: str) -> tuple[float, ...]:
@@ -406,20 +416,33 @@ def _validate_phases(
             ):
                 raise ValueError(f"{phase.state_id}: invalid drive-feedback timing")
             endpoint_tick = round(phase.active_duration_s * PHYSICS_HZ)
+            endpoint_relative_segments = tuple(
+                (
+                    segment.first_bias_tick - endpoint_tick,
+                    segment.last_bias_tick - endpoint_tick,
+                    segment.logical_bias_rad_s,
+                )
+                for segment in feedback.bias_segments
+            )
             if (
                 probe_ticks != (endpoint_tick - 6, endpoint_tick - 5)
                 or feedback.first_bias_tick != endpoint_tick - 4
-                or feedback.bias_segments[0].last_bias_tick
-                != endpoint_tick + DECISION_STRIDE - 1
-                or feedback.bias_segments[1].first_bias_tick
-                != endpoint_tick + DECISION_STRIDE
+                or endpoint_relative_segments
+                != (
+                    (-4, DECISION_STRIDE - 1, 0.33),
+                    (DECISION_STRIDE, DECISION_STRIDE + 1, 0.12),
+                    (DECISION_STRIDE + 2, DECISION_STRIDE + 3, 0.22),
+                    (DECISION_STRIDE + 4, DECISION_STRIDE + 4, 0.12),
+                    (DECISION_STRIDE + 5, DECISION_STRIDE + 6, 0.22),
+                    (DECISION_STRIDE + 7, DECISION_STRIDE + 7, 0.12),
+                )
                 or feedback.last_bias_tick
                 != endpoint_tick + 2 * DECISION_STRIDE - 1
                 or feedback.teardown_tick != endpoint_tick + 2 * DECISION_STRIDE
             ):
                 raise ValueError(
                     f"{phase.state_id}: drive-feedback does not match the "
-                    "bounded two-segment pre-endpoint wheel rebound"
+                    "bounded multi-segment identification waveform"
                 )
             values = (
                 feedback.lag_threshold_deg,
@@ -462,26 +485,32 @@ def _validate_phases(
                 feedback.correction_channel_index,
                 bias_segments=feedback.bias_segments,
             )
-            primary_segment, secondary_segment = feedback.bias_segments
+            primary_segment = feedback.bias_segments[0]
             pre_endpoint_native = tuple(
                 _channel_at_motion_tick(
                     phase, feedback.correction_channel_index, tick
                 )
                 for tick in range(primary_segment.first_bias_tick, endpoint_tick)
             )
-            primary_post_endpoint_native = tuple(
-                _channel_at_motion_tick(
-                    phase, feedback.correction_channel_index, tick
+            post_endpoint_native_and_final = tuple(
+                (
+                    native,
+                    native + segment.logical_bias_rad_s,
+                    expected_final,
                 )
-                for tick in range(endpoint_tick, primary_segment.last_bias_tick + 1)
-            )
-            secondary_post_endpoint_native = tuple(
-                _channel_at_motion_tick(
-                    phase, feedback.correction_channel_index, tick
+                for segment, expected_final in zip(
+                    feedback.bias_segments,
+                    REBOUND_POST_ENDPOINT_FINAL_RAD_S_BY_SEGMENT,
+                    strict=True,
                 )
                 for tick in range(
-                    secondary_segment.first_bias_tick,
-                    secondary_segment.last_bias_tick + 1,
+                    max(endpoint_tick, segment.first_bias_tick),
+                    segment.last_bias_tick + 1,
+                )
+                for native in (
+                    _channel_at_motion_tick(
+                        phase, feedback.correction_channel_index, tick
+                    ),
                 )
             )
             if (
@@ -497,8 +526,7 @@ def _validate_phases(
                 )
                 != REBOUND_BIAS_SEGMENTS
                 or not pre_endpoint_native
-                or not primary_post_endpoint_native
-                or not secondary_post_endpoint_native
+                or not post_endpoint_native_and_final
                 or any(
                     abs(native - REBOUND_PRE_ENDPOINT_NATIVE_RAD_S) > 1.0e-12
                     or abs(
@@ -511,23 +539,8 @@ def _validate_phases(
                 )
                 or any(
                     abs(native - REBOUND_POST_ENDPOINT_NATIVE_RAD_S) > 1.0e-12
-                    or abs(
-                        native
-                        + primary_segment.logical_bias_rad_s
-                        - REBOUND_PRIMARY_POST_ENDPOINT_FINAL_RAD_S
-                    )
-                    > 1.0e-12
-                    for native in primary_post_endpoint_native
-                )
-                or any(
-                    abs(native - REBOUND_POST_ENDPOINT_NATIVE_RAD_S) > 1.0e-12
-                    or abs(
-                        native
-                        + secondary_segment.logical_bias_rad_s
-                        - REBOUND_SECONDARY_POST_ENDPOINT_FINAL_RAD_S
-                    )
-                    > 1.0e-12
-                    for native in secondary_post_endpoint_native
+                    or abs(final - expected_final) > 1.0e-12
+                    for native, final, expected_final in post_endpoint_native_and_final
                 )
                 or abs(phase.end_full12[feedback.correction_channel_index])
                 > 1.0e-12
