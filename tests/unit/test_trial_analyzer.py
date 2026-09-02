@@ -926,7 +926,7 @@ def _wheel_rebound_feedback_spec() -> dict:
             {"motion_tick": 858, "reference_actual_deg": -51.055799822535},
             {"motion_tick": 859, "reference_actual_deg": -51.191638624749},
         ],
-        "lag_threshold_deg": 1.7,
+        "lag_threshold_deg": 0.35,
         "required_consecutive_samples": 2,
         "bias_segments": json.loads(json.dumps(_WHEEL_REBOUND_SEGMENTS)),
         "teardown_tick": 880,
@@ -1000,7 +1000,7 @@ def _wheel_rebound_feedback_ledger_rows(
             else 0.0
         )
         reference = references.get(tick)
-        observed = None if reference is None else reference - 1.7
+        observed = None if reference is None else reference - 0.35
         requested = [0.0] * 12
         realized = [0.0] * 12
         if active:
@@ -1547,7 +1547,7 @@ def test_wheel_rebound_contract_is_exact_and_not_a_same_sign_carry() -> None:
     )
 
     wrong_lag = _wheel_rebound_feedback_contract()
-    wrong_lag["phases"][8]["drive_feedback"]["lag_threshold_deg"] = 1.6
+    wrong_lag["phases"][8]["drive_feedback"]["lag_threshold_deg"] = 0.34
     assert not _drive_feedback_ledger_valid(rows, wrong_lag, observations)
 
     mutable_nominal = _wheel_rebound_feedback_contract()

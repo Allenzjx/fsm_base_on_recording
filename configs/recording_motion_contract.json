@@ -18790,7 +18790,7 @@
             "reference_actual_deg": -51.191638624749
           }
         ],
-        "lag_threshold_deg": 1.7,
+        "lag_threshold_deg": 0.35,
         "required_consecutive_samples": 2,
         "bias_segments": [
           {

@@ -208,6 +208,33 @@ def test_p09_two_sample_live_deficit_latches_bounded_wheel_rebound() -> None:
     assert restored_details["logical_bias_rad_s"] == 0.0
 
 
+def test_trial026_p09_probe_deficit_arms_the_p10_entry_rebound() -> None:
+    phase = load_motion_contract(
+        ROOT / "configs" / "recording_motion_contract.json"
+    ).phase("P09")
+    spec = phase.drive_feedback
+    assert spec is not None
+    assert spec.lag_threshold_deg == pytest.approx(0.35)
+    feedback = ReferenceBoundedDriveFeedback()
+    trial026_observed = (-51.43816064246197, -51.61530159858626)
+
+    results = [
+        feedback.update(
+            state_id="P09",
+            motion_tick_index=probe.motion_tick,
+            actual_full12=_actual(spec.probe_channel_index, observed),
+            spec=spec,
+        )
+        for probe, observed in zip(
+            spec.probe_samples, trial026_observed, strict=True
+        )
+    ]
+
+    assert results[0].just_triggered is False
+    assert results[1].just_triggered is True
+    assert results[1].trigger_tick == 859
+
+
 def test_p09_wheel_rebound_requires_both_live_deficit_samples() -> None:
     phase = load_motion_contract(
         ROOT / "configs" / "recording_motion_contract.json"
