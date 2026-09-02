@@ -61,7 +61,7 @@ def test_unknown_servo_limit_fails_closed() -> None:
         authoritative_servo_limits_rad("not_a_joint", 0.0)
 
 
-def test_p09_feedback_bias_preserves_final_150_degree_per_second_slew() -> None:
+def test_p09_negative_feedback_bias_restores_at_759_and_preserves_final_slew() -> None:
     base = {
         743: 13.521235,
         744: 14.428796,
@@ -78,7 +78,7 @@ def test_p09_feedback_bias_preserves_final_150_degree_per_second_slew() -> None:
     for tick in range(744, 761):
         native_tick = max(item for item in base if item <= tick)
         native = base[native_tick]
-        bias = 0.9 if 745 <= tick <= 759 else 0.0
+        bias = -0.4 if 745 <= tick <= 758 else 0.0
         final = bounded_drive_feedback_step(
             previous_deg=previous,
             native_deg=native,
@@ -92,10 +92,12 @@ def test_p09_feedback_bias_preserves_final_150_degree_per_second_slew() -> None:
         previous = final
 
     assert observed[744] == pytest.approx(14.428796)
-    assert observed[745] == pytest.approx(15.328796)
-    assert observed[748] == pytest.approx(16.578796)
-    assert observed[752] == pytest.approx(17.828796)
-    assert observed[756] == pytest.approx(19.078796)
+    assert observed[745] == pytest.approx(14.028796)
+    assert observed[748] == pytest.approx(15.278796)
+    assert observed[752] == pytest.approx(16.528796)
+    assert observed[756] == pytest.approx(17.778796)
+    assert observed[758] == pytest.approx(17.778796)
+    assert observed[759] == pytest.approx(18.178796)
     assert observed[760] == pytest.approx(19.428796)
 
 

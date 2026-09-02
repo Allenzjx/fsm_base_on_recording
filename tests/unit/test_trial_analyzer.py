@@ -234,31 +234,31 @@ def test_post_mapper_drive_feedback_is_included_in_cumulative_budget(tmp_path: P
         "drive_feedback": {
             "just_triggered": True,
             "channel_index": 5,
-            "cumulative_fraction_of_reference": 1.8 / 19.4,
+            "cumulative_fraction_of_reference": 0.8 / 19.4,
         },
     }
     values, _ = _recovery_evidence([], [command])
-    assert max(values) == pytest.approx(1.8 / 19.4)
+    assert max(values) == pytest.approx(0.8 / 19.4)
 
     duplicate = json.loads(json.dumps(command))
-    values, _ = _recovery_evidence([], [command, duplicate])
-    assert max(values) == pytest.approx(3.6 / 19.4)
+    values, _ = _recovery_evidence([], [command, duplicate, duplicate, duplicate])
+    assert max(values) == pytest.approx(3.2 / 19.4)
     assert max(values) > 0.15
 
 
 def _feedback_ledger_rows(*, residual_after_window: float = 0.0) -> list[dict]:
-    peak = 0.9 / 19.4
-    cumulative = 1.8 / 19.4
+    peak = 0.4 / 19.4
+    cumulative = 0.8 / 19.4
     rows = []
     for tick in range(743, 761):
         latched = tick >= 744
-        active = 745 <= tick <= 759
+        active = 745 <= tick <= 758
         requested = [0.0] * 12
         realized = [0.0] * 12
         if active:
-            requested[5] = 0.9
-            realized[5] = 0.9
-        elif tick == 760:
+            requested[5] = -0.4
+            realized[5] = -0.4
+        elif tick == 759:
             realized[5] = residual_after_window
         native = [0.0] * 12
         final = [left + right for left, right in zip(native, realized, strict=True)]

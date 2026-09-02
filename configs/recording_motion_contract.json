@@ -18773,10 +18773,12 @@
         1
       ],
       "drive_feedback": {
-        "kind": "late_tail_support_alignment",
+        "kind": "late_tail_carry_phase_alignment",
         "channel": "rear_left_knee",
         "channel_index": 5,
-        "source": "two-sample compact corridor from locked v010 120 Hz physical observation evidence",
+        "effect_channel": "rear_right_knee",
+        "goal": "advance the positive P09-to-P10 rear-right-knee rebound while leaving the live P10 entry guard authoritative",
+        "source": "two-sample compact corridor from locked v010 120 Hz physical observation evidence plus the Trial012 one-sided causal response to the opposite-sign pulse",
         "probe_samples": [
           {
             "motion_tick": 743,
@@ -18790,11 +18792,11 @@
         "lag_threshold_deg": 0.14,
         "required_consecutive_samples": 2,
         "first_bias_tick": 745,
-        "last_bias_tick": 759,
-        "logical_bias_deg": 0.9,
+        "last_bias_tick": 758,
+        "logical_bias_deg": -0.4,
         "reference_excursion_deg": 19.4,
-        "peak_fraction_of_reference": 0.04639175257731959,
-        "cumulative_fraction_of_reference": 0.09278350515463918,
+        "peak_fraction_of_reference": 0.02061855670103093,
+        "cumulative_fraction_of_reference": 0.04123711340206186,
         "nominal_endpoint_restored": true,
         "raw_recording_runtime_access_required": false
       },

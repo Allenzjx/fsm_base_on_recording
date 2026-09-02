@@ -252,7 +252,7 @@ def _validate_phases(
             raise ValueError(f"{phase.state_id}: invalid PPO action mask")
         feedback = phase.drive_feedback
         if feedback is not None:
-            if feedback.kind != "late_tail_support_alignment":
+            if feedback.kind != "late_tail_carry_phase_alignment":
                 raise ValueError(f"{phase.state_id}: unknown drive-feedback kind")
             if (
                 feedback.channel_index < 0

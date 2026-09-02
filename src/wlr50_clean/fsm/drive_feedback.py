@@ -47,13 +47,14 @@ class DriveFeedback:
 
 
 class ReferenceBoundedDriveFeedback:
-    """Latch the first measured late-P09 support deficit and correct it once.
+    """Latch the measured late-P09 corridor deficit and align carry phase once.
 
-    Trial010/011 first depart from v010 when the rear-left knee falls below its
-    measured P09 tail at local tick 744; rear-left support then disappears and
-    the rear-right-knee P10 carry-in becomes phase-late.  This correction is
-    deliberately downstream of the mature target mapper so it cannot reset the
-    mapper's requested-target or tracking-compensation lifecycle.
+    The Trial012 opposite-sign physical probe showed that increasing the
+    rear-left-knee target weakens late support and removes the rear-right-knee
+    rebound needed at P10 entry.  The contract therefore requests a smaller
+    negative pulse while keeping the live P10 entry guard authoritative.  The
+    correction remains downstream of the mature target mapper so it cannot
+    reset the mapper's requested-target or tracking-compensation lifecycle.
     """
 
     def __init__(self) -> None:
@@ -148,7 +149,7 @@ class ReferenceBoundedDriveFeedback:
             channel=spec.channel if spec is not None else None,
             channel_index=spec.channel_index if spec is not None else None,
             reason=(
-                f"live {state_id} {spec.channel} lag predicts loss of the v010 support phase"
+                f"live {state_id} {spec.channel} corridor deficit predicts a phase-late rear-right-knee rebound"
                 if triggered and spec is not None
                 else "no live reference-corridor deficit latched"
             ),

@@ -17,7 +17,7 @@ def _actual(channel_index: int, value: float) -> tuple[float, ...]:
     return tuple(result)
 
 
-def test_p09_two_sample_live_deficit_latches_bounded_tail_bias() -> None:
+def test_p09_two_sample_live_deficit_latches_bounded_carry_phase_bias() -> None:
     phase = load_motion_contract(
         ROOT / "configs" / "recording_motion_contract.json"
     ).phase("P09")
@@ -60,13 +60,13 @@ def test_p09_two_sample_live_deficit_latches_bounded_tail_bias() -> None:
     assert probe_a.active is False
     assert probe_b.just_triggered is True
     assert probe_b.active is False
-    assert active.bias_full12[spec.channel_index] == pytest.approx(0.9)
-    assert active.cumulative_fraction_of_reference == pytest.approx(1.8 / 19.4)
+    assert active.bias_full12[spec.channel_index] == pytest.approx(-0.4)
+    assert active.cumulative_fraction_of_reference == pytest.approx(0.8 / 19.4)
     assert restored.bias_full12 == pytest.approx((0.0,) * 12)
     assert restored.cumulative_fraction_of_reference < 0.15
 
 
-def test_p09_tail_bias_requires_both_live_deficit_samples() -> None:
+def test_p09_carry_phase_bias_requires_both_live_deficit_samples() -> None:
     phase = load_motion_contract(
         ROOT / "configs" / "recording_motion_contract.json"
     ).phase("P09")
@@ -102,7 +102,7 @@ def test_p09_tail_bias_requires_both_live_deficit_samples() -> None:
     assert active.bias_full12 == pytest.approx((0.0,) * 12)
 
 
-def test_p09_tail_bias_is_one_shot_across_a_same_state_retry() -> None:
+def test_p09_carry_phase_bias_is_one_shot_across_a_same_state_retry() -> None:
     phase = load_motion_contract(
         ROOT / "configs" / "recording_motion_contract.json"
     ).phase("P09")
