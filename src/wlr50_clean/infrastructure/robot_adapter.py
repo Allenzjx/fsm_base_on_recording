@@ -20,6 +20,7 @@ from .command_batch import (
     SERVO_ORDER,
     WHEEL_FORWARD_SIGN,
     WHEEL_ORDER,
+    WHEEL_VELOCITY_LIMIT_RAD_S,
     CommandBatchError,
     Full12Command,
     JointIndexMap,
@@ -207,18 +208,22 @@ class RobotAdapter:
         *,
         physics_tick: int | None = None,
         tracking_servo_names: Sequence[str] = (),
-        drive_feedback_bias_deg: Sequence[float] = (0.0,) * len(SERVO_ORDER),
+        drive_feedback_bias_full12: Sequence[float] = (0.0,) * len(FULL12_ORDER),
     ) -> dict[str, Any]:
         """Stage all 12 targets and issue exactly one articulation write.
 
         ``physics_tick`` is optional for simple callers. When supplied, it must
         be strictly increasing, which catches accidental double writes in a
         runtime tick. Mapping input must contain exactly all 12 canonical keys.
+        Drive feedback is also exact Full12 order: servo-degree offsets retain
+        the bounded post-mapper path, while canonical wheel-rad/s offsets are
+        applied before physical sign conversion and clamped to the hard limit.
         """
 
         requested = self._coerce_command(command)
         tick = self._validate_tick(physics_tick)
         logical_applied = requested.clamped()
+        feedback_bias = _full12_drive_feedback_bias(drive_feedback_bias_full12)
         measured_servo_rad = _row_values(
             _joint_matrix(self.robot, "joint_pos")[:, list(self.joint_map.servo_ids)]
         )
@@ -230,14 +235,13 @@ class RobotAdapter:
             )
         except ServoTargetMapperError as exc:
             raise RobotAdapterError(f"invalid servo target mapping: {exc}") from exc
-        feedback_bias = _servo_feedback_bias(drive_feedback_bias_deg)
         native_drive = mapping.applied_drive_command_deg
         final_drive: list[float] = []
-        realized_bias: list[float] = []
+        realized_servo_bias: list[float] = []
         for name, native, bias in zip(
             SERVO_ORDER,
             native_drive,
-            feedback_bias,
+            feedback_bias[: len(SERVO_ORDER)],
             strict=True,
         ):
             lower, upper = servo_limits_deg(name)
@@ -252,10 +256,29 @@ class RobotAdapter:
             )
             self._final_drive_servo_deg[name] = final
             final_drive.append(final)
-            realized_bias.append(final - native)
+            realized_servo_bias.append(final - native)
+        final_wheels = tuple(
+            max(
+                -WHEEL_VELOCITY_LIMIT_RAD_S,
+                min(WHEEL_VELOCITY_LIMIT_RAD_S, native + bias),
+            )
+            for native, bias in zip(
+                logical_applied.wheel_rad_s,
+                feedback_bias[len(SERVO_ORDER) :],
+                strict=True,
+            )
+        )
+        realized_wheel_bias = tuple(
+            final - native
+            for final, native in zip(
+                final_wheels,
+                logical_applied.wheel_rad_s,
+                strict=True,
+            )
+        )
         drive_command = Full12Command(
             tuple(final_drive),
-            logical_applied.wheel_rad_s,
+            final_wheels,
         )
         native_drive_command = Full12Command(
             native_drive,
@@ -291,8 +314,9 @@ class RobotAdapter:
             "applied_full12": list(logical_applied.to_full12()),
             "drive_target_full12": list(drive_command.to_full12()),
             "native_drive_target_full12": list(native_drive_command.to_full12()),
-            "drive_feedback_bias_requested_full12": list(feedback_bias) + [0.0] * 4,
-            "drive_feedback_bias_realized_full12": list(realized_bias) + [0.0] * 4,
+            "drive_feedback_bias_requested_full12": list(feedback_bias),
+            "drive_feedback_bias_realized_full12": list(realized_servo_bias)
+            + list(realized_wheel_bias),
             "drive_feedback_final_slew_limit_deg_per_tick": (
                 self.servo_target_mapper.maximum_delta_deg
             ),
@@ -660,20 +684,25 @@ def _row_values(value: Any) -> tuple[float, ...]:
     return result
 
 
-def _servo_feedback_bias(values: Sequence[float]) -> tuple[float, ...]:
+def _full12_drive_feedback_bias(values: Sequence[float]) -> tuple[float, ...]:
     try:
         result = tuple(float(value) for value in values)
     except (TypeError, ValueError) as exc:
         raise RobotAdapterError("drive feedback bias must be numeric") from exc
-    if len(result) != len(SERVO_ORDER):
-        raise RobotAdapterError("drive feedback bias must contain eight servo values")
+    if len(result) != len(FULL12_ORDER):
+        raise RobotAdapterError("drive feedback bias must contain exactly 12 values")
     if any(not math.isfinite(value) for value in result):
         raise RobotAdapterError("drive feedback bias contains a non-finite value")
     if any(
         abs(value) > SERVO_TRACKING_COMPENSATION_MAX_DEG + 1.0e-12
-        for value in result
+        for value in result[: len(SERVO_ORDER)]
     ):
         raise RobotAdapterError("drive feedback bias exceeds the bounded mapper envelope")
+    if any(
+        abs(value) > WHEEL_VELOCITY_LIMIT_RAD_S + 1.0e-12
+        for value in result[len(SERVO_ORDER) :]
+    ):
+        raise RobotAdapterError("drive feedback wheel bias exceeds the wheel hard limit")
     return result
 
 

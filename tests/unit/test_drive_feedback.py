@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -17,7 +18,7 @@ def _actual(channel_index: int, value: float) -> tuple[float, ...]:
     return tuple(result)
 
 
-def test_p09_two_sample_live_deficit_latches_bounded_carry_phase_bias() -> None:
+def test_p09_two_sample_live_deficit_latches_bounded_wheel_carry() -> None:
     phase = load_motion_contract(
         ROOT / "configs" / "recording_motion_contract.json"
     ).phase("P09")
@@ -55,12 +56,17 @@ def test_p09_two_sample_live_deficit_latches_bounded_carry_phase_bias() -> None:
         )
         for tick in range(second.motion_tick + 1, spec.first_bias_tick)
     ]
-    active = feedback.update(
-        state_id="P09",
-        motion_tick_index=spec.first_bias_tick,
-        actual_full12=_actual(spec.probe_channel_index, second.reference_actual_deg),
-        spec=spec,
-    )
+    active = [
+        feedback.update(
+            state_id="P09",
+            motion_tick_index=tick,
+            actual_full12=_actual(
+                spec.probe_channel_index, second.reference_actual_deg
+            ),
+            spec=spec,
+        )
+        for tick in range(spec.first_bias_tick, spec.last_bias_tick + 1)
+    ]
     restored = feedback.update(
         state_id="P09",
         motion_tick_index=spec.teardown_tick,
@@ -71,16 +77,37 @@ def test_p09_two_sample_live_deficit_latches_bounded_carry_phase_bias() -> None:
     assert probe_a.active is False
     assert probe_b.just_triggered is True
     assert probe_b.active is False
-    assert len(armed_gap) == 2
+    assert len(armed_gap) == 4
     assert all(not item.active for item in armed_gap)
     assert all(item.trigger_tick == second.motion_tick for item in armed_gap)
-    assert active.bias_full12[spec.correction_channel_index] == pytest.approx(1.25)
-    assert active.cumulative_fraction_of_reference == pytest.approx(2.5 / 19.4)
+    assert all(item.active for item in active)
+    assert all(
+        item.bias_full12[spec.correction_channel_index]
+        == pytest.approx(spec.logical_bias_rad_s)
+        for item in active
+    )
+    assert all(
+        sum(abs(value) for value in item.bias_full12)
+        == pytest.approx(abs(spec.logical_bias_rad_s))
+        for item in active
+    )
+    assert active[0].peak_fraction_of_reference == 0.0
+    assert active[0].cumulative_fraction_of_reference == pytest.approx(
+        abs(spec.additional_wheel_integral_rad)
+        / abs(spec.reference_wheel_integral_rad)
+    )
+    assert active[0].logical_bias_rad_s == -1.07
+    assert active[0].reference_wheel_integral_rad == pytest.approx(
+        -0.9060000000012605
+    )
+    assert active[0].additional_wheel_integral_rad == pytest.approx(
+        -1.07 * 8.0 / 120.0
+    )
     assert restored.bias_full12 == pytest.approx((0.0,) * 12)
     assert restored.cumulative_fraction_of_reference < 0.15
 
 
-def test_p09_carry_phase_bias_requires_both_live_deficit_samples() -> None:
+def test_p09_wheel_carry_requires_both_live_deficit_samples() -> None:
     phase = load_motion_contract(
         ROOT / "configs" / "recording_motion_contract.json"
     ).phase("P09")
@@ -116,7 +143,7 @@ def test_p09_carry_phase_bias_requires_both_live_deficit_samples() -> None:
     assert active.bias_full12 == pytest.approx((0.0,) * 12)
 
 
-def test_p09_carry_phase_bias_is_one_shot_across_a_same_state_retry() -> None:
+def test_p09_wheel_carry_is_one_shot_across_a_same_state_retry() -> None:
     phase = load_motion_contract(
         ROOT / "configs" / "recording_motion_contract.json"
     ).phase("P09")
@@ -164,3 +191,20 @@ def test_p09_carry_phase_bias_is_one_shot_across_a_same_state_retry() -> None:
         actual_full12=_actual(spec.probe_channel_index, 0.0),
         spec=spec,
     ).active is False
+
+
+def test_p09_wheel_carry_runtime_rejects_an_invalid_integral_budget() -> None:
+    phase = load_motion_contract(
+        ROOT / "configs" / "recording_motion_contract.json"
+    ).phase("P09")
+    spec = phase.drive_feedback
+    assert spec is not None
+    invalid = replace(spec, cumulative_fraction_of_reference=0.16)
+
+    with pytest.raises(RuntimeError, match="not a valid wheel carry"):
+        ReferenceBoundedDriveFeedback().update(
+            state_id="P09",
+            motion_tick_index=spec.probe_samples[0].motion_tick,
+            actual_full12=_actual(spec.probe_channel_index, 0.0),
+            spec=invalid,
+        )

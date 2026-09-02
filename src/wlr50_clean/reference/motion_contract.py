@@ -8,6 +8,7 @@ to production control code.
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -63,9 +64,9 @@ class DriveFeedbackSpec:
     first_bias_tick: int
     last_bias_tick: int
     teardown_tick: int
-    logical_bias_deg: float
-    reference_excursion_deg: float
-    peak_fraction_of_reference: float
+    logical_bias_rad_s: float
+    reference_wheel_integral_rad: float
+    additional_wheel_integral_rad: float
     cumulative_fraction_of_reference: float
 
 
@@ -193,10 +194,12 @@ def _parse_phase(value: Mapping[str, Any]) -> MotionPhase:
             first_bias_tick=int(raw_feedback["first_bias_tick"]),
             last_bias_tick=int(raw_feedback["last_bias_tick"]),
             teardown_tick=int(raw_feedback["teardown_tick"]),
-            logical_bias_deg=float(raw_feedback["logical_bias_deg"]),
-            reference_excursion_deg=float(raw_feedback["reference_excursion_deg"]),
-            peak_fraction_of_reference=float(
-                raw_feedback["peak_fraction_of_reference"]
+            logical_bias_rad_s=float(raw_feedback["logical_bias_rad_s"]),
+            reference_wheel_integral_rad=float(
+                raw_feedback["reference_wheel_integral_rad"]
+            ),
+            additional_wheel_integral_rad=float(
+                raw_feedback["additional_wheel_integral_rad"]
             ),
             cumulative_fraction_of_reference=float(
                 raw_feedback["cumulative_fraction_of_reference"]
@@ -279,15 +282,15 @@ def _validate_phases(
             raise ValueError(f"{phase.state_id}: invalid PPO action mask")
         feedback = phase.drive_feedback
         if feedback is not None:
-            if feedback.kind != "verify_tail_carry_alignment":
+            if feedback.kind != "verify_tail_wheel_carry_alignment":
                 raise ValueError(f"{phase.state_id}: unknown drive-feedback kind")
             if (
                 feedback.probe_channel_index < 0
                 or feedback.probe_channel_index >= SERVO_COUNT
                 or full12_order[feedback.probe_channel_index]
                 != feedback.probe_channel
-                or feedback.correction_channel_index < 0
-                or feedback.correction_channel_index >= SERVO_COUNT
+                or feedback.correction_channel_index < SERVO_COUNT
+                or feedback.correction_channel_index >= ACTION_COUNT
                 or full12_order[feedback.correction_channel_index]
                 != feedback.correction_channel
             ):
@@ -305,19 +308,52 @@ def _validate_phases(
             endpoint_tick = round(phase.active_duration_s * 120.0)
             decision_stride = 8
             if (
-                probe_ticks[-1] != endpoint_tick + decision_stride - 1
-                or feedback.first_bias_tick != endpoint_tick + decision_stride + 2
-                or feedback.last_bias_tick
-                != endpoint_tick + 2 * decision_stride - 1
-                or feedback.teardown_tick != endpoint_tick + 2 * decision_stride
+                probe_ticks != (endpoint_tick - 6, endpoint_tick - 5)
+                or feedback.first_bias_tick != endpoint_tick
+                or feedback.last_bias_tick != endpoint_tick + decision_stride - 1
+                or feedback.teardown_tick != endpoint_tick + decision_stride
             ):
                 raise ValueError(
-                    f"{phase.state_id}: drive feedback does not match the bounded armed second-verify pulse"
+                    f"{phase.state_id}: drive feedback does not match the "
+                    "bounded first-verify wheel carry"
                 )
-            peak = abs(feedback.logical_bias_deg) / abs(feedback.reference_excursion_deg)
-            cumulative = 2.0 * peak
+            values = (
+                feedback.lag_threshold_deg,
+                feedback.logical_bias_rad_s,
+                feedback.reference_wheel_integral_rad,
+                feedback.additional_wheel_integral_rad,
+                feedback.cumulative_fraction_of_reference,
+                *(probe.reference_actual_deg for probe in feedback.probe_samples),
+            )
+            active_ticks = feedback.last_bias_tick - feedback.first_bias_tick + 1
+            additional = feedback.logical_bias_rad_s * active_ticks / 120.0
+            reference = feedback.reference_wheel_integral_rad
+            derived_reference = _zoh_channel_integral(
+                phase, feedback.correction_channel_index
+            )
+            cumulative = (
+                math.inf if reference == 0.0 else abs(additional) / abs(reference)
+            )
+            prior_waypoints = tuple(
+                waypoint
+                for waypoint in phase.waypoints
+                if waypoint.time_s < phase.active_duration_s - 1.0e-12
+            )
             if (
-                abs(peak - feedback.peak_fraction_of_reference) > 1.0e-12
+                any(not math.isfinite(value) for value in values)
+                or feedback.lag_threshold_deg <= 0.0
+                or not prior_waypoints
+                or abs(
+                    prior_waypoints[-1].full12[feedback.correction_channel_index]
+                    - feedback.logical_bias_rad_s
+                )
+                > 1.0e-12
+                or abs(phase.end_full12[feedback.correction_channel_index])
+                > 1.0e-12
+                or feedback.logical_bias_rad_s * reference <= 0.0
+                or abs(reference - derived_reference) > 1.0e-12
+                or abs(additional - feedback.additional_wheel_integral_rad)
+                > 1.0e-12
                 or abs(cumulative - feedback.cumulative_fraction_of_reference) > 1.0e-12
                 or cumulative > 0.15 + 1.0e-12
             ):
@@ -355,3 +391,21 @@ def _validate_phases(
                     )
     if source_atomic_count != 4:
         raise ValueError("v010 contract must preserve four source full12 events")
+
+
+def _zoh_channel_integral(phase: MotionPhase, channel_index: int) -> float:
+    """Integrate one compact command channel under the contract's ZOH rule."""
+
+    result = 0.0
+    for index, waypoint in enumerate(phase.waypoints):
+        left = min(phase.active_duration_s, max(0.0, waypoint.time_s))
+        right = (
+            phase.active_duration_s
+            if index + 1 == len(phase.waypoints)
+            else min(
+                phase.active_duration_s,
+                max(0.0, phase.waypoints[index + 1].time_s),
+            )
+        )
+        result += waypoint.full12[channel_index] * max(0.0, right - left)
+    return result

@@ -246,6 +246,48 @@ def test_post_mapper_drive_feedback_is_included_in_cumulative_budget(tmp_path: P
     assert max(values) > 0.15
 
 
+def _contract_with_feedback(spec: dict) -> dict:
+    contract = json.loads(
+        (ROOT / "configs" / "recording_motion_contract.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    p09 = next(phase for phase in contract["phases"] if phase["state_id"] == "P09")
+    p09["drive_feedback"] = spec
+    return contract
+
+
+def _servo_feedback_contract() -> dict:
+    return _contract_with_feedback(
+        {
+            "kind": "verify_tail_carry_alignment",
+            "probe_channel": "rear_right_knee",
+            "probe_channel_index": 7,
+            "correction_channel": "rear_left_knee",
+            "correction_channel_index": 5,
+            "probe_samples": [
+                {
+                    "motion_tick": 870,
+                    "reference_actual_deg": -50.8511468644344,
+                },
+                {
+                    "motion_tick": 871,
+                    "reference_actual_deg": -50.63441813188072,
+                },
+            ],
+            "lag_threshold_deg": 2.4,
+            "required_consecutive_samples": 2,
+            "first_bias_tick": 874,
+            "last_bias_tick": 879,
+            "teardown_tick": 880,
+            "logical_bias_deg": 1.25,
+            "reference_excursion_deg": 19.4,
+            "peak_fraction_of_reference": 1.25 / 19.4,
+            "cumulative_fraction_of_reference": 2.5 / 19.4,
+        }
+    )
+
+
 def _feedback_ledger_rows(*, residual_after_window: float = 0.0) -> list[dict]:
     peak = 1.25 / 19.4
     cumulative = 2.5 / 19.4
@@ -324,11 +366,7 @@ def _feedback_ledger_rows(*, residual_after_window: float = 0.0) -> list[dict]:
 
 
 def test_drive_feedback_ledger_enforces_window_and_endpoint_restoration() -> None:
-    contract = json.loads(
-        (ROOT / "configs" / "recording_motion_contract.json").read_text(
-            encoding="utf-8"
-        )
-    )
+    contract = _servo_feedback_contract()
     valid_rows = _feedback_ledger_rows()
     observations = []
     for row in valid_rows:
@@ -427,11 +465,7 @@ def test_drive_feedback_ledger_enforces_window_and_endpoint_restoration() -> Non
 
 
 def test_drive_feedback_trigger_is_consumed_across_same_phase_retry() -> None:
-    contract = json.loads(
-        (ROOT / "configs" / "recording_motion_contract.json").read_text(
-            encoding="utf-8"
-        )
-    )
+    contract = _servo_feedback_contract()
     first_attempt = _feedback_ledger_rows()
     teardown = first_attempt[-1]
     teardown["state_id"] = "P09"
@@ -488,6 +522,281 @@ def test_drive_feedback_trigger_is_consumed_across_same_phase_retry() -> None:
             {"simulation_time_s": row["sim_time_s"], "actual_full12": actual}
         )
     assert _drive_feedback_ledger_valid(rows, contract, observations)
+
+
+_WHEEL_TAIL_VELOCITY = -1.07
+_WHEEL_REFERENCE_INTEGRAL = -0.9060000000012605
+_WHEEL_ADDITIONAL_INTEGRAL = _WHEEL_TAIL_VELOCITY * 8.0 / 120.0
+_WHEEL_INTEGRAL_FRACTION = abs(_WHEEL_ADDITIONAL_INTEGRAL) / abs(
+    _WHEEL_REFERENCE_INTEGRAL
+)
+
+
+def _wheel_feedback_spec() -> dict:
+    return {
+        "kind": "verify_tail_wheel_carry_alignment",
+        "probe_channel": "rear_right_knee",
+        "probe_channel_index": 7,
+        "correction_channel": "front_left_ankle",
+        "correction_channel_index": 8,
+        "probe_samples": [
+            {"motion_tick": 858, "reference_actual_deg": -51.055799822535},
+            {"motion_tick": 859, "reference_actual_deg": -51.191638624749},
+        ],
+        "lag_threshold_deg": 1.7,
+        "required_consecutive_samples": 2,
+        "first_bias_tick": 864,
+        "last_bias_tick": 871,
+        "teardown_tick": 872,
+        "logical_bias_rad_s": _WHEEL_TAIL_VELOCITY,
+        "reference_wheel_integral_rad": _WHEEL_REFERENCE_INTEGRAL,
+        "additional_wheel_integral_rad": _WHEEL_ADDITIONAL_INTEGRAL,
+        "cumulative_fraction_of_reference": _WHEEL_INTEGRAL_FRACTION,
+    }
+
+
+def _wheel_feedback_contract() -> dict:
+    return _contract_with_feedback(_wheel_feedback_spec())
+
+
+def _wheel_feedback_ledger_rows(
+    *, residual_after_window: float = 0.0
+) -> list[dict]:
+    rows = []
+    references = {
+        858: -51.055799822535,
+        859: -51.191638624749,
+    }
+    for tick in range(858, 872):
+        latched = tick >= 859
+        active = 864 <= tick <= 871
+        reference = references.get(tick)
+        observed = None if reference is None else reference - 1.7
+        requested = [0.0] * 12
+        realized = [0.0] * 12
+        if active:
+            requested[8] = _WHEEL_TAIL_VELOCITY
+            realized[8] = _WHEEL_TAIL_VELOCITY
+        native = [0.0] * 12
+        if tick < 864:
+            native[8] = _WHEEL_TAIL_VELOCITY
+        final = [
+            left + right for left, right in zip(native, realized, strict=True)
+        ]
+        rows.append(
+            {
+                "state_id": "P09",
+                "sim_time_s": tick / 120.0,
+                "motion_tick_index": tick,
+                "drive_feedback": {
+                    "schema": "wlr50_clean.drive_feedback.v1",
+                    "bias_full12": requested,
+                    "active": active,
+                    "just_triggered": tick == 859,
+                    "tick_index": tick,
+                    "trigger_tick": 859 if latched else None,
+                    "observed_deg": observed,
+                    "reference_deg": reference,
+                    "peak_fraction_of_reference": 0.0,
+                    "cumulative_fraction_of_reference": (
+                        _WHEEL_INTEGRAL_FRACTION if latched else 0.0
+                    ),
+                    "logical_bias_rad_s": _WHEEL_TAIL_VELOCITY,
+                    "reference_wheel_integral_rad": _WHEEL_REFERENCE_INTEGRAL,
+                    "additional_wheel_integral_rad": (
+                        _WHEEL_ADDITIONAL_INTEGRAL
+                    ),
+                    "probe_channel": "rear_right_knee",
+                    "probe_channel_index": 7,
+                    "correction_channel": "front_left_ankle",
+                    "correction_channel_index": 8,
+                },
+                "drive_feedback_bias_requested_full12": requested,
+                "drive_feedback_bias_realized_full12": realized,
+                "native_drive_target_full12": native,
+                "drive_target_full12": final,
+            }
+        )
+    requested = [0.0] * 12
+    realized = [0.0] * 12
+    realized[8] = residual_after_window
+    native = [0.0] * 12
+    final = [left + right for left, right in zip(native, realized, strict=True)]
+    rows.append(
+        {
+            "state_id": "P10",
+            "sim_time_s": 872 / 120.0,
+            "motion_tick_index": None,
+            "drive_feedback": {
+                "schema": "wlr50_clean.drive_feedback.v1",
+                "bias_full12": requested,
+                "active": False,
+                "just_triggered": False,
+                "tick_index": None,
+                "trigger_tick": None,
+                "observed_deg": None,
+                "reference_deg": None,
+                "peak_fraction_of_reference": 0.0,
+                "cumulative_fraction_of_reference": 0.0,
+                "logical_bias_rad_s": 0.0,
+                "reference_wheel_integral_rad": 0.0,
+                "additional_wheel_integral_rad": 0.0,
+                "probe_channel": None,
+                "probe_channel_index": None,
+                "correction_channel": None,
+                "correction_channel_index": None,
+            },
+            "drive_feedback_bias_requested_full12": requested,
+            "drive_feedback_bias_realized_full12": realized,
+            "native_drive_target_full12": native,
+            "drive_target_full12": final,
+        }
+    )
+    return rows
+
+
+def _feedback_observations(rows: list[dict]) -> list[dict]:
+    observations = []
+    for row in rows:
+        actual = [0.0] * 12
+        observed = row["drive_feedback"].get("observed_deg")
+        if observed is not None:
+            actual[7] = observed
+        observations.append(
+            {"simulation_time_s": row["sim_time_s"], "actual_full12": actual}
+        )
+    return observations
+
+
+def test_wheel_tail_feedback_ledger_accepts_exact_sensor_causal_carry() -> None:
+    contract = _wheel_feedback_contract()
+    rows = _wheel_feedback_ledger_rows()
+    assert _drive_feedback_ledger_valid(
+        rows, contract, _feedback_observations(rows)
+    )
+
+
+def test_wheel_tail_feedback_ledger_rederives_mandatory_trigger() -> None:
+    contract = _wheel_feedback_contract()
+    rows = _wheel_feedback_ledger_rows()
+    observations = _feedback_observations(rows)
+    for row in rows[:-1]:
+        zeros = [0.0] * 12
+        row["drive_feedback"].update(
+            {
+                "bias_full12": zeros,
+                "active": False,
+                "just_triggered": False,
+                "trigger_tick": None,
+                "cumulative_fraction_of_reference": 0.0,
+            }
+        )
+        row["drive_feedback_bias_requested_full12"] = zeros
+        row["drive_feedback_bias_realized_full12"] = zeros
+        row["drive_target_full12"] = row["native_drive_target_full12"]
+    assert not _drive_feedback_ledger_valid(rows, contract, observations)
+
+    for row, observation in zip(rows[:-1], observations[:-1], strict=True):
+        reference = row["drive_feedback"].get("reference_deg")
+        if reference is not None:
+            row["drive_feedback"]["observed_deg"] = reference
+            observation["actual_full12"][7] = reference
+    assert _drive_feedback_ledger_valid(rows, contract, observations)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        "missing_active_tick",
+        "wrong_active_value",
+        "other_channel_correction",
+        "final_not_native_plus_realized",
+        "teardown_residual",
+        "wrong_cadence",
+        "hard_wheel_limit",
+        "logged_integral_mismatch",
+    ),
+)
+def test_wheel_tail_feedback_ledger_fails_closed(mutation: str) -> None:
+    contract = _wheel_feedback_contract()
+    rows = _wheel_feedback_ledger_rows()
+    if mutation == "missing_active_tick":
+        del rows[9]  # tick 867
+    elif mutation == "wrong_active_value":
+        active = rows[6]  # tick 864
+        active["drive_feedback"]["bias_full12"][8] = -1.06
+        active["drive_feedback_bias_requested_full12"][8] = -1.06
+        active["drive_feedback_bias_realized_full12"][8] = -1.06
+        active["drive_target_full12"][8] = -1.06
+    elif mutation == "other_channel_correction":
+        active = rows[6]
+        active["drive_feedback"]["bias_full12"][9] = 0.01
+        active["drive_feedback_bias_requested_full12"][9] = 0.01
+        active["drive_feedback_bias_realized_full12"][9] = 0.01
+        active["drive_target_full12"][9] = 0.01
+    elif mutation == "final_not_native_plus_realized":
+        rows[6]["drive_target_full12"][8] += 0.01
+    elif mutation == "teardown_residual":
+        teardown = rows[-1]
+        teardown["drive_feedback_bias_realized_full12"][8] = 0.01
+        teardown["drive_target_full12"][8] = 0.01
+    elif mutation == "wrong_cadence":
+        rows[8]["sim_time_s"] += 1.0 / 240.0
+    elif mutation == "hard_wheel_limit":
+        rows[0]["native_drive_target_full12"][9] = 2.2
+        rows[0]["drive_target_full12"][9] = 2.2
+    elif mutation == "logged_integral_mismatch":
+        rows[0]["drive_feedback"]["additional_wheel_integral_rad"] += 0.01
+    assert not _drive_feedback_ledger_valid(
+        rows, contract, _feedback_observations(rows)
+    )
+
+
+def test_wheel_tail_feedback_contract_timing_and_integral_are_pinned() -> None:
+    rows = _wheel_feedback_ledger_rows()
+    observations = _feedback_observations(rows)
+
+    wrong_timing = _wheel_feedback_contract()
+    wrong_timing["phases"][8]["drive_feedback"]["first_bias_tick"] = 863
+    assert not _drive_feedback_ledger_valid(rows, wrong_timing, observations)
+
+    over_budget = _wheel_feedback_contract()
+    spec = over_budget["phases"][8]["drive_feedback"]
+    spec["reference_wheel_integral_rad"] = -0.4
+    spec["cumulative_fraction_of_reference"] = abs(
+        spec["additional_wheel_integral_rad"]
+    ) / abs(spec["reference_wheel_integral_rad"])
+    assert spec["cumulative_fraction_of_reference"] > 0.15
+    assert not _drive_feedback_ledger_valid(rows, over_budget, observations)
+
+    inflated_reference = _wheel_feedback_contract()
+    spec = inflated_reference["phases"][8]["drive_feedback"]
+    spec["reference_wheel_integral_rad"] *= 2.0
+    spec["cumulative_fraction_of_reference"] = abs(
+        spec["additional_wheel_integral_rad"]
+    ) / abs(spec["reference_wheel_integral_rad"])
+    inflated_reference["phases"][8]["command_metrics"]["wheel_integral_rad"][
+        "front_left_ankle"
+    ] = spec["reference_wheel_integral_rad"]
+    inflated_rows = _wheel_feedback_ledger_rows()
+    for row in inflated_rows[:-1]:
+        row["drive_feedback"]["reference_wheel_integral_rad"] = spec[
+            "reference_wheel_integral_rad"
+        ]
+        row["drive_feedback"]["cumulative_fraction_of_reference"] = (
+            spec["cumulative_fraction_of_reference"]
+            if row["drive_feedback"]["trigger_tick"] is not None
+            else 0.0
+        )
+    assert not _drive_feedback_ledger_valid(
+        inflated_rows,
+        inflated_reference,
+        _feedback_observations(inflated_rows),
+    )
+
+    unknown_kind = _wheel_feedback_contract()
+    unknown_kind["phases"][8]["drive_feedback"]["kind"] = "wheel_tail"
+    assert not _drive_feedback_ledger_valid(rows, unknown_kind, observations)
 
 
 def test_writer_api_remains_streaming_and_never_reuses_directory(tmp_path: Path) -> None:

@@ -84,6 +84,10 @@ def test_pre_simulation_app_import_boundary_and_lazy_runtime_imports() -> None:
     assert "accepted_steps" not in source.lower()
     assert "semantic_segments" not in source.lower()
     assert "root_state" not in source.lower().replace("root_state_write_count", "")
+    assert (
+        "drive_feedback_bias_full12=frame.drive_feedback_bias_full12" in source
+    )
+    assert "drive_feedback_bias_full12[:8]" not in source
 
 
 def test_initial_observation_rejects_unverified_pairs_and_geometry() -> None:

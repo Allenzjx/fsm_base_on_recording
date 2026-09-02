@@ -452,7 +452,7 @@ def _run_live(config: RuntimeConfig, simulation_app: Any) -> int:
                 action,
                 physics_tick=config.settle_ticks + control_tick,
                 tracking_servo_names=frame.tracking_servo_names,
-                drive_feedback_bias_deg=frame.drive_feedback_bias_full12[:8],
+                drive_feedback_bias_full12=frame.drive_feedback_bias_full12,
             )
             if ack["articulation_writes_this_call"] != 1 or ack["motion_start_skew_s"] != 0.0:
                 raise RuntimeError("atomic Full12 articulation write contract failed")

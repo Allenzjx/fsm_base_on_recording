@@ -9,8 +9,10 @@ import pytest
 
 from wlr50_clean.infrastructure.command_batch import (
     FULL12_ORDER,
+    PHYSICS_DT_S,
     SERVO_COMMAND_SIGN,
     SERVO_ORDER,
+    WHEEL_VELOCITY_LIMIT_RAD_S,
     servo_limits_deg,
 )
 from wlr50_clean.infrastructure.robot_adapter import (
@@ -21,6 +23,43 @@ from wlr50_clean.infrastructure.robot_adapter import (
     authoritative_servo_limits_rad,
     bounded_drive_feedback_step,
 )
+from wlr50_clean.infrastructure.servo_target_mapper import ServoTargetMapper
+
+
+def _adapter_for_full12_feedback() -> tuple[RobotAdapter, dict[str, object]]:
+    data = SimpleNamespace(
+        joint_pos=np.zeros((1, len(FULL12_ORDER)), dtype=np.float64),
+        joint_vel=np.zeros((1, len(FULL12_ORDER)), dtype=np.float64),
+    )
+    staged: dict[str, object] = {"writes": 0}
+    robot = SimpleNamespace(
+        data=data,
+        set_joint_position_target=lambda targets, joint_ids: staged.update(
+            position=targets.copy(), servo_ids=joint_ids
+        ),
+        set_joint_velocity_target=lambda targets, joint_ids: staged.update(
+            velocity=targets.copy(), wheel_ids=joint_ids
+        ),
+        write_data_to_sim=lambda: staged.update(
+            writes=int(staged["writes"]) + 1
+        ),
+    )
+    standing_pose_deg = {name: 0.0 for name in SERVO_ORDER}
+    adapter = RobotAdapter.__new__(RobotAdapter)
+    adapter.robot = robot
+    adapter.physics_dt_s = PHYSICS_DT_S
+    adapter.joint_map = SimpleNamespace(
+        servo_ids=tuple(range(8)),
+        wheel_ids=tuple(range(8, 12)),
+    )
+    adapter._standing_servo_tensor = np.zeros((1, 8), dtype=np.float64)
+    adapter.standing_pose_deg = standing_pose_deg
+    adapter.servo_target_mapper = ServoTargetMapper(standing_pose_deg)
+    adapter._final_drive_servo_deg = {name: 0.0 for name in SERVO_ORDER}
+    adapter.write_count = 0
+    adapter._last_physics_tick = None
+    adapter.last_ack = None
+    return adapter, staged
 
 
 def test_authoritative_limits_cover_every_canonical_command_endpoint() -> None:
@@ -84,6 +123,87 @@ def test_p09_positive_verify_tail_bias_restores_at_880_and_preserves_final_slew(
     assert observed[874] == pytest.approx(20.135057)
     assert observed[879] == pytest.approx(20.135057)
     assert observed[880] == pytest.approx(18.885057)
+
+
+def test_full12_feedback_applies_exact_fl_minus_1_07_and_tears_down() -> None:
+    adapter, staged = _adapter_for_full12_feedback()
+    zero = [0.0] * len(FULL12_ORDER)
+    active_bias = zero.copy()
+    active_bias[8] = -1.07
+
+    active = adapter.apply_full12(
+        zero,
+        physics_tick=0,
+        drive_feedback_bias_full12=active_bias,
+    )
+    assert active["native_drive_target_full12"] == pytest.approx(zero)
+    assert active["drive_target_full12"] == pytest.approx(active_bias)
+    assert active["drive_feedback_bias_requested_full12"] == pytest.approx(
+        active_bias
+    )
+    assert active["drive_feedback_bias_realized_full12"] == pytest.approx(
+        active_bias
+    )
+    # FL canonical forward sign is negative, so -1.07 logical maps to +1.07
+    # on the physical articulation target.
+    assert active["wheel_target_physical_rad_s"] == pytest.approx(
+        [1.07, 0.0, 0.0, 0.0]
+    )
+    assert staged["velocity"][0].tolist() == pytest.approx(
+        [1.07, 0.0, 0.0, 0.0]
+    )
+
+    teardown = adapter.apply_full12(
+        zero,
+        physics_tick=1,
+        drive_feedback_bias_full12=zero,
+    )
+    assert teardown["native_drive_target_full12"] == pytest.approx(zero)
+    assert teardown["drive_target_full12"] == pytest.approx(zero)
+    assert teardown["drive_feedback_bias_requested_full12"] == pytest.approx(zero)
+    assert teardown["drive_feedback_bias_realized_full12"] == pytest.approx(zero)
+    assert teardown["wheel_target_physical_rad_s"] == pytest.approx([0.0] * 4)
+    assert staged["writes"] == 2
+
+
+def test_full12_feedback_validates_all_channels_and_clamps_final_wheel() -> None:
+    adapter, _staged = _adapter_for_full12_feedback()
+    command = [0.0] * len(FULL12_ORDER)
+    command[8] = 2.0
+    feedback = [0.0] * len(FULL12_ORDER)
+    feedback[8] = 0.2
+
+    ack = adapter.apply_full12(
+        command,
+        physics_tick=0,
+        drive_feedback_bias_full12=feedback,
+    )
+    assert ack["native_drive_target_full12"][8] == pytest.approx(2.0)
+    assert ack["drive_target_full12"][8] == pytest.approx(
+        WHEEL_VELOCITY_LIMIT_RAD_S
+    )
+    assert ack["drive_feedback_bias_requested_full12"][8] == pytest.approx(0.2)
+    assert ack["drive_feedback_bias_realized_full12"][8] == pytest.approx(
+        WHEEL_VELOCITY_LIMIT_RAD_S - 2.0
+    )
+
+    nonfinite = [0.0] * len(FULL12_ORDER)
+    nonfinite[8] = math.nan
+    with pytest.raises(RobotAdapterError, match="non-finite"):
+        adapter.apply_full12(
+            [0.0] * len(FULL12_ORDER),
+            physics_tick=1,
+            drive_feedback_bias_full12=nonfinite,
+        )
+
+    over_limit = [0.0] * len(FULL12_ORDER)
+    over_limit[8] = WHEEL_VELOCITY_LIMIT_RAD_S + 0.01
+    with pytest.raises(RobotAdapterError, match="wheel hard limit"):
+        adapter.apply_full12(
+            [0.0] * len(FULL12_ORDER),
+            physics_tick=1,
+            drive_feedback_bias_full12=over_limit,
+        )
 
 
 def test_adapter_authors_all_limits_on_session_layer_and_syncs_caches(

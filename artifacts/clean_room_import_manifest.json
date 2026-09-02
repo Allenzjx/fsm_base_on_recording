@@ -31,7 +31,7 @@
       "source_path": "C:/robotics_sim/wlr_robot/height_based_obstacle_replay/sim_robot_adapter.py",
       "source_sha256": "04966b8100eeb33ea55de78eaa5a74bbc3662030f82ba4d458eb429608ed64d4",
       "destination_path": "src/wlr50_clean/infrastructure/robot_adapter.py",
-      "destination_sha256": "0810f495da75deba0456ae9a277d57406887923fa9f91d1ad93e4c76e13c7b16",
+      "destination_sha256": "f00a8cc83c05aa1dea590d5e9765865c79f9f7f7cfc024f01b9d08a5f4f4a8a2",
       "reuse_reason": "Narrow clean derivation of exact live-name resolution, authoritative command-space limits on the ephemeral live session layer, requested-to-applied command mapping, bounded post-mapper feedback with final-drive slew enforcement, and one-write full12 application; source-asset save/edit, restore, respawn, and root-write routes omitted."
     },
     {
@@ -59,7 +59,7 @@
       "source_path": "C:/robotics_sim/wlr_robot/height_based_obstacle_replay/sim_worker_process.py",
       "source_sha256": "580412309695e1454bd6ccf8470fa5c79a5b573ad57301205d815ce6273e4394",
       "destination_path": "src/wlr50_clean/infrastructure/app_runtime.py",
-      "destination_sha256": "f811c706339759ceb51f247d241f23f3f369f8db9ca02b88506d3d2ab5832d80",
+      "destination_sha256": "ef2ddb4fcb751169d346e42d622b6c4b15c26a4bf3c091c87834ef7388a7ecea",
       "reuse_reason": "Narrow clean derivation of AppLauncher ownership, one initial application update, frozen environment-integrity checks, atomic drive-feedback logging, anti-throttling, and finalization-before-close lifecycle; replay scheduling and legacy controller paths omitted."
     }
   ]

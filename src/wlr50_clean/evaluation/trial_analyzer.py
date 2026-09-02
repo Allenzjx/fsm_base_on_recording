@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from wlr50_clean.fsm.wheel_decay import WheelDecayDebounce, WheelDecayStatus
+from wlr50_clean.infrastructure.command_batch import WHEEL_VELOCITY_LIMIT_RAD_S
 
 from .comparison import PHASE_IDS
 from .conformance import (
@@ -48,6 +49,17 @@ FINAL_DATA_NAMES = (
     "body_collision_audit.csv", "wheel_only_climb_audit.csv",
     "successful_trial_manifest.json",
 )
+
+_SERVO_DRIVE_FEEDBACK_KIND = "verify_tail_carry_alignment"
+_WHEEL_DRIVE_FEEDBACK_KIND = "verify_tail_wheel_carry_alignment"
+_WHEEL_TAIL_CHANNEL = "front_left_ankle"
+_WHEEL_TAIL_CHANNEL_INDEX = 8
+_WHEEL_TAIL_PROBE_TICKS = (858, 859)
+_WHEEL_TAIL_FIRST_TICK = 864
+_WHEEL_TAIL_LAST_TICK = 871
+_WHEEL_TAIL_TEARDOWN_TICK = 872
+_WHEEL_TAIL_VELOCITY_RAD_S = -1.07
+_MAX_FEEDBACK_FRACTION = 0.15
 
 
 def _json_value(value: Any) -> Any:
@@ -371,6 +383,120 @@ def _reference_wheel_decay_threshold(contract: Mapping[str, Any]) -> float:
     return 0.05
 
 
+def _drive_feedback_mode(spec: Mapping[str, Any]) -> str | None:
+    kind = spec.get("kind")
+    if kind == _SERVO_DRIVE_FEEDBACK_KIND:
+        return "servo"
+    if kind == _WHEEL_DRIVE_FEEDBACK_KIND:
+        return "wheel"
+    return None
+
+
+def _wheel_feedback_contract_values(
+    spec: Mapping[str, Any], *, physics_hz: float
+) -> tuple[float, float] | None:
+    """Return the declared reference integral and derived correction fraction.
+
+    Wheel-tail feedback is an integral-bounded continuation of the Recording's
+    existing FL wheel command, not a servo excursion.  Requiring the unitful
+    fields prevents a wheel correction from being disguised behind the legacy
+    degree-named budget fields.
+    """
+
+    try:
+        logical_bias = float(spec["logical_bias_rad_s"])
+        reference_integral = abs(float(spec["reference_wheel_integral_rad"]))
+        declared_integral = float(spec["additional_wheel_integral_rad"])
+        declared_fraction = float(spec["cumulative_fraction_of_reference"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    values = (
+        logical_bias,
+        reference_integral,
+        declared_integral,
+        declared_fraction,
+        physics_hz,
+    )
+    if any(not math.isfinite(value) for value in values):
+        return None
+    if (
+        physics_hz <= 0.0
+        or reference_integral <= 0.0
+        or abs(logical_bias - _WHEEL_TAIL_VELOCITY_RAD_S) > 1.0e-12
+    ):
+        return None
+    active_ticks = _WHEEL_TAIL_LAST_TICK - _WHEEL_TAIL_FIRST_TICK + 1
+    expected_signed_integral = logical_bias * active_ticks / physics_hz
+    derived_fraction = abs(expected_signed_integral) / reference_integral
+    if (
+        abs(declared_integral - expected_signed_integral) > 1.0e-12
+        or declared_fraction < 0.0
+        or derived_fraction > _MAX_FEEDBACK_FRACTION + 1.0e-12
+        or abs(declared_fraction - derived_fraction) > 1.0e-12
+    ):
+        return None
+    return reference_integral, derived_fraction
+
+
+def _phase_zoh_channel_integral(
+    phase: Mapping[str, Any], channel_index: int
+) -> float | None:
+    """Re-derive a phase command integral from its immutable ZOH waypoints."""
+
+    try:
+        active_duration = float(phase["active_duration_s"])
+        raw_waypoints = phase["waypoints"]
+    except (KeyError, TypeError, ValueError):
+        return None
+    if (
+        not math.isfinite(active_duration)
+        or active_duration <= 0.0
+        or not isinstance(raw_waypoints, Sequence)
+        or isinstance(raw_waypoints, (str, bytes))
+        or not raw_waypoints
+        or channel_index < 0
+        or channel_index >= 12
+    ):
+        return None
+    samples: list[tuple[float, float]] = []
+    try:
+        for waypoint in raw_waypoints:
+            if not isinstance(waypoint, Mapping):
+                return None
+            time_s = float(waypoint["time_s"])
+            full12 = waypoint["full12"]
+            if (
+                not math.isfinite(time_s)
+                or time_s < -1.0e-9
+                or time_s > active_duration + 1.0e-6
+                or not isinstance(full12, Sequence)
+                or isinstance(full12, (str, bytes))
+                or len(full12) != 12
+            ):
+                return None
+            target = float(full12[channel_index])
+            if not math.isfinite(target):
+                return None
+            samples.append((time_s, target))
+    except (KeyError, TypeError, ValueError):
+        return None
+    if abs(samples[0][0]) > 1.0e-9 or any(
+        right[0] + 1.0e-9 < left[0]
+        for left, right in zip(samples, samples[1:])
+    ):
+        return None
+    result = 0.0
+    for index, (time_s, target) in enumerate(samples):
+        left = min(active_duration, max(0.0, time_s))
+        right = (
+            active_duration
+            if index + 1 == len(samples)
+            else min(active_duration, max(0.0, samples[index + 1][0]))
+        )
+        result += target * max(0.0, right - left)
+    return result
+
+
 def _drive_feedback_ledger_valid(
     commands: Sequence[Mapping[str, Any]],
     contract: Mapping[str, Any],
@@ -378,10 +504,14 @@ def _drive_feedback_ledger_valid(
 ) -> bool:
     """Audit any post-mapper correction against its explicit final-drive log."""
 
-    feedback_specs = {
-        str(phase.get("state_id")): phase["drive_feedback"]
+    feedback_phases = {
+        str(phase.get("state_id")): phase
         for phase in contract.get("phases", ())
         if isinstance(phase, Mapping) and isinstance(phase.get("drive_feedback"), Mapping)
+    }
+    feedback_specs = {
+        phase_id: phase["drive_feedback"]
+        for phase_id, phase in feedback_phases.items()
     }
     rows = sorted(
         (row for row in commands if isinstance(row.get("drive_feedback"), Mapping)),
@@ -391,12 +521,72 @@ def _drive_feedback_ledger_valid(
         return not rows
     if not commands or len(rows) != len(commands):
         return False
+    raw_order = contract.get("full12_order")
+    if (
+        not isinstance(raw_order, Sequence)
+        or isinstance(raw_order, (str, bytes))
+        or len(raw_order) != 12
+    ):
+        return False
+    full12_order = tuple(str(item) for item in raw_order)
+    if len(set(full12_order)) != 12:
+        return False
     try:
+        physics_hz = float(contract["physics_hz"])
         maximum_delta = float(contract["servo_reference_velocity_deg_s"]) / float(
-            contract["physics_hz"]
+            physics_hz
         )
     except (KeyError, TypeError, ValueError, ZeroDivisionError):
-        maximum_delta = 1.25
+        return False
+    if (
+        not math.isfinite(physics_hz)
+        or physics_hz <= 0.0
+        or not math.isfinite(maximum_delta)
+        or maximum_delta <= 0.0
+    ):
+        return False
+    for phase_id, spec in feedback_specs.items():
+        mode = _drive_feedback_mode(spec)
+        if mode is None:
+            return False
+        if mode == "wheel":
+            values = _wheel_feedback_contract_values(spec, physics_hz=physics_hz)
+            phase = feedback_phases[phase_id]
+            try:
+                correction_channel = str(spec["correction_channel"])
+                reference_integral = float(spec["reference_wheel_integral_rad"])
+                source_integral = float(
+                    phase["command_metrics"]["wheel_integral_rad"][
+                        correction_channel
+                    ]
+                )
+                derived_source_integral = _phase_zoh_channel_integral(
+                    phase, _WHEEL_TAIL_CHANNEL_INDEX
+                )
+                active_duration = float(phase["active_duration_s"])
+                endpoint = tuple(float(item) for item in phase["end_full12"])
+                waypoints = tuple(phase["waypoints"])
+                prior_waypoints = tuple(
+                    waypoint
+                    for waypoint in waypoints
+                    if float(waypoint["time_s"]) < active_duration - 1.0e-12
+                )
+                prior_target = float(
+                    prior_waypoints[-1]["full12"][_WHEEL_TAIL_CHANNEL_INDEX]
+                )
+            except (KeyError, IndexError, TypeError, ValueError):
+                return False
+            if (
+                values is None
+                or not math.isfinite(source_integral)
+                or abs(reference_integral - source_integral) > 1.0e-12
+                or derived_source_integral is None
+                or abs(reference_integral - derived_source_integral) > 1.0e-12
+                or len(endpoint) != 12
+                or abs(endpoint[_WHEEL_TAIL_CHANNEL_INDEX]) > 1.0e-12
+                or abs(prior_target - _WHEEL_TAIL_VELOCITY_RAD_S) > 1.0e-12
+            ):
+                return False
     previous_final: tuple[float, ...] | None = None
     attempt_by_phase: dict[str, int] = {}
     previous_tick_by_phase: dict[str, int] = {}
@@ -446,10 +636,23 @@ def _drive_feedback_ledger_valid(
             probe_ticks = tuple(int(item["motion_tick"]) for item in probe_rows)
             required_samples = int(spec["required_consecutive_samples"])
             lag_threshold = float(spec["lag_threshold_deg"])
+            probe_channel = str(spec["probe_channel"])
             probe_index = int(spec["probe_channel_index"])
         except (KeyError, TypeError, ValueError):
             return False
-        if not probe_ticks or required_samples <= 0:
+        if (
+            not probe_ticks
+            or required_samples != len(probe_ticks)
+            or not math.isfinite(lag_threshold)
+            or lag_threshold <= 0.0
+            or any(
+                right != left + 1
+                for left, right in zip(probe_ticks, probe_ticks[1:])
+            )
+            or probe_index < 0
+            or probe_index >= len(full12_order)
+            or full12_order[probe_index] != probe_channel
+        ):
             return False
         attempts = sorted(
             {
@@ -525,10 +728,13 @@ def _drive_feedback_ledger_valid(
             return False
         if any(
             abs((actual - base) - correction) > 1.0e-8
-            for actual, base, correction in zip(final[:8], native[:8], realized[:8], strict=True)
+            for actual, base, correction in zip(final, native, realized, strict=True)
         ):
             return False
-        if any(abs(value) > 1.0e-12 for value in requested[8:] + realized[8:]):
+        if any(
+            abs(value) > WHEEL_VELOCITY_LIMIT_RAD_S + 1.0e-12
+            for value in final[8:]
+        ):
             return False
         spec = feedback_specs.get(phase_id)
         expected_requested = [0.0] * 12
@@ -537,6 +743,7 @@ def _drive_feedback_ledger_valid(
         expected_active = False
         if spec is not None and tick is not None:
             try:
+                mode = _drive_feedback_mode(spec)
                 probe_channel = str(spec["probe_channel"])
                 probe_channel_index = int(spec["probe_channel_index"])
                 correction_channel = str(spec["correction_channel"])
@@ -544,19 +751,62 @@ def _drive_feedback_ledger_valid(
                 probe_ticks = tuple(int(item["motion_tick"]) for item in spec["probe_samples"])
                 first_bias_tick = int(spec["first_bias_tick"])
                 last_bias_tick = int(spec["last_bias_tick"])
-                logical_bias = float(spec["logical_bias_deg"])
-                peak_fraction = float(spec["peak_fraction_of_reference"])
                 cumulative_fraction = float(spec["cumulative_fraction_of_reference"])
+                peak_fraction = (
+                    0.0
+                    if mode == "wheel"
+                    else float(spec["peak_fraction_of_reference"])
+                )
+                logical_bias = float(
+                    spec[
+                        "logical_bias_rad_s"
+                        if mode == "wheel"
+                        else "logical_bias_deg"
+                    ]
+                )
             except (KeyError, TypeError, ValueError):
                 return False
+            if mode is None or any(
+                not math.isfinite(value)
+                for value in (logical_bias, peak_fraction, cumulative_fraction)
+            ):
+                return False
             if (
-                feedback.get("probe_channel") != probe_channel
+                correction_channel_index < 0
+                or correction_channel_index >= len(full12_order)
+                or full12_order[correction_channel_index] != correction_channel
+                or feedback.get("probe_channel") != probe_channel
                 or feedback.get("probe_channel_index") != probe_channel_index
                 or feedback.get("correction_channel") != correction_channel
                 or feedback.get("correction_channel_index")
                 != correction_channel_index
             ):
                 return False
+            if mode == "servo" and correction_channel_index >= 8:
+                return False
+            if mode == "wheel" and (
+                correction_channel != _WHEEL_TAIL_CHANNEL
+                or correction_channel_index != _WHEEL_TAIL_CHANNEL_INDEX
+                or first_bias_tick != _WHEEL_TAIL_FIRST_TICK
+                or last_bias_tick != _WHEEL_TAIL_LAST_TICK
+                or int(spec["teardown_tick"]) != _WHEEL_TAIL_TEARDOWN_TICK
+                or abs(logical_bias - _WHEEL_TAIL_VELOCITY_RAD_S) > 1.0e-12
+                or abs(peak_fraction) > 1.0e-12
+            ):
+                return False
+            if mode == "wheel":
+                for field in (
+                    "logical_bias_rad_s",
+                    "reference_wheel_integral_rad",
+                    "additional_wheel_integral_rad",
+                ):
+                    logged = _number(feedback, field)
+                    try:
+                        expected = float(spec[field])
+                    except (KeyError, TypeError, ValueError):
+                        return False
+                    if logged is None or abs(logged - expected) > 1.0e-12:
+                        return False
             if triggered is not None:
                 trigger_attempt, trigger_tick = triggered
                 if trigger_tick != probe_ticks[-1]:
@@ -607,6 +857,10 @@ def _drive_feedback_ledger_valid(
                 realized[correction_channel_index] - logical_bias
             ) > 1.0e-8:
                 return False
+            if mode == "wheel" and expected_active and abs(
+                final[correction_channel_index] - _WHEEL_TAIL_VELOCITY_RAD_S
+            ) > 1.0e-8:
+                return False
         else:
             try:
                 logged_peak = float(feedback.get("peak_fraction_of_reference"))
@@ -637,6 +891,7 @@ def _drive_feedback_ledger_valid(
         if spec is None:
             return False
         try:
+            mode = _drive_feedback_mode(spec)
             probe_rows = tuple(spec["probe_samples"])
             probe_ticks = tuple(int(item["motion_tick"]) for item in probe_rows)
             first_bias_tick = int(spec["first_bias_tick"])
@@ -647,7 +902,7 @@ def _drive_feedback_ledger_valid(
             correction_index = int(spec["correction_channel_index"])
         except (KeyError, TypeError, ValueError):
             return False
-        if not probe_ticks or trigger_tick != probe_ticks[-1]:
+        if mode is None or not probe_ticks or trigger_tick != probe_ticks[-1]:
             return False
         required_ticks = tuple(range(probe_ticks[0], last_bias_tick + 1))
         required_indices = []
@@ -709,7 +964,17 @@ def _drive_feedback_ledger_valid(
                     or abs(actual[probe_index] - observed) > 1.0e-9
                 ):
                     return False
-        if first_bias_tick != trigger_tick + 3:
+        expected_first_bias_tick = trigger_tick + (5 if mode == "wheel" else 3)
+        if first_bias_tick != expected_first_bias_tick:
+            return False
+        if mode == "wheel" and (
+            probe_ticks != _WHEEL_TAIL_PROBE_TICKS
+            or trigger_tick != _WHEEL_TAIL_PROBE_TICKS[-1]
+            or first_bias_tick != _WHEEL_TAIL_FIRST_TICK
+            or last_bias_tick != _WHEEL_TAIL_LAST_TICK
+            or teardown_tick != _WHEEL_TAIL_TEARDOWN_TICK
+            or correction_index != _WHEEL_TAIL_CHANNEL_INDEX
+        ):
             return False
         last_bias_index = row_index_by_attempt_tick[
             (phase_id, trigger_attempt, last_bias_tick)
@@ -756,18 +1021,24 @@ def _drive_feedback_ledger_valid(
             or abs(declared[correction_index]) > 1.0e-9
         ):
             return False
+        if mode == "wheel":
+            final = _vector(teardown_row, "drive_target_full12")
+            native = _vector(teardown_row, "native_drive_target_full12")
+            if (
+                final is None
+                or native is None
+                or abs(final[correction_index] - native[correction_index])
+                > 1.0e-8
+                or abs(final[correction_index]) > 1.0e-8
+            ):
+                return False
         teardown_row_by_phase[phase_id] = teardown_row
     for phase_id, spec in feedback_specs.items():
         trace = realized_traces[phase_id]
         if not trace:
             continue
-        try:
-            excursion = abs(float(spec["reference_excursion_deg"]))
-            peak_budget = float(spec["peak_fraction_of_reference"])
-            cumulative_budget = float(spec["cumulative_fraction_of_reference"])
-        except (KeyError, TypeError, ValueError):
-            return False
-        if excursion <= 0.0:
+        mode = _drive_feedback_mode(spec)
+        if mode is None:
             return False
         triggered = trigger_attempts.get(phase_id)
         if triggered is not None and abs(trace[-1]) > 1.0e-8:
@@ -778,15 +1049,40 @@ def _drive_feedback_ledger_valid(
             )
             assert teardown is not None
             trace.append(teardown[correction_index])
-        realized_peak = max(abs(value) for value in trace) / excursion
-        realized_cumulative = sum(
-            abs(right - left) for left, right in zip(trace, trace[1:])
-        ) / excursion
-        if (
-            realized_peak > peak_budget + 1.0e-9
-            or realized_cumulative > cumulative_budget + 1.0e-9
-        ):
-            return False
+        if mode == "wheel":
+            values = _wheel_feedback_contract_values(spec, physics_hz=physics_hz)
+            if values is None:
+                return False
+            reference_integral, integral_budget = values
+            realized_integral_fraction = (
+                sum(abs(value) for value in trace) / physics_hz / reference_integral
+            )
+            if (
+                realized_integral_fraction > integral_budget + 1.0e-9
+                or realized_integral_fraction
+                > _MAX_FEEDBACK_FRACTION + 1.0e-9
+            ):
+                return False
+        else:
+            try:
+                excursion = abs(float(spec["reference_excursion_deg"]))
+                peak_budget = float(spec["peak_fraction_of_reference"])
+                cumulative_budget = float(
+                    spec["cumulative_fraction_of_reference"]
+                )
+            except (KeyError, TypeError, ValueError):
+                return False
+            if excursion <= 0.0:
+                return False
+            realized_peak = max(abs(value) for value in trace) / excursion
+            realized_cumulative = sum(
+                abs(right - left) for left, right in zip(trace, trace[1:])
+            ) / excursion
+            if (
+                realized_peak > peak_budget + 1.0e-9
+                or realized_cumulative > cumulative_budget + 1.0e-9
+            ):
+                return False
     return True
 
 

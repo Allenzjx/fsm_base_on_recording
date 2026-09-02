@@ -96,25 +96,48 @@ def test_p04_p05_boundary_and_atomic_ticks_remain_frozen() -> None:
     assert [round(group.time_s * 120) for group in p05.atomic_groups] == [104, 1088]
 
 
-def test_p09_carry_phase_feedback_is_compact_and_strictly_reference_bounded() -> None:
-    contract = load_motion_contract(ROOT / "configs" / "recording_motion_contract.json")
+def test_p09_wheel_carry_feedback_is_compact_and_strictly_reference_bounded() -> None:
+    path = ROOT / "configs" / "recording_motion_contract.json"
+    contract = load_motion_contract(path)
+    raw = json.loads(path.read_text(encoding="utf-8"))
     feedback = contract.phase("P09").drive_feedback
     assert feedback is not None
-    assert [(item.motion_tick, item.reference_actual_deg) for item in feedback.probe_samples] == [
-        (870, -50.8511468644344),
-        (871, -50.63441813188072),
+    assert feedback.kind == "verify_tail_wheel_carry_alignment"
+    assert [
+        (item.motion_tick, item.reference_actual_deg)
+        for item in feedback.probe_samples
+    ] == [
+        (858, -51.055799822535),
+        (859, -51.191638624749),
     ]
+    assert feedback.lag_threshold_deg == 1.7
+    assert feedback.required_consecutive_samples == 2
     assert feedback.probe_channel == "rear_right_knee"
     assert feedback.probe_channel_index == 7
-    assert feedback.correction_channel == "rear_left_knee"
-    assert feedback.correction_channel_index == 5
-    assert feedback.first_bias_tick == 874
-    assert feedback.last_bias_tick == 879
-    assert feedback.teardown_tick == 880
-    assert feedback.logical_bias_deg == 1.25
-    assert feedback.peak_fraction_of_reference == pytest.approx(1.25 / 19.4)
-    assert feedback.cumulative_fraction_of_reference == pytest.approx(2.5 / 19.4)
+    assert feedback.correction_channel == "front_left_ankle"
+    assert feedback.correction_channel_index == 8
+    assert feedback.first_bias_tick == 864
+    assert feedback.last_bias_tick == 871
+    assert feedback.teardown_tick == 872
+    assert feedback.logical_bias_rad_s == -1.07
+    assert feedback.reference_wheel_integral_rad == pytest.approx(
+        -0.9060000000012605
+    )
+    assert feedback.additional_wheel_integral_rad == pytest.approx(
+        -1.07 * 8.0 / 120.0
+    )
+    assert feedback.cumulative_fraction_of_reference == pytest.approx(
+        abs(feedback.additional_wheel_integral_rad)
+        / abs(feedback.reference_wheel_integral_rad)
+    )
     assert feedback.cumulative_fraction_of_reference < 0.15
+    raw_p09 = next(phase for phase in raw["phases"] if phase["state_id"] == "P09")
+    assert raw_p09["active_duration_s"] == pytest.approx(7.2)
+    assert raw_p09["command_metrics"]["wheel_integral_rad"][
+        "front_left_ankle"
+    ] == pytest.approx(-0.9060000000012605)
+    assert contract.phase("P09").waypoints[-2].full12[8] == -1.07
+    assert contract.phase("P09").end_full12[8] == 0.0
     assert all(
         phase.drive_feedback is None
         for phase in contract.phases
@@ -134,3 +157,44 @@ def test_p09_carry_phase_feedback_is_compact_and_strictly_reference_bounded() ->
         for phase in contract.phases
         if phase.state_id != "P10"
     )
+
+
+@pytest.mark.parametrize(
+    ("field", "invalid_value"),
+    (
+        ("kind", "verify_tail_carry_alignment"),
+        ("correction_channel_index", 5),
+        ("additional_wheel_integral_rad", -0.07),
+        ("cumulative_fraction_of_reference", 0.16),
+    ),
+)
+def test_p09_wheel_carry_contract_fails_closed(
+    tmp_path: Path, field: str, invalid_value: object
+) -> None:
+    source = ROOT / "configs" / "recording_motion_contract.json"
+    payload = json.loads(source.read_text(encoding="utf-8"))
+    p09 = next(phase for phase in payload["phases"] if phase["state_id"] == "P09")
+    p09["drive_feedback"][field] = invalid_value
+    candidate = tmp_path / f"invalid_{field}.json"
+    candidate.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="P09:.*drive-feedback"):
+        load_motion_contract(candidate)
+
+
+def test_p09_wheel_carry_rederives_the_reference_integral(
+    tmp_path: Path,
+) -> None:
+    source = ROOT / "configs" / "recording_motion_contract.json"
+    payload = json.loads(source.read_text(encoding="utf-8"))
+    p09 = next(phase for phase in payload["phases"] if phase["state_id"] == "P09")
+    feedback = p09["drive_feedback"]
+    feedback["reference_wheel_integral_rad"] *= 10.0
+    feedback["cumulative_fraction_of_reference"] = abs(
+        feedback["additional_wheel_integral_rad"]
+    ) / abs(feedback["reference_wheel_integral_rad"])
+    candidate = tmp_path / "inflated_reference_integral.json"
+    candidate.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="P09: drive-feedback budget"):
+        load_motion_contract(candidate)

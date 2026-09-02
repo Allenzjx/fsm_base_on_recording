@@ -18773,32 +18773,32 @@
         1
       ],
       "drive_feedback": {
-        "kind": "verify_tail_carry_alignment",
+        "kind": "verify_tail_wheel_carry_alignment",
         "probe_channel": "rear_right_knee",
         "probe_channel_index": 7,
-        "correction_channel": "rear_left_knee",
-        "correction_channel_index": 5,
-        "goal": "preserve the late P09 support release until the signed rear-right-knee rebound reaches the live P10 entry corridor",
-        "source": "two-sample locked-v010 rear-right-knee endpoint deficit plus the measured Trial015 relative-six carry response",
+        "correction_channel": "front_left_ankle",
+        "correction_channel_index": 8,
+        "goal": "preserve the causal front-left wheel carry through the first P09 verify quantum when the live rear-right-knee deficit predicts a weak P10 entry rebound",
+        "source": "two-sample locked-v010 rear-right-knee pre-endpoint deficit plus an eight-tick continuation of the existing P09 front-left wheel target",
         "probe_samples": [
           {
-            "motion_tick": 870,
-            "reference_actual_deg": -50.8511468644344
+            "motion_tick": 858,
+            "reference_actual_deg": -51.055799822535
           },
           {
-            "motion_tick": 871,
-            "reference_actual_deg": -50.63441813188072
+            "motion_tick": 859,
+            "reference_actual_deg": -51.191638624749
           }
         ],
-        "lag_threshold_deg": 2.4,
+        "lag_threshold_deg": 1.7,
         "required_consecutive_samples": 2,
-        "first_bias_tick": 874,
-        "last_bias_tick": 879,
-        "teardown_tick": 880,
-        "logical_bias_deg": 1.25,
-        "reference_excursion_deg": 19.4,
-        "peak_fraction_of_reference": 0.06443298969072164,
-        "cumulative_fraction_of_reference": 0.12886597938144329,
+        "first_bias_tick": 864,
+        "last_bias_tick": 871,
+        "teardown_tick": 872,
+        "logical_bias_rad_s": -1.07,
+        "reference_wheel_integral_rad": -0.9060000000012605,
+        "additional_wheel_integral_rad": -0.07133333333333333,
+        "cumulative_fraction_of_reference": 0.07873436350246589,
         "nominal_endpoint_restored": true,
         "raw_recording_runtime_access_required": false
       },
