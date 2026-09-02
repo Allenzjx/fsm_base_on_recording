@@ -232,6 +232,49 @@ def test_feedback_correction_cannot_exceed_fifteen_percent(contract) -> None:
     assert atomic.full12[1] == pytest.approx(expected_knee)
 
 
+def test_p03_normal_response_shaping_is_single_channel_and_bounded(
+    spec, contract
+) -> None:
+    controller = SensorFsmController(spec, contract)
+    controller.state = spec.state("P03")
+    controller.lifecycle = Lifecycle.WAIT_ENTRY
+    observation = {
+        "guards": _live_guards(completion=False),
+        "actual_full12": controller.state.reference_actual_start_full12,
+        "progress_vector": (0.0,),
+    }
+
+    frame = controller.step(observation, sim_time_s=0.0)
+
+    transition = next(
+        event
+        for event in frame.events
+        if event.from_lifecycle == Lifecycle.WAIT_ENTRY.value
+        and event.to_lifecycle == Lifecycle.EXECUTE_MOTION.value
+    )
+    expected_fractions = (0.0,) * 10 + (-0.149, 0.0)
+    assert transition.details["correction_fractions"] == pytest.approx(
+        expected_fractions
+    )
+    reference = contract.phase("P03").waypoints[1].full12
+    assert frame.atomic_source_event is True
+    assert frame.full12[:10] == pytest.approx(reference[:10])
+    assert frame.full12[10] == pytest.approx(0.61 * (1.0 - 0.149))
+    assert frame.full12[11] == pytest.approx(reference[11])
+
+    executor = MotionExecutor(initial_full12=contract.phase("P03").start_full12)
+    executor.start_phase(
+        contract.phase("P03"), FeedbackCorrection(expected_fractions)
+    )
+    for _ in range(144):
+        active = executor.tick()
+    endpoint = executor.tick()
+    assert active.tick_index == 143
+    assert active.full12[10] == pytest.approx(0.51911)
+    assert endpoint.tick_index == 144
+    assert endpoint.full12[10] == pytest.approx(0.0)
+
+
 def test_p13_live_final_pose_recovery_uses_trial022_blocker(contract) -> None:
     planner = RecoveryPlanner(contract.full12_order)
     plan = planner.plan(

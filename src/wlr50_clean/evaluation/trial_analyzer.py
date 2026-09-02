@@ -319,7 +319,14 @@ def _recovery_evidence(
     cumulative_by_phase_channel: dict[tuple[str, str], float] = {}
     for row in rows:
         details = row.get("details")
-        raw = details.get("correction_fractions") if isinstance(details, Mapping) else None
+        raw = (
+            details.get(
+                "recovery_correction_fractions",
+                details.get("correction_fractions"),
+            )
+            if isinstance(details, Mapping)
+            else None
+        )
         if isinstance(raw, Mapping):
             candidates = tuple((str(name), value) for name, value in raw.items())
         elif isinstance(raw, Sequence) and not isinstance(raw, (str, bytes)) and len(raw) == 12:

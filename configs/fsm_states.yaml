@@ -239,6 +239,19 @@ states:
   transition_reason: Reference-compatible load-transfer endpoint and live FR lift-entry
     geometry are established.
   elapsed_time_is_not_completion_evidence: true
+  normal_correction_fractions:
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
 - state_id: P02
   macro_phase: 2
   state_name: FR_ACTIVE_LIFT
@@ -416,6 +429,19 @@ states:
   transition_reason: FR reference-like active joint motion and increased wheel-bottom
     clearance make front-plane crossing observable.
   elapsed_time_is_not_completion_evidence: true
+  normal_correction_fractions:
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
 - state_id: P03
   macro_phase: 3
   state_name: FR_CROSS_AND_PLACE
@@ -673,6 +699,19 @@ states:
   transition_reason: Latched FR front-face clearance and top load make FL preparation
     safe.
   elapsed_time_is_not_completion_evidence: true
+  normal_correction_fractions:
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - -0.149
+  - 0.0
 - state_id: P04
   macro_phase: 4
   state_name: FL_UNLOAD_PREP
@@ -896,6 +935,19 @@ states:
   transition_reason: The FL unload workspace matches the v010 entry envelope without
     a force-only hard gate.
   elapsed_time_is_not_completion_evidence: true
+  normal_correction_fractions:
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
 - state_id: P05
   macro_phase: 5
   state_name: FL_ACTIVE_LIFT_AND_PLACE
@@ -1176,6 +1228,19 @@ states:
     posture; P06 continues wheel motion immediately, without a hold, to latch top
     load.
   elapsed_time_is_not_completion_evidence: true
+  normal_correction_fractions:
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
 - state_id: P06
   macro_phase: 6
   state_name: FRONT_PAIR_ADVANCE
@@ -1413,6 +1478,19 @@ states:
   transition_reason: FL top load is latched and the rear pair has reached the measured
     pre-edge geometry.
   elapsed_time_is_not_completion_evidence: true
+  normal_correction_fractions:
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
 - state_id: P07
   macro_phase: 7
   state_name: REAR_ENTRY_ALIGNMENT
@@ -1651,6 +1729,19 @@ states:
   transition_reason: The rear-entry pose and wheel relation match the v010 first-rear
     entry envelope.
   elapsed_time_is_not_completion_evidence: true
+  normal_correction_fractions:
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
 - state_id: P08
   macro_phase: 8
   state_name: FIRST_REAR_LOAD_TRANSFER
@@ -1837,6 +1928,19 @@ states:
   transition_reason: The v010 FR+RL support geometry and active RR-unload preparation
     are present.
   elapsed_time_is_not_completion_evidence: true
+  normal_correction_fractions:
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
 - state_id: P09
   macro_phase: 9
   state_name: RR_ACTIVE_LIFT_AND_PLACE
@@ -2227,6 +2331,19 @@ states:
   transition_reason: Latched RR active lift, front-face crossing, and top load prove
     RR-first traversal.
   elapsed_time_is_not_completion_evidence: true
+  normal_correction_fractions:
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
 - state_id: P10
   macro_phase: 10
   state_name: SECOND_REAR_TRANSFER_PREP
@@ -2405,6 +2522,19 @@ states:
   transition_reason: The FL+RR-related workspace is established for the second rear
     leg.
   elapsed_time_is_not_completion_evidence: true
+  normal_correction_fractions:
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
 - state_id: P11
   macro_phase: 11
   state_name: TRANSFER_TOWARD_FR
@@ -2595,6 +2725,19 @@ states:
   transition_reason: The FR-directed transfer action has reached the v010 RL-unload
     entry pose.
   elapsed_time_is_not_completion_evidence: true
+  normal_correction_fractions:
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
 - state_id: P12
   macro_phase: 12
   state_name: RL_ACTIVE_LIFT_AND_PLACE
@@ -2919,6 +3062,19 @@ states:
   transition_reason: Latched RL active lift, front-face crossing, and top load complete
     the rear order.
   elapsed_time_is_not_completion_evidence: true
+  normal_correction_fractions:
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
 - state_id: P13
   macro_phase: 13
   state_name: FINAL_ADVANCE_AND_RECOVERY
@@ -3306,4 +3462,17 @@ states:
     geometry and final pose; zero wheel targets are applied, then the new FSM must
     add a measured stable-decay debounce before SUCCESS.
   elapsed_time_is_not_completion_evidence: true
+  normal_correction_fractions:
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
   recovery_max_verify_wait: 1.5

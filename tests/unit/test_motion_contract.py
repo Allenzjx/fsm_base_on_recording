@@ -66,12 +66,22 @@ def test_state_specs_have_required_contract_fields() -> None:
         "next_state",
         "recovery_state",
         "ppo_action_mask",
+        "normal_correction_fractions",
     }
     assert len(payload["states"]) == 13
     assert all(required <= set(state) for state in payload["states"])
     p13 = next(state for state in payload["states"] if state["state_id"] == "P13")
     assert p13["max_verify_wait"] == pytest.approx(1.0)
     assert p13["recovery_max_verify_wait"] == pytest.approx(1.5)
+    p03 = next(state for state in payload["states"] if state["state_id"] == "P03")
+    assert p03["normal_correction_fractions"] == pytest.approx(
+        (0.0,) * 10 + (-0.149, 0.0)
+    )
+    assert all(
+        state["normal_correction_fractions"] == [0.0] * 12
+        for state in payload["states"]
+        if state["state_id"] != "P03"
+    )
 
 
 def test_execution_projection_hides_absolute_reference_provenance() -> None:

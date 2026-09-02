@@ -13,6 +13,10 @@ import yaml
 
 
 EXPECTED_STATE_IDS = tuple(f"P{index:02d}" for index in range(1, 14))
+ACTION_COUNT = 12
+MAX_NORMAL_CORRECTION_FRACTION = 0.15
+P03_RL_WHEEL_CORRECTION_FRACTION = -0.149
+P03_RL_WHEEL_CHANNEL_INDEX = 10
 
 
 class Lifecycle(str, Enum):
@@ -52,6 +56,7 @@ class StateSpec:
     transition_reason: str
     reference_actual_start_full12: tuple[float, ...]
     reference_actual_endpoint_full12: tuple[float, ...]
+    normal_correction_fractions: tuple[float, ...]
 
 
 @dataclass(frozen=True)
@@ -106,6 +111,10 @@ def _parse_state(value: Mapping[str, Any]) -> StateSpec:
     )
     if len(actual_endpoint) != 12 or len(actual_delta) != 12:
         raise ValueError(f"{value.get('state_id')}: actual Full12 reference is incomplete")
+    normal_correction = tuple(
+        float(item)
+        for item in value.get("normal_correction_fractions", (0.0,) * ACTION_COUNT)
+    )
     return StateSpec(
         state_id=str(value["state_id"]),
         macro_phase=int(value["macro_phase"]),
@@ -133,6 +142,7 @@ def _parse_state(value: Mapping[str, Any]) -> StateSpec:
             for endpoint, delta in zip(actual_endpoint, actual_delta, strict=True)
         ),
         reference_actual_endpoint_full12=actual_endpoint,
+        normal_correction_fractions=normal_correction,
     )
 
 
@@ -209,6 +219,24 @@ def _validate(spec: FsmSpec, raw_states: Sequence[Mapping[str, Any]]) -> None:
             or len(state.reference_actual_endpoint_full12) != 12
         ):
             raise ValueError(f"{state.state_id}: actual endpoint must be full12")
+        expected_normal_correction = [0.0] * ACTION_COUNT
+        if state.state_id == "P03":
+            expected_normal_correction[P03_RL_WHEEL_CHANNEL_INDEX] = (
+                P03_RL_WHEEL_CORRECTION_FRACTION
+            )
+        if (
+            len(state.normal_correction_fractions) != ACTION_COUNT
+            or any(
+                not math.isfinite(value)
+                or abs(value) > MAX_NORMAL_CORRECTION_FRACTION + 1.0e-12
+                for value in state.normal_correction_fractions
+            )
+            or state.normal_correction_fractions
+            != tuple(expected_normal_correction)
+        ):
+            raise ValueError(
+                f"{state.state_id}: invalid bounded normal correction"
+            )
         for guard in state.hard_abort_guards:
             if guard.result not in allowed_results:
                 raise ValueError(f"{state.state_id}: invalid hard-abort result")

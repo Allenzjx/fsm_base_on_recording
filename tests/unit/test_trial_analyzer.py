@@ -246,6 +246,37 @@ def test_post_mapper_drive_feedback_is_included_in_cumulative_budget(tmp_path: P
     assert max(values) > 0.15
 
 
+def test_normal_shaping_is_counted_once_when_retry_logs_its_increment() -> None:
+    normal = [0.0] * 12
+    normal[10] = -0.149
+    recovery = [0.0] * 12
+    transitions = [
+        {
+            "state_id": "P03",
+            "from_lifecycle": "WAIT_ENTRY",
+            "to_lifecycle": "EXECUTE_MOTION",
+            "details": {"correction_fractions": normal},
+        },
+        {
+            "state_id": "P03",
+            "from_lifecycle": "RECOVERY",
+            "to_lifecycle": "EXECUTE_MOTION",
+            "details": {
+                "correction_fractions": normal,
+                "recovery_correction_fractions": recovery,
+            },
+        },
+    ]
+
+    values, retry_counts = _recovery_evidence(transitions)
+
+    assert max(values) == pytest.approx(0.149)
+    assert retry_counts["P03"] == 1
+    transitions[-1]["details"]["recovery_correction_fractions"][10] = -0.01
+    values, _ = _recovery_evidence(transitions)
+    assert max(values) == pytest.approx(0.159)
+
+
 def _contract_with_feedback(spec: dict) -> dict:
     contract = json.loads(
         (ROOT / "configs" / "recording_motion_contract.json").read_text(

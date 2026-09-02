@@ -17,3 +17,7 @@ All nominal motion is derived offline from the single frozen v010 RR_FIRST recor
 | P11 | TRANSFER_TOWARD_FR | Execute the v010 FR-directed load-transfer action before RL lift. | 20 | 0.467 | rl_unload_ready |
 | P12 | RL_ACTIVE_LIFT_AND_PLACE | Actively lift RL, clear the front plane, and place RL on the obstacle top. | 21,22,23,24 | 4.667 | rl_top_loaded |
 | P13 | FINAL_ADVANCE_AND_RECOVERY | Advance the whole body past the obstacle, recover the v010 final posture, and stop all wheels. | 25,26 | 17.800 | final_clear_and_stopped |
+
+## Bounded nominal response shaping
+
+P03 scales only the rear-left wheel excursion by -14.9%. This is the first strict Trial025 measured-response correction: it remains inside the v010 command envelope, preserves the source same-tick Full12 launch, and requires no runtime Recording access. All other normal-entry correction fractions are zero.

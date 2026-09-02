@@ -131,6 +131,14 @@ RELEVANT_LEGS = {
     "P13": ("FL", "FR", "RL", "RR"),
 }
 
+# Trial025 exposed the first strict measured-response mismatch in P03: the
+# rear-left wheel's physical angular integral was 36.293% above v010 even
+# though the source command was identical.  A -14.9% excursion scaling is the
+# largest useful interior correction (leaving 0.1 percentage point of command
+# margin) and changes no other channel or phase.
+P03_RL_WHEEL_CORRECTION_FRACTION = -0.149
+P03_RL_WHEEL_CHANNEL_INDEX = 10
+
 
 def _phase_velocity(phase: dict[str, Any], key: str) -> dict[str, float]:
     source = phase["reference_actual"][key]
@@ -260,6 +268,12 @@ def build_state_specs(contract: dict[str, Any]) -> dict[str, Any]:
             ],
             "elapsed_time_is_not_completion_evidence": True,
         }
+        normal_correction = [0.0] * 12
+        if state_id == "P03":
+            normal_correction[P03_RL_WHEEL_CHANNEL_INDEX] = (
+                P03_RL_WHEEL_CORRECTION_FRACTION
+            )
+        state["normal_correction_fractions"] = normal_correction
         if state_id == "P13":
             # Recovery restarts the measured wheel-decay evidence.  Preserve
             # the normal one-second pose-settle window, then reserve the full
@@ -306,6 +320,20 @@ def _write_docs(specs: dict[str, Any], derivation: Path, transitions: Path) -> N
         )
         transition_lines.append(
             f"| {state['state_id']} | {guards} | {state['next_state']} | {state['max_verify_wait']:.3f} | {state.get('recovery_max_verify_wait', state['max_verify_wait']):.3f} | {state['transition_reason']} |"
+        )
+    shaped_states = [
+        state
+        for state in specs["states"]
+        if any(abs(float(value)) > 1.0e-12 for value in state["normal_correction_fractions"])
+    ]
+    if shaped_states:
+        derivation_lines.extend(
+            [
+                "",
+                "## Bounded nominal response shaping",
+                "",
+                "P03 scales only the rear-left wheel excursion by -14.9%. This is the first strict Trial025 measured-response correction: it remains inside the v010 command envelope, preserves the source same-tick Full12 launch, and requires no runtime Recording access. All other normal-entry correction fractions are zero.",
+            ]
         )
     derivation.parent.mkdir(parents=True, exist_ok=True)
     derivation.write_text("\n".join(derivation_lines) + "\n", encoding="utf-8")

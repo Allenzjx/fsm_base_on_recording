@@ -283,7 +283,9 @@ class SensorFsmController:
                     return
                 self._pending_blocker = None
                 self._wait_entry_started_s = None
-                correction = FeedbackCorrection()
+                correction = FeedbackCorrection(
+                    self.state.normal_correction_fractions
+                )
                 self.motion.start_phase(self.phase, correction)
                 self.watchdog.reset()
                 self._endpoint_issued = False
@@ -352,6 +354,16 @@ class SensorFsmController:
                         blocked_guard=blocker_name,
                         blocker_evidence=self._pending_blocker,
                     )
+                    combined_correction = FeedbackCorrection(
+                        tuple(
+                            normal + recovery
+                            for normal, recovery in zip(
+                                self.state.normal_correction_fractions,
+                                plan.correction.fractions,
+                                strict=True,
+                            )
+                        )
+                    )
                 except (TypeError, ValueError) as exc:
                     self._terminate(
                         TaskResult.INFRASTRUCTURE_ERROR,
@@ -361,7 +373,7 @@ class SensorFsmController:
                     )
                     return
                 self.retries_used += 1
-                self.motion.start_phase(self.phase, plan.correction)
+                self.motion.start_phase(self.phase, combined_correction)
                 self.guard_evaluator.reset_state(self.state.state_id)
                 self.watchdog.reset()
                 self._endpoint_issued = False
@@ -374,7 +386,8 @@ class SensorFsmController:
                     {
                         "retry": self.retries_used,
                         "blocked_guard": blocker_name,
-                        "correction_fractions": plan.correction.fractions,
+                        "correction_fractions": combined_correction.fractions,
+                        "recovery_correction_fractions": plan.correction.fractions,
                     },
                 )
                 continue
