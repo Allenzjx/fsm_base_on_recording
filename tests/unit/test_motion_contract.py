@@ -183,6 +183,43 @@ def test_p09_wheel_rebound_is_compact_and_strictly_reference_bounded() -> None:
     assert feedback.reference_wheel_peak_abs_rad_s == pytest.approx(1.07)
     assert feedback.resulting_wheel_peak_abs_rad_s == pytest.approx(1.07)
     assert feedback.instantaneous_direction_reversal is True
+    contact_alignment = feedback.contact_alignment
+    assert contact_alignment is not None
+    assert contact_alignment.kind == "post_probe_rear_left_air_alignment"
+    assert contact_alignment.trigger_tick == 859
+    assert contact_alignment.wheel_body == "rear_left_wheel"
+    assert contact_alignment.required_contact_class == "AIR"
+    assert contact_alignment.require_ground_pair_verified is True
+    assert contact_alignment.require_obstacle_pair_verified is True
+    assert (
+        contact_alignment.first_bias_tick,
+        contact_alignment.last_full_bias_tick,
+        contact_alignment.release_tick,
+        contact_alignment.teardown_tick,
+    ) == (860, 870, 871, 872)
+    assert contact_alignment.final_slew_limit_deg_per_tick == pytest.approx(1.25)
+    alignment_rows = [
+        (
+            channel.channel,
+            channel.channel_index,
+            channel.reference_motion_magnitude_deg,
+            channel.logical_full_bias_deg,
+            channel.logical_release_bias_deg,
+            channel.outbound_plus_teardown_deg,
+            channel.cumulative_fraction_of_reference,
+        )
+        for channel in contact_alignment.channels
+    ]
+    assert [(row[0], row[1]) for row in alignment_rows] == [
+        ("rear_left_hip", 4),
+        ("rear_left_knee", 5),
+    ]
+    assert [row[2:] for row in alignment_rows] == pytest.approx(
+        [
+            (15.8, -1.185, 0.0, 2.37, 0.15),
+            (19.4, -1.455, -0.205, 2.91, 0.15),
+        ]
+    )
     raw_p09 = next(phase for phase in raw["phases"] if phase["state_id"] == "P09")
     assert raw_p09["active_duration_s"] == pytest.approx(7.2)
     assert raw_p09["command_metrics"]["wheel_integral_rad"][
@@ -332,6 +369,34 @@ def test_p09_wheel_rebound_pins_locked_probe_references(tmp_path: Path) -> None:
     candidate.write_text(json.dumps(payload), encoding="utf-8")
 
     with pytest.raises(ValueError, match="P09: invalid drive-feedback timing"):
+        load_motion_contract(candidate)
+
+
+@pytest.mark.parametrize(
+    ("path", "invalid_value"),
+    (
+        (("required_contact_class",), "GROUND"),
+        (("require_ground_pair_verified",), False),
+        (("release_tick",), 872),
+        (("channels", 0, "logical_full_bias_deg"), -1.186),
+        (("channels", 1, "logical_release_bias_deg"), 0.0),
+        (("channels", 1, "cumulative_fraction_of_reference"), 0.149),
+    ),
+)
+def test_p09_contact_alignment_contract_fails_closed(
+    tmp_path: Path, path: tuple[object, ...], invalid_value: object
+) -> None:
+    source = ROOT / "configs" / "recording_motion_contract.json"
+    payload = json.loads(source.read_text(encoding="utf-8"))
+    p09 = next(phase for phase in payload["phases"] if phase["state_id"] == "P09")
+    target = p09["drive_feedback"]["contact_alignment"]
+    for key in path[:-1]:
+        target = target[key]
+    target[path[-1]] = invalid_value
+    candidate = tmp_path / "invalid_contact_alignment.json"
+    candidate.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="P09:.*contact-alignment"):
         load_motion_contract(candidate)
 
 

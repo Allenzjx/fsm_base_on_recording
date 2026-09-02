@@ -13,6 +13,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+from .contact_alignment_contract import (
+    DriveFeedbackContactAlignmentSpec,
+    parse_contact_alignment,
+    validate_contact_alignment,
+)
+
 
 SERVO_COUNT = 8
 ACTION_COUNT = 12
@@ -125,6 +131,7 @@ class DriveFeedbackSpec:
     reference_wheel_peak_abs_rad_s: float
     resulting_wheel_peak_abs_rad_s: float
     instantaneous_direction_reversal: bool
+    contact_alignment: DriveFeedbackContactAlignmentSpec | None
 
     @property
     def first_bias_tick(self) -> int:
@@ -251,6 +258,9 @@ def _parse_phase(value: Mapping[str, Any]) -> MotionPhase:
     raw_feedback = value.get("drive_feedback")
     drive_feedback = None
     if isinstance(raw_feedback, Mapping):
+        contact_alignment = parse_contact_alignment(
+            raw_feedback.get("contact_alignment")
+        )
         drive_feedback = DriveFeedbackSpec(
             kind=str(raw_feedback["kind"]),
             probe_channel=str(raw_feedback["probe_channel"]),
@@ -299,6 +309,7 @@ def _parse_phase(value: Mapping[str, Any]) -> MotionPhase:
                 raw_feedback["instantaneous_direction_reversal"],
                 label="drive_feedback.instantaneous_direction_reversal",
             ),
+            contact_alignment=contact_alignment,
         )
     raw_alignment = value.get("entry_velocity_alignment")
     entry_velocity_alignment = None
@@ -561,6 +572,18 @@ def _validate_phases(
                 or resulting_peak > WHEEL_HARD_LIMIT_RAD_S + 1.0e-12
             ):
                 raise ValueError(f"{phase.state_id}: drive-feedback budget is invalid")
+            validate_contact_alignment(
+                feedback.contact_alignment,
+                state_id=phase.state_id,
+                delta_full12=phase.delta_full12,
+                active_channels=phase.active_channels,
+                full12_order=full12_order,
+                feedback_teardown_tick=feedback.teardown_tick,
+                last_probe_tick=REBOUND_PROBES[-1][0],
+                maximum_cumulative_fraction=(
+                    MAX_CUMULATIVE_CORRECTION_FRACTION
+                ),
+            )
         alignment = phase.entry_velocity_alignment
         if alignment is not None:
             if (

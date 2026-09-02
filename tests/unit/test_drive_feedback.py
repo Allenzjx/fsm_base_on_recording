@@ -7,6 +7,12 @@ import pytest
 
 from wlr50_clean.fsm.drive_feedback import ReferenceBoundedDriveFeedback
 from wlr50_clean.reference.motion_contract import load_motion_contract
+from wlr50_clean.sensing.observation import (
+    BodyContactObservation,
+    CollisionRole,
+    ContactClass,
+    PairContactObservation,
+)
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -41,6 +47,179 @@ def _actual(channel_index: int, value: float) -> tuple[float, ...]:
     result = [0.0] * 12
     result[channel_index] = value
     return tuple(result)
+
+
+def _rear_left_contact(
+    *,
+    contact_class: str = "AIR",
+    ground_verified: object = True,
+    ground_active: object = False,
+    obstacle_verified: object = True,
+    obstacle_active: object = False,
+    body_name: str = "rear_left_wheel",
+) -> dict[str, object]:
+    return {
+        "body_name": body_name,
+        "contact_class": contact_class,
+        "ground": {
+            "pair_verified": ground_verified,
+            "active": ground_active,
+        },
+        "obstacle": {
+            "pair_verified": obstacle_verified,
+            "active": obstacle_active,
+        },
+    }
+
+
+def _immutable_rear_left_air() -> BodyContactObservation:
+    def pair(other_body: str) -> PairContactObservation:
+        return PairContactObservation(
+            sensor_body="rear_left_wheel",
+            other_body=other_body,
+            active=False,
+            force_w_n=(0.0, 0.0, 0.0),
+            normal_force_n=0.0,
+            tangential_force_n=0.0,
+            contact_point_w_m=None,
+            force_history_w_n=(),
+            active_history=(),
+            consecutive_active_ticks=0,
+            source="unit_test_exact_pair",
+            pair_verified=True,
+        )
+
+    return BodyContactObservation(
+        body_name="rear_left_wheel",
+        role=CollisionRole.WHEEL,
+        contact_class=ContactClass.AIR,
+        ground=pair("ground_plane"),
+        obstacle=pair("obstacle"),
+    )
+
+
+def _trigger(
+    feedback: ReferenceBoundedDriveFeedback,
+    *,
+    contact: object | None,
+):
+    phase = load_motion_contract(
+        ROOT / "configs" / "recording_motion_contract.json"
+    ).phase("P09")
+    spec = phase.drive_feedback
+    assert spec is not None
+    result = None
+    for probe in spec.probe_samples:
+        result = feedback.update(
+            state_id="P09",
+            motion_tick_index=probe.motion_tick,
+            actual_full12=_actual(
+                spec.probe_channel_index,
+                probe.reference_actual_deg - spec.lag_threshold_deg,
+            ),
+            spec=spec,
+            rear_left_contact=contact,
+        )
+    assert result is not None
+    return spec, result
+
+
+def test_p09_verified_air_adds_exact_capped_rear_left_alignment() -> None:
+    feedback = ReferenceBoundedDriveFeedback()
+    spec, trigger = _trigger(feedback, contact=_rear_left_contact())
+    alignment = spec.contact_alignment
+    assert alignment is not None
+    trigger_log = trigger.as_dict()["contact_alignment"]
+    assert isinstance(trigger_log, dict)
+    assert trigger_log["just_triggered"] is True
+    assert trigger_log["condition_passed"] is True
+    assert trigger_log["contact_evidence"] == {
+        "wheel_body": "rear_left_wheel",
+        "contact_class": "AIR",
+        "ground_pair_verified": True,
+        "ground_active": False,
+        "obstacle_pair_verified": True,
+        "obstacle_active": False,
+    }
+
+    by_tick = {
+        tick: feedback.update(
+            state_id="P09",
+            motion_tick_index=tick,
+            actual_full12=_actual(spec.probe_channel_index, 0.0),
+            spec=spec,
+            rear_left_contact=None,
+        )
+        for tick in range(860, 873)
+    }
+    for tick in range(860, 871):
+        assert by_tick[tick].bias_full12[4] == pytest.approx(-1.185)
+        assert by_tick[tick].bias_full12[5] == pytest.approx(-1.455)
+        assert by_tick[tick].as_dict()["contact_alignment"][
+            "active_schedule_stage"
+        ] == "full_bias"
+    assert by_tick[871].bias_full12[4] == 0.0
+    assert by_tick[871].bias_full12[5] == pytest.approx(-0.205)
+    assert by_tick[871].as_dict()["contact_alignment"][
+        "active_schedule_stage"
+    ] == "release_ramp"
+    assert by_tick[872].bias_full12 == pytest.approx((0.0,) * 12)
+    assert by_tick[872].as_dict()["contact_alignment"][
+        "active_schedule_stage"
+    ] is None
+    for tick, native_wheel, final_wheel in EXPECTED_NATIVE_AND_FINAL_BY_TICK:
+        assert by_tick[tick].bias_full12[8] == pytest.approx(
+            final_wheel - native_wheel
+        )
+
+
+def test_p09_contact_gate_accepts_immutable_body_contact_observation() -> None:
+    feedback = ReferenceBoundedDriveFeedback()
+    spec, trigger = _trigger(feedback, contact=_immutable_rear_left_air())
+
+    assert trigger.as_dict()["contact_alignment"]["condition_passed"] is True
+    active = feedback.update(
+        state_id="P09",
+        motion_tick_index=860,
+        actual_full12=_actual(spec.probe_channel_index, 0.0),
+        spec=spec,
+    )
+    assert active.bias_full12[4:6] == pytest.approx((-1.185, -1.455))
+
+
+@pytest.mark.parametrize(
+    "contact",
+    (
+        None,
+        {},
+        _rear_left_contact(contact_class="GROUND"),
+        _rear_left_contact(ground_verified=False),
+        _rear_left_contact(ground_verified=1),
+        _rear_left_contact(ground_active=True),
+        _rear_left_contact(obstacle_verified=False),
+        _rear_left_contact(obstacle_active=True),
+        _rear_left_contact(body_name="rear_right_wheel"),
+    ),
+)
+def test_p09_contact_alignment_fails_closed_without_verified_air(
+    contact: object | None,
+) -> None:
+    feedback = ReferenceBoundedDriveFeedback()
+    spec, trigger = _trigger(feedback, contact=contact)
+    nested = trigger.as_dict()["contact_alignment"]
+    assert isinstance(nested, dict)
+    assert nested["condition_evaluated"] is True
+    assert nested["condition_passed"] is False
+    assert nested["just_triggered"] is False
+    active = feedback.update(
+        state_id="P09",
+        motion_tick_index=860,
+        actual_full12=_actual(spec.probe_channel_index, 0.0),
+        spec=spec,
+        rear_left_contact=_rear_left_contact(),
+    )
+    assert active.bias_full12[4:6] == pytest.approx((0.0, 0.0))
+    assert active.bias_full12[8] == pytest.approx(0.68)
 
 
 def test_p09_two_sample_live_deficit_latches_bounded_wheel_rebound() -> None:
@@ -372,6 +551,27 @@ def test_p09_wheel_rebound_runtime_fails_closed(
             motion_tick_index=spec.probe_samples[0].motion_tick,
             actual_full12=_actual(spec.probe_channel_index, 0.0),
             spec=invalid,
+        )
+
+
+def test_p09_contact_alignment_runtime_contract_fails_closed() -> None:
+    phase = load_motion_contract(
+        ROOT / "configs" / "recording_motion_contract.json"
+    ).phase("P09")
+    spec = phase.drive_feedback
+    assert spec is not None and spec.contact_alignment is not None
+    invalid = replace(
+        spec,
+        contact_alignment=replace(spec.contact_alignment, release_tick=872),
+    )
+
+    with pytest.raises(RuntimeError, match="not a valid wheel rebound"):
+        ReferenceBoundedDriveFeedback().update(
+            state_id="P09",
+            motion_tick_index=spec.probe_samples[0].motion_tick,
+            actual_full12=_actual(spec.probe_channel_index, 0.0),
+            spec=invalid,
+            rear_left_contact=_rear_left_contact(),
         )
 
 
