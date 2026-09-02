@@ -860,7 +860,7 @@ _WHEEL_REBOUND_SEGMENTS = [
     {
         "first_bias_tick": 865,
         "last_bias_tick": 865,
-        "logical_bias_rad_s": 0.53,
+        "logical_bias_rad_s": 0.23,
     },
     {
         "first_bias_tick": 866,
@@ -880,12 +880,12 @@ _WHEEL_REBOUND_SEGMENTS = [
     {
         "first_bias_tick": 871,
         "last_bias_tick": 871,
-        "logical_bias_rad_s": 1.07,
+        "logical_bias_rad_s": 0.01,
     },
 ]
-_WHEEL_REBOUND_ADDITIONAL_INTEGRAL = 0.06816666666666667
-_WHEEL_REBOUND_RESULTING_INTEGRAL = -0.8378333333345938
-_WHEEL_REBOUND_FRACTION = 0.07523914643109474
+_WHEEL_REBOUND_ADDITIONAL_INTEGRAL = 0.05683333333333333
+_WHEEL_REBOUND_RESULTING_INTEGRAL = -0.8491666666679272
+_WHEEL_REBOUND_FRACTION = 0.06272994849145062
 
 
 def _wheel_rebound_segment_index(tick: int) -> int | None:
@@ -1120,13 +1120,13 @@ def test_wheel_rebound_feedback_accepts_exact_partial_counteraction_and_reversal
     spec = contract["phases"][8]["drive_feedback"]
     assert spec["bias_segments"] == _WHEEL_REBOUND_SEGMENTS
     assert spec["additional_wheel_integral_rad"] == pytest.approx(
-        0.06816666666666667
+        0.05683333333333333
     )
     assert spec["resulting_wheel_integral_rad"] == pytest.approx(
-        -0.8378333333345938
+        -0.8491666666679272
     )
     assert spec["cumulative_fraction_of_reference"] == pytest.approx(
-        0.07523914643109474
+        0.06272994849145062
     )
     assert spec["reference_wheel_peak_abs_rad_s"] == 1.07
     assert spec["resulting_wheel_peak_abs_rad_s"] == 1.07
@@ -1136,13 +1136,13 @@ def test_wheel_rebound_feedback_accepts_exact_partial_counteraction_and_reversal
         862: (-1.07, -0.39),
         863: (-1.07, -0.39),
         864: (0.0, 0.68),
-        865: (0.0, 0.53),
+        865: (0.0, 0.23),
         866: (0.0, 1.03),
         867: (0.0, 1.03),
         868: (0.0, 0.73),
         869: (0.0, 0.73),
         870: (0.0, 0.01),
-        871: (0.0, 1.07),
+        871: (0.0, 0.01),
     }
     for row in rows[2:14]:
         tick = row["motion_tick_index"]
