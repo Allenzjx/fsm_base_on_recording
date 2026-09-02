@@ -275,31 +275,6 @@ def test_p03_normal_response_shaping_is_single_channel_and_bounded(
     assert endpoint.full12[10] == pytest.approx(0.0)
 
 
-def test_p06_restores_the_p03_rl_wheel_travel_without_changing_timing(
-    spec, contract
-) -> None:
-    fraction = 0.014238642298
-    expected_fractions = (0.0,) * 10 + (fraction, 0.0)
-    assert spec.state("P06").normal_correction_fractions == pytest.approx(
-        expected_fractions
-    )
-    phase = contract.phase("P06")
-    executor = MotionExecutor(initial_full12=phase.start_full12)
-    executor.start_phase(phase, FeedbackCorrection(expected_fractions))
-    wheel_integral = 0.0
-    ticks = round(phase.active_duration_s * executor.physics_hz)
-    for _ in range(ticks):
-        frame = executor.tick()
-        wheel_integral += frame.full12[10] / executor.physics_hz
-
-    reference_integral = sum(
-        executor._nominal_at_tick(phase, tick)[10] / executor.physics_hz
-        for tick in range(ticks)
-    )
-    assert wheel_integral - reference_integral == pytest.approx(0.10906800000268)
-    assert wheel_integral / reference_integral - 1.0 == pytest.approx(fraction)
-
-
 def test_p13_live_final_pose_recovery_uses_trial022_blocker(contract) -> None:
     planner = RecoveryPlanner(contract.full12_order)
     plan = planner.plan(
