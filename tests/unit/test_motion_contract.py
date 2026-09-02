@@ -96,13 +96,13 @@ def test_p04_p05_boundary_and_atomic_ticks_remain_frozen() -> None:
     assert [round(group.time_s * 120) for group in p05.atomic_groups] == [104, 1088]
 
 
-def test_p09_wheel_carry_feedback_is_compact_and_strictly_reference_bounded() -> None:
+def test_p09_wheel_rebound_is_compact_and_strictly_reference_bounded() -> None:
     path = ROOT / "configs" / "recording_motion_contract.json"
     contract = load_motion_contract(path)
     raw = json.loads(path.read_text(encoding="utf-8"))
     feedback = contract.phase("P09").drive_feedback
     assert feedback is not None
-    assert feedback.kind == "verify_tail_wheel_carry_alignment"
+    assert feedback.kind == "pre_endpoint_wheel_rebound_alignment"
     assert [
         (item.motion_tick, item.reference_actual_deg)
         for item in feedback.probe_samples
@@ -116,28 +116,42 @@ def test_p09_wheel_carry_feedback_is_compact_and_strictly_reference_bounded() ->
     assert feedback.probe_channel_index == 7
     assert feedback.correction_channel == "front_left_ankle"
     assert feedback.correction_channel_index == 8
-    assert feedback.first_bias_tick == 864
+    assert feedback.first_bias_tick == 860
     assert feedback.last_bias_tick == 871
     assert feedback.teardown_tick == 872
-    assert feedback.logical_bias_rad_s == -1.07
+    assert feedback.logical_bias_rad_s == 1.07
     assert feedback.reference_wheel_integral_rad == pytest.approx(
         -0.9060000000012605
     )
     assert feedback.additional_wheel_integral_rad == pytest.approx(
-        -1.07 * 8.0 / 120.0
+        1.07 * 12.0 / 120.0
+    )
+    assert feedback.resulting_wheel_integral_rad == pytest.approx(
+        feedback.reference_wheel_integral_rad
+        + feedback.additional_wheel_integral_rad
     )
     assert feedback.cumulative_fraction_of_reference == pytest.approx(
         abs(feedback.additional_wheel_integral_rad)
         / abs(feedback.reference_wheel_integral_rad)
     )
     assert feedback.cumulative_fraction_of_reference < 0.15
+    assert feedback.reference_wheel_peak_abs_rad_s == pytest.approx(1.07)
+    assert feedback.resulting_wheel_peak_abs_rad_s == pytest.approx(1.07)
+    assert feedback.instantaneous_direction_reversal is True
     raw_p09 = next(phase for phase in raw["phases"] if phase["state_id"] == "P09")
     assert raw_p09["active_duration_s"] == pytest.approx(7.2)
     assert raw_p09["command_metrics"]["wheel_integral_rad"][
         "front_left_ankle"
     ] == pytest.approx(-0.9060000000012605)
-    assert contract.phase("P09").waypoints[-2].full12[8] == -1.07
-    assert contract.phase("P09").end_full12[8] == 0.0
+    endpoint_tick = round(contract.phase("P09").active_duration_s * 120.0)
+    for tick in range(feedback.first_bias_tick, endpoint_tick):
+        native = contract.phase("P09").nominal_at(tick / 120.0)[8]
+        assert native == pytest.approx(-1.07)
+        assert native + feedback.logical_bias_rad_s == pytest.approx(0.0)
+    for tick in range(endpoint_tick, feedback.last_bias_tick + 1):
+        native = contract.phase("P09").end_full12[8]
+        assert native == pytest.approx(0.0)
+        assert native + feedback.logical_bias_rad_s == pytest.approx(1.07)
     assert all(
         phase.drive_feedback is None
         for phase in contract.phases
@@ -163,12 +177,20 @@ def test_p09_wheel_carry_feedback_is_compact_and_strictly_reference_bounded() ->
     ("field", "invalid_value"),
     (
         ("kind", "verify_tail_carry_alignment"),
+        ("probe_channel", "rear_left_knee"),
+        ("lag_threshold_deg", 1.69),
         ("correction_channel_index", 5),
-        ("additional_wheel_integral_rad", -0.07),
+        ("first_bias_tick", 861),
+        ("logical_bias_rad_s", -1.07),
+        ("additional_wheel_integral_rad", 0.1),
+        ("resulting_wheel_integral_rad", -0.8),
         ("cumulative_fraction_of_reference", 0.16),
+        ("reference_wheel_peak_abs_rad_s", 1.06),
+        ("resulting_wheel_peak_abs_rad_s", 1.08),
+        ("instantaneous_direction_reversal", False),
     ),
 )
-def test_p09_wheel_carry_contract_fails_closed(
+def test_p09_wheel_rebound_contract_fails_closed(
     tmp_path: Path, field: str, invalid_value: object
 ) -> None:
     source = ROOT / "configs" / "recording_motion_contract.json"
@@ -182,7 +204,34 @@ def test_p09_wheel_carry_contract_fails_closed(
         load_motion_contract(candidate)
 
 
-def test_p09_wheel_carry_rederives_the_reference_integral(
+@pytest.mark.parametrize("invalid_value", ("true", "false", 1, 0))
+def test_p09_wheel_rebound_requires_a_json_boolean(
+    tmp_path: Path, invalid_value: object
+) -> None:
+    source = ROOT / "configs" / "recording_motion_contract.json"
+    payload = json.loads(source.read_text(encoding="utf-8"))
+    p09 = next(phase for phase in payload["phases"] if phase["state_id"] == "P09")
+    p09["drive_feedback"]["instantaneous_direction_reversal"] = invalid_value
+    candidate = tmp_path / f"invalid_direction_type_{invalid_value}.json"
+    candidate.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="expected a boolean"):
+        load_motion_contract(candidate)
+
+
+def test_p09_wheel_rebound_pins_locked_probe_references(tmp_path: Path) -> None:
+    source = ROOT / "configs" / "recording_motion_contract.json"
+    payload = json.loads(source.read_text(encoding="utf-8"))
+    p09 = next(phase for phase in payload["phases"] if phase["state_id"] == "P09")
+    p09["drive_feedback"]["probe_samples"][0]["reference_actual_deg"] += 0.01
+    candidate = tmp_path / "invalid_probe_reference.json"
+    candidate.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="P09: invalid drive-feedback timing"):
+        load_motion_contract(candidate)
+
+
+def test_p09_wheel_rebound_rederives_the_reference_integral(
     tmp_path: Path,
 ) -> None:
     source = ROOT / "configs" / "recording_motion_contract.json"
@@ -190,6 +239,10 @@ def test_p09_wheel_carry_rederives_the_reference_integral(
     p09 = next(phase for phase in payload["phases"] if phase["state_id"] == "P09")
     feedback = p09["drive_feedback"]
     feedback["reference_wheel_integral_rad"] *= 10.0
+    feedback["resulting_wheel_integral_rad"] = (
+        feedback["reference_wheel_integral_rad"]
+        + feedback["additional_wheel_integral_rad"]
+    )
     feedback["cumulative_fraction_of_reference"] = abs(
         feedback["additional_wheel_integral_rad"]
     ) / abs(feedback["reference_wheel_integral_rad"])

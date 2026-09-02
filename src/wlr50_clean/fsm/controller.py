@@ -471,7 +471,7 @@ class SensorFsmController:
                 ),
             },
             "controller.live_drive_feedback",
-            "a live-triggered bounded carry correction must finish before P09 can advance",
+            "a live-triggered bounded drive-feedback correction must finish before P09 can advance",
         )
 
     def _entry_compatibility(self, observation: Any) -> GuardEvidence:

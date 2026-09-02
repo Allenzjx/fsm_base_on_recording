@@ -52,13 +52,28 @@ FINAL_DATA_NAMES = (
 
 _SERVO_DRIVE_FEEDBACK_KIND = "verify_tail_carry_alignment"
 _WHEEL_DRIVE_FEEDBACK_KIND = "verify_tail_wheel_carry_alignment"
+_WHEEL_REBOUND_FEEDBACK_KIND = "pre_endpoint_wheel_rebound_alignment"
 _WHEEL_TAIL_CHANNEL = "front_left_ankle"
 _WHEEL_TAIL_CHANNEL_INDEX = 8
+_WHEEL_PROBE_CHANNEL = "rear_right_knee"
+_WHEEL_PROBE_CHANNEL_INDEX = 7
 _WHEEL_TAIL_PROBE_TICKS = (858, 859)
+_WHEEL_PROBE_REFERENCES_DEG = (-51.055799822535, -51.191638624749)
+_WHEEL_REBOUND_LAG_THRESHOLD_DEG = 1.7
 _WHEEL_TAIL_FIRST_TICK = 864
+_WHEEL_ENDPOINT_TICK = 864
 _WHEEL_TAIL_LAST_TICK = 871
 _WHEEL_TAIL_TEARDOWN_TICK = 872
 _WHEEL_TAIL_VELOCITY_RAD_S = -1.07
+_WHEEL_REBOUND_FIRST_TICK = 860
+_WHEEL_REBOUND_LAST_TICK = 871
+_WHEEL_REBOUND_TEARDOWN_TICK = 872
+_WHEEL_REBOUND_BIAS_RAD_S = 1.07
+_WHEEL_REFERENCE_INTEGRAL_RAD = -0.9060000000012605
+_WHEEL_REBOUND_ADDITIONAL_INTEGRAL_RAD = 0.107
+_WHEEL_REBOUND_RESULTING_INTEGRAL_RAD = -0.7990000000012605
+_WHEEL_REFERENCE_PEAK_ABS_RAD_S = 1.07
+_WHEEL_REBOUND_RESULTING_PEAK_ABS_RAD_S = 1.07
 _MAX_FEEDBACK_FRACTION = 0.15
 
 
@@ -389,29 +404,64 @@ def _drive_feedback_mode(spec: Mapping[str, Any]) -> str | None:
         return "servo"
     if kind == _WHEEL_DRIVE_FEEDBACK_KIND:
         return "wheel"
+    if kind == _WHEEL_REBOUND_FEEDBACK_KIND:
+        return "wheel_rebound"
+    return None
+
+
+def _is_wheel_feedback_mode(mode: str | None) -> bool:
+    return mode in ("wheel", "wheel_rebound")
+
+
+def _wheel_feedback_shape(
+    mode: str | None,
+) -> tuple[tuple[int, ...], int, int, int, float] | None:
+    if mode == "wheel":
+        return (
+            _WHEEL_TAIL_PROBE_TICKS,
+            _WHEEL_TAIL_FIRST_TICK,
+            _WHEEL_TAIL_LAST_TICK,
+            _WHEEL_TAIL_TEARDOWN_TICK,
+            _WHEEL_TAIL_VELOCITY_RAD_S,
+        )
+    if mode == "wheel_rebound":
+        return (
+            _WHEEL_TAIL_PROBE_TICKS,
+            _WHEEL_REBOUND_FIRST_TICK,
+            _WHEEL_REBOUND_LAST_TICK,
+            _WHEEL_REBOUND_TEARDOWN_TICK,
+            _WHEEL_REBOUND_BIAS_RAD_S,
+        )
     return None
 
 
 def _wheel_feedback_contract_values(
-    spec: Mapping[str, Any], *, physics_hz: float
+    spec: Mapping[str, Any], *, physics_hz: float, mode: str | None = None
 ) -> tuple[float, float] | None:
     """Return the declared reference integral and derived correction fraction.
 
-    Wheel-tail feedback is an integral-bounded continuation of the Recording's
-    existing FL wheel command, not a servo excursion.  Requiring the unitful
-    fields prevents a wheel correction from being disguised behind the legacy
-    degree-named budget fields.
+    Wheel feedback is signed-integral bounded, not a servo excursion.  The
+    legacy carry remains same-direction only; the rebound kind has its own
+    mandatory opposite-direction semantics.  Unitful fields prevent either
+    correction from being disguised behind legacy degree-named budgets.
     """
 
+    selected_mode = _drive_feedback_mode(spec) if mode is None else mode
+    shape = _wheel_feedback_shape(selected_mode)
+    if shape is None:
+        return None
+    _, first_bias_tick, last_bias_tick, _, expected_bias = shape
     try:
         logical_bias = float(spec["logical_bias_rad_s"])
-        reference_integral = abs(float(spec["reference_wheel_integral_rad"]))
+        signed_reference_integral = float(spec["reference_wheel_integral_rad"])
+        reference_integral = abs(signed_reference_integral)
         declared_integral = float(spec["additional_wheel_integral_rad"])
         declared_fraction = float(spec["cumulative_fraction_of_reference"])
     except (KeyError, TypeError, ValueError):
         return None
     values = (
         logical_bias,
+        signed_reference_integral,
         reference_integral,
         declared_integral,
         declared_fraction,
@@ -422,10 +472,10 @@ def _wheel_feedback_contract_values(
     if (
         physics_hz <= 0.0
         or reference_integral <= 0.0
-        or abs(logical_bias - _WHEEL_TAIL_VELOCITY_RAD_S) > 1.0e-12
+        or abs(logical_bias - expected_bias) > 1.0e-12
     ):
         return None
-    active_ticks = _WHEEL_TAIL_LAST_TICK - _WHEEL_TAIL_FIRST_TICK + 1
+    active_ticks = last_bias_tick - first_bias_tick + 1
     expected_signed_integral = logical_bias * active_ticks / physics_hz
     derived_fraction = abs(expected_signed_integral) / reference_integral
     if (
@@ -435,6 +485,69 @@ def _wheel_feedback_contract_values(
         or abs(declared_fraction - derived_fraction) > 1.0e-12
     ):
         return None
+    if selected_mode == "wheel":
+        # The legacy carry is same-direction only.  A counter-carry must never
+        # be smuggled through this kind merely because its absolute peak is
+        # unchanged.
+        if (
+            logical_bias * signed_reference_integral <= 0.0
+            or spec.get("instantaneous_direction_reversal") is True
+        ):
+            return None
+    else:
+        try:
+            resulting_integral = float(spec["resulting_wheel_integral_rad"])
+            reference_peak = float(spec["reference_wheel_peak_abs_rad_s"])
+            resulting_peak = float(spec["resulting_wheel_peak_abs_rad_s"])
+        except (KeyError, TypeError, ValueError):
+            return None
+        if any(
+            not math.isfinite(value)
+            for value in (
+                resulting_integral,
+                reference_peak,
+                resulting_peak,
+            )
+        ):
+            return None
+        peak_magnitude_fraction = (
+            math.inf
+            if reference_peak <= 0.0
+            else abs(resulting_peak - reference_peak) / reference_peak
+        )
+        if (
+            logical_bias * signed_reference_integral >= 0.0
+            or spec.get("instantaneous_direction_reversal") is not True
+            or abs(
+                signed_reference_integral - _WHEEL_REFERENCE_INTEGRAL_RAD
+            )
+            > 1.0e-12
+            or abs(
+                expected_signed_integral
+                - _WHEEL_REBOUND_ADDITIONAL_INTEGRAL_RAD
+            )
+            > 1.0e-12
+            or abs(
+                resulting_integral
+                - (signed_reference_integral + expected_signed_integral)
+            )
+            > 1.0e-12
+            or abs(
+                resulting_integral - _WHEEL_REBOUND_RESULTING_INTEGRAL_RAD
+            )
+            > 1.0e-12
+            or abs(reference_peak - _WHEEL_REFERENCE_PEAK_ABS_RAD_S)
+            > 1.0e-12
+            or abs(
+                resulting_peak - _WHEEL_REBOUND_RESULTING_PEAK_ABS_RAD_S
+            )
+            > 1.0e-12
+            # ``peak_fraction_of_reference`` in the runtime ledger denotes
+            # peak-magnitude *increase*.  Direction reversal is audited by its
+            # own mandatory flag and exact native/final shapes below.
+            or abs(peak_magnitude_fraction) > 1.0e-12
+        ):
+            return None
     return reference_integral, derived_fraction
 
 
@@ -497,6 +610,198 @@ def _phase_zoh_channel_integral(
     return result
 
 
+def _phase_zoh_channel_peak_abs(
+    phase: Mapping[str, Any], channel_index: int
+) -> float | None:
+    """Re-derive a channel peak from the frozen compact waypoints."""
+
+    raw_waypoints = phase.get("waypoints")
+    if (
+        not isinstance(raw_waypoints, Sequence)
+        or isinstance(raw_waypoints, (str, bytes))
+        or not raw_waypoints
+        or channel_index < 0
+        or channel_index >= 12
+    ):
+        return None
+    values: list[float] = []
+    try:
+        for waypoint in raw_waypoints:
+            if not isinstance(waypoint, Mapping):
+                return None
+            full12 = waypoint["full12"]
+            if (
+                not isinstance(full12, Sequence)
+                or isinstance(full12, (str, bytes))
+                or len(full12) != 12
+            ):
+                return None
+            value = float(full12[channel_index])
+            if not math.isfinite(value):
+                return None
+            values.append(abs(value))
+    except (KeyError, TypeError, ValueError):
+        return None
+    return max(values)
+
+
+def _phase_channel_at_motion_tick(
+    phase: Mapping[str, Any], channel_index: int, tick: int, *, physics_hz: float
+) -> float | None:
+    """Match the sequencer's integer endpoint dispatch for one channel."""
+
+    try:
+        active_duration = float(phase["active_duration_s"])
+        endpoint = phase["end_full12"]
+        waypoints = phase["waypoints"]
+    except (KeyError, TypeError, ValueError):
+        return None
+    if (
+        not math.isfinite(active_duration)
+        or active_duration <= 0.0
+        or not math.isfinite(physics_hz)
+        or physics_hz <= 0.0
+        or tick < 0
+        or channel_index < 0
+        or channel_index >= 12
+        or not isinstance(endpoint, Sequence)
+        or isinstance(endpoint, (str, bytes))
+        or len(endpoint) != 12
+        or not isinstance(waypoints, Sequence)
+        or isinstance(waypoints, (str, bytes))
+        or not waypoints
+    ):
+        return None
+    try:
+        if tick >= round(active_duration * physics_hz):
+            value = float(endpoint[channel_index])
+        else:
+            elapsed = tick / physics_hz
+            selected: Mapping[str, Any] | None = None
+            for waypoint in waypoints:
+                if not isinstance(waypoint, Mapping):
+                    return None
+                if float(waypoint["time_s"]) <= elapsed + 1.0e-12:
+                    selected = waypoint
+                else:
+                    break
+            if selected is None:
+                return None
+            full12 = selected["full12"]
+            if (
+                not isinstance(full12, Sequence)
+                or isinstance(full12, (str, bytes))
+                or len(full12) != 12
+            ):
+                return None
+            value = float(full12[channel_index])
+    except (KeyError, TypeError, ValueError):
+        return None
+    return value if math.isfinite(value) else None
+
+
+def _finite_sequence(
+    value: Any, *, expected_length: int
+) -> tuple[float, ...] | None:
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+        return None
+    try:
+        result = tuple(float(item) for item in value)
+    except (TypeError, ValueError):
+        return None
+    if len(result) != expected_length or any(
+        not math.isfinite(item) for item in result
+    ):
+        return None
+    return result
+
+
+def _wheel_rebound_atomic_ack_valid(
+    row: Mapping[str, Any],
+    *,
+    full12_order: tuple[str, ...],
+    native: tuple[float, ...],
+    final: tuple[float, ...],
+    requested: tuple[float, ...],
+    realized: tuple[float, ...],
+) -> bool:
+    """Bind the logical rebound ledger to the adapter's physical-sign ack."""
+
+    ack = row.get("atomic_ack")
+    if not isinstance(ack, Mapping):
+        return False
+    raw_ack_order = ack.get("canonical_order")
+    if (
+        not isinstance(raw_ack_order, Sequence)
+        or isinstance(raw_ack_order, (str, bytes))
+    ):
+        return False
+    ack_native = _vector(ack, "native_drive_target_full12")
+    ack_final = _vector(ack, "drive_target_full12")
+    ack_requested = _vector(ack, "drive_feedback_bias_requested_full12")
+    ack_realized = _vector(ack, "drive_feedback_bias_realized_full12")
+    source_requested = _vector(ack, "requested_full12")
+    source_applied = _vector(ack, "applied_full12")
+    physical_wheels = _finite_sequence(
+        ack.get("wheel_target_physical_rad_s"), expected_length=4
+    )
+    if any(
+        item is None
+        for item in (
+            ack_native,
+            ack_final,
+            ack_requested,
+            ack_realized,
+            source_requested,
+            source_applied,
+            physical_wheels,
+        )
+    ):
+        return False
+    assert ack_native is not None and ack_final is not None
+    assert ack_requested is not None and ack_realized is not None
+    assert source_requested is not None and source_applied is not None
+    assert physical_wheels is not None
+    expected_physical_wheels = tuple(
+        sign * value
+        for sign, value in zip((-1.0, 1.0, -1.0, 1.0), final[8:], strict=True)
+    )
+    return bool(
+        ack.get("schema") == "wlr50_clean.atomic_full12_ack.v1"
+        and tuple(str(item) for item in raw_ack_order) == full12_order
+        and ack.get("articulation_writes_this_call") == 1
+        and _number(ack, "motion_start_skew_s") == 0.0
+        and ack.get("command_was_clamped") is False
+        and all(
+            abs(left - right) <= 1.0e-9
+            for left, right in zip(ack_native, native, strict=True)
+        )
+        and all(
+            abs(left - right) <= 1.0e-9
+            for left, right in zip(ack_final, final, strict=True)
+        )
+        and all(
+            abs(left - right) <= 1.0e-9
+            for left, right in zip(ack_requested, requested, strict=True)
+        )
+        and all(
+            abs(left - right) <= 1.0e-9
+            for left, right in zip(ack_realized, realized, strict=True)
+        )
+        and all(
+            abs(source_requested[index] - native[index]) <= 1.0e-9
+            and abs(source_applied[index] - native[index]) <= 1.0e-9
+            for index in range(8, 12)
+        )
+        and all(
+            abs(left - right) <= 1.0e-9
+            for left, right in zip(
+                physical_wheels, expected_physical_wheels, strict=True
+            )
+        )
+    )
+
+
 def _drive_feedback_ledger_valid(
     commands: Sequence[Mapping[str, Any]],
     contract: Mapping[str, Any],
@@ -549,11 +854,16 @@ def _drive_feedback_ledger_valid(
         mode = _drive_feedback_mode(spec)
         if mode is None:
             return False
-        if mode == "wheel":
-            values = _wheel_feedback_contract_values(spec, physics_hz=physics_hz)
+        if _is_wheel_feedback_mode(mode):
+            values = _wheel_feedback_contract_values(
+                spec, physics_hz=physics_hz, mode=mode
+            )
             phase = feedback_phases[phase_id]
             try:
                 correction_channel = str(spec["correction_channel"])
+                correction_index = int(spec["correction_channel_index"])
+                probe_channel = str(spec["probe_channel"])
+                probe_index = int(spec["probe_channel_index"])
                 reference_integral = float(spec["reference_wheel_integral_rad"])
                 source_integral = float(
                     phase["command_metrics"]["wheel_integral_rad"][
@@ -561,7 +871,7 @@ def _drive_feedback_ledger_valid(
                     ]
                 )
                 derived_source_integral = _phase_zoh_channel_integral(
-                    phase, _WHEEL_TAIL_CHANNEL_INDEX
+                    phase, correction_index
                 )
                 active_duration = float(phase["active_duration_s"])
                 endpoint = tuple(float(item) for item in phase["end_full12"])
@@ -572,19 +882,67 @@ def _drive_feedback_ledger_valid(
                     if float(waypoint["time_s"]) < active_duration - 1.0e-12
                 )
                 prior_target = float(
-                    prior_waypoints[-1]["full12"][_WHEEL_TAIL_CHANNEL_INDEX]
+                    prior_waypoints[-1]["full12"][correction_index]
                 )
+                source_peak = float(
+                    phase["command_metrics"]["wheel_peak_abs_target_rad_s"][
+                        correction_channel
+                    ]
+                )
+                derived_source_peak = _phase_zoh_channel_peak_abs(
+                    phase, correction_index
+                )
+                probe_signature = tuple(
+                    (
+                        int(item["motion_tick"]),
+                        float(item["reference_actual_deg"]),
+                    )
+                    for item in spec["probe_samples"]
+                )
+                lag_threshold = float(spec["lag_threshold_deg"])
             except (KeyError, IndexError, TypeError, ValueError):
                 return False
             if (
                 values is None
+                or phase_id != "P09"
+                or correction_channel != _WHEEL_TAIL_CHANNEL
+                or correction_index != _WHEEL_TAIL_CHANNEL_INDEX
+                or probe_channel != _WHEEL_PROBE_CHANNEL
+                or probe_index != _WHEEL_PROBE_CHANNEL_INDEX
                 or not math.isfinite(source_integral)
                 or abs(reference_integral - source_integral) > 1.0e-12
                 or derived_source_integral is None
                 or abs(reference_integral - derived_source_integral) > 1.0e-12
                 or len(endpoint) != 12
-                or abs(endpoint[_WHEEL_TAIL_CHANNEL_INDEX]) > 1.0e-12
+                or abs(endpoint[correction_index]) > 1.0e-12
                 or abs(prior_target - _WHEEL_TAIL_VELOCITY_RAD_S) > 1.0e-12
+                or not math.isfinite(source_peak)
+                or derived_source_peak is None
+                or abs(source_peak - derived_source_peak) > 1.0e-12
+                or (
+                    mode == "wheel_rebound"
+                    and (
+                        probe_signature
+                        != tuple(
+                            zip(
+                                _WHEEL_TAIL_PROBE_TICKS,
+                                _WHEEL_PROBE_REFERENCES_DEG,
+                                strict=True,
+                            )
+                        )
+                        or abs(
+                            lag_threshold - _WHEEL_REBOUND_LAG_THRESHOLD_DEG
+                        )
+                        > 1.0e-12
+                        or spec.get("nominal_endpoint_restored") is not True
+                        or spec.get("raw_recording_runtime_access_required")
+                        is not False
+                        or round(active_duration * physics_hz)
+                        != _WHEEL_ENDPOINT_TICK
+                        or abs(source_peak - _WHEEL_REFERENCE_PEAK_ABS_RAD_S)
+                        > 1.0e-12
+                    )
+                )
             ):
                 return False
     previous_final: tuple[float, ...] | None = None
@@ -663,6 +1021,8 @@ def _drive_feedback_ledger_valid(
                 and tick >= probe_ticks[-1]
             }
         )
+        if not attempts:
+            return False
         trigger_consumed = False
         for attempt in attempts:
             consecutive = 0
@@ -754,13 +1114,13 @@ def _drive_feedback_ledger_valid(
                 cumulative_fraction = float(spec["cumulative_fraction_of_reference"])
                 peak_fraction = (
                     0.0
-                    if mode == "wheel"
+                    if _is_wheel_feedback_mode(mode)
                     else float(spec["peak_fraction_of_reference"])
                 )
                 logical_bias = float(
                     spec[
                         "logical_bias_rad_s"
-                        if mode == "wheel"
+                        if _is_wheel_feedback_mode(mode)
                         else "logical_bias_deg"
                     ]
                 )
@@ -784,17 +1144,34 @@ def _drive_feedback_ledger_valid(
                 return False
             if mode == "servo" and correction_channel_index >= 8:
                 return False
-            if mode == "wheel" and (
-                correction_channel != _WHEEL_TAIL_CHANNEL
-                or correction_channel_index != _WHEEL_TAIL_CHANNEL_INDEX
-                or first_bias_tick != _WHEEL_TAIL_FIRST_TICK
-                or last_bias_tick != _WHEEL_TAIL_LAST_TICK
-                or int(spec["teardown_tick"]) != _WHEEL_TAIL_TEARDOWN_TICK
-                or abs(logical_bias - _WHEEL_TAIL_VELOCITY_RAD_S) > 1.0e-12
-                or abs(peak_fraction) > 1.0e-12
-            ):
-                return False
-            if mode == "wheel":
+            if _is_wheel_feedback_mode(mode):
+                shape = _wheel_feedback_shape(mode)
+                if shape is None:
+                    return False
+                (
+                    expected_probe_ticks,
+                    expected_first_tick,
+                    expected_last_tick,
+                    expected_teardown_tick,
+                    expected_bias,
+                ) = shape
+                if (
+                    (
+                        mode == "wheel_rebound"
+                        and feedback.get("kind") != spec.get("kind")
+                    )
+                    or correction_channel != _WHEEL_TAIL_CHANNEL
+                    or correction_channel_index != _WHEEL_TAIL_CHANNEL_INDEX
+                    or probe_channel != _WHEEL_PROBE_CHANNEL
+                    or probe_channel_index != _WHEEL_PROBE_CHANNEL_INDEX
+                    or probe_ticks != expected_probe_ticks
+                    or first_bias_tick != expected_first_tick
+                    or last_bias_tick != expected_last_tick
+                    or int(spec["teardown_tick"]) != expected_teardown_tick
+                    or abs(logical_bias - expected_bias) > 1.0e-12
+                    or abs(peak_fraction) > 1.0e-12
+                ):
+                    return False
                 for field in (
                     "logical_bias_rad_s",
                     "reference_wheel_integral_rad",
@@ -806,6 +1183,24 @@ def _drive_feedback_ledger_valid(
                     except (KeyError, TypeError, ValueError):
                         return False
                     if logged is None or abs(logged - expected) > 1.0e-12:
+                        return False
+                if mode == "wheel_rebound":
+                    for field in (
+                        "resulting_wheel_integral_rad",
+                        "reference_wheel_peak_abs_rad_s",
+                        "resulting_wheel_peak_abs_rad_s",
+                    ):
+                        logged = _number(feedback, field)
+                        try:
+                            expected = float(spec[field])
+                        except (KeyError, TypeError, ValueError):
+                            return False
+                        if logged is None or abs(logged - expected) > 1.0e-12:
+                            return False
+                    if (
+                        feedback.get("instantaneous_direction_reversal") is not True
+                        or spec.get("instantaneous_direction_reversal") is not True
+                    ):
                         return False
             if triggered is not None:
                 trigger_attempt, trigger_tick = triggered
@@ -857,10 +1252,51 @@ def _drive_feedback_ledger_valid(
                 realized[correction_channel_index] - logical_bias
             ) > 1.0e-8:
                 return False
-            if mode == "wheel" and expected_active and abs(
-                final[correction_channel_index] - _WHEEL_TAIL_VELOCITY_RAD_S
-            ) > 1.0e-8:
-                return False
+            if mode == "wheel" and expected_active:
+                if abs(
+                    final[correction_channel_index]
+                    - _WHEEL_TAIL_VELOCITY_RAD_S
+                ) > 1.0e-8:
+                    return False
+            if mode == "wheel_rebound":
+                contract_native = _phase_channel_at_motion_tick(
+                    feedback_phases[phase_id],
+                    correction_channel_index,
+                    tick,
+                    physics_hz=physics_hz,
+                )
+                expected_final = (
+                    None
+                    if contract_native is None
+                    else contract_native
+                    + (logical_bias if expected_active else 0.0)
+                )
+                pinned_native = None
+                if _WHEEL_TAIL_PROBE_TICKS[0] <= tick < _WHEEL_ENDPOINT_TICK:
+                    pinned_native = _WHEEL_TAIL_VELOCITY_RAD_S
+                elif _WHEEL_ENDPOINT_TICK <= tick <= _WHEEL_REBOUND_LAST_TICK:
+                    pinned_native = 0.0
+                if (
+                    contract_native is None
+                    or expected_final is None
+                    or (
+                        pinned_native is not None
+                        and abs(contract_native - pinned_native) > 1.0e-12
+                    )
+                    or abs(native[correction_channel_index] - contract_native)
+                    > 1.0e-8
+                    or abs(final[correction_channel_index] - expected_final)
+                    > 1.0e-8
+                    or not _wheel_rebound_atomic_ack_valid(
+                        row,
+                        full12_order=full12_order,
+                        native=native,
+                        final=final,
+                        requested=requested,
+                        realized=realized,
+                    )
+                ):
+                    return False
         else:
             try:
                 logged_peak = float(feedback.get("peak_fraction_of_reference"))
@@ -964,18 +1400,31 @@ def _drive_feedback_ledger_valid(
                     or abs(actual[probe_index] - observed) > 1.0e-9
                 ):
                     return False
-        expected_first_bias_tick = trigger_tick + (5 if mode == "wheel" else 3)
+        expected_first_bias_tick = trigger_tick + (
+            5 if mode == "wheel" else 1 if mode == "wheel_rebound" else 3
+        )
         if first_bias_tick != expected_first_bias_tick:
             return False
-        if mode == "wheel" and (
-            probe_ticks != _WHEEL_TAIL_PROBE_TICKS
-            or trigger_tick != _WHEEL_TAIL_PROBE_TICKS[-1]
-            or first_bias_tick != _WHEEL_TAIL_FIRST_TICK
-            or last_bias_tick != _WHEEL_TAIL_LAST_TICK
-            or teardown_tick != _WHEEL_TAIL_TEARDOWN_TICK
-            or correction_index != _WHEEL_TAIL_CHANNEL_INDEX
-        ):
-            return False
+        if _is_wheel_feedback_mode(mode):
+            shape = _wheel_feedback_shape(mode)
+            if shape is None:
+                return False
+            (
+                expected_probe_ticks,
+                expected_first_tick,
+                expected_last_tick,
+                expected_teardown_tick,
+                _,
+            ) = shape
+            if (
+                probe_ticks != expected_probe_ticks
+                or trigger_tick != expected_probe_ticks[-1]
+                or first_bias_tick != expected_first_tick
+                or last_bias_tick != expected_last_tick
+                or teardown_tick != expected_teardown_tick
+                or correction_index != _WHEEL_TAIL_CHANNEL_INDEX
+            ):
+                return False
         last_bias_index = row_index_by_attempt_tick[
             (phase_id, trigger_attempt, last_bias_tick)
         ]
@@ -1021,7 +1470,7 @@ def _drive_feedback_ledger_valid(
             or abs(declared[correction_index]) > 1.0e-9
         ):
             return False
-        if mode == "wheel":
+        if _is_wheel_feedback_mode(mode):
             final = _vector(teardown_row, "drive_target_full12")
             native = _vector(teardown_row, "native_drive_target_full12")
             if (
@@ -1032,6 +1481,36 @@ def _drive_feedback_ledger_valid(
                 or abs(final[correction_index]) > 1.0e-8
             ):
                 return False
+            if mode == "wheel_rebound":
+                feedback = teardown_row["drive_feedback"]
+                neutral_fields = (
+                    "resulting_wheel_integral_rad",
+                    "reference_wheel_peak_abs_rad_s",
+                    "resulting_wheel_peak_abs_rad_s",
+                )
+                same_phase_teardown = (
+                    teardown_phase == phase_id
+                    and teardown_attempt == trigger_attempt
+                )
+                if not _wheel_rebound_atomic_ack_valid(
+                    teardown_row,
+                    full12_order=full12_order,
+                    native=native,
+                    final=final,
+                    requested=requested,
+                    realized=realized,
+                ):
+                    return False
+                if not same_phase_teardown and (
+                    feedback.get("kind") is not None
+                    or any(
+                        (value := _number(feedback, field)) is None
+                        or abs(value) > 1.0e-12
+                        for field in neutral_fields
+                    )
+                    or feedback.get("instantaneous_direction_reversal") is not False
+                ):
+                    return False
         teardown_row_by_phase[phase_id] = teardown_row
     for phase_id, spec in feedback_specs.items():
         trace = realized_traces[phase_id]
@@ -1049,16 +1528,31 @@ def _drive_feedback_ledger_valid(
             )
             assert teardown is not None
             trace.append(teardown[correction_index])
-        if mode == "wheel":
-            values = _wheel_feedback_contract_values(spec, physics_hz=physics_hz)
+        if _is_wheel_feedback_mode(mode):
+            values = _wheel_feedback_contract_values(
+                spec, physics_hz=physics_hz, mode=mode
+            )
             if values is None:
                 return False
             reference_integral, integral_budget = values
+            realized_signed_integral = sum(trace) / physics_hz
             realized_integral_fraction = (
                 sum(abs(value) for value in trace) / physics_hz / reference_integral
             )
+            try:
+                declared_signed_integral = float(
+                    spec["additional_wheel_integral_rad"]
+                )
+            except (KeyError, TypeError, ValueError):
+                return False
             if (
-                realized_integral_fraction > integral_budget + 1.0e-9
+                (
+                    abs(realized_signed_integral - declared_signed_integral)
+                    > 1.0e-9
+                    if triggered is not None
+                    else abs(realized_signed_integral) > 1.0e-9
+                )
+                or realized_integral_fraction > integral_budget + 1.0e-9
                 or realized_integral_fraction
                 > _MAX_FEEDBACK_FRACTION + 1.0e-9
             ):

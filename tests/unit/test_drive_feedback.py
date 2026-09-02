@@ -18,7 +18,7 @@ def _actual(channel_index: int, value: float) -> tuple[float, ...]:
     return tuple(result)
 
 
-def test_p09_two_sample_live_deficit_latches_bounded_wheel_carry() -> None:
+def test_p09_two_sample_live_deficit_latches_bounded_wheel_rebound() -> None:
     phase = load_motion_contract(
         ROOT / "configs" / "recording_motion_contract.json"
     ).phase("P09")
@@ -77,10 +77,11 @@ def test_p09_two_sample_live_deficit_latches_bounded_wheel_carry() -> None:
     assert probe_a.active is False
     assert probe_b.just_triggered is True
     assert probe_b.active is False
-    assert len(armed_gap) == 4
+    assert len(armed_gap) == 0
     assert all(not item.active for item in armed_gap)
     assert all(item.trigger_tick == second.motion_tick for item in armed_gap)
     assert all(item.active for item in active)
+    assert len(active) == 12
     assert all(
         item.bias_full12[spec.correction_channel_index]
         == pytest.approx(spec.logical_bias_rad_s)
@@ -96,18 +97,39 @@ def test_p09_two_sample_live_deficit_latches_bounded_wheel_carry() -> None:
         abs(spec.additional_wheel_integral_rad)
         / abs(spec.reference_wheel_integral_rad)
     )
-    assert active[0].logical_bias_rad_s == -1.07
+    assert active[0].kind == "pre_endpoint_wheel_rebound_alignment"
+    assert active[0].logical_bias_rad_s == 1.07
     assert active[0].reference_wheel_integral_rad == pytest.approx(
         -0.9060000000012605
     )
     assert active[0].additional_wheel_integral_rad == pytest.approx(
-        -1.07 * 8.0 / 120.0
+        1.07 * 12.0 / 120.0
     )
+    assert active[0].resulting_wheel_integral_rad == pytest.approx(
+        -0.7990000000012605
+    )
+    assert active[0].reference_wheel_peak_abs_rad_s == pytest.approx(1.07)
+    assert active[0].resulting_wheel_peak_abs_rad_s == pytest.approx(1.07)
+    assert active[0].instantaneous_direction_reversal is True
+    endpoint_tick = round(phase.active_duration_s * 120.0)
+    active_by_tick = {item.tick_index: item for item in active}
+    for tick in range(spec.first_bias_tick, endpoint_tick):
+        native = phase.nominal_at(tick / 120.0)[spec.correction_channel_index]
+        assert native == pytest.approx(-1.07)
+        assert native + active_by_tick[tick].bias_full12[
+            spec.correction_channel_index
+        ] == pytest.approx(0.0)
+    for tick in range(endpoint_tick, spec.last_bias_tick + 1):
+        native = phase.end_full12[spec.correction_channel_index]
+        assert native == pytest.approx(0.0)
+        assert native + active_by_tick[tick].bias_full12[
+            spec.correction_channel_index
+        ] == pytest.approx(1.07)
     assert restored.bias_full12 == pytest.approx((0.0,) * 12)
     assert restored.cumulative_fraction_of_reference < 0.15
 
 
-def test_p09_wheel_carry_requires_both_live_deficit_samples() -> None:
+def test_p09_wheel_rebound_requires_both_live_deficit_samples() -> None:
     phase = load_motion_contract(
         ROOT / "configs" / "recording_motion_contract.json"
     ).phase("P09")
@@ -143,7 +165,7 @@ def test_p09_wheel_carry_requires_both_live_deficit_samples() -> None:
     assert active.bias_full12 == pytest.approx((0.0,) * 12)
 
 
-def test_p09_wheel_carry_is_one_shot_across_a_same_state_retry() -> None:
+def test_p09_wheel_rebound_is_one_shot_across_a_same_state_retry() -> None:
     phase = load_motion_contract(
         ROOT / "configs" / "recording_motion_contract.json"
     ).phase("P09")
@@ -193,15 +215,61 @@ def test_p09_wheel_carry_is_one_shot_across_a_same_state_retry() -> None:
     ).active is False
 
 
-def test_p09_wheel_carry_runtime_rejects_an_invalid_integral_budget() -> None:
+@pytest.mark.parametrize(
+    ("field", "invalid_value"),
+    (
+        ("kind", "verify_tail_wheel_carry_alignment"),
+        ("logical_bias_rad_s", -1.07),
+        ("resulting_wheel_integral_rad", -0.8),
+        ("cumulative_fraction_of_reference", 0.16),
+        ("reference_wheel_peak_abs_rad_s", 1.06),
+        ("resulting_wheel_peak_abs_rad_s", 1.08),
+        ("instantaneous_direction_reversal", False),
+    ),
+)
+def test_p09_wheel_rebound_runtime_fails_closed(
+    field: str, invalid_value: object
+) -> None:
     phase = load_motion_contract(
         ROOT / "configs" / "recording_motion_contract.json"
     ).phase("P09")
     spec = phase.drive_feedback
     assert spec is not None
-    invalid = replace(spec, cumulative_fraction_of_reference=0.16)
+    invalid = replace(spec, **{field: invalid_value})
 
-    with pytest.raises(RuntimeError, match="not a valid wheel carry"):
+    with pytest.raises(RuntimeError, match="not a valid wheel rebound"):
+        ReferenceBoundedDriveFeedback().update(
+            state_id="P09",
+            motion_tick_index=spec.probe_samples[0].motion_tick,
+            actual_full12=_actual(spec.probe_channel_index, 0.0),
+            spec=invalid,
+        )
+
+
+def test_p09_wheel_rebound_runtime_rejects_wrong_state_or_probe_reference() -> None:
+    phase = load_motion_contract(
+        ROOT / "configs" / "recording_motion_contract.json"
+    ).phase("P09")
+    spec = phase.drive_feedback
+    assert spec is not None
+
+    with pytest.raises(RuntimeError, match="not a valid wheel rebound"):
+        ReferenceBoundedDriveFeedback().update(
+            state_id="P08",
+            motion_tick_index=spec.probe_samples[0].motion_tick,
+            actual_full12=_actual(spec.probe_channel_index, 0.0),
+            spec=spec,
+        )
+
+    changed_probe = replace(
+        spec.probe_samples[0],
+        reference_actual_deg=spec.probe_samples[0].reference_actual_deg + 0.01,
+    )
+    invalid = replace(
+        spec,
+        probe_samples=(changed_probe, spec.probe_samples[1]),
+    )
+    with pytest.raises(RuntimeError, match="not a valid wheel rebound"):
         ReferenceBoundedDriveFeedback().update(
             state_id="P09",
             motion_tick_index=spec.probe_samples[0].motion_tick,

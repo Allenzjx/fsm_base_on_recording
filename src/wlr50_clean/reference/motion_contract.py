@@ -17,6 +17,22 @@ from typing import Any, Mapping, Sequence
 SERVO_COUNT = 8
 ACTION_COUNT = 12
 EXPECTED_PHASE_IDS = tuple(f"P{index:02d}" for index in range(1, 14))
+PHYSICS_HZ = 120.0
+DECISION_STRIDE = 8
+WHEEL_HARD_LIMIT_RAD_S = 2.0943951023931953
+MAX_CUMULATIVE_CORRECTION_FRACTION = 0.15
+REBOUND_STATE_ID = "P09"
+REBOUND_KIND = "pre_endpoint_wheel_rebound_alignment"
+REBOUND_PROBE_CHANNEL = "rear_right_knee"
+REBOUND_PROBE_CHANNEL_INDEX = 7
+REBOUND_PROBES = (
+    (858, -51.055799822535),
+    (859, -51.191638624749),
+)
+REBOUND_LAG_THRESHOLD_DEG = 1.7
+REBOUND_CORRECTION_CHANNEL = "front_left_ankle"
+REBOUND_CORRECTION_CHANNEL_INDEX = 8
+REBOUND_LOGICAL_BIAS_RAD_S = 1.07
 
 
 def _vector(value: Sequence[Any], *, label: str) -> tuple[float, ...]:
@@ -24,6 +40,12 @@ def _vector(value: Sequence[Any], *, label: str) -> tuple[float, ...]:
     if len(result) != ACTION_COUNT:
         raise ValueError(f"{label}: expected {ACTION_COUNT} values")
     return result
+
+
+def _boolean(value: Any, *, label: str) -> bool:
+    if not isinstance(value, bool):
+        raise ValueError(f"{label}: expected a boolean")
+    return value
 
 
 @dataclass(frozen=True)
@@ -67,7 +89,11 @@ class DriveFeedbackSpec:
     logical_bias_rad_s: float
     reference_wheel_integral_rad: float
     additional_wheel_integral_rad: float
+    resulting_wheel_integral_rad: float
     cumulative_fraction_of_reference: float
+    reference_wheel_peak_abs_rad_s: float
+    resulting_wheel_peak_abs_rad_s: float
+    instantaneous_direction_reversal: bool
 
 
 @dataclass(frozen=True)
@@ -201,8 +227,21 @@ def _parse_phase(value: Mapping[str, Any]) -> MotionPhase:
             additional_wheel_integral_rad=float(
                 raw_feedback["additional_wheel_integral_rad"]
             ),
+            resulting_wheel_integral_rad=float(
+                raw_feedback["resulting_wheel_integral_rad"]
+            ),
             cumulative_fraction_of_reference=float(
                 raw_feedback["cumulative_fraction_of_reference"]
+            ),
+            reference_wheel_peak_abs_rad_s=float(
+                raw_feedback["reference_wheel_peak_abs_rad_s"]
+            ),
+            resulting_wheel_peak_abs_rad_s=float(
+                raw_feedback["resulting_wheel_peak_abs_rad_s"]
+            ),
+            instantaneous_direction_reversal=_boolean(
+                raw_feedback["instantaneous_direction_reversal"],
+                label="drive_feedback.instantaneous_direction_reversal",
             ),
         )
     raw_alignment = value.get("entry_velocity_alignment")
@@ -282,80 +321,121 @@ def _validate_phases(
             raise ValueError(f"{phase.state_id}: invalid PPO action mask")
         feedback = phase.drive_feedback
         if feedback is not None:
-            if feedback.kind != "verify_tail_wheel_carry_alignment":
+            if (
+                phase.state_id != REBOUND_STATE_ID
+                or feedback.kind != REBOUND_KIND
+            ):
                 raise ValueError(f"{phase.state_id}: unknown drive-feedback kind")
             if (
-                feedback.probe_channel_index < 0
-                or feedback.probe_channel_index >= SERVO_COUNT
+                feedback.probe_channel != REBOUND_PROBE_CHANNEL
+                or feedback.probe_channel_index != REBOUND_PROBE_CHANNEL_INDEX
                 or full12_order[feedback.probe_channel_index]
                 != feedback.probe_channel
-                or feedback.correction_channel_index < SERVO_COUNT
-                or feedback.correction_channel_index >= ACTION_COUNT
+                or feedback.correction_channel != REBOUND_CORRECTION_CHANNEL
+                or feedback.correction_channel_index
+                != REBOUND_CORRECTION_CHANNEL_INDEX
                 or full12_order[feedback.correction_channel_index]
                 != feedback.correction_channel
             ):
                 raise ValueError(f"{phase.state_id}: drive-feedback channel mismatch")
             probe_ticks = tuple(item.motion_tick for item in feedback.probe_samples)
+            probes = tuple(
+                (item.motion_tick, item.reference_actual_deg)
+                for item in feedback.probe_samples
+            )
             if (
-                not probe_ticks
-                or any(right != left + 1 for left, right in zip(probe_ticks, probe_ticks[1:]))
-                or feedback.required_consecutive_samples != len(probe_ticks)
+                probes != REBOUND_PROBES
+                or feedback.required_consecutive_samples != len(REBOUND_PROBES)
+                or abs(feedback.lag_threshold_deg - REBOUND_LAG_THRESHOLD_DEG)
+                > 1.0e-12
                 or feedback.first_bias_tick <= probe_ticks[-1]
                 or feedback.last_bias_tick < feedback.first_bias_tick
                 or feedback.teardown_tick != feedback.last_bias_tick + 1
             ):
                 raise ValueError(f"{phase.state_id}: invalid drive-feedback timing")
-            endpoint_tick = round(phase.active_duration_s * 120.0)
-            decision_stride = 8
+            endpoint_tick = round(phase.active_duration_s * PHYSICS_HZ)
             if (
                 probe_ticks != (endpoint_tick - 6, endpoint_tick - 5)
-                or feedback.first_bias_tick != endpoint_tick
-                or feedback.last_bias_tick != endpoint_tick + decision_stride - 1
-                or feedback.teardown_tick != endpoint_tick + decision_stride
+                or feedback.first_bias_tick != endpoint_tick - 4
+                or feedback.last_bias_tick != endpoint_tick + DECISION_STRIDE - 1
+                or feedback.teardown_tick != endpoint_tick + DECISION_STRIDE
             ):
                 raise ValueError(
-                    f"{phase.state_id}: drive feedback does not match the "
-                    "bounded first-verify wheel carry"
+                    f"{phase.state_id}: drive-feedback does not match the "
+                    "bounded pre-endpoint wheel rebound"
                 )
             values = (
                 feedback.lag_threshold_deg,
                 feedback.logical_bias_rad_s,
                 feedback.reference_wheel_integral_rad,
                 feedback.additional_wheel_integral_rad,
+                feedback.resulting_wheel_integral_rad,
                 feedback.cumulative_fraction_of_reference,
+                feedback.reference_wheel_peak_abs_rad_s,
+                feedback.resulting_wheel_peak_abs_rad_s,
                 *(probe.reference_actual_deg for probe in feedback.probe_samples),
             )
             active_ticks = feedback.last_bias_tick - feedback.first_bias_tick + 1
-            additional = feedback.logical_bias_rad_s * active_ticks / 120.0
+            additional = feedback.logical_bias_rad_s * active_ticks / PHYSICS_HZ
             reference = feedback.reference_wheel_integral_rad
             derived_reference = _zoh_channel_integral(
                 phase, feedback.correction_channel_index
             )
+            resulting = reference + additional
             cumulative = (
                 math.inf if reference == 0.0 else abs(additional) / abs(reference)
             )
-            prior_waypoints = tuple(
-                waypoint
-                for waypoint in phase.waypoints
-                if waypoint.time_s < phase.active_duration_s - 1.0e-12
+            reference_peak = _zoh_channel_peak_abs(
+                phase, feedback.correction_channel_index
+            )
+            resulting_peak = _feedback_channel_peak_abs(
+                phase,
+                feedback.correction_channel_index,
+                first_bias_tick=feedback.first_bias_tick,
+                last_bias_tick=feedback.last_bias_tick,
+                bias=feedback.logical_bias_rad_s,
+            )
+            pre_endpoint_native = tuple(
+                _channel_at_motion_tick(
+                    phase, feedback.correction_channel_index, tick
+                )
+                for tick in range(feedback.first_bias_tick, endpoint_tick)
+            )
+            post_endpoint_native = tuple(
+                _channel_at_motion_tick(
+                    phase, feedback.correction_channel_index, tick
+                )
+                for tick in range(endpoint_tick, feedback.last_bias_tick + 1)
             )
             if (
                 any(not math.isfinite(value) for value in values)
                 or feedback.lag_threshold_deg <= 0.0
-                or not prior_waypoints
-                or abs(
-                    prior_waypoints[-1].full12[feedback.correction_channel_index]
-                    - feedback.logical_bias_rad_s
-                )
+                or abs(feedback.logical_bias_rad_s - REBOUND_LOGICAL_BIAS_RAD_S)
                 > 1.0e-12
+                or not pre_endpoint_native
+                or not post_endpoint_native
+                or any(
+                    abs(native + feedback.logical_bias_rad_s) > 1.0e-12
+                    for native in pre_endpoint_native
+                )
+                or any(abs(native) > 1.0e-12 for native in post_endpoint_native)
                 or abs(phase.end_full12[feedback.correction_channel_index])
                 > 1.0e-12
-                or feedback.logical_bias_rad_s * reference <= 0.0
+                or feedback.logical_bias_rad_s * reference >= 0.0
+                or feedback.instantaneous_direction_reversal is not True
                 or abs(reference - derived_reference) > 1.0e-12
                 or abs(additional - feedback.additional_wheel_integral_rad)
                 > 1.0e-12
+                or abs(resulting - feedback.resulting_wheel_integral_rad)
+                > 1.0e-12
                 or abs(cumulative - feedback.cumulative_fraction_of_reference) > 1.0e-12
-                or cumulative > 0.15 + 1.0e-12
+                or cumulative > MAX_CUMULATIVE_CORRECTION_FRACTION + 1.0e-12
+                or abs(reference_peak - feedback.reference_wheel_peak_abs_rad_s)
+                > 1.0e-12
+                or abs(resulting_peak - feedback.resulting_wheel_peak_abs_rad_s)
+                > 1.0e-12
+                or resulting_peak > reference_peak + 1.0e-12
+                or resulting_peak > WHEEL_HARD_LIMIT_RAD_S + 1.0e-12
             ):
                 raise ValueError(f"{phase.state_id}: drive-feedback budget is invalid")
         alignment = phase.entry_velocity_alignment
@@ -409,3 +489,50 @@ def _zoh_channel_integral(phase: MotionPhase, channel_index: int) -> float:
         )
         result += waypoint.full12[channel_index] * max(0.0, right - left)
     return result
+
+
+def _zoh_channel_peak_abs(phase: MotionPhase, channel_index: int) -> float:
+    """Return the absolute peak of one frozen ZOH command channel."""
+
+    return max(
+        abs(waypoint.full12[channel_index]) for waypoint in phase.waypoints
+    )
+
+
+def _channel_at_motion_tick(
+    phase: MotionPhase, channel_index: int, tick: int
+) -> float:
+    """Match the motion sequencer's integer endpoint dispatch semantics."""
+
+    endpoint_tick = round(phase.active_duration_s * PHYSICS_HZ)
+    if tick >= endpoint_tick:
+        return phase.end_full12[channel_index]
+    return phase.nominal_at(tick / PHYSICS_HZ)[channel_index]
+
+
+def _feedback_channel_peak_abs(
+    phase: MotionPhase,
+    channel_index: int,
+    *,
+    first_bias_tick: int,
+    last_bias_tick: int,
+    bias: float,
+) -> float:
+    """Re-derive the peak after applying a bounded tick-indexed correction."""
+
+    endpoint_tick = round(phase.active_duration_s * PHYSICS_HZ)
+    values = [
+        abs(waypoint.full12[channel_index]) for waypoint in phase.waypoints
+    ]
+    values.extend(
+        abs(
+            _channel_at_motion_tick(phase, channel_index, tick) + bias
+        )
+        for tick in range(first_bias_tick, min(last_bias_tick, endpoint_tick - 1) + 1)
+    )
+    if last_bias_tick >= endpoint_tick:
+        values.extend(
+            abs(bias)
+            for _ in range(endpoint_tick, last_bias_tick + 1)
+        )
+    return max(values)
