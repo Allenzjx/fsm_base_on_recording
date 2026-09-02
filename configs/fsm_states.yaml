@@ -2147,6 +2147,7 @@ states:
     leg: RR
   - guard: leg_top_loaded_latched
     leg: RR
+  - guard: drive_feedback_cycle_complete
   reference_sensor_envelope:
     active_channel_actual_result_readback:
       front_left_hip: -18.603565668231575

@@ -410,6 +410,7 @@ def test_live_observation_resolves_every_sensor_guard_in_fsm_config() -> None:
         "motion_endpoint_issued",
         "wheel_targets_zero",
         "measured_wheel_velocity_stable_decay",
+        "drive_feedback_cycle_complete",
     }
     unresolved: list[str] = []
     for state in config["states"]:

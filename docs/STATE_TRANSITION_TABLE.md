@@ -12,7 +12,7 @@ Every state follows WAIT_ENTRY → EXECUTE_MOTION → VERIFY_RESULT → RECOVERY
 | P06 | leg_top_loaded_latched; rear_pair_pre_edge_geometry | P07 | 0.250 | FL top load is latched and the rear pair has reached the measured pre-edge geometry. |
 | P07 | motion_endpoint_issued; rear_entry_alignment | P08 | 0.250 | The rear-entry pose and wheel relation match the v010 first-rear entry envelope. |
 | P08 | motion_endpoint_issued; rr_unload_compatible_geometry | P09 | 0.250 | The v010 FR+RL support geometry and active RR-unload preparation are present. |
-| P09 | reference_like_active_lift; leg_front_face_crossed_latched; leg_top_loaded_latched | P10 | 0.250 | Latched RR active lift, front-face crossing, and top load prove RR-first traversal. |
+| P09 | reference_like_active_lift; leg_front_face_crossed_latched; leg_top_loaded_latched; drive_feedback_cycle_complete | P10 | 0.250 | Latched RR active lift, front-face crossing, and top load prove RR-first traversal. |
 | P10 | motion_endpoint_issued; rl_workspace_geometry | P11 | 0.250 | The FL+RR-related workspace is established for the second rear leg. |
 | P11 | reference_like_active_joint_change; rl_unload_entry_geometry | P12 | 0.250 | The FR-directed transfer action has reached the v010 RL-unload entry pose. |
 | P12 | reference_like_active_lift; leg_front_face_crossed_latched; leg_top_loaded_latched | P13 | 0.250 | Latched RL active lift, front-face crossing, and top load complete the rear order. |

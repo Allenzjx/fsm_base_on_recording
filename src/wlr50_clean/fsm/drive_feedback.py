@@ -58,8 +58,8 @@ class ReferenceBoundedDriveFeedback:
     Trial012 and Trial013 proved that early rear-left-knee pulses of either
     sign select the wrong contact branch.  The compact contract now observes
     the causal rear-right-knee endpoint deficit directly, then applies one
-    bounded rear-left-knee support-release correction only across the P09
-    verify tail.  The signed P10 velocity guard remains authoritative.
+    bounded rear-left-knee support-release correction across one extra P09
+    verify quantum.  The signed P10 velocity guard remains authoritative.
     """
 
     def __init__(self) -> None:
@@ -67,6 +67,10 @@ class ReferenceBoundedDriveFeedback:
         self._trigger_tick: int | None = None
         self._trigger_consumed = False
         self._consecutive_lag_samples = 0
+
+    @property
+    def trigger_latched(self) -> bool:
+        return self._trigger_tick is not None
 
     def update(
         self,

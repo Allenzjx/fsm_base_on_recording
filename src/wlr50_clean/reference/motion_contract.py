@@ -305,12 +305,13 @@ def _validate_phases(
             endpoint_tick = round(phase.active_duration_s * 120.0)
             decision_stride = 8
             if (
-                feedback.first_bias_tick < endpoint_tick
-                or feedback.last_bias_tick > endpoint_tick + decision_stride - 1
-                or feedback.teardown_tick != endpoint_tick + decision_stride
+                feedback.first_bias_tick != endpoint_tick + decision_stride
+                or feedback.last_bias_tick
+                != endpoint_tick + 2 * decision_stride - 1
+                or feedback.teardown_tick != endpoint_tick + 2 * decision_stride
             ):
                 raise ValueError(
-                    f"{phase.state_id}: drive feedback is not confined to the verify tail"
+                    f"{phase.state_id}: drive feedback does not occupy the bounded second verify quantum"
                 )
             peak = abs(feedback.logical_bias_deg) / abs(feedback.reference_excursion_deg)
             cumulative = 2.0 * peak

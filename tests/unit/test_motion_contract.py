@@ -101,16 +101,16 @@ def test_p09_carry_phase_feedback_is_compact_and_strictly_reference_bounded() ->
     feedback = contract.phase("P09").drive_feedback
     assert feedback is not None
     assert [(item.motion_tick, item.reference_actual_deg) for item in feedback.probe_samples] == [
-        (862, -51.50794810030658),
-        (863, -51.549332216487684),
+        (870, -50.8511468644344),
+        (871, -50.63441813188072),
     ]
     assert feedback.probe_channel == "rear_right_knee"
     assert feedback.probe_channel_index == 7
     assert feedback.correction_channel == "rear_left_knee"
     assert feedback.correction_channel_index == 5
-    assert feedback.first_bias_tick == 864
-    assert feedback.last_bias_tick == 871
-    assert feedback.teardown_tick == 872
+    assert feedback.first_bias_tick == 872
+    assert feedback.last_bias_tick == 879
+    assert feedback.teardown_tick == 880
     assert feedback.logical_bias_deg == 1.25
     assert feedback.peak_fraction_of_reference == pytest.approx(1.25 / 19.4)
     assert feedback.cumulative_fraction_of_reference == pytest.approx(2.5 / 19.4)

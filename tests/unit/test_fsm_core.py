@@ -303,7 +303,7 @@ def test_controller_exposes_live_latched_p09_drive_feedback(spec, contract) -> N
         (0.5, Lifecycle.WAIT_ENTRY, None),
     ),
 )
-def test_p09_teardown_and_p10_velocity_gate_share_tick_872_safely(
+def test_p09_teardown_and_p10_velocity_gate_share_tick_880_safely(
     spec,
     contract,
     velocity_scale: float,
@@ -319,16 +319,17 @@ def test_p09_teardown_and_p10_velocity_gate_share_tick_872_safely(
     assert feedback is not None and alignment is not None
     controller.motion.start_phase(p09)
 
-    frame = None
+    frames = {}
     for tick in range(feedback.teardown_tick + 1):
         completing = tick == feedback.teardown_tick
+        physical_completion_ready = tick >= feedback.first_bias_tick
         guards = _live_guards(completion=False)
         for name in (
             "reference_like_active_lift:RR",
             "leg_front_face_crossed_latched:RR",
             "leg_top_loaded_latched:RR",
         ):
-            guards[name] = completing
+            guards[name] = physical_completion_ready
         actual = list(
             controller.state.reference_actual_start_full12
             if not completing
@@ -347,7 +348,7 @@ def test_p09_teardown_and_p10_velocity_gate_share_tick_872_safely(
             velocity[alignment.channel_index] = (
                 alignment.reference_velocity_deg_s * velocity_scale
             )
-        frame = controller.step(
+        frames[tick] = controller.step(
             {
                 "guards": guards,
                 "actual_full12": actual,
@@ -357,7 +358,16 @@ def test_p09_teardown_and_p10_velocity_gate_share_tick_872_safely(
             sim_time_s=tick / 120.0,
         )
 
-    assert frame is not None
+    held = frames[feedback.first_bias_tick]
+    assert held.state_id == "P09"
+    assert held.lifecycle is Lifecycle.VERIFY_RESULT
+    assert held.drive_feedback_bias_full12[
+        feedback.correction_channel_index
+    ] == pytest.approx(feedback.logical_bias_deg)
+    assert not any(
+        event.to_lifecycle == Lifecycle.DONE.value for event in held.events
+    )
+    frame = frames[feedback.teardown_tick]
     assert frame.state_id == "P10"
     assert frame.lifecycle is expected_lifecycle
     assert frame.drive_feedback_bias_full12 == pytest.approx((0.0,) * 12)
@@ -378,6 +388,57 @@ def test_p09_teardown_and_p10_velocity_gate_share_tick_872_safely(
             and event.to_lifecycle == Lifecycle.EXECUTE_MOTION.value
             for event in frame.events
         )
+
+
+def test_p09_without_live_deficit_does_not_add_a_verify_quantum(
+    spec, contract
+) -> None:
+    controller = SensorFsmController(spec, contract)
+    controller.state = spec.state("P09")
+    controller.lifecycle = Lifecycle.EXECUTE_MOTION
+    p09 = contract.phase("P09")
+    feedback = p09.drive_feedback
+    alignment = contract.phase("P10").entry_velocity_alignment
+    assert feedback is not None and alignment is not None
+    controller.motion.start_phase(p09)
+
+    decision_tick = round(p09.active_duration_s * 120.0) + spec.decision_stride
+    for tick in range(decision_tick + 1):
+        completing = tick == decision_tick
+        guards = _live_guards(completion=False)
+        for name in (
+            "reference_like_active_lift:RR",
+            "leg_front_face_crossed_latched:RR",
+            "leg_top_loaded_latched:RR",
+        ):
+            guards[name] = completing
+        actual = list(
+            spec.state("P10").reference_actual_start_full12
+            if completing
+            else controller.state.reference_actual_start_full12
+        )
+        probe = next(
+            (item for item in feedback.probe_samples if item.motion_tick == tick),
+            None,
+        )
+        if probe is not None:
+            actual[feedback.probe_channel_index] = probe.reference_actual_deg
+        velocity = [0.0] * 12
+        if completing:
+            velocity[alignment.channel_index] = alignment.reference_velocity_deg_s
+        frame = controller.step(
+            {
+                "guards": guards,
+                "actual_full12": actual,
+                "velocity_full12": velocity,
+                "progress_vector": (float(tick),),
+            },
+            sim_time_s=tick / 120.0,
+        )
+
+    assert frame.state_id == "P10"
+    assert frame.lifecycle is Lifecycle.EXECUTE_MOTION
+    assert frame.drive_feedback_bias_full12 == pytest.approx((0.0,) * 12)
 
 
 @pytest.mark.parametrize(

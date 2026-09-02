@@ -448,7 +448,31 @@ class SensorFsmController:
             "wheel_targets_zero": all(abs(value) <= 1e-9 for value in held[8:]),
             "reference_entry_compatible": self._entry_compatibility(observation),
             "final_joint_pose_compatible": self._final_pose_compatibility(observation),
+            "drive_feedback_cycle_complete": self._drive_feedback_cycle_complete(),
         }
+
+    def _drive_feedback_cycle_complete(self) -> GuardEvidence:
+        feedback = self.phase.drive_feedback
+        triggered = self.drive_feedback.trigger_latched
+        tick = self._drive_feedback_tick_index
+        passed = bool(
+            feedback is None
+            or not triggered
+            or (tick is not None and tick >= feedback.last_bias_tick)
+        )
+        return GuardEvidence(
+            "drive_feedback_cycle_complete",
+            passed,
+            {
+                "triggered": triggered,
+                "current_tick": tick,
+                "required_last_bias_tick": (
+                    None if feedback is None else feedback.last_bias_tick
+                ),
+            },
+            "controller.live_drive_feedback",
+            "a live-triggered bounded carry correction must finish before P09 can advance",
+        )
 
     def _entry_compatibility(self, observation: Any) -> GuardEvidence:
         actual = _actual_servo_positions(observation, self.contract.full12_order[:8])

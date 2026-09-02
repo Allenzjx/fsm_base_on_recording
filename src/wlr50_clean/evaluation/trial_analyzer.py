@@ -401,7 +401,7 @@ def _drive_feedback_ledger_valid(
     attempt_by_phase: dict[str, int] = {}
     previous_tick_by_phase: dict[str, int] = {}
     row_attempts: list[tuple[str, int, int | None]] = []
-    trigger_attempts: dict[str, tuple[int, int]] = {}
+    logged_trigger_attempts: dict[str, tuple[int, int]] = {}
     row_index_by_attempt_tick: dict[tuple[str, int, int], int] = {}
     for row_index, row in enumerate(rows):
         phase_id = _phase(row)
@@ -424,9 +424,86 @@ def _drive_feedback_ledger_valid(
             row_index_by_attempt_tick[key] = row_index
         row_attempts.append((phase_id, attempt, tick))
         if feedback.get("just_triggered") is True:
-            if phase_id in trigger_attempts or tick is None:
+            if phase_id in logged_trigger_attempts or tick is None:
                 return False
-            trigger_attempts[phase_id] = (attempt, tick)
+            logged_trigger_attempts[phase_id] = (attempt, tick)
+
+    observation_by_time: dict[float, Mapping[str, Any]] = {}
+    if observations is not None:
+        try:
+            for observation in observations:
+                observation_by_time[round(_time(observation), 12)] = observation
+        except TrialAnalysisError:
+            return False
+
+    # Derive mandatory triggers from the physical probe evidence instead of
+    # trusting the controller's just_triggered flag.  This keeps a missing
+    # correction auditable even when every logged trigger field is suppressed.
+    trigger_attempts: dict[str, tuple[int, int]] = {}
+    for phase_id, spec in feedback_specs.items():
+        try:
+            probe_rows = tuple(spec["probe_samples"])
+            probe_ticks = tuple(int(item["motion_tick"]) for item in probe_rows)
+            required_samples = int(spec["required_consecutive_samples"])
+            lag_threshold = float(spec["lag_threshold_deg"])
+            probe_index = int(spec["probe_channel_index"])
+        except (KeyError, TypeError, ValueError):
+            return False
+        if not probe_ticks or required_samples <= 0:
+            return False
+        attempts = sorted(
+            {
+                attempt
+                for row_phase, attempt, tick in row_attempts
+                if row_phase == phase_id
+                and tick is not None
+                and tick >= probe_ticks[-1]
+            }
+        )
+        trigger_consumed = False
+        for attempt in attempts:
+            consecutive = 0
+            for probe, probe_tick in zip(probe_rows, probe_ticks, strict=True):
+                row_index = row_index_by_attempt_tick.get(
+                    (phase_id, attempt, probe_tick)
+                )
+                if row_index is None:
+                    return False
+                row = rows[row_index]
+                feedback = row["drive_feedback"]
+                try:
+                    expected_reference = float(probe["reference_actual_deg"])
+                except (KeyError, TypeError, ValueError):
+                    return False
+                observed = _number(feedback, "observed_deg")
+                logged_reference = _number(feedback, "reference_deg")
+                if (
+                    observed is None
+                    or logged_reference is None
+                    or abs(logged_reference - expected_reference) > 1.0e-9
+                ):
+                    return False
+                if observations is not None:
+                    observation = observation_by_time.get(round(_time(row), 12))
+                    actual = (
+                        None
+                        if observation is None
+                        else _vector(observation, "actual_full12")
+                    )
+                    if (
+                        actual is None
+                        or abs(actual[probe_index] - observed) > 1.0e-9
+                    ):
+                        return False
+                if expected_reference - observed + 1.0e-12 >= lag_threshold:
+                    consecutive += 1
+                else:
+                    consecutive = 0
+            if not trigger_consumed and consecutive >= required_samples:
+                trigger_attempts[phase_id] = (attempt, probe_ticks[-1])
+                trigger_consumed = True
+    if logged_trigger_attempts != trigger_attempts:
+        return False
 
     realized_traces: dict[str, list[float]] = {
         phase_id: [] for phase_id in feedback_specs
@@ -554,13 +631,6 @@ def _drive_feedback_ledger_valid(
         ):
             return False
         previous_final = final
-    observation_by_time: dict[float, Mapping[str, Any]] = {}
-    if observations is not None:
-        try:
-            for observation in observations:
-                observation_by_time[round(_time(observation), 12)] = observation
-        except TrialAnalysisError:
-            return False
     teardown_row_by_phase: dict[str, Mapping[str, Any]] = {}
     for phase_id, (trigger_attempt, trigger_tick) in trigger_attempts.items():
         spec = feedback_specs.get(phase_id)

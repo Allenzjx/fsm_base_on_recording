@@ -77,6 +77,7 @@ COMPLETION_GUARDS: dict[str, list[dict[str, Any]]] = {
         },
         {"guard": "leg_front_face_crossed_latched", "leg": "RR"},
         {"guard": "leg_top_loaded_latched", "leg": "RR"},
+        {"guard": "drive_feedback_cycle_complete"},
     ],
     "P10": [
         {"guard": "motion_endpoint_issued", "active_joints": ["rear_right_knee"]},

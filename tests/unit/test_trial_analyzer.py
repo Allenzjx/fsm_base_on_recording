@@ -250,14 +250,14 @@ def _feedback_ledger_rows(*, residual_after_window: float = 0.0) -> list[dict]:
     peak = 1.25 / 19.4
     cumulative = 2.5 / 19.4
     rows = []
-    for tick in range(862, 872):
-        latched = tick >= 863
-        active = 864 <= tick <= 871
+    for tick in range(870, 880):
+        latched = tick >= 871
+        active = 872 <= tick <= 879
         reference = {
-            862: -51.50794810030658,
-            863: -51.549332216487684,
+            870: -50.8511468644344,
+            871: -50.63441813188072,
         }.get(tick)
-        observed = None if reference is None else reference - 1.7
+        observed = None if reference is None else reference - 2.4
         requested = [0.0] * 12
         realized = [0.0] * 12
         if active:
@@ -273,9 +273,9 @@ def _feedback_ledger_rows(*, residual_after_window: float = 0.0) -> list[dict]:
                 "schema": "wlr50_clean.drive_feedback.v1",
                 "bias_full12": requested,
                 "active": active,
-                "just_triggered": tick == 863,
+                "just_triggered": tick == 871,
                 "tick_index": tick,
-                "trigger_tick": 863 if latched else None,
+                "trigger_tick": 871 if latched else None,
                 "observed_deg": observed,
                 "reference_deg": reference,
                 "peak_fraction_of_reference": peak if latched else 0.0,
@@ -298,7 +298,7 @@ def _feedback_ledger_rows(*, residual_after_window: float = 0.0) -> list[dict]:
     rows.append(
         {
             "state_id": "P10",
-            "sim_time_s": 872 / 120.0,
+            "sim_time_s": 880 / 120.0,
             "motion_tick_index": None,
             "drive_feedback": {
                 "schema": "wlr50_clean.drive_feedback.v1",
@@ -340,6 +340,39 @@ def test_drive_feedback_ledger_enforces_window_and_endpoint_restoration() -> Non
             {"simulation_time_s": row["sim_time_s"], "actual_full12": actual}
         )
     assert _drive_feedback_ledger_valid(valid_rows, contract, observations)
+    suppressed_trigger = json.loads(json.dumps(valid_rows))
+    for row in suppressed_trigger:
+        if row["state_id"] != "P09":
+            continue
+        zeros = [0.0] * 12
+        row["drive_feedback"].update(
+            {
+                "bias_full12": zeros,
+                "active": False,
+                "just_triggered": False,
+                "trigger_tick": None,
+                "peak_fraction_of_reference": 0.0,
+                "cumulative_fraction_of_reference": 0.0,
+            }
+        )
+        row["drive_feedback_bias_requested_full12"] = zeros
+        row["drive_feedback_bias_realized_full12"] = zeros
+        row["drive_target_full12"] = row["native_drive_target_full12"]
+    assert not _drive_feedback_ledger_valid(
+        suppressed_trigger, contract, observations
+    )
+    no_deficit_rows = json.loads(json.dumps(suppressed_trigger))
+    no_deficit_observations = json.loads(json.dumps(observations))
+    for row, observation in zip(
+        no_deficit_rows, no_deficit_observations, strict=True
+    ):
+        reference = row["drive_feedback"].get("reference_deg")
+        if reference is not None:
+            row["drive_feedback"]["observed_deg"] = reference
+            observation["actual_full12"][7] = reference
+    assert _drive_feedback_ledger_valid(
+        no_deficit_rows, contract, no_deficit_observations
+    )
     mismatched_observations = json.loads(json.dumps(observations))
     mismatched_observations[0]["actual_full12"][7] += 0.01
     assert not _drive_feedback_ledger_valid(
@@ -368,11 +401,11 @@ def test_drive_feedback_ledger_enforces_window_and_endpoint_restoration() -> Non
     mislabeled_teardown = _feedback_ledger_rows()
     teardown = mislabeled_teardown[-1]
     teardown["state_id"] = "P09"
-    teardown["motion_tick_index"] = 873
+    teardown["motion_tick_index"] = 881
     teardown["drive_feedback"].update(
         {
-            "tick_index": 873,
-            "trigger_tick": 863,
+            "tick_index": 881,
+            "trigger_tick": 871,
             "peak_fraction_of_reference": 1.25 / 19.4,
             "cumulative_fraction_of_reference": 2.5 / 19.4,
             "probe_channel": "rear_right_knee",
@@ -391,6 +424,70 @@ def test_drive_feedback_ledger_enforces_window_and_endpoint_restoration() -> Non
     assert not _drive_feedback_ledger_valid(
         [{"state_id": "P09", "motion_tick_index": 760}], contract
     )
+
+
+def test_drive_feedback_trigger_is_consumed_across_same_phase_retry() -> None:
+    contract = json.loads(
+        (ROOT / "configs" / "recording_motion_contract.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    first_attempt = _feedback_ledger_rows()
+    teardown = first_attempt[-1]
+    teardown["state_id"] = "P09"
+    teardown["motion_tick_index"] = 880
+    teardown["drive_feedback"].update(
+        {
+            "tick_index": 880,
+            "trigger_tick": 871,
+            "peak_fraction_of_reference": 1.25 / 19.4,
+            "cumulative_fraction_of_reference": 2.5 / 19.4,
+            "probe_channel": "rear_right_knee",
+            "probe_channel_index": 7,
+            "correction_channel": "rear_left_knee",
+            "correction_channel_index": 5,
+        }
+    )
+    retry = json.loads(json.dumps(_feedback_ledger_rows()[:-1]))
+    for row in retry:
+        zeros = [0.0] * 12
+        row["drive_feedback"].update(
+            {
+                "bias_full12": zeros,
+                "active": False,
+                "just_triggered": False,
+                "trigger_tick": None,
+                "peak_fraction_of_reference": 0.0,
+                "cumulative_fraction_of_reference": 0.0,
+            }
+        )
+        row["drive_feedback_bias_requested_full12"] = zeros
+        row["drive_feedback_bias_realized_full12"] = zeros
+        row["drive_target_full12"] = row["native_drive_target_full12"]
+    tick_zero = json.loads(json.dumps(retry[0]))
+    tick_zero["motion_tick_index"] = 0
+    tick_zero["drive_feedback"].update(
+        {
+            "tick_index": 0,
+            "observed_deg": 0.0,
+            "reference_deg": None,
+        }
+    )
+    retry.insert(0, tick_zero)
+    start_time = teardown["sim_time_s"] + 1.0 / 120.0
+    for index, row in enumerate(retry):
+        row["sim_time_s"] = start_time + index / 120.0
+    rows = first_attempt + retry
+    observations = []
+    for row in rows:
+        actual = [0.0] * 12
+        observed = row["drive_feedback"].get("observed_deg")
+        if observed is not None:
+            actual[7] = observed
+        observations.append(
+            {"simulation_time_s": row["sim_time_s"], "actual_full12": actual}
+        )
+    assert _drive_feedback_ledger_valid(rows, contract, observations)
 
 
 def test_writer_api_remains_streaming_and_never_reuses_directory(tmp_path: Path) -> None:
