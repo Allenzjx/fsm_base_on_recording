@@ -137,49 +137,43 @@ def test_p09_wheel_rebound_is_compact_and_strictly_reference_bounded() -> None:
         )
         for segment in feedback.bias_segments
     ] == [
-        (860, 865, 0.33),
+        (860, 860, 1.05),
+        (861, 861, 0.33),
+        (862, 864, 1.05),
+        (865, 865, 0.33),
         (866, 867, 0.28),
         (868, 869, 0.38),
         (870, 870, 0.28),
         (871, 871, 0.38),
-        (872, 872, 0.17),
-        (873, 873, 0.07),
-        (874, 875, 0.22),
-        (876, 876, 0.12),
-        (877, 878, 0.22),
-        (879, 879, 0.12),
     ]
     assert feedback.first_bias_tick == 860
-    assert feedback.last_bias_tick == 879
-    assert feedback.teardown_tick == 880
+    assert feedback.last_bias_tick == 871
+    assert feedback.teardown_tick == 872
     assert feedback.reference_wheel_integral_rad == pytest.approx(
         -0.9060000000012605
     )
     assert feedback.additional_wheel_integral_rad == pytest.approx(
         (
-            0.33 * 6.0
+            1.05
+            + 0.33
+            + 1.05 * 3.0
+            + 0.33
             + 0.28 * 2.0
             + 0.38 * 2.0
             + 0.28
             + 0.38
-            + 0.17
-            + 0.07
-            + 0.22 * 2.0
-            + 0.12
-            + 0.22 * 2.0
-            + 0.12
         )
         / 120.0
     )
     assert feedback.resulting_wheel_integral_rad == pytest.approx(
-        -0.8616666666679271
+        -0.8490000000012604
     )
     assert feedback.resulting_wheel_integral_rad == pytest.approx(
         feedback.reference_wheel_integral_rad
         + feedback.additional_wheel_integral_rad
     )
     assert feedback.cumulative_fraction_of_reference == pytest.approx(
-        0.04893303899919609
+        0.06291390728468069
     )
     assert feedback.cumulative_fraction_of_reference == pytest.approx(
         abs(feedback.additional_wheel_integral_rad)
@@ -195,26 +189,35 @@ def test_p09_wheel_rebound_is_compact_and_strictly_reference_bounded() -> None:
         "front_left_ankle"
     ] == pytest.approx(-0.9060000000012605)
     endpoint_tick = round(contract.phase("P09").active_duration_s * 120.0)
-    primary, *tail = feedback.bias_segments
-    for tick in range(primary.first_bias_tick, endpoint_tick):
-        native = contract.phase("P09").nominal_at(tick / 120.0)[8]
-        assert native == pytest.approx(-1.07)
-        assert native + primary.logical_bias_rad_s == pytest.approx(-0.74)
-    for tick in range(endpoint_tick, primary.last_bias_tick + 1):
-        native = contract.phase("P09").end_full12[8]
-        assert native == pytest.approx(0.0)
-        assert native + primary.logical_bias_rad_s == pytest.approx(0.33)
-    for segment, expected_final in zip(
-        tail,
-        (0.28, 0.38, 0.28, 0.38, 0.17, 0.07, 0.22, 0.12, 0.22, 0.12),
-        strict=True,
-    ):
-        for tick in range(segment.first_bias_tick, segment.last_bias_tick + 1):
-            native = contract.phase("P09").end_full12[8]
-            assert native == pytest.approx(0.0)
-            assert native + segment.logical_bias_rad_s == pytest.approx(
-                expected_final
-            )
+    expected_native_and_final = (
+        (860, -1.07, -0.02),
+        (861, -1.07, -0.74),
+        (862, -1.07, -0.02),
+        (863, -1.07, -0.02),
+        (864, 0.0, 1.05),
+        (865, 0.0, 0.33),
+        (866, 0.0, 0.28),
+        (867, 0.0, 0.28),
+        (868, 0.0, 0.38),
+        (869, 0.0, 0.38),
+        (870, 0.0, 0.28),
+        (871, 0.0, 0.38),
+    )
+    segments_by_tick = {
+        tick: segment
+        for segment in feedback.bias_segments
+        for tick in range(segment.first_bias_tick, segment.last_bias_tick + 1)
+    }
+    for tick, expected_native, expected_final in expected_native_and_final:
+        native = (
+            contract.phase("P09").nominal_at(tick / 120.0)[8]
+            if tick < endpoint_tick
+            else contract.phase("P09").end_full12[8]
+        )
+        assert native == pytest.approx(expected_native)
+        assert native + segments_by_tick[tick].logical_bias_rad_s == pytest.approx(
+            expected_final
+        )
     assert all(
         phase.drive_feedback is None
         for phase in contract.phases
@@ -243,7 +246,7 @@ def test_p09_wheel_rebound_is_compact_and_strictly_reference_bounded() -> None:
         ("probe_channel", "rear_left_knee"),
         ("lag_threshold_deg", 0.34),
         ("correction_channel_index", 5),
-        ("teardown_tick", 879),
+        ("teardown_tick", 873),
         ("additional_wheel_integral_rad", 0.107),
         ("resulting_wheel_integral_rad", -0.7990000000012605),
         ("cumulative_fraction_of_reference", 0.118101545253699),
@@ -270,23 +273,21 @@ def test_p09_wheel_rebound_contract_fails_closed(
     ("segment_index", "field", "invalid_value"),
     (
         (0, "first_bias_tick", 861),
-        (0, "last_bias_tick", 864),
-        (0, "logical_bias_rad_s", 1.07),
-        (1, "first_bias_tick", 865),
-        (1, "logical_bias_rad_s", 0.27),
-        (2, "last_bias_tick", 870),
-        (2, "logical_bias_rad_s", 0.37),
-        (3, "logical_bias_rad_s", 0.27),
-        (4, "logical_bias_rad_s", 0.37),
-        (5, "logical_bias_rad_s", 0.16),
-        (6, "logical_bias_rad_s", 0.08),
-        (7, "first_bias_tick", 873),
-        (7, "logical_bias_rad_s", 0.21),
-        (8, "logical_bias_rad_s", 0.13),
-        (9, "last_bias_tick", 879),
-        (9, "logical_bias_rad_s", 0.21),
-        (10, "last_bias_tick", 880),
-        (10, "logical_bias_rad_s", 0.13),
+        (0, "last_bias_tick", 861),
+        (0, "logical_bias_rad_s", 1.04),
+        (1, "first_bias_tick", 860),
+        (1, "logical_bias_rad_s", 0.34),
+        (2, "last_bias_tick", 863),
+        (2, "logical_bias_rad_s", 1.04),
+        (3, "first_bias_tick", 864),
+        (3, "logical_bias_rad_s", 0.34),
+        (4, "last_bias_tick", 866),
+        (4, "logical_bias_rad_s", 0.27),
+        (5, "last_bias_tick", 868),
+        (5, "logical_bias_rad_s", 0.37),
+        (6, "logical_bias_rad_s", 0.27),
+        (7, "last_bias_tick", 872),
+        (7, "logical_bias_rad_s", 0.37),
     ),
 )
 def test_p09_wheel_rebound_segments_fail_closed(

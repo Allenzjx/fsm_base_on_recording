@@ -33,33 +33,28 @@ REBOUND_LAG_THRESHOLD_DEG = 0.35
 REBOUND_CORRECTION_CHANNEL = "front_left_ankle"
 REBOUND_CORRECTION_CHANNEL_INDEX = 8
 REBOUND_BIAS_SEGMENTS = (
-    (860, 865, 0.33),
+    (860, 860, 1.05),
+    (861, 861, 0.33),
+    (862, 864, 1.05),
+    (865, 865, 0.33),
     (866, 867, 0.28),
     (868, 869, 0.38),
     (870, 870, 0.28),
     (871, 871, 0.38),
-    (872, 872, 0.17),
-    (873, 873, 0.07),
-    (874, 875, 0.22),
-    (876, 876, 0.12),
-    (877, 878, 0.22),
-    (879, 879, 0.12),
 )
-REBOUND_PRE_ENDPOINT_NATIVE_RAD_S = -1.07
-REBOUND_PRE_ENDPOINT_FINAL_RAD_S = -0.74
-REBOUND_POST_ENDPOINT_NATIVE_RAD_S = 0.0
-REBOUND_POST_ENDPOINT_FINAL_RAD_S_BY_SEGMENT = (
-    0.33,
-    0.28,
-    0.38,
-    0.28,
-    0.38,
-    0.17,
-    0.07,
-    0.22,
-    0.12,
-    0.22,
-    0.12,
+REBOUND_NATIVE_AND_FINAL_RAD_S_BY_TICK = (
+    (860, -1.07, -0.02),
+    (861, -1.07, -0.74),
+    (862, -1.07, -0.02),
+    (863, -1.07, -0.02),
+    (864, 0.0, 1.05),
+    (865, 0.0, 0.33),
+    (866, 0.0, 0.28),
+    (867, 0.0, 0.28),
+    (868, 0.0, 0.38),
+    (869, 0.0, 0.38),
+    (870, 0.0, 0.28),
+    (871, 0.0, 0.38),
 )
 
 
@@ -439,25 +434,22 @@ def _validate_phases(
                 or feedback.first_bias_tick != endpoint_tick - 4
                 or endpoint_relative_segments
                 != (
-                    (-4, 1, 0.33),
+                    (-4, -4, 1.05),
+                    (-3, -3, 0.33),
+                    (-2, 0, 1.05),
+                    (1, 1, 0.33),
                     (2, 3, 0.28),
                     (4, 5, 0.38),
                     (6, 6, 0.28),
                     (7, 7, 0.38),
-                    (DECISION_STRIDE, DECISION_STRIDE, 0.17),
-                    (DECISION_STRIDE + 1, DECISION_STRIDE + 1, 0.07),
-                    (DECISION_STRIDE + 2, DECISION_STRIDE + 3, 0.22),
-                    (DECISION_STRIDE + 4, DECISION_STRIDE + 4, 0.12),
-                    (DECISION_STRIDE + 5, DECISION_STRIDE + 6, 0.22),
-                    (DECISION_STRIDE + 7, DECISION_STRIDE + 7, 0.12),
                 )
                 or feedback.last_bias_tick
-                != endpoint_tick + 2 * DECISION_STRIDE - 1
-                or feedback.teardown_tick != endpoint_tick + 2 * DECISION_STRIDE
+                != endpoint_tick + DECISION_STRIDE - 1
+                or feedback.teardown_tick != endpoint_tick + DECISION_STRIDE
             ):
                 raise ValueError(
                     f"{phase.state_id}: drive-feedback does not match the "
-                    "bounded shifted-copy identification waveform"
+                    "bounded first-decision alignment waveform"
                 )
             values = (
                 feedback.lag_threshold_deg,
@@ -500,27 +492,15 @@ def _validate_phases(
                 feedback.correction_channel_index,
                 bias_segments=feedback.bias_segments,
             )
-            primary_segment = feedback.bias_segments[0]
-            pre_endpoint_native = tuple(
-                _channel_at_motion_tick(
-                    phase, feedback.correction_channel_index, tick
-                )
-                for tick in range(primary_segment.first_bias_tick, endpoint_tick)
-            )
-            post_endpoint_native_and_final = tuple(
+            native_and_final_by_tick = tuple(
                 (
+                    tick,
                     native,
                     native + segment.logical_bias_rad_s,
-                    expected_final,
                 )
-                for segment, expected_final in zip(
-                    feedback.bias_segments,
-                    REBOUND_POST_ENDPOINT_FINAL_RAD_S_BY_SEGMENT,
-                    strict=True,
-                )
+                for segment in feedback.bias_segments
                 for tick in range(
-                    max(endpoint_tick, segment.first_bias_tick),
-                    segment.last_bias_tick + 1,
+                    segment.first_bias_tick, segment.last_bias_tick + 1
                 )
                 for native in (
                     _channel_at_motion_tick(
@@ -540,22 +520,21 @@ def _validate_phases(
                     for segment in feedback.bias_segments
                 )
                 != REBOUND_BIAS_SEGMENTS
-                or not pre_endpoint_native
-                or not post_endpoint_native_and_final
+                or len(native_and_final_by_tick)
+                != len(REBOUND_NATIVE_AND_FINAL_RAD_S_BY_TICK)
                 or any(
-                    abs(native - REBOUND_PRE_ENDPOINT_NATIVE_RAD_S) > 1.0e-12
-                    or abs(
-                        native
-                        + primary_segment.logical_bias_rad_s
-                        - REBOUND_PRE_ENDPOINT_FINAL_RAD_S
-                    )
-                    > 1.0e-12
-                    for native in pre_endpoint_native
-                )
-                or any(
-                    abs(native - REBOUND_POST_ENDPOINT_NATIVE_RAD_S) > 1.0e-12
+                    tick != expected_tick
+                    or abs(native - expected_native) > 1.0e-12
                     or abs(final - expected_final) > 1.0e-12
-                    for native, final, expected_final in post_endpoint_native_and_final
+                    for (tick, native, final), (
+                        expected_tick,
+                        expected_native,
+                        expected_final,
+                    ) in zip(
+                        native_and_final_by_tick,
+                        REBOUND_NATIVE_AND_FINAL_RAD_S_BY_TICK,
+                        strict=True,
+                    )
                 )
                 or abs(phase.end_full12[feedback.correction_channel_index])
                 > 1.0e-12

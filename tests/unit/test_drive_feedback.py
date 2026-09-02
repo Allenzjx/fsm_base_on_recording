@@ -11,17 +11,29 @@ from wlr50_clean.reference.motion_contract import load_motion_contract
 
 ROOT = Path(__file__).resolve().parents[2]
 EXPECTED_BIAS_SEGMENTS = (
-    (860, 865, 0.33),
+    (860, 860, 1.05),
+    (861, 861, 0.33),
+    (862, 864, 1.05),
+    (865, 865, 0.33),
     (866, 867, 0.28),
     (868, 869, 0.38),
     (870, 870, 0.28),
     (871, 871, 0.38),
-    (872, 872, 0.17),
-    (873, 873, 0.07),
-    (874, 875, 0.22),
-    (876, 876, 0.12),
-    (877, 878, 0.22),
-    (879, 879, 0.12),
+)
+
+EXPECTED_NATIVE_AND_FINAL_BY_TICK = (
+    (860, -1.07, -0.02),
+    (861, -1.07, -0.74),
+    (862, -1.07, -0.02),
+    (863, -1.07, -0.02),
+    (864, 0.0, 1.05),
+    (865, 0.0, 0.33),
+    (866, 0.0, 0.28),
+    (867, 0.0, 0.28),
+    (868, 0.0, 0.38),
+    (869, 0.0, 0.38),
+    (870, 0.0, 0.28),
+    (871, 0.0, 0.38),
 )
 
 
@@ -94,7 +106,7 @@ def test_p09_two_sample_live_deficit_latches_bounded_wheel_rebound() -> None:
     assert all(not item.active for item in armed_gap)
     assert all(item.trigger_tick == second.motion_tick for item in armed_gap)
     assert all(item.active for item in active)
-    assert len(active) == 20
+    assert len(active) == 12
     assert [item.active_segment_index for item in active] == [
         segment_index
         for segment_index, (first_tick, last_tick, _) in enumerate(
@@ -122,7 +134,7 @@ def test_p09_two_sample_live_deficit_latches_bounded_wheel_rebound() -> None:
         / abs(spec.reference_wheel_integral_rad)
     )
     assert active[0].kind == "pre_endpoint_wheel_rebound_alignment"
-    assert active[0].logical_bias_rad_s == 0.33
+    assert active[0].logical_bias_rad_s == 1.05
     assert [
         active[tick - spec.first_bias_tick].logical_bias_rad_s
         for tick in range(spec.first_bias_tick, spec.last_bias_tick + 1)
@@ -145,39 +157,29 @@ def test_p09_two_sample_live_deficit_latches_bounded_wheel_rebound() -> None:
         / 120.0
     )
     assert active[0].resulting_wheel_integral_rad == pytest.approx(
-        -0.8616666666679271
+        -0.8490000000012604
     )
     assert active[0].cumulative_fraction_of_reference == pytest.approx(
-        0.04893303899919609
+        0.06291390728468069
     )
     assert active[0].reference_wheel_peak_abs_rad_s == pytest.approx(1.07)
     assert active[0].resulting_wheel_peak_abs_rad_s == pytest.approx(1.07)
     assert active[0].instantaneous_direction_reversal is True
     assert active[0].reason.endswith(
-        "bounded shifted-copy identification rebound"
+        "bounded first-decision alignment rebound"
     )
     endpoint_tick = round(phase.active_duration_s * 120.0)
     active_by_tick = {item.tick_index: item for item in active}
-    primary = spec.bias_segments[0]
-    for tick in range(primary.first_bias_tick, endpoint_tick):
-        native = phase.nominal_at(tick / 120.0)[spec.correction_channel_index]
-        assert native == pytest.approx(-1.07)
+    for tick, expected_native, expected_final in EXPECTED_NATIVE_AND_FINAL_BY_TICK:
+        native = (
+            phase.nominal_at(tick / 120.0)[spec.correction_channel_index]
+            if tick < endpoint_tick
+            else phase.end_full12[spec.correction_channel_index]
+        )
+        assert native == pytest.approx(expected_native)
         assert native + active_by_tick[tick].bias_full12[
             spec.correction_channel_index
-        ] == pytest.approx(-0.74)
-    for tick in range(endpoint_tick, primary.last_bias_tick + 1):
-        native = phase.end_full12[spec.correction_channel_index]
-        assert native == pytest.approx(0.0)
-        assert native + active_by_tick[tick].bias_full12[
-            spec.correction_channel_index
-        ] == pytest.approx(0.33)
-    for segment in spec.bias_segments[1:]:
-        for tick in range(segment.first_bias_tick, segment.last_bias_tick + 1):
-            native = phase.end_full12[spec.correction_channel_index]
-            assert native == pytest.approx(0.0)
-            assert native + active_by_tick[tick].bias_full12[
-                spec.correction_channel_index
-            ] == pytest.approx(segment.logical_bias_rad_s)
+        ] == pytest.approx(expected_final)
     assert restored.bias_full12 == pytest.approx((0.0,) * 12)
     assert restored.active_segment_index is None
     assert restored.logical_bias_rad_s == 0.0
@@ -325,7 +327,7 @@ def test_p09_wheel_rebound_is_one_shot_across_a_same_state_retry() -> None:
     ("field", "invalid_value"),
     (
         ("kind", "verify_tail_wheel_carry_alignment"),
-        ("teardown_tick", 879),
+        ("teardown_tick", 873),
         ("additional_wheel_integral_rad", 0.107),
         ("resulting_wheel_integral_rad", -0.7990000000012605),
         ("cumulative_fraction_of_reference", 0.118101545253699),
@@ -357,23 +359,21 @@ def test_p09_wheel_rebound_runtime_fails_closed(
     ("segment_index", "field", "invalid_value"),
     (
         (0, "first_bias_tick", 861),
-        (0, "last_bias_tick", 864),
-        (0, "logical_bias_rad_s", 1.07),
-        (1, "first_bias_tick", 865),
-        (1, "logical_bias_rad_s", 0.27),
-        (2, "last_bias_tick", 870),
-        (2, "logical_bias_rad_s", 0.37),
-        (3, "logical_bias_rad_s", 0.27),
-        (4, "logical_bias_rad_s", 0.37),
-        (5, "logical_bias_rad_s", 0.16),
-        (6, "logical_bias_rad_s", 0.08),
-        (7, "first_bias_tick", 873),
-        (7, "logical_bias_rad_s", 0.21),
-        (8, "logical_bias_rad_s", 0.13),
-        (9, "last_bias_tick", 879),
-        (9, "logical_bias_rad_s", 0.21),
-        (10, "last_bias_tick", 880),
-        (10, "logical_bias_rad_s", 0.13),
+        (0, "last_bias_tick", 861),
+        (0, "logical_bias_rad_s", 1.04),
+        (1, "first_bias_tick", 860),
+        (1, "logical_bias_rad_s", 0.34),
+        (2, "last_bias_tick", 863),
+        (2, "logical_bias_rad_s", 1.04),
+        (3, "first_bias_tick", 864),
+        (3, "logical_bias_rad_s", 0.34),
+        (4, "last_bias_tick", 866),
+        (4, "logical_bias_rad_s", 0.27),
+        (5, "last_bias_tick", 868),
+        (5, "logical_bias_rad_s", 0.37),
+        (6, "logical_bias_rad_s", 0.27),
+        (7, "last_bias_tick", 872),
+        (7, "logical_bias_rad_s", 0.37),
     ),
 )
 def test_p09_wheel_rebound_runtime_rejects_mutated_segments(

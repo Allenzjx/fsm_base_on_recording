@@ -18778,8 +18778,8 @@
         "probe_channel_index": 7,
         "correction_channel": "front_left_ankle",
         "correction_channel_index": 8,
-        "goal": "partially counteract the final four native front-left wheel ticks, then apply the exact sixteen-tick shifted-copy P09-owned identification waveform before the live P10 entry decision when the rear-right-knee deficit predicts a weak rebound",
-        "source": "two-sample locked-v010 rear-right-knee pre-endpoint deficit plus a bounded shifted-copy front-left wheel identification waveform whose signed phase integral remains inside the v010 contract",
+        "goal": "apply the exact twelve-tick P09-owned front-left wheel alignment waveform across the final four native ticks and first verification window, then tear down for the immediate live P10 entry decision when the rear-right-knee deficit predicts a weak rebound",
+        "source": "two-sample locked-v010 rear-right-knee pre-endpoint deficit plus a bounded first-decision front-left wheel alignment waveform whose signed phase integral remains inside the v010 contract",
         "probe_samples": [
           {
             "motion_tick": 858,
@@ -18795,6 +18795,21 @@
         "bias_segments": [
           {
             "first_bias_tick": 860,
+            "last_bias_tick": 860,
+            "logical_bias_rad_s": 1.05
+          },
+          {
+            "first_bias_tick": 861,
+            "last_bias_tick": 861,
+            "logical_bias_rad_s": 0.33
+          },
+          {
+            "first_bias_tick": 862,
+            "last_bias_tick": 864,
+            "logical_bias_rad_s": 1.05
+          },
+          {
+            "first_bias_tick": 865,
             "last_bias_tick": 865,
             "logical_bias_rad_s": 0.33
           },
@@ -18817,43 +18832,13 @@
             "first_bias_tick": 871,
             "last_bias_tick": 871,
             "logical_bias_rad_s": 0.38
-          },
-          {
-            "first_bias_tick": 872,
-            "last_bias_tick": 872,
-            "logical_bias_rad_s": 0.17
-          },
-          {
-            "first_bias_tick": 873,
-            "last_bias_tick": 873,
-            "logical_bias_rad_s": 0.07
-          },
-          {
-            "first_bias_tick": 874,
-            "last_bias_tick": 875,
-            "logical_bias_rad_s": 0.22
-          },
-          {
-            "first_bias_tick": 876,
-            "last_bias_tick": 876,
-            "logical_bias_rad_s": 0.12
-          },
-          {
-            "first_bias_tick": 877,
-            "last_bias_tick": 878,
-            "logical_bias_rad_s": 0.22
-          },
-          {
-            "first_bias_tick": 879,
-            "last_bias_tick": 879,
-            "logical_bias_rad_s": 0.12
           }
         ],
-        "teardown_tick": 880,
+        "teardown_tick": 872,
         "reference_wheel_integral_rad": -0.9060000000012605,
-        "additional_wheel_integral_rad": 0.044333333333333336,
-        "resulting_wheel_integral_rad": -0.8616666666679271,
-        "cumulative_fraction_of_reference": 0.04893303899919609,
+        "additional_wheel_integral_rad": 0.057,
+        "resulting_wheel_integral_rad": -0.8490000000012604,
+        "cumulative_fraction_of_reference": 0.06291390728468069,
         "reference_wheel_peak_abs_rad_s": 1.07,
         "resulting_wheel_peak_abs_rad_s": 1.07,
         "instantaneous_direction_reversal": true,

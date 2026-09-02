@@ -29,23 +29,20 @@ REBOUND_LAG_THRESHOLD_DEG = 0.35
 REBOUND_CORRECTION_CHANNEL = "front_left_ankle"
 REBOUND_CORRECTION_CHANNEL_INDEX = 8
 REBOUND_BIAS_SEGMENTS = (
-    (860, 865, 0.33),
+    (860, 860, 1.05),
+    (861, 861, 0.33),
+    (862, 864, 1.05),
+    (865, 865, 0.33),
     (866, 867, 0.28),
     (868, 869, 0.38),
     (870, 870, 0.28),
     (871, 871, 0.38),
-    (872, 872, 0.17),
-    (873, 873, 0.07),
-    (874, 875, 0.22),
-    (876, 876, 0.12),
-    (877, 878, 0.22),
-    (879, 879, 0.12),
 )
-REBOUND_TEARDOWN_TICK = 880
+REBOUND_TEARDOWN_TICK = 872
 REBOUND_REFERENCE_INTEGRAL_RAD = -0.9060000000012605
-REBOUND_ADDITIONAL_INTEGRAL_RAD = 0.044333333333333336
-REBOUND_RESULTING_INTEGRAL_RAD = -0.8616666666679271
-REBOUND_CUMULATIVE_FRACTION = 0.04893303899919609
+REBOUND_ADDITIONAL_INTEGRAL_RAD = 0.057
+REBOUND_RESULTING_INTEGRAL_RAD = -0.8490000000012604
+REBOUND_CUMULATIVE_FRACTION = 0.06291390728468069
 REBOUND_PEAK_ABS_RAD_S = 1.07
 
 
@@ -127,11 +124,10 @@ class ReferenceBoundedDriveFeedback:
     """Latch a late-P09 RRK deficit and request a bounded FL wheel rebound.
 
     Two locked pre-endpoint rear-right-knee samples arm a counter-command.  It
-    partially counteracts four remaining native wheel ticks, reverses the wheel
-    request after the nominal endpoint, applies a bounded shifted-copy
-    identification waveform through the remaining P09-owned ticks, and tears
-    down before the live P10 entry decision without changing the frozen nominal
-    command.
+    applies an exactly locked counteraction over the four remaining native
+    wheel ticks, reverses the wheel request at the nominal endpoint, and tears
+    down after the first P09 verification window so the next 15 Hz decision can
+    evaluate the live P10 entry without changing the frozen nominal command.
     """
 
     def __init__(self) -> None:
@@ -300,7 +296,7 @@ class ReferenceBoundedDriveFeedback:
             reason=(
                 f"live {state_id} {spec.probe_channel} pre-endpoint deficit "
                 f"requests {spec.correction_channel} pre-endpoint partial "
-                "counteraction and bounded shifted-copy identification rebound"
+                "counteraction and bounded first-decision alignment rebound"
                 if triggered and spec is not None
                 else "no live reference-corridor deficit latched"
             ),
