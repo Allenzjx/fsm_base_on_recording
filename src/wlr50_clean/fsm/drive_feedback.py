@@ -28,9 +28,9 @@ REBOUND_CORRECTION_CHANNEL_INDEX = 8
 REBOUND_FIRST_BIAS_TICK = 860
 REBOUND_LAST_BIAS_TICK = 871
 REBOUND_TEARDOWN_TICK = 872
-REBOUND_LOGICAL_BIAS_RAD_S = 1.07
+REBOUND_LOGICAL_BIAS_RAD_S = 0.33
 REBOUND_REFERENCE_INTEGRAL_RAD = -0.9060000000012605
-REBOUND_RESULTING_INTEGRAL_RAD = -0.7990000000012605
+REBOUND_RESULTING_INTEGRAL_RAD = -0.8730000000012605
 REBOUND_PEAK_ABS_RAD_S = 1.07
 
 
@@ -97,9 +97,9 @@ class ReferenceBoundedDriveFeedback:
     """Latch a late-P09 RRK deficit and request a bounded FL wheel rebound.
 
     Two locked pre-endpoint rear-right-knee samples arm a counter-command.  It
-    cancels four remaining native wheel ticks, reverses the wheel request for
-    the eight ticks after the nominal endpoint, and tears down at the first
-    P10 decision without changing the frozen nominal command.
+    partially counteracts four remaining native wheel ticks, reverses the wheel
+    request for the eight ticks after the nominal endpoint, and tears down at
+    the first P10 decision without changing the frozen nominal command.
     """
 
     def __init__(self) -> None:
@@ -243,7 +243,8 @@ class ReferenceBoundedDriveFeedback:
             ),
             reason=(
                 f"live {state_id} {spec.probe_channel} pre-endpoint deficit "
-                f"requests {spec.correction_channel} pre-endpoint cancellation "
+                f"requests {spec.correction_channel} pre-endpoint partial "
+                "counteraction "
                 "and opposite-direction wheel rebound"
                 if triggered and spec is not None
                 else "no live reference-corridor deficit latched"

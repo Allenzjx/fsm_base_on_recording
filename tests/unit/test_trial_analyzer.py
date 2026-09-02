@@ -799,14 +799,10 @@ def test_wheel_tail_feedback_contract_timing_and_integral_are_pinned() -> None:
     assert not _drive_feedback_ledger_valid(rows, unknown_kind, observations)
 
 
-_WHEEL_REBOUND_BIAS = 1.07
-_WHEEL_REBOUND_ADDITIONAL_INTEGRAL = _WHEEL_REBOUND_BIAS * 12.0 / 120.0
-_WHEEL_REBOUND_RESULTING_INTEGRAL = (
-    _WHEEL_REFERENCE_INTEGRAL + _WHEEL_REBOUND_ADDITIONAL_INTEGRAL
-)
-_WHEEL_REBOUND_FRACTION = abs(_WHEEL_REBOUND_ADDITIONAL_INTEGRAL) / abs(
-    _WHEEL_REFERENCE_INTEGRAL
-)
+_WHEEL_REBOUND_BIAS = 0.33
+_WHEEL_REBOUND_ADDITIONAL_INTEGRAL = 0.033
+_WHEEL_REBOUND_RESULTING_INTEGRAL = -0.8730000000012605
+_WHEEL_REBOUND_FRACTION = 0.03642384105955198
 
 
 def _wheel_rebound_feedback_spec() -> dict:
@@ -994,17 +990,36 @@ def _wheel_rebound_feedback_ledger_rows(
     return rows
 
 
-def test_wheel_rebound_feedback_accepts_exact_cancellation_and_reversal() -> None:
+def test_wheel_rebound_feedback_accepts_exact_partial_counteraction_and_reversal(
+) -> None:
     contract = _wheel_rebound_feedback_contract()
     rows = _wheel_rebound_feedback_ledger_rows()
     assert _drive_feedback_ledger_valid(
         rows, contract, _feedback_observations(rows)
     )
-    assert rows[2]["native_drive_target_full12"][8] == -1.07
-    assert rows[2]["drive_target_full12"][8] == 0.0
-    assert rows[6]["native_drive_target_full12"][8] == 0.0
-    assert rows[6]["drive_target_full12"][8] == 1.07
-    assert rows[6]["atomic_ack"]["wheel_target_physical_rad_s"][0] == -1.07
+    spec = contract["phases"][8]["drive_feedback"]
+    assert spec["logical_bias_rad_s"] == 0.33
+    assert spec["additional_wheel_integral_rad"] == 0.033
+    assert spec["resulting_wheel_integral_rad"] == -0.8730000000012605
+    assert spec["cumulative_fraction_of_reference"] == 0.03642384105955198
+    assert spec["reference_wheel_peak_abs_rad_s"] == 1.07
+    assert spec["resulting_wheel_peak_abs_rad_s"] == 1.07
+    for row in rows[2:6]:
+        assert row["native_drive_target_full12"][8] == -1.07
+        assert row["drive_target_full12"][8] == pytest.approx(-0.74)
+        assert row["atomic_ack"]["wheel_target_physical_rad_s"][0] == pytest.approx(
+            0.74
+        )
+    for row in rows[6:14]:
+        assert row["native_drive_target_full12"][8] == 0.0
+        assert row["drive_target_full12"][8] == pytest.approx(0.33)
+        assert row["atomic_ack"]["wheel_target_physical_rad_s"][0] == pytest.approx(
+            -0.33
+        )
+    teardown = rows[14]
+    assert teardown["drive_feedback_bias_realized_full12"][8] == 0.0
+    assert teardown["drive_target_full12"][8] == 0.0
+    assert teardown["atomic_ack"]["wheel_target_physical_rad_s"][0] == 0.0
 
 
 def test_wheel_rebound_feedback_rederives_mandatory_trigger() -> None:
@@ -1155,24 +1170,24 @@ def test_wheel_rebound_feedback_ledger_fails_closed(mutation: str) -> None:
         _sync_wheel_rebound_atomic_ack(rows[0])
     elif mutation == "wrong_pre_endpoint_native":
         rows[2]["native_drive_target_full12"][8] = -1.06
-        rows[2]["drive_target_full12"][8] = 0.01
+        rows[2]["drive_target_full12"][8] = -0.73
         _sync_wheel_rebound_atomic_ack(rows[2])
     elif mutation == "wrong_pre_endpoint_final":
-        rows[2]["drive_target_full12"][8] = 0.01
+        rows[2]["drive_target_full12"][8] = -0.73
         _sync_wheel_rebound_atomic_ack(rows[2])
     elif mutation == "wrong_post_endpoint_native":
         rows[6]["native_drive_target_full12"][8] = 0.01
-        rows[6]["drive_target_full12"][8] = 1.08
+        rows[6]["drive_target_full12"][8] = 0.34
         _sync_wheel_rebound_atomic_ack(rows[6])
     elif mutation == "wrong_post_endpoint_final":
-        rows[6]["drive_target_full12"][8] = 1.06
+        rows[6]["drive_target_full12"][8] = 0.32
         _sync_wheel_rebound_atomic_ack(rows[6])
     elif mutation == "wrong_active_value":
         active = rows[2]
-        active["drive_feedback"]["bias_full12"][8] = 1.06
-        active["drive_feedback_bias_requested_full12"][8] = 1.06
-        active["drive_feedback_bias_realized_full12"][8] = 1.06
-        active["drive_target_full12"][8] = -0.01
+        active["drive_feedback"]["bias_full12"][8] = 0.32
+        active["drive_feedback_bias_requested_full12"][8] = 0.32
+        active["drive_feedback_bias_realized_full12"][8] = 0.32
+        active["drive_target_full12"][8] = -0.75
         _sync_wheel_rebound_atomic_ack(active)
     elif mutation == "other_channel_correction":
         active = rows[2]
@@ -1207,9 +1222,9 @@ def test_wheel_rebound_feedback_ledger_fails_closed(mutation: str) -> None:
     elif mutation == "atomic_ack_missing":
         del rows[2]["atomic_ack"]
     elif mutation == "atomic_ack_physical_sign":
-        rows[6]["atomic_ack"]["wheel_target_physical_rad_s"][0] = 1.07
+        rows[6]["atomic_ack"]["wheel_target_physical_rad_s"][0] = 0.33
     elif mutation == "atomic_ack_correction_mismatch":
-        rows[2]["atomic_ack"]["drive_feedback_bias_realized_full12"][8] = 1.06
+        rows[2]["atomic_ack"]["drive_feedback_bias_realized_full12"][8] = 0.32
     assert not _drive_feedback_ledger_valid(
         rows, contract, _feedback_observations(rows)
     )
@@ -1230,7 +1245,7 @@ def test_wheel_rebound_contract_is_exact_and_not_a_same_sign_carry() -> None:
     assert not _drive_feedback_ledger_valid(rows, wrong_timing, observations)
 
     wrong_sign = _wheel_rebound_feedback_contract()
-    wrong_sign["phases"][8]["drive_feedback"]["logical_bias_rad_s"] = -1.07
+    wrong_sign["phases"][8]["drive_feedback"]["logical_bias_rad_s"] = -0.33
     assert not _drive_feedback_ledger_valid(rows, wrong_sign, observations)
 
     wrong_result = _wheel_rebound_feedback_contract()

@@ -119,16 +119,22 @@ def test_p09_wheel_rebound_is_compact_and_strictly_reference_bounded() -> None:
     assert feedback.first_bias_tick == 860
     assert feedback.last_bias_tick == 871
     assert feedback.teardown_tick == 872
-    assert feedback.logical_bias_rad_s == 1.07
+    assert feedback.logical_bias_rad_s == 0.33
     assert feedback.reference_wheel_integral_rad == pytest.approx(
         -0.9060000000012605
     )
     assert feedback.additional_wheel_integral_rad == pytest.approx(
-        1.07 * 12.0 / 120.0
+        0.33 * 12.0 / 120.0
+    )
+    assert feedback.resulting_wheel_integral_rad == pytest.approx(
+        -0.8730000000012605
     )
     assert feedback.resulting_wheel_integral_rad == pytest.approx(
         feedback.reference_wheel_integral_rad
         + feedback.additional_wheel_integral_rad
+    )
+    assert feedback.cumulative_fraction_of_reference == pytest.approx(
+        0.03642384105955198
     )
     assert feedback.cumulative_fraction_of_reference == pytest.approx(
         abs(feedback.additional_wheel_integral_rad)
@@ -147,11 +153,11 @@ def test_p09_wheel_rebound_is_compact_and_strictly_reference_bounded() -> None:
     for tick in range(feedback.first_bias_tick, endpoint_tick):
         native = contract.phase("P09").nominal_at(tick / 120.0)[8]
         assert native == pytest.approx(-1.07)
-        assert native + feedback.logical_bias_rad_s == pytest.approx(0.0)
+        assert native + feedback.logical_bias_rad_s == pytest.approx(-0.74)
     for tick in range(endpoint_tick, feedback.last_bias_tick + 1):
         native = contract.phase("P09").end_full12[8]
         assert native == pytest.approx(0.0)
-        assert native + feedback.logical_bias_rad_s == pytest.approx(1.07)
+        assert native + feedback.logical_bias_rad_s == pytest.approx(0.33)
     assert all(
         phase.drive_feedback is None
         for phase in contract.phases
@@ -181,10 +187,10 @@ def test_p09_wheel_rebound_is_compact_and_strictly_reference_bounded() -> None:
         ("lag_threshold_deg", 1.69),
         ("correction_channel_index", 5),
         ("first_bias_tick", 861),
-        ("logical_bias_rad_s", -1.07),
-        ("additional_wheel_integral_rad", 0.1),
-        ("resulting_wheel_integral_rad", -0.8),
-        ("cumulative_fraction_of_reference", 0.16),
+        ("logical_bias_rad_s", 1.07),
+        ("additional_wheel_integral_rad", 0.107),
+        ("resulting_wheel_integral_rad", -0.7990000000012605),
+        ("cumulative_fraction_of_reference", 0.118101545253699),
         ("reference_wheel_peak_abs_rad_s", 1.06),
         ("resulting_wheel_peak_abs_rad_s", 1.08),
         ("instantaneous_direction_reversal", False),

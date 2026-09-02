@@ -275,11 +275,11 @@ def test_controller_exposes_live_latched_p09_drive_feedback(spec, contract) -> N
     assert first.full12[feedback.correction_channel_index] == pytest.approx(-1.07)
     assert first.full12[feedback.correction_channel_index] + first.drive_feedback_bias_full12[
         feedback.correction_channel_index
-    ] == pytest.approx(0.0)
+    ] == pytest.approx(-0.74)
     assert tail.full12[feedback.correction_channel_index] == 0.0
     assert tail.full12[feedback.correction_channel_index] + tail.drive_feedback_bias_full12[
         feedback.correction_channel_index
-    ] == pytest.approx(1.07)
+    ] == pytest.approx(0.33)
     assert restored.drive_feedback_bias_full12 == pytest.approx((0.0,) * 12)
     assert first.drive_feedback_details[
         "cumulative_fraction_of_reference"
@@ -400,7 +400,7 @@ def test_p09_wheel_rebound_is_zero_at_the_p10_velocity_decision(
     assert held.full12[feedback.correction_channel_index] == pytest.approx(-1.07)
     assert held.full12[feedback.correction_channel_index] + held.drive_feedback_bias_full12[
         feedback.correction_channel_index
-    ] == pytest.approx(0.0)
+    ] == pytest.approx(-0.74)
     assert not any(
         event.to_lifecycle == Lifecycle.DONE.value for event in held.events
     )
@@ -415,9 +415,7 @@ def test_p09_wheel_rebound_is_zero_at_the_p10_velocity_decision(
             feedback.correction_channel_index
         ] + active.drive_feedback_bias_full12[
             feedback.correction_channel_index
-        ] == pytest.approx(
-            0.0
-        )
+        ] == pytest.approx(-0.74)
     for tick in range(endpoint_tick, feedback.last_bias_tick + 1):
         active = frames[tick]
         assert active.lifecycle is Lifecycle.VERIFY_RESULT
@@ -428,9 +426,7 @@ def test_p09_wheel_rebound_is_zero_at_the_p10_velocity_decision(
             feedback.correction_channel_index
         ] + active.drive_feedback_bias_full12[
             feedback.correction_channel_index
-        ] == pytest.approx(
-            1.07
-        )
+        ] == pytest.approx(0.33)
     frame = frames[feedback.teardown_tick]
     assert frame.state_id == "P10"
     assert frame.lifecycle is expected_lifecycle
@@ -605,6 +601,10 @@ def test_elapsed_time_never_completes_a_state(spec, contract) -> None:
     assert frame.termination.result is TaskResult.INCOMPLETE_CONTROLLER_BLOCKED
     assert controller.state.state_id == "P01"
     assert controller.retries_used == 1
+    assert (
+        frame.termination.reason
+        == "controller exhausted its one reference-bounded retry"
+    )
     assert frame.first_blocker["name"] == "fr_lift_entry_geometry"
 
 
@@ -762,6 +762,14 @@ def test_wait_entry_guard_jitter_cannot_extend_past_watchdog(spec, contract) -> 
         )
     assert frame is not None and frame.termination is not None
     assert frame.termination.result is TaskResult.INCOMPLETE_CONTROLLER_BLOCKED
+    assert controller.lifecycle is Lifecycle.WAIT_ENTRY
+    assert controller.retries_used == 0
+    assert (
+        frame.termination.reason
+        == "live entry guards remained incompatible after the bounded wait window; "
+        "no recovery retry was attempted"
+    )
+    assert frame.termination.details["retries_used"] == 0
     assert frame.first_blocker["name"] == "critical_actuators_available"
 
 

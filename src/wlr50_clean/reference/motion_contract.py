@@ -32,7 +32,11 @@ REBOUND_PROBES = (
 REBOUND_LAG_THRESHOLD_DEG = 1.7
 REBOUND_CORRECTION_CHANNEL = "front_left_ankle"
 REBOUND_CORRECTION_CHANNEL_INDEX = 8
-REBOUND_LOGICAL_BIAS_RAD_S = 1.07
+REBOUND_LOGICAL_BIAS_RAD_S = 0.33
+REBOUND_PRE_ENDPOINT_NATIVE_RAD_S = -1.07
+REBOUND_PRE_ENDPOINT_FINAL_RAD_S = -0.74
+REBOUND_POST_ENDPOINT_NATIVE_RAD_S = 0.0
+REBOUND_POST_ENDPOINT_FINAL_RAD_S = 0.33
 
 
 def _vector(value: Sequence[Any], *, label: str) -> tuple[float, ...]:
@@ -415,10 +419,25 @@ def _validate_phases(
                 or not pre_endpoint_native
                 or not post_endpoint_native
                 or any(
-                    abs(native + feedback.logical_bias_rad_s) > 1.0e-12
+                    abs(native - REBOUND_PRE_ENDPOINT_NATIVE_RAD_S) > 1.0e-12
+                    or abs(
+                        native
+                        + feedback.logical_bias_rad_s
+                        - REBOUND_PRE_ENDPOINT_FINAL_RAD_S
+                    )
+                    > 1.0e-12
                     for native in pre_endpoint_native
                 )
-                or any(abs(native) > 1.0e-12 for native in post_endpoint_native)
+                or any(
+                    abs(native - REBOUND_POST_ENDPOINT_NATIVE_RAD_S) > 1.0e-12
+                    or abs(
+                        native
+                        + feedback.logical_bias_rad_s
+                        - REBOUND_POST_ENDPOINT_FINAL_RAD_S
+                    )
+                    > 1.0e-12
+                    for native in post_endpoint_native
+                )
                 or abs(phase.end_full12[feedback.correction_channel_index])
                 > 1.0e-12
                 or feedback.logical_bias_rad_s * reference >= 0.0

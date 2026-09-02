@@ -429,10 +429,17 @@ class SensorFsmController:
     def _terminate_blocked(
         self, blocker: GuardEvidence | WatchdogBlocker | None, now: float
     ) -> None:
+        if self.lifecycle is Lifecycle.WAIT_ENTRY and self.retries_used == 0:
+            reason = (
+                "live entry guards remained incompatible after the bounded wait "
+                "window; no recovery retry was attempted"
+            )
+        else:
+            reason = "controller exhausted its one reference-bounded retry"
         self._terminate(
             TaskResult.INCOMPLETE_CONTROLLER_BLOCKED,
             now,
-            "controller exhausted its one reference-bounded retry",
+            reason,
             {
                 "current_blocker": _blocker_details(blocker),
                 "first_blocker": self._first_blocker,

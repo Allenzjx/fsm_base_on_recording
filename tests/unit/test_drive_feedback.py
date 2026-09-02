@@ -98,15 +98,18 @@ def test_p09_two_sample_live_deficit_latches_bounded_wheel_rebound() -> None:
         / abs(spec.reference_wheel_integral_rad)
     )
     assert active[0].kind == "pre_endpoint_wheel_rebound_alignment"
-    assert active[0].logical_bias_rad_s == 1.07
+    assert active[0].logical_bias_rad_s == 0.33
     assert active[0].reference_wheel_integral_rad == pytest.approx(
         -0.9060000000012605
     )
     assert active[0].additional_wheel_integral_rad == pytest.approx(
-        1.07 * 12.0 / 120.0
+        0.33 * 12.0 / 120.0
     )
     assert active[0].resulting_wheel_integral_rad == pytest.approx(
-        -0.7990000000012605
+        -0.8730000000012605
+    )
+    assert active[0].cumulative_fraction_of_reference == pytest.approx(
+        0.03642384105955198
     )
     assert active[0].reference_wheel_peak_abs_rad_s == pytest.approx(1.07)
     assert active[0].resulting_wheel_peak_abs_rad_s == pytest.approx(1.07)
@@ -118,13 +121,13 @@ def test_p09_two_sample_live_deficit_latches_bounded_wheel_rebound() -> None:
         assert native == pytest.approx(-1.07)
         assert native + active_by_tick[tick].bias_full12[
             spec.correction_channel_index
-        ] == pytest.approx(0.0)
+        ] == pytest.approx(-0.74)
     for tick in range(endpoint_tick, spec.last_bias_tick + 1):
         native = phase.end_full12[spec.correction_channel_index]
         assert native == pytest.approx(0.0)
         assert native + active_by_tick[tick].bias_full12[
             spec.correction_channel_index
-        ] == pytest.approx(1.07)
+        ] == pytest.approx(0.33)
     assert restored.bias_full12 == pytest.approx((0.0,) * 12)
     assert restored.cumulative_fraction_of_reference < 0.15
 
@@ -219,9 +222,10 @@ def test_p09_wheel_rebound_is_one_shot_across_a_same_state_retry() -> None:
     ("field", "invalid_value"),
     (
         ("kind", "verify_tail_wheel_carry_alignment"),
-        ("logical_bias_rad_s", -1.07),
-        ("resulting_wheel_integral_rad", -0.8),
-        ("cumulative_fraction_of_reference", 0.16),
+        ("logical_bias_rad_s", 1.07),
+        ("additional_wheel_integral_rad", 0.107),
+        ("resulting_wheel_integral_rad", -0.7990000000012605),
+        ("cumulative_fraction_of_reference", 0.118101545253699),
         ("reference_wheel_peak_abs_rad_s", 1.06),
         ("resulting_wheel_peak_abs_rad_s", 1.08),
         ("instantaneous_direction_reversal", False),
