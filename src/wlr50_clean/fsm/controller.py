@@ -17,6 +17,7 @@ from .guard_evaluator import (
 )
 from .motion_executor import (
     FeedbackCorrection,
+    MAX_CORRECTION_FRACTION,
     MotionExecutor,
     MotionTick,
     ProgressWatchdog,
@@ -354,16 +355,23 @@ class SensorFsmController:
                         blocked_guard=blocker_name,
                         blocker_evidence=self._pending_blocker,
                     )
-                    combined_correction = FeedbackCorrection(
-                        tuple(
-                            normal + recovery
-                            for normal, recovery in zip(
-                                self.state.normal_correction_fractions,
-                                plan.correction.fractions,
-                                strict=True,
-                            )
+                    cumulative = tuple(
+                        abs(normal) + abs(recovery)
+                        for normal, recovery in zip(
+                            self.state.normal_correction_fractions,
+                            plan.correction.fractions,
+                            strict=True,
                         )
                     )
+                    if any(
+                        value > MAX_CORRECTION_FRACTION + 1e-12
+                        for value in cumulative
+                    ):
+                        raise ValueError(
+                            "normal plus retry correction exceeds the cumulative "
+                            "15% reference bound"
+                        )
+                    retry_correction = plan.correction
                 except (TypeError, ValueError) as exc:
                     self._terminate(
                         TaskResult.INFRASTRUCTURE_ERROR,
@@ -373,7 +381,10 @@ class SensorFsmController:
                     )
                     return
                 self.retries_used += 1
-                self.motion.start_phase(self.phase, combined_correction)
+                # A retry is a distinct, bounded correction attempt.  Reapplying
+                # the state's nominal shaping here would silently spend that
+                # fraction twice while the transition ledger records one retry.
+                self.motion.start_phase(self.phase, retry_correction)
                 self.guard_evaluator.reset_state(self.state.state_id)
                 self.watchdog.reset()
                 self._endpoint_issued = False
@@ -386,8 +397,8 @@ class SensorFsmController:
                     {
                         "retry": self.retries_used,
                         "blocked_guard": blocker_name,
-                        "correction_fractions": combined_correction.fractions,
-                        "recovery_correction_fractions": plan.correction.fractions,
+                        "correction_fractions": retry_correction.fractions,
+                        "recovery_correction_fractions": retry_correction.fractions,
                     },
                 )
                 continue

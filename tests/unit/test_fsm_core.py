@@ -430,6 +430,77 @@ def test_controller_ledgers_live_final_pose_recovery_correction(spec, contract) 
     assert controller.history[-1] == event
 
 
+@pytest.mark.parametrize(
+    ("retry_fraction", "expected_rear_left_wheel"),
+    ((0.0, 0.61), (-0.001, 0.60939)),
+)
+def test_p03_retry_executes_only_its_actual_bounded_correction(
+    spec, contract, retry_fraction, expected_rear_left_wheel
+) -> None:
+    controller = SensorFsmController(spec, contract)
+    controller.state = spec.state("P03")
+    controller.lifecycle = Lifecycle.RECOVERY
+    controller._pending_blocker = GuardEvidence(
+        name="leg_top_loaded_latched",
+        passed=False,
+    )
+    correction = [0.0] * 12
+    correction[10] = retry_fraction
+
+    frame = controller.step(
+        {
+            "guards": _live_guards(completion=False),
+            "actual_full12": controller.state.reference_actual_endpoint_full12,
+            "progress_vector": (0.0,),
+            "recovery_correction_fractions": correction,
+        },
+        sim_time_s=0.0,
+    )
+
+    event = next(
+        item
+        for item in frame.events
+        if item.from_lifecycle == Lifecycle.RECOVERY.value
+        and item.to_lifecycle == Lifecycle.EXECUTE_MOTION.value
+    )
+    assert event.details["correction_fractions"] == pytest.approx(correction)
+    assert event.details["recovery_correction_fractions"] == pytest.approx(correction)
+    assert controller.motion._correction.fractions == pytest.approx(correction)
+    assert frame.full12[10] == pytest.approx(expected_rear_left_wheel)
+    assert frame.atomic_source_event is True
+
+
+def test_p03_retry_fails_before_dispatch_when_cumulative_bound_is_exceeded(
+    spec, contract
+) -> None:
+    controller = SensorFsmController(spec, contract)
+    controller.state = spec.state("P03")
+    controller.lifecycle = Lifecycle.RECOVERY
+    controller._pending_blocker = GuardEvidence(
+        name="leg_top_loaded_latched",
+        passed=False,
+    )
+    correction = [0.0] * 12
+    correction[10] = -0.002
+
+    frame = controller.step(
+        {
+            "guards": _live_guards(completion=False),
+            "actual_full12": controller.state.reference_actual_endpoint_full12,
+            "progress_vector": (0.0,),
+            "recovery_correction_fractions": correction,
+        },
+        sim_time_s=0.0,
+    )
+
+    assert frame.termination is not None
+    assert frame.termination.result is TaskResult.INFRASTRUCTURE_ERROR
+    assert "cumulative 15%" in frame.termination.details["error"]
+    assert controller.motion.phase is None
+    assert controller.retries_used == 0
+    assert not frame.events
+
+
 def test_p10_entry_keeps_the_unmodified_reference_motion(
     spec, contract
 ) -> None:

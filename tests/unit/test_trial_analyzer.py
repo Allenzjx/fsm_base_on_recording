@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import json
+import math
 from pathlib import Path
 
 import pytest
@@ -246,7 +247,7 @@ def test_post_mapper_drive_feedback_is_included_in_cumulative_budget(tmp_path: P
     assert max(values) > 0.15
 
 
-def test_normal_shaping_is_counted_once_when_retry_logs_its_increment() -> None:
+def test_normal_shaping_and_actual_retry_vectors_share_one_cumulative_budget() -> None:
     normal = [0.0] * 12
     normal[10] = -0.149
     recovery = [0.0] * 12
@@ -262,8 +263,8 @@ def test_normal_shaping_is_counted_once_when_retry_logs_its_increment() -> None:
             "from_lifecycle": "RECOVERY",
             "to_lifecycle": "EXECUTE_MOTION",
             "details": {
-                "correction_fractions": normal,
-                "recovery_correction_fractions": recovery,
+                "correction_fractions": recovery.copy(),
+                "recovery_correction_fractions": recovery.copy(),
             },
         },
     ]
@@ -272,9 +273,19 @@ def test_normal_shaping_is_counted_once_when_retry_logs_its_increment() -> None:
 
     assert max(values) == pytest.approx(0.149)
     assert retry_counts["P03"] == 1
-    transitions[-1]["details"]["recovery_correction_fractions"][10] = -0.01
+    transitions[-1]["details"]["correction_fractions"][10] = -0.001
+    transitions[-1]["details"]["recovery_correction_fractions"][10] = -0.001
     values, _ = _recovery_evidence(transitions)
-    assert max(values) == pytest.approx(0.159)
+    assert max(values) == pytest.approx(0.15)
+
+    transitions[-1]["details"]["correction_fractions"][10] = -0.002
+    transitions[-1]["details"]["recovery_correction_fractions"][10] = -0.002
+    values, _ = _recovery_evidence(transitions)
+    assert max(values) == pytest.approx(0.151)
+
+    transitions[-1]["details"]["recovery_correction_fractions"][10] = -0.001
+    values, _ = _recovery_evidence(transitions)
+    assert math.isinf(max(values))
 
 
 def _contract_with_feedback(spec: dict) -> dict:

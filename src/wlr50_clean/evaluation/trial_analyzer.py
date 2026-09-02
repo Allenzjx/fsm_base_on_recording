@@ -319,20 +319,41 @@ def _recovery_evidence(
     cumulative_by_phase_channel: dict[tuple[str, str], float] = {}
     for row in rows:
         details = row.get("details")
-        raw = (
-            details.get(
-                "recovery_correction_fractions",
-                details.get("correction_fractions"),
+        raw = details.get("correction_fractions") if isinstance(details, Mapping) else None
+
+        def correction_candidates(value: Any) -> tuple[tuple[str, Any], ...]:
+            if isinstance(value, Mapping):
+                return tuple((str(name), item) for name, item in value.items())
+            if (
+                isinstance(value, Sequence)
+                and not isinstance(value, (str, bytes))
+                and len(value) == 12
+            ):
+                return tuple((str(index), item) for index, item in enumerate(value))
+            return (("invalid", math.inf),)
+
+        candidates = correction_candidates(raw)
+        if (
+            isinstance(details, Mapping)
+            and "recovery_correction_fractions" in details
+        ):
+            auxiliary = correction_candidates(
+                details["recovery_correction_fractions"]
             )
-            if isinstance(details, Mapping)
-            else None
-        )
-        if isinstance(raw, Mapping):
-            candidates = tuple((str(name), value) for name, value in raw.items())
-        elif isinstance(raw, Sequence) and not isinstance(raw, (str, bytes)) and len(raw) == 12:
-            candidates = tuple((str(index), value) for index, value in enumerate(raw))
-        else:
-            candidates = (("invalid", math.inf),)
+            try:
+                ledger_matches = len(candidates) == len(auxiliary) and all(
+                    left_name == right_name
+                    and math.isfinite(float(left_value))
+                    and math.isfinite(float(right_value))
+                    and abs(float(left_value) - float(right_value)) <= 1e-12
+                    for (left_name, left_value), (right_name, right_value) in zip(
+                        candidates, auxiliary, strict=True
+                    )
+                )
+            except (TypeError, ValueError):
+                ledger_matches = False
+            if not ledger_matches:
+                candidates = (("invalid_recovery_correction_ledger", math.inf),)
         for channel, item in candidates:
             try:
                 parsed = abs(float(item))
