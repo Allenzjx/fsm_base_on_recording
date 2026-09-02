@@ -140,12 +140,11 @@ def test_p09_wheel_rebound_is_compact_and_strictly_reference_bounded() -> None:
         (860, 860, 0.68),
         (861, 861, 0.33),
         (862, 864, 0.68),
-        (865, 865, 0.23),
+        (865, 865, 0.15),
         (866, 867, 1.03),
         (868, 868, 0.73),
-        (869, 869, 0.14),
         (870, 870, 0.01),
-        (871, 871, 1.07),
+        (871, 871, 0.40),
     ]
     assert feedback.first_bias_tick == 860
     assert feedback.last_bias_tick == 871
@@ -156,26 +155,25 @@ def test_p09_wheel_rebound_is_compact_and_strictly_reference_bounded() -> None:
     assert feedback.additional_wheel_integral_rad == pytest.approx(
         (
             0.68
-            + 0.23
+            + 0.15
             + 0.68 * 3.0
             + 0.33
             + 1.03 * 2.0
             + 0.73
-            + 0.14
             + 0.01
-            + 1.07
+            + 0.40
         )
         / 120.0
     )
     assert feedback.resulting_wheel_integral_rad == pytest.approx(
-        -0.8452500000012605
+        -0.8526666666679271
     )
     assert feedback.resulting_wheel_integral_rad == pytest.approx(
         feedback.reference_wheel_integral_rad
         + feedback.additional_wheel_integral_rad
     )
     assert feedback.cumulative_fraction_of_reference == pytest.approx(
-        0.06705298013235704
+        0.05886681383361936
     )
     assert feedback.cumulative_fraction_of_reference == pytest.approx(
         abs(feedback.additional_wheel_integral_rad)
@@ -197,13 +195,13 @@ def test_p09_wheel_rebound_is_compact_and_strictly_reference_bounded() -> None:
         (862, -1.07, -0.39),
         (863, -1.07, -0.39),
         (864, 0.0, 0.68),
-        (865, 0.0, 0.23),
+        (865, 0.0, 0.15),
         (866, 0.0, 1.03),
         (867, 0.0, 1.03),
         (868, 0.0, 0.73),
-        (869, 0.0, 0.14),
+        (869, 0.0, 0.0),
         (870, 0.0, 0.01),
-        (871, 0.0, 1.07),
+        (871, 0.0, 0.40),
     )
     segments_by_tick = {
         tick: segment
@@ -217,9 +215,9 @@ def test_p09_wheel_rebound_is_compact_and_strictly_reference_bounded() -> None:
             else contract.phase("P09").end_full12[8]
         )
         assert native == pytest.approx(expected_native)
-        assert native + segments_by_tick[tick].logical_bias_rad_s == pytest.approx(
-            expected_final
-        )
+        segment = segments_by_tick.get(tick)
+        bias = 0.0 if segment is None else segment.logical_bias_rad_s
+        assert native + bias == pytest.approx(expected_final)
     assert all(
         phase.drive_feedback is None
         for phase in contract.phases
@@ -287,6 +285,7 @@ def test_p09_wheel_rebound_contract_fails_closed(
         (4, "logical_bias_rad_s", 1.02),
         (5, "last_bias_tick", 869),
         (5, "logical_bias_rad_s", 0.72),
+        (6, "first_bias_tick", 869),
         (6, "logical_bias_rad_s", 0.27),
         (7, "last_bias_tick", 872),
         (7, "logical_bias_rad_s", 0.37),

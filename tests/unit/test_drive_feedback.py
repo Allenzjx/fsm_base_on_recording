@@ -14,12 +14,11 @@ EXPECTED_BIAS_SEGMENTS = (
     (860, 860, 0.68),
     (861, 861, 0.33),
     (862, 864, 0.68),
-    (865, 865, 0.23),
+    (865, 865, 0.15),
     (866, 867, 1.03),
     (868, 868, 0.73),
-    (869, 869, 0.14),
     (870, 870, 0.01),
-    (871, 871, 1.07),
+    (871, 871, 0.40),
 )
 
 EXPECTED_NATIVE_AND_FINAL_BY_TICK = (
@@ -28,13 +27,13 @@ EXPECTED_NATIVE_AND_FINAL_BY_TICK = (
     (862, -1.07, -0.39),
     (863, -1.07, -0.39),
     (864, 0.0, 0.68),
-    (865, 0.0, 0.23),
+    (865, 0.0, 0.15),
     (866, 0.0, 1.03),
     (867, 0.0, 1.03),
     (868, 0.0, 0.73),
-    (869, 0.0, 0.14),
+    (869, 0.0, 0.0),
     (870, 0.0, 0.01),
-    (871, 0.0, 1.07),
+    (871, 0.0, 0.40),
 )
 
 
@@ -106,16 +105,30 @@ def test_p09_two_sample_live_deficit_latches_bounded_wheel_rebound() -> None:
     assert len(armed_gap) == 0
     assert all(not item.active for item in armed_gap)
     assert all(item.trigger_tick == second.motion_tick for item in armed_gap)
-    assert all(item.active for item in active)
     assert len(active) == 12
     assert [item.active_segment_index for item in active] == [
-        segment_index
-        for segment_index, (first_tick, last_tick, _) in enumerate(
-            EXPECTED_BIAS_SEGMENTS
+        next(
+            (
+                segment_index
+                for segment_index, (first_tick, last_tick, _) in enumerate(
+                    EXPECTED_BIAS_SEGMENTS
+                )
+                if first_tick <= tick <= last_tick
+            ),
+            None,
         )
-        for _ in range(first_tick, last_tick + 1)
+        for tick in range(spec.first_bias_tick, spec.last_bias_tick + 1)
     ]
     for item in active:
+        if item.active_segment_index is None:
+            assert item.tick_index == 869
+            assert item.active is False
+            assert item.bias_full12 == pytest.approx((0.0,) * 12)
+            assert item.logical_bias_rad_s == 0.0
+            assert item.active_segment_first_bias_tick is None
+            assert item.active_segment_last_bias_tick is None
+            continue
+        assert item.active is True
         assert item.active_segment_index is not None
         segment = spec.bias_segments[item.active_segment_index]
         assert item.bias_full12[
@@ -141,9 +154,15 @@ def test_p09_two_sample_live_deficit_latches_bounded_wheel_rebound() -> None:
         for tick in range(spec.first_bias_tick, spec.last_bias_tick + 1)
     ] == pytest.approx(
         [
-            logical_bias_rad_s
-            for first_tick, last_tick, logical_bias_rad_s in EXPECTED_BIAS_SEGMENTS
-            for _ in range(first_tick, last_tick + 1)
+            next(
+                (
+                    logical_bias_rad_s
+                    for first_tick, last_tick, logical_bias_rad_s in EXPECTED_BIAS_SEGMENTS
+                    if first_tick <= tick <= last_tick
+                ),
+                0.0,
+            )
+            for tick in range(spec.first_bias_tick, spec.last_bias_tick + 1)
         ]
     )
     assert active[0].bias_segments == spec.bias_segments
@@ -158,10 +177,10 @@ def test_p09_two_sample_live_deficit_latches_bounded_wheel_rebound() -> None:
         / 120.0
     )
     assert active[0].resulting_wheel_integral_rad == pytest.approx(
-        -0.8452500000012605
+        -0.8526666666679271
     )
     assert active[0].cumulative_fraction_of_reference == pytest.approx(
-        0.06705298013235704
+        0.05886681383361936
     )
     assert active[0].reference_wheel_peak_abs_rad_s == pytest.approx(1.07)
     assert active[0].resulting_wheel_peak_abs_rad_s == pytest.approx(1.07)
@@ -372,6 +391,7 @@ def test_p09_wheel_rebound_runtime_fails_closed(
         (4, "logical_bias_rad_s", 0.27),
         (5, "last_bias_tick", 869),
         (5, "logical_bias_rad_s", 0.37),
+        (6, "first_bias_tick", 869),
         (6, "logical_bias_rad_s", 0.27),
         (7, "last_bias_tick", 872),
         (7, "logical_bias_rad_s", 0.37),

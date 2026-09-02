@@ -36,12 +36,11 @@ REBOUND_BIAS_SEGMENTS = (
     (860, 860, 0.68),
     (861, 861, 0.33),
     (862, 864, 0.68),
-    (865, 865, 0.23),
+    (865, 865, 0.15),
     (866, 867, 1.03),
     (868, 868, 0.73),
-    (869, 869, 0.14),
     (870, 870, 0.01),
-    (871, 871, 1.07),
+    (871, 871, 0.40),
 )
 REBOUND_NATIVE_AND_FINAL_RAD_S_BY_TICK = (
     (860, -1.07, -0.39),
@@ -49,13 +48,13 @@ REBOUND_NATIVE_AND_FINAL_RAD_S_BY_TICK = (
     (862, -1.07, -0.39),
     (863, -1.07, -0.39),
     (864, 0.0, 0.68),
-    (865, 0.0, 0.23),
+    (865, 0.0, 0.15),
     (866, 0.0, 1.03),
     (867, 0.0, 1.03),
     (868, 0.0, 0.73),
-    (869, 0.0, 0.14),
+    (869, 0.0, 0.0),
     (870, 0.0, 0.01),
-    (871, 0.0, 1.07),
+    (871, 0.0, 0.40),
 )
 
 
@@ -129,13 +128,13 @@ class DriveFeedbackSpec:
 
     @property
     def first_bias_tick(self) -> int:
-        """First tick of the contiguous bias envelope (controller compatibility)."""
+        """First tick of the bounded bias envelope (controller compatibility)."""
 
         return self.bias_segments[0].first_bias_tick
 
     @property
     def last_bias_tick(self) -> int:
-        """Last tick of the contiguous bias envelope (controller compatibility)."""
+        """Last tick of the bounded bias envelope (controller compatibility)."""
 
         return self.bias_segments[-1].last_bias_tick
 
@@ -438,12 +437,11 @@ def _validate_phases(
                     (-4, -4, 0.68),
                     (-3, -3, 0.33),
                     (-2, 0, 0.68),
-                    (1, 1, 0.23),
+                    (1, 1, 0.15),
                     (2, 3, 1.03),
                     (4, 4, 0.73),
-                    (5, 5, 0.14),
                     (6, 6, 0.01),
-                    (7, 7, 1.07),
+                    (7, 7, 0.40),
                 )
                 or feedback.last_bias_tick
                 != endpoint_tick + DECISION_STRIDE - 1
@@ -498,17 +496,20 @@ def _validate_phases(
                 (
                     tick,
                     native,
-                    native + segment.logical_bias_rad_s,
+                    native
+                    + (
+                        active_segment[1].logical_bias_rad_s
+                        if active_segment is not None
+                        else 0.0
+                    ),
                 )
-                for segment in feedback.bias_segments
-                for tick in range(
-                    segment.first_bias_tick, segment.last_bias_tick + 1
-                )
+                for tick in range(feedback.first_bias_tick, feedback.last_bias_tick + 1)
                 for native in (
                     _channel_at_motion_tick(
                         phase, feedback.correction_channel_index, tick
                     ),
                 )
+                for active_segment in (feedback.bias_segment_at(tick),)
             )
             if (
                 any(not math.isfinite(value) for value in values)

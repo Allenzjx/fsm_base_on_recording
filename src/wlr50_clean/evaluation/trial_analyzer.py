@@ -72,16 +72,15 @@ _WHEEL_REBOUND_BIAS_SEGMENTS = (
     (860, 860, 0.68),
     (861, 861, 0.33),
     (862, 864, 0.68),
-    (865, 865, 0.23),
+    (865, 865, 0.15),
     (866, 867, 1.03),
     (868, 868, 0.73),
-    (869, 869, 0.14),
     (870, 870, 0.01),
-    (871, 871, 1.07),
+    (871, 871, 0.40),
 )
 _WHEEL_REFERENCE_INTEGRAL_RAD = -0.9060000000012605
-_WHEEL_REBOUND_ADDITIONAL_INTEGRAL_RAD = 0.06075
-_WHEEL_REBOUND_RESULTING_INTEGRAL_RAD = -0.8452500000012605
+_WHEEL_REBOUND_ADDITIONAL_INTEGRAL_RAD = 0.05333333333333334
+_WHEEL_REBOUND_RESULTING_INTEGRAL_RAD = -0.8526666666679271
 _WHEEL_REFERENCE_PEAK_ABS_RAD_S = 1.07
 _WHEEL_REBOUND_RESULTING_PEAK_ABS_RAD_S = 1.07
 _MAX_FEEDBACK_FRACTION = 0.15
@@ -536,7 +535,7 @@ def _wheel_feedback_segments(
     ):
         return None
     if any(
-        right[0] != left[1] + 1
+        right[0] <= left[1]
         for left, right in zip(segments, segments[1:])
     ):
         return None

@@ -860,7 +860,7 @@ _WHEEL_REBOUND_SEGMENTS = [
     {
         "first_bias_tick": 865,
         "last_bias_tick": 865,
-        "logical_bias_rad_s": 0.23,
+        "logical_bias_rad_s": 0.15,
     },
     {
         "first_bias_tick": 866,
@@ -873,11 +873,6 @@ _WHEEL_REBOUND_SEGMENTS = [
         "logical_bias_rad_s": 0.73,
     },
     {
-        "first_bias_tick": 869,
-        "last_bias_tick": 869,
-        "logical_bias_rad_s": 0.14,
-    },
-    {
         "first_bias_tick": 870,
         "last_bias_tick": 870,
         "logical_bias_rad_s": 0.01,
@@ -885,12 +880,12 @@ _WHEEL_REBOUND_SEGMENTS = [
     {
         "first_bias_tick": 871,
         "last_bias_tick": 871,
-        "logical_bias_rad_s": 1.07,
+        "logical_bias_rad_s": 0.40,
     },
 ]
-_WHEEL_REBOUND_ADDITIONAL_INTEGRAL = 0.06075
-_WHEEL_REBOUND_RESULTING_INTEGRAL = -0.8452500000012605
-_WHEEL_REBOUND_FRACTION = 0.06705298013235704
+_WHEEL_REBOUND_ADDITIONAL_INTEGRAL = 0.05333333333333334
+_WHEEL_REBOUND_RESULTING_INTEGRAL = -0.8526666666679271
+_WHEEL_REBOUND_FRACTION = 0.05886681383361936
 
 
 def _wheel_rebound_segment_index(tick: int) -> int | None:
@@ -1125,13 +1120,13 @@ def test_wheel_rebound_feedback_accepts_exact_partial_counteraction_and_reversal
     spec = contract["phases"][8]["drive_feedback"]
     assert spec["bias_segments"] == _WHEEL_REBOUND_SEGMENTS
     assert spec["additional_wheel_integral_rad"] == pytest.approx(
-        0.06075
+        0.05333333333333334
     )
     assert spec["resulting_wheel_integral_rad"] == pytest.approx(
-        -0.8452500000012605
+        -0.8526666666679271
     )
     assert spec["cumulative_fraction_of_reference"] == pytest.approx(
-        0.06705298013235704
+        0.05886681383361936
     )
     assert spec["reference_wheel_peak_abs_rad_s"] == 1.07
     assert spec["resulting_wheel_peak_abs_rad_s"] == 1.07
@@ -1141,33 +1136,40 @@ def test_wheel_rebound_feedback_accepts_exact_partial_counteraction_and_reversal
         862: (-1.07, -0.39),
         863: (-1.07, -0.39),
         864: (0.0, 0.68),
-        865: (0.0, 0.23),
+        865: (0.0, 0.15),
         866: (0.0, 1.03),
         867: (0.0, 1.03),
         868: (0.0, 0.73),
-        869: (0.0, 0.14),
+        869: (0.0, 0.0),
         870: (0.0, 0.01),
-        871: (0.0, 1.07),
+        871: (0.0, 0.40),
     }
     for row in rows[2:14]:
         tick = row["motion_tick_index"]
         assert tick is not None
         segment_index = _wheel_rebound_segment_index(tick)
-        assert segment_index is not None
-        segment = _WHEEL_REBOUND_SEGMENTS[segment_index]
-        expected_bias = segment["logical_bias_rad_s"]
+        segment = (
+            None
+            if segment_index is None
+            else _WHEEL_REBOUND_SEGMENTS[segment_index]
+        )
+        expected_bias = 0.0 if segment is None else segment["logical_bias_rad_s"]
         expected_native, expected_final = expected_native_and_final[tick]
         assert row["native_drive_target_full12"][8] == pytest.approx(
             expected_native
         )
         assert row["drive_target_full12"][8] == pytest.approx(expected_final)
         assert row["drive_feedback"]["active_segment_index"] == segment_index
-        assert row["drive_feedback"]["active_segment_first_bias_tick"] == segment[
-            "first_bias_tick"
-        ]
-        assert row["drive_feedback"]["active_segment_last_bias_tick"] == segment[
-            "last_bias_tick"
-        ]
+        assert row["drive_feedback"]["active"] is (segment is not None)
+        assert row["drive_feedback"]["logical_bias_rad_s"] == pytest.approx(
+            expected_bias
+        )
+        assert row["drive_feedback"]["active_segment_first_bias_tick"] == (
+            None if segment is None else segment["first_bias_tick"]
+        )
+        assert row["drive_feedback"]["active_segment_last_bias_tick"] == (
+            None if segment is None else segment["last_bias_tick"]
+        )
         assert row["atomic_ack"]["wheel_target_physical_rad_s"][0] == pytest.approx(
             -expected_final
         )
