@@ -138,6 +138,13 @@ RELEVANT_LEGS = {
 # margin) and changes no other channel or phase.
 P03_RL_WHEEL_CORRECTION_FRACTION = -0.149
 P03_RL_WHEEL_CHANNEL_INDEX = 10
+# Trial036 showed that the P03 correction removed the right amount of local
+# wheel travel but left RL about 5.45 mm short of the v010 support location at
+# the later P10 transfer.  Restore exactly that angular travel during P06's
+# long, already-active RL wheel segment.  The +1.424% scale stays well inside
+# the phase contract and changes no timing, channel membership, or atomics.
+P06_RL_WHEEL_CORRECTION_FRACTION = 0.014238642298
+P06_RL_WHEEL_CHANNEL_INDEX = 10
 
 
 def _phase_velocity(phase: dict[str, Any], key: str) -> dict[str, float]:
@@ -273,6 +280,10 @@ def build_state_specs(contract: dict[str, Any]) -> dict[str, Any]:
             normal_correction[P03_RL_WHEEL_CHANNEL_INDEX] = (
                 P03_RL_WHEEL_CORRECTION_FRACTION
             )
+        elif state_id == "P06":
+            normal_correction[P06_RL_WHEEL_CHANNEL_INDEX] = (
+                P06_RL_WHEEL_CORRECTION_FRACTION
+            )
         state["normal_correction_fractions"] = normal_correction
         if state_id == "P13":
             # Recovery restarts the measured wheel-decay evidence.  Preserve
@@ -332,7 +343,7 @@ def _write_docs(specs: dict[str, Any], derivation: Path, transitions: Path) -> N
                 "",
                 "## Bounded nominal response shaping",
                 "",
-                "P03 scales only the rear-left wheel excursion by -14.9%. This is the first strict Trial025 measured-response correction: it remains inside the v010 command envelope, preserves the source same-tick Full12 launch, and requires no runtime Recording access. All other normal-entry correction fractions are zero.",
+                "P03 scales only the rear-left wheel excursion by -14.9%. This is the first strict Trial025 measured-response correction: it remains inside the v010 command envelope, preserves the source same-tick Full12 launch, and requires no runtime Recording access. Trial036 then identified the downstream support consequence: P06 restores the same 0.109068 rad (about 5.45 mm surface travel) on that already-active wheel with a +1.4238642298% scale, so the later RL support location remains reference-compatible without changing any phase timing or atomic relation.",
             ]
         )
     derivation.parent.mkdir(parents=True, exist_ok=True)

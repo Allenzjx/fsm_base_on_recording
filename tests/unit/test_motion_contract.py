@@ -77,10 +77,14 @@ def test_state_specs_have_required_contract_fields() -> None:
     assert p03["normal_correction_fractions"] == pytest.approx(
         (0.0,) * 10 + (-0.149, 0.0)
     )
+    p06 = next(state for state in payload["states"] if state["state_id"] == "P06")
+    assert p06["normal_correction_fractions"] == pytest.approx(
+        (0.0,) * 10 + (0.014238642298, 0.0)
+    )
     assert all(
         state["normal_correction_fractions"] == [0.0] * 12
         for state in payload["states"]
-        if state["state_id"] != "P03"
+        if state["state_id"] not in {"P03", "P06"}
     )
 
 
