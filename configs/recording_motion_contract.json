@@ -18811,7 +18811,7 @@
           {
             "first_bias_tick": 865,
             "last_bias_tick": 865,
-            "logical_bias_rad_s": 0.33
+            "logical_bias_rad_s": 0.23
           },
           {
             "first_bias_tick": 866,
@@ -18826,19 +18826,19 @@
           {
             "first_bias_tick": 870,
             "last_bias_tick": 870,
-            "logical_bias_rad_s": 0.28
+            "logical_bias_rad_s": 0.01
           },
           {
             "first_bias_tick": 871,
             "last_bias_tick": 871,
-            "logical_bias_rad_s": 0.38
+            "logical_bias_rad_s": 1.07
           }
         ],
         "teardown_tick": 872,
         "reference_wheel_integral_rad": -0.9060000000012605,
-        "additional_wheel_integral_rad": 0.063,
-        "resulting_wheel_integral_rad": -0.8430000000012605,
-        "cumulative_fraction_of_reference": 0.06953642384096285,
+        "additional_wheel_integral_rad": 0.06566666666666666,
+        "resulting_wheel_integral_rad": -0.8403333333345938,
+        "cumulative_fraction_of_reference": 0.07247976453264382,
         "reference_wheel_peak_abs_rad_s": 1.07,
         "resulting_wheel_peak_abs_rad_s": 1.07,
         "instantaneous_direction_reversal": true,

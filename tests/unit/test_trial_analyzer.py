@@ -860,7 +860,7 @@ _WHEEL_REBOUND_SEGMENTS = [
     {
         "first_bias_tick": 865,
         "last_bias_tick": 865,
-        "logical_bias_rad_s": 0.33,
+        "logical_bias_rad_s": 0.23,
     },
     {
         "first_bias_tick": 866,
@@ -875,17 +875,17 @@ _WHEEL_REBOUND_SEGMENTS = [
     {
         "first_bias_tick": 870,
         "last_bias_tick": 870,
-        "logical_bias_rad_s": 0.28,
+        "logical_bias_rad_s": 0.01,
     },
     {
         "first_bias_tick": 871,
         "last_bias_tick": 871,
-        "logical_bias_rad_s": 0.38,
+        "logical_bias_rad_s": 1.07,
     },
 ]
-_WHEEL_REBOUND_ADDITIONAL_INTEGRAL = 0.063
-_WHEEL_REBOUND_RESULTING_INTEGRAL = -0.8430000000012605
-_WHEEL_REBOUND_FRACTION = 0.06953642384096285
+_WHEEL_REBOUND_ADDITIONAL_INTEGRAL = 0.06566666666666666
+_WHEEL_REBOUND_RESULTING_INTEGRAL = -0.8403333333345938
+_WHEEL_REBOUND_FRACTION = 0.07247976453264382
 
 
 def _wheel_rebound_segment_index(tick: int) -> int | None:
@@ -1120,13 +1120,13 @@ def test_wheel_rebound_feedback_accepts_exact_partial_counteraction_and_reversal
     spec = contract["phases"][8]["drive_feedback"]
     assert spec["bias_segments"] == _WHEEL_REBOUND_SEGMENTS
     assert spec["additional_wheel_integral_rad"] == pytest.approx(
-        0.063
+        0.06566666666666666
     )
     assert spec["resulting_wheel_integral_rad"] == pytest.approx(
-        -0.8430000000012605
+        -0.8403333333345938
     )
     assert spec["cumulative_fraction_of_reference"] == pytest.approx(
-        0.06953642384096285
+        0.07247976453264382
     )
     assert spec["reference_wheel_peak_abs_rad_s"] == 1.07
     assert spec["resulting_wheel_peak_abs_rad_s"] == 1.07
@@ -1136,13 +1136,13 @@ def test_wheel_rebound_feedback_accepts_exact_partial_counteraction_and_reversal
         862: (-1.07, -0.39),
         863: (-1.07, -0.39),
         864: (0.0, 0.68),
-        865: (0.0, 0.33),
+        865: (0.0, 0.23),
         866: (0.0, 1.03),
         867: (0.0, 1.03),
         868: (0.0, 0.73),
         869: (0.0, 0.73),
-        870: (0.0, 0.28),
-        871: (0.0, 0.38),
+        870: (0.0, 0.01),
+        871: (0.0, 1.07),
     }
     for row in rows[2:14]:
         tick = row["motion_tick_index"]
