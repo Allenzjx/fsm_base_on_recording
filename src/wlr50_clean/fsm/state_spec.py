@@ -15,8 +15,14 @@ import yaml
 EXPECTED_STATE_IDS = tuple(f"P{index:02d}" for index in range(1, 14))
 ACTION_COUNT = 12
 MAX_NORMAL_CORRECTION_FRACTION = 0.15
+MIN_NORMAL_TIME_SCALE = 0.85
+MAX_NORMAL_TIME_SCALE = 1.15
 P03_RL_WHEEL_CORRECTION_FRACTION = -0.149
 P03_RL_WHEEL_CHANNEL_INDEX = 10
+P10_NORMAL_TIME_SCALE = 0.875
+P10_RR_KNEE_DRIVE_CORRECTION_FRACTION = 1.5 / 10.6
+P10_RR_KNEE_CHANNEL_INDEX = 7
+NORMAL_CORRECTION_DOMAINS = {"none", "logical_command", "post_mapper_drive"}
 
 
 class Lifecycle(str, Enum):
@@ -57,6 +63,8 @@ class StateSpec:
     reference_actual_start_full12: tuple[float, ...]
     reference_actual_endpoint_full12: tuple[float, ...]
     normal_correction_fractions: tuple[float, ...]
+    normal_correction_domain: str
+    normal_time_scale: float
 
 
 @dataclass(frozen=True)
@@ -143,6 +151,8 @@ def _parse_state(value: Mapping[str, Any]) -> StateSpec:
         ),
         reference_actual_endpoint_full12=actual_endpoint,
         normal_correction_fractions=normal_correction,
+        normal_correction_domain=str(value.get("normal_correction_domain", "none")),
+        normal_time_scale=float(value.get("normal_time_scale", 1.0)),
     )
 
 
@@ -220,10 +230,17 @@ def _validate(spec: FsmSpec, raw_states: Sequence[Mapping[str, Any]]) -> None:
         ):
             raise ValueError(f"{state.state_id}: actual endpoint must be full12")
         expected_normal_correction = [0.0] * ACTION_COUNT
+        expected_normal_domain = "none"
         if state.state_id == "P03":
             expected_normal_correction[P03_RL_WHEEL_CHANNEL_INDEX] = (
                 P03_RL_WHEEL_CORRECTION_FRACTION
             )
+            expected_normal_domain = "logical_command"
+        elif state.state_id == "P10":
+            expected_normal_correction[P10_RR_KNEE_CHANNEL_INDEX] = (
+                P10_RR_KNEE_DRIVE_CORRECTION_FRACTION
+            )
+            expected_normal_domain = "post_mapper_drive"
         if (
             len(state.normal_correction_fractions) != ACTION_COUNT
             or any(
@@ -233,10 +250,23 @@ def _validate(spec: FsmSpec, raw_states: Sequence[Mapping[str, Any]]) -> None:
             )
             or state.normal_correction_fractions
             != tuple(expected_normal_correction)
+            or state.normal_correction_domain not in NORMAL_CORRECTION_DOMAINS
+            or state.normal_correction_domain != expected_normal_domain
         ):
             raise ValueError(
                 f"{state.state_id}: invalid bounded normal correction"
             )
+        expected_time_scale = (
+            P10_NORMAL_TIME_SCALE if state.state_id == "P10" else 1.0
+        )
+        if (
+            not math.isfinite(state.normal_time_scale)
+            or not MIN_NORMAL_TIME_SCALE - 1.0e-12
+            <= state.normal_time_scale
+            <= MAX_NORMAL_TIME_SCALE + 1.0e-12
+            or abs(state.normal_time_scale - expected_time_scale) > 1.0e-12
+        ):
+            raise ValueError(f"{state.state_id}: invalid bounded normal time scale")
         for guard in state.hard_abort_guards:
             if guard.result not in allowed_results:
                 raise ValueError(f"{state.state_id}: invalid hard-abort result")

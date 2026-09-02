@@ -276,6 +276,8 @@ def test_p03_normal_response_shaping_is_single_channel_and_bounded(
     assert transition.details["correction_fractions"] == pytest.approx(
         expected_fractions
     )
+    assert transition.details["correction_domain"] == "logical_command"
+    assert transition.details["normal_time_scale"] == pytest.approx(1.0)
     reference = contract.phase("P03").waypoints[1].full12
     assert frame.atomic_source_event is True
     assert frame.full12[:10] == pytest.approx(reference[:10])
@@ -293,6 +295,29 @@ def test_p03_normal_response_shaping_is_single_channel_and_bounded(
     assert active.full12[10] == pytest.approx(0.51911)
     assert endpoint.tick_index == 144
     assert endpoint.full12[10] == pytest.approx(0.0)
+
+
+def test_p10_time_shaping_preserves_waypoints_and_stays_bounded(
+    spec, contract
+) -> None:
+    p10 = contract.phase("P10")
+    executor = MotionExecutor(initial_full12=p10.start_full12)
+    executor.start_phase(p10, time_scale=spec.state("P10").normal_time_scale)
+
+    frames = [executor.tick() for _ in range(15)]
+
+    assert frames[0].full12[7] == pytest.approx(-34.6)
+    assert frames[6].full12[7] == pytest.approx(-34.6)
+    assert frames[7].full12[7] == pytest.approx(-29.3)
+    assert frames[13].full12[7] == pytest.approx(-29.3)
+    assert frames[14].full12[7] == pytest.approx(-27.2)
+    assert frames[14].endpoint_issued is True
+    assert frames[14].elapsed_s == pytest.approx(14.0 / 120.0)
+    assert executor.effective_active_duration_s == pytest.approx(14.0 / 120.0)
+    assert all(frame.tracking_servo_names == ("rear_right_knee",) for frame in frames)
+
+    with pytest.raises(ValueError, match="time scale"):
+        executor.start_phase(p10, time_scale=0.849)
 
 
 def test_p13_live_final_pose_recovery_uses_trial022_blocker(contract) -> None:
@@ -568,11 +593,18 @@ def test_p10_entry_keeps_the_unmodified_reference_motion(
         if event.from_lifecycle == Lifecycle.WAIT_ENTRY.value
         and event.to_lifecycle == Lifecycle.EXECUTE_MOTION.value
     )
-    fractions = transition.details["correction_fractions"]
-    assert fractions == pytest.approx((0.0,) * 12)
+    fractions = [0.0] * 12
+    fractions[7] = 1.5 / 10.6
+    assert transition.details["correction_fractions"] == pytest.approx(fractions)
+    assert transition.details["correction_domain"] == "post_mapper_drive"
+    assert controller.motion._correction.fractions == pytest.approx((0.0,) * 12)
     assert frames[0].full12[7] == pytest.approx(-34.6)
-    assert frames[8].full12[7] == pytest.approx(-29.3)
-    assert frames[16].full12[7] == pytest.approx(-27.2)
+    assert frames[7].full12[7] == pytest.approx(-29.3)
+    assert frames[14].full12[7] == pytest.approx(-27.2)
+    assert frames[0].normal_drive_bias_full12[7] == pytest.approx(0.75)
+    assert frames[14].normal_drive_bias_full12[7] == pytest.approx(0.75)
+    assert frames[15].normal_drive_bias_full12 == pytest.approx((0.0,) * 12)
+    assert frames[0].drive_feedback_bias_full12 == pytest.approx((0.0,) * 12)
     assert frames[0].full12[:7] + frames[0].full12[8:] == pytest.approx(
         p10.waypoints[1].full12[:7] + p10.waypoints[1].full12[8:]
     )
@@ -931,6 +963,59 @@ def test_p10_phase_local_lattice_selects_trial026_grounded_entry(
         and event.to_lifecycle == Lifecycle.EXECUTE_MOTION.value
         for event in frames[7794].events
     )
+    assert controller._decision_lattice_origin_tick == 7786
+
+
+def test_p10_local_lattice_resets_after_same_tick_p11_launch(
+    spec, contract
+) -> None:
+    controller = SensorFsmController(spec, contract)
+    controller.state = spec.state("P10")
+    controller.lifecycle = Lifecycle.VERIFY_RESULT
+    controller.physics_tick = 7810
+    controller._decision_lattice_origin_tick = 7786
+    controller._endpoint_issued = True
+
+    guards = _live_guards(completion=True)
+    guards.update(
+        {
+            "rl_workspace_geometry": True,
+            "reference_like_active_joint_change": True,
+            "rl_unload_entry_geometry": True,
+        }
+    )
+
+    def observation_for(state_id: str, tick: int) -> dict:
+        return {
+            "guards": guards,
+            "actual_full12": spec.state(state_id).reference_actual_start_full12,
+            "velocity_full12": (0.0,) * 12,
+            "progress_vector": (float(tick),),
+        }
+
+    launch = controller.step(
+        observation_for("P11", 7810), sim_time_s=7810 / 120.0
+    )
+    assert launch.state_id == "P11"
+    assert launch.lifecycle is Lifecycle.EXECUTE_MOTION
+    assert launch.decision_tick is True
+    assert launch.events[-1].to_lifecycle == Lifecycle.EXECUTE_MOTION.value
+    assert controller._decision_lattice_origin_tick == 0
+
+    frames = {}
+    for tick in range(7811, 7873):
+        entry_state = "P12" if tick == 7872 else "P11"
+        frames[tick] = controller.step(
+            observation_for(entry_state, tick), sim_time_s=tick / 120.0
+        )
+
+    assert all(frames[tick].decision_tick is False for tick in range(7811, 7816))
+    assert frames[7816].decision_tick is True
+    assert frames[7866].state_id == "P11"
+    assert frames[7866].lifecycle is Lifecycle.VERIFY_RESULT
+    assert frames[7872].state_id == "P12"
+    assert frames[7872].lifecycle is Lifecycle.EXECUTE_MOTION
+    assert frames[7872].decision_tick is True
 
 
 @pytest.mark.parametrize(

@@ -139,6 +139,14 @@ RELEVANT_LEGS = {
 P03_RL_WHEEL_CORRECTION_FRACTION = -0.149
 P03_RL_WHEEL_CHANNEL_INDEX = 10
 
+# Trial042's grounded P10 carry-in satisfied the signed entry corridor and all
+# strict RR-knee metrics except measured average velocity.  Compressing the
+# three authored P10 event ticks by 12.5% stays inside the v010 duration and
+# velocity envelopes while retaining the exact command magnitudes.
+P10_NORMAL_TIME_SCALE = 0.875
+P10_RR_KNEE_DRIVE_CORRECTION_FRACTION = 1.5 / 10.6
+P10_RR_KNEE_CHANNEL_INDEX = 7
+
 def _phase_velocity(phase: dict[str, Any], key: str) -> dict[str, float]:
     source = phase["reference_actual"][key]
     return {
@@ -268,11 +276,25 @@ def build_state_specs(contract: dict[str, Any]) -> dict[str, Any]:
             "elapsed_time_is_not_completion_evidence": True,
         }
         normal_correction = [0.0] * 12
+        normal_correction_domain = "none"
         if state_id == "P03":
             normal_correction[P03_RL_WHEEL_CHANNEL_INDEX] = (
                 P03_RL_WHEEL_CORRECTION_FRACTION
             )
+            normal_correction_domain = "logical_command"
+        elif state_id == "P10":
+            # A 0.75-degree rectangular drive pulse spends 1.5 degrees of
+            # cumulative onset+teardown travel without changing a compact
+            # v010 waypoint or any actuator setting.
+            normal_correction[P10_RR_KNEE_CHANNEL_INDEX] = (
+                P10_RR_KNEE_DRIVE_CORRECTION_FRACTION
+            )
+            normal_correction_domain = "post_mapper_drive"
         state["normal_correction_fractions"] = normal_correction
+        state["normal_correction_domain"] = normal_correction_domain
+        state["normal_time_scale"] = (
+            P10_NORMAL_TIME_SCALE if state_id == "P10" else 1.0
+        )
         if state_id == "P13":
             # Recovery restarts the measured wheel-decay evidence.  Preserve
             # the normal one-second pose-settle window, then reserve the full
@@ -331,7 +353,7 @@ def _write_docs(specs: dict[str, Any], derivation: Path, transitions: Path) -> N
                 "",
                 "## Bounded nominal response shaping",
                 "",
-                "P03 scales only the rear-left wheel excursion by -14.9%, correcting Trial025's first strict measured-response mismatch while remaining inside its v010 command envelope. Trial041 rejected redistributing that travel into P09 because it changed the live support branch; all other normal-entry correction fractions remain zero. P10 samples its signed live carry-in after a two-physics-tick offset and then retains one decision every eight physics ticks. The correction preserves the source same-tick Full12 launch and requires no runtime Recording access.",
+                "P03 scales only the rear-left wheel excursion by -14.9% in logical command space, correcting Trial025's first strict measured-response mismatch while remaining inside its v010 command envelope. Trial041 rejected redistributing that travel into P09 because it changed the live support branch. P10 samples its signed live carry-in after a two-physics-tick offset and retains that local eight-tick lattice only through its P11 launch frame; later states return to the global decision lattice. Trial042 proved the grounded branch but measured a low P10 RR-knee average with conforming endpoint, delta, peak, and trajectory. P10 therefore runs the same three authored source events at a 0.875 time scale and applies a 0.75-degree RR-knee post-mapper pulse only during its motion window. Pulse onset plus teardown totals 1.5 degrees, or 14.151% of the 10.6-degree v010 command excursion. Both corrections are explicit, independently logged, bounded below 15%, preserve every source Full12 dispatch, and require no runtime Recording access.",
             ]
         )
     derivation.parent.mkdir(parents=True, exist_ok=True)

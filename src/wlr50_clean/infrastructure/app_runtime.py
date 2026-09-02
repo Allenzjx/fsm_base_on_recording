@@ -292,7 +292,17 @@ def _ppo_payload(interface: Any, controller: Any, frame: Any, observation: Any, 
     phase = controller.phase
     progress = 0.0
     if controller.motion.phase is not None:
-        progress = min(1.0, max(0.0, (controller.motion._tick_index - 1) * PHYSICS_DT_S / phase.active_duration_s))
+        duration_s = controller.motion.effective_active_duration_s
+        if duration_s > 0.0:
+            progress = min(
+                1.0,
+                max(
+                    0.0,
+                    (controller.motion._tick_index - 1)
+                    * PHYSICS_DT_S
+                    / duration_s,
+                ),
+            )
     ppo_frame = interface.frame(
         state_id=frame.state_id,
         macro_phase=phase.macro_phase,
@@ -448,11 +458,19 @@ def _run_live(config: RuntimeConfig, simulation_app: Any) -> int:
             executing_command = lifecycle_before == "EXECUTE_MOTION" or entering_execute
 
             ppo_frame, action = _ppo_payload(residual, controller, frame, current_observation, previous_action)
+            total_drive_bias = tuple(
+                feedback + normal
+                for feedback, normal in zip(
+                    frame.drive_feedback_bias_full12,
+                    frame.normal_drive_bias_full12,
+                    strict=True,
+                )
+            )
             ack = adapter.apply_full12(
                 action,
                 physics_tick=config.settle_ticks + control_tick,
                 tracking_servo_names=frame.tracking_servo_names,
-                drive_feedback_bias_full12=frame.drive_feedback_bias_full12,
+                drive_feedback_bias_full12=total_drive_bias,
             )
             if ack["articulation_writes_this_call"] != 1 or ack["motion_start_skew_s"] != 0.0:
                 raise RuntimeError("atomic Full12 articulation write contract failed")
@@ -478,6 +496,9 @@ def _run_live(config: RuntimeConfig, simulation_app: Any) -> int:
                     "atomic_ack": ack, "ppo": ppo_frame,
                     "tracking_servo_names": list(frame.tracking_servo_names),
                     "drive_feedback": dict(frame.drive_feedback_details),
+                    "normal_drive_bias_full12": list(
+                        frame.normal_drive_bias_full12
+                    ),
                     "source_full12_atomic": frame.atomic_source_event,
                     "atomic_source_event": frame.atomic_source_event,
                     "motion_tick_index": controller.motion._tick_index - 1 if executing_command else None,

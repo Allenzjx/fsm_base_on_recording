@@ -67,6 +67,8 @@ def test_state_specs_have_required_contract_fields() -> None:
         "recovery_state",
         "ppo_action_mask",
         "normal_correction_fractions",
+        "normal_correction_domain",
+        "normal_time_scale",
     }
     assert len(payload["states"]) == 13
     assert all(required <= set(state) for state in payload["states"])
@@ -77,10 +79,22 @@ def test_state_specs_have_required_contract_fields() -> None:
     assert p03["normal_correction_fractions"] == pytest.approx(
         (0.0,) * 10 + (-0.149, 0.0)
     )
+    p10 = next(state for state in payload["states"] if state["state_id"] == "P10")
+    p10_fractions = [0.0] * 12
+    p10_fractions[7] = 1.5 / 10.6
+    assert p10["normal_correction_fractions"] == pytest.approx(p10_fractions)
+    assert p10["normal_correction_domain"] == "post_mapper_drive"
     assert all(
         state["normal_correction_fractions"] == [0.0] * 12
+        and state["normal_correction_domain"] == "none"
         for state in payload["states"]
-        if state["state_id"] != "P03"
+        if state["state_id"] not in {"P03", "P10"}
+    )
+    assert p10["normal_time_scale"] == pytest.approx(0.875)
+    assert all(
+        state["normal_time_scale"] == pytest.approx(1.0)
+        for state in payload["states"]
+        if state["state_id"] != "P10"
     )
 
 

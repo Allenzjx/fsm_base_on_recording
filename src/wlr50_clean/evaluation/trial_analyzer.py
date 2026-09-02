@@ -84,6 +84,9 @@ _WHEEL_REBOUND_RESULTING_INTEGRAL_RAD = -0.8526666666679271
 _WHEEL_REFERENCE_PEAK_ABS_RAD_S = 1.07
 _WHEEL_REBOUND_RESULTING_PEAK_ABS_RAD_S = 1.07
 _MAX_FEEDBACK_FRACTION = 0.15
+_P10_RR_KNEE_CHANNEL_INDEX = 7
+_P10_RR_KNEE_DRIVE_CORRECTION_FRACTION = 1.5 / 10.6
+_P10_NORMAL_ENDPOINT_TICK = 14
 
 
 def _json_value(value: Any) -> Any:
@@ -829,7 +832,7 @@ def _finite_sequence(
     return result
 
 
-def _wheel_rebound_atomic_ack_valid(
+def _atomic_ack_drive_ledger_valid(
     row: Mapping[str, Any],
     *,
     full12_order: tuple[str, ...],
@@ -838,7 +841,7 @@ def _wheel_rebound_atomic_ack_valid(
     requested: tuple[float, ...],
     realized: tuple[float, ...],
 ) -> bool:
-    """Bind the logical rebound ledger to the adapter's physical-sign ack."""
+    """Bind a post-mapper ledger to the adapter's atomic physical-sign ack."""
 
     ack = row.get("atomic_ack")
     if not isinstance(ack, Mapping):
@@ -922,6 +925,11 @@ def _drive_feedback_ledger_valid(
 ) -> bool:
     """Audit any post-mapper correction against its explicit final-drive log."""
 
+    contract_phases = {
+        str(phase.get("state_id")): phase
+        for phase in contract.get("phases", ())
+        if isinstance(phase, Mapping)
+    }
     feedback_phases = {
         str(phase.get("state_id")): phase
         for phase in contract.get("phases", ())
@@ -948,6 +956,25 @@ def _drive_feedback_ledger_valid(
         return False
     full12_order = tuple(str(item) for item in raw_order)
     if len(set(full12_order)) != 12:
+        return False
+    p10 = contract_phases.get("P10")
+    try:
+        p10_delta = float(p10["delta_full12"][_P10_RR_KNEE_CHANNEL_INDEX])
+        p10_bias = 0.5 * p10_delta * _P10_RR_KNEE_DRIVE_CORRECTION_FRACTION
+    except (KeyError, IndexError, TypeError, ValueError):
+        return False
+    if (
+        full12_order[_P10_RR_KNEE_CHANNEL_INDEX] != "rear_right_knee"
+        or not math.isfinite(p10_bias)
+        or abs(p10_bias - 0.75) > 1.0e-12
+        or abs(
+            2.0 * abs(p10_bias) / abs(p10_delta)
+            - _P10_RR_KNEE_DRIVE_CORRECTION_FRACTION
+        )
+        > 1.0e-12
+        or abs(_P10_RR_KNEE_DRIVE_CORRECTION_FRACTION)
+        > _MAX_FEEDBACK_FRACTION + 1.0e-12
+    ):
         return False
     try:
         physics_hz = float(contract["physics_hz"])
@@ -1205,11 +1232,39 @@ def _drive_feedback_ledger_valid(
         realized = _vector(row, "drive_feedback_bias_realized_full12")
         native = _vector(row, "native_drive_target_full12")
         final = _vector(row, "drive_target_full12")
+        if "normal_drive_bias_full12" in row:
+            normal_requested = _vector(row, "normal_drive_bias_full12")
+        else:
+            # Legacy synthetic feedback rows predate the independently logged
+            # normal component and are necessarily zero outside P10 motion.
+            normal_requested = (0.0,) * 12
         if any(item is None for item in (declared, requested, realized, native, final)):
+            return False
+        if normal_requested is None:
             return False
         assert declared is not None and requested is not None
         assert realized is not None and native is not None and final is not None
-        if any(abs(left - right) > 1.0e-9 for left, right in zip(declared, requested, strict=True)):
+        expected_normal = [0.0] * 12
+        if (
+            phase_id == "P10"
+            and attempt == 0
+            and tick is not None
+            and 0 <= tick <= _P10_NORMAL_ENDPOINT_TICK
+        ):
+            expected_normal[_P10_RR_KNEE_CHANNEL_INDEX] = p10_bias
+        if any(
+            abs(value - expected) > 1.0e-9
+            for value, expected in zip(
+                normal_requested, expected_normal, strict=True
+            )
+        ):
+            return False
+        if any(
+            abs(dynamic + normal - total) > 1.0e-9
+            for dynamic, normal, total in zip(
+                declared, normal_requested, requested, strict=True
+            )
+        ):
             return False
         if any(
             abs((actual - base) - correction) > 1.0e-8
@@ -1221,8 +1276,21 @@ def _drive_feedback_ledger_valid(
             for value in final[8:]
         ):
             return False
+        if (
+            phase_id == "P10"
+            and "normal_drive_bias_full12" in row
+            and not _atomic_ack_drive_ledger_valid(
+                row,
+                full12_order=full12_order,
+                native=native,
+                final=final,
+                requested=requested,
+                realized=realized,
+            )
+        ):
+            return False
         spec = feedback_specs.get(phase_id)
-        expected_requested = [0.0] * 12
+        expected_requested = list(expected_normal)
         triggered = trigger_attempts.get(phase_id)
         expected_latched = False
         expected_active = False
@@ -1496,7 +1564,7 @@ def _drive_feedback_ledger_valid(
                     > 1.0e-8
                     or abs(final[correction_channel_index] - expected_final)
                     > 1.0e-8
-                    or not _wheel_rebound_atomic_ack_valid(
+                    or not _atomic_ack_drive_ledger_valid(
                         row,
                         full12_order=full12_order,
                         native=native,
@@ -1515,8 +1583,18 @@ def _drive_feedback_ledger_valid(
             except (TypeError, ValueError):
                 return False
             if (
-                any(abs(value) > 1.0e-12 for value in requested)
-                or any(abs(value) > 1.0e-8 for value in realized)
+                any(
+                    abs(value - expected) > 1.0e-9
+                    for value, expected in zip(
+                        requested, expected_requested, strict=True
+                    )
+                )
+                or any(
+                    abs(value - expected) > 1.0e-8
+                    for value, expected in zip(
+                        realized, expected_normal, strict=True
+                    )
+                )
                 or abs(logged_peak) > 1.0e-12
                 or abs(logged_cumulative) > 1.0e-12
                 or feedback.get("active") is True
@@ -1708,7 +1786,7 @@ def _drive_feedback_ledger_valid(
                     teardown_phase == phase_id
                     and teardown_attempt == trigger_attempt
                 )
-                if not _wheel_rebound_atomic_ack_valid(
+                if not _atomic_ack_drive_ledger_valid(
                     teardown_row,
                     full12_order=full12_order,
                     native=native,

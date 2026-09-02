@@ -1110,6 +1110,83 @@ def _wheel_rebound_feedback_ledger_rows(
     return rows
 
 
+def _rows_with_p10_normal_drive_pulse() -> list[dict]:
+    rows = _wheel_rebound_feedback_ledger_rows()
+    neutral_feedback = json.loads(json.dumps(rows[-1]["drive_feedback"]))
+    for tick in range(15):
+        dynamic = [0.0] * 12
+        normal = [0.0] * 12
+        normal[7] = 0.75
+        native = [0.0] * 12
+        final = list(normal)
+        feedback = json.loads(json.dumps(neutral_feedback))
+        feedback["bias_full12"] = dynamic
+        feedback["tick_index"] = tick
+        rows.append(
+            {
+                "state_id": "P10",
+                "lifecycle": (
+                    "VERIFY_RESULT" if tick == 14 else "EXECUTE_MOTION"
+                ),
+                "sim_time_s": (873 + tick) / 120.0,
+                "motion_tick_index": tick,
+                "drive_feedback": feedback,
+                "normal_drive_bias_full12": normal,
+                "drive_feedback_bias_requested_full12": normal,
+                "drive_feedback_bias_realized_full12": normal,
+                "native_drive_target_full12": native,
+                "drive_target_full12": final,
+                "atomic_ack": _wheel_rebound_atomic_ack(
+                    native, final, normal, normal
+                ),
+            }
+        )
+    feedback = json.loads(json.dumps(neutral_feedback))
+    zeros = [0.0] * 12
+    rows.append(
+        {
+            "state_id": "P10",
+            "lifecycle": "VERIFY_RESULT",
+            "sim_time_s": 888 / 120.0,
+            "motion_tick_index": None,
+            "drive_feedback": feedback,
+            "normal_drive_bias_full12": zeros,
+            "drive_feedback_bias_requested_full12": zeros,
+            "drive_feedback_bias_realized_full12": zeros,
+            "native_drive_target_full12": zeros,
+            "drive_target_full12": zeros,
+            "atomic_ack": _wheel_rebound_atomic_ack(
+                zeros, zeros, zeros, zeros
+            ),
+        }
+    )
+    return rows
+
+
+def test_p10_normal_drive_pulse_is_exact_bounded_and_independently_logged() -> None:
+    contract = _wheel_rebound_feedback_contract()
+    rows = _rows_with_p10_normal_drive_pulse()
+    assert _drive_feedback_ledger_valid(
+        rows, contract, _feedback_observations(rows)
+    )
+
+    wrong_channel = json.loads(json.dumps(rows))
+    wrong_channel[-5]["normal_drive_bias_full12"][7] = 0.0
+    wrong_channel[-5]["normal_drive_bias_full12"][6] = 0.75
+    assert not _drive_feedback_ledger_valid(wrong_channel, contract)
+
+    hidden_total = json.loads(json.dumps(rows))
+    hidden_total[-6]["drive_feedback_bias_requested_full12"][7] = 0.0
+    assert not _drive_feedback_ledger_valid(hidden_total, contract)
+
+    late_teardown = json.loads(json.dumps(rows))
+    late_teardown[-1]["normal_drive_bias_full12"][7] = 0.75
+    late_teardown[-1]["drive_feedback_bias_requested_full12"][7] = 0.75
+    late_teardown[-1]["drive_feedback_bias_realized_full12"][7] = 0.75
+    late_teardown[-1]["drive_target_full12"][7] = 0.75
+    assert not _drive_feedback_ledger_valid(late_teardown, contract)
+
+
 def test_wheel_rebound_feedback_accepts_exact_partial_counteraction_and_reversal(
 ) -> None:
     contract = _wheel_rebound_feedback_contract()

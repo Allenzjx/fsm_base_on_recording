@@ -252,6 +252,8 @@ states:
   - 0.0
   - 0.0
   - 0.0
+  normal_correction_domain: none
+  normal_time_scale: 1.0
 - state_id: P02
   macro_phase: 2
   state_name: FR_ACTIVE_LIFT
@@ -442,6 +444,8 @@ states:
   - 0.0
   - 0.0
   - 0.0
+  normal_correction_domain: none
+  normal_time_scale: 1.0
 - state_id: P03
   macro_phase: 3
   state_name: FR_CROSS_AND_PLACE
@@ -712,6 +716,8 @@ states:
   - 0.0
   - -0.149
   - 0.0
+  normal_correction_domain: logical_command
+  normal_time_scale: 1.0
 - state_id: P04
   macro_phase: 4
   state_name: FL_UNLOAD_PREP
@@ -948,6 +954,8 @@ states:
   - 0.0
   - 0.0
   - 0.0
+  normal_correction_domain: none
+  normal_time_scale: 1.0
 - state_id: P05
   macro_phase: 5
   state_name: FL_ACTIVE_LIFT_AND_PLACE
@@ -1241,6 +1249,8 @@ states:
   - 0.0
   - 0.0
   - 0.0
+  normal_correction_domain: none
+  normal_time_scale: 1.0
 - state_id: P06
   macro_phase: 6
   state_name: FRONT_PAIR_ADVANCE
@@ -1491,6 +1501,8 @@ states:
   - 0.0
   - 0.0
   - 0.0
+  normal_correction_domain: none
+  normal_time_scale: 1.0
 - state_id: P07
   macro_phase: 7
   state_name: REAR_ENTRY_ALIGNMENT
@@ -1742,6 +1754,8 @@ states:
   - 0.0
   - 0.0
   - 0.0
+  normal_correction_domain: none
+  normal_time_scale: 1.0
 - state_id: P08
   macro_phase: 8
   state_name: FIRST_REAR_LOAD_TRANSFER
@@ -1941,6 +1955,8 @@ states:
   - 0.0
   - 0.0
   - 0.0
+  normal_correction_domain: none
+  normal_time_scale: 1.0
 - state_id: P09
   macro_phase: 9
   state_name: RR_ACTIVE_LIFT_AND_PLACE
@@ -2344,6 +2360,8 @@ states:
   - 0.0
   - 0.0
   - 0.0
+  normal_correction_domain: none
+  normal_time_scale: 1.0
 - state_id: P10
   macro_phase: 10
   state_name: SECOND_REAR_TRANSFER_PREP
@@ -2530,11 +2548,13 @@ states:
   - 0.0
   - 0.0
   - 0.0
+  - 0.14150943396226415
   - 0.0
   - 0.0
   - 0.0
   - 0.0
-  - 0.0
+  normal_correction_domain: post_mapper_drive
+  normal_time_scale: 0.875
 - state_id: P11
   macro_phase: 11
   state_name: TRANSFER_TOWARD_FR
@@ -2738,6 +2758,8 @@ states:
   - 0.0
   - 0.0
   - 0.0
+  normal_correction_domain: none
+  normal_time_scale: 1.0
 - state_id: P12
   macro_phase: 12
   state_name: RL_ACTIVE_LIFT_AND_PLACE
@@ -3075,6 +3097,8 @@ states:
   - 0.0
   - 0.0
   - 0.0
+  normal_correction_domain: none
+  normal_time_scale: 1.0
 - state_id: P13
   macro_phase: 13
   state_name: FINAL_ADVANCE_AND_RECOVERY
@@ -3475,4 +3499,6 @@ states:
   - 0.0
   - 0.0
   - 0.0
+  normal_correction_domain: none
+  normal_time_scale: 1.0
   recovery_max_verify_wait: 1.5

@@ -51,6 +51,7 @@ class ControllerFrame:
     atomic_source_event: bool
     tracking_servo_names: tuple[str, ...]
     drive_feedback_bias_full12: tuple[float, ...]
+    normal_drive_bias_full12: tuple[float, ...]
     drive_feedback_details: Mapping[str, Any]
     endpoint_issued: bool
     termination: TaskTermination | None
@@ -105,6 +106,9 @@ class SensorFsmController:
         return self._first_blocker
 
     def step(self, observation: Any, *, sim_time_s: float | None = None) -> ControllerFrame:
+        phase_owned_decision_lattice = (
+            self.phase.entry_velocity_alignment is not None
+        )
         now = (
             self.physics_tick / self.spec.motion_hz
             if sim_time_s is None
@@ -221,6 +225,7 @@ class SensorFsmController:
         # an entry decision on the preceding state's lattice.
         decision_tick = decision_tick and self._decision_due()
 
+        normal_drive_bias = self._normal_drive_bias_full12(motion_tick)
         frame = ControllerFrame(
             physics_tick=self.physics_tick,
             sim_time_s=now,
@@ -234,12 +239,21 @@ class SensorFsmController:
             ),
             tracking_servo_names=tracking_servo_names,
             drive_feedback_bias_full12=drive_feedback.bias_full12,
+            normal_drive_bias_full12=normal_drive_bias,
             drive_feedback_details=drive_feedback.as_dict(),
             endpoint_issued=self._endpoint_issued,
             termination=self.termination,
             first_blocker=self._first_blocker,
             events=tuple(events),
         )
+        # P10 owns a phase-local +2 decision lattice only through the same-tick
+        # P10->P11 launch. Reset after constructing that launch frame so P11
+        # starts without a pause while P12 returns to the global cadence.
+        if (
+            phase_owned_decision_lattice
+            and self.phase.entry_velocity_alignment is None
+        ):
+            self._decision_lattice_origin_tick = 0
         self.physics_tick += 1
         return frame
 
@@ -297,12 +311,22 @@ class SensorFsmController:
                 self._wait_entry_started_s = None
                 correction = FeedbackCorrection(
                     self.state.normal_correction_fractions
+                    if self.state.normal_correction_domain == "logical_command"
+                    else (0.0,) * 12
                 )
-                self.motion.start_phase(self.phase, correction)
+                self.motion.start_phase(
+                    self.phase,
+                    correction,
+                    time_scale=self.state.normal_time_scale,
+                )
                 self.watchdog.reset()
                 self._endpoint_issued = False
                 details = dict(_report_details(report))
-                details["correction_fractions"] = correction.fractions
+                details["correction_fractions"] = (
+                    self.state.normal_correction_fractions
+                )
+                details["correction_domain"] = self.state.normal_correction_domain
+                details["normal_time_scale"] = self.state.normal_time_scale
                 self._transition(
                     Lifecycle.EXECUTE_MOTION,
                     now,
@@ -406,7 +430,11 @@ class SensorFsmController:
                     # the support state that produced the live pose evidence.
                     self.motion.start_phase_at_endpoint(self.phase, retry_correction)
                 else:
-                    self.motion.start_phase(self.phase, retry_correction)
+                    self.motion.start_phase(
+                        self.phase,
+                        retry_correction,
+                        time_scale=self.state.normal_time_scale,
+                    )
                 self.guard_evaluator.reset_state(self.state.state_id)
                 self.watchdog.reset()
                 self._endpoint_issued = False
@@ -431,6 +459,27 @@ class SensorFsmController:
                 continue
 
             return
+
+    def _normal_drive_bias_full12(
+        self, motion_tick: MotionTick | None
+    ) -> tuple[float, ...]:
+        """Return the one-attempt, motion-window post-mapper shaping."""
+
+        if (
+            self.termination is not None
+            or self.retries_used != 0
+            or motion_tick is None
+            or self.state.normal_correction_domain != "post_mapper_drive"
+        ):
+            return (0.0,) * 12
+        return tuple(
+            0.5 * delta * fraction
+            for delta, fraction in zip(
+                self.phase.delta_full12,
+                self.state.normal_correction_fractions,
+                strict=True,
+            )
+        )
 
     def _enter_next_state(
         self, next_state: StateSpec, now: float, events: list[ControllerEvent]
@@ -727,6 +776,18 @@ def _validate_pair(spec: FsmSpec, contract: MotionContract) -> None:
     for state, phase in zip(spec.states, contract.phases, strict=True):
         if state.completion_event != phase.completion_event:
             raise ValueError(f"{state.state_id}: completion-event contract mismatch")
+        corrected_indices = {
+            index
+            for index, value in enumerate(state.normal_correction_fractions)
+            if abs(value) > 1.0e-12
+        }
+        active_indices = {
+            contract.full12_order.index(channel) for channel in phase.active_channels
+        }
+        if not corrected_indices <= active_indices:
+            raise ValueError(
+                f"{state.state_id}: normal correction targets an inactive channel"
+            )
 
 
 def _actual_servo_positions(
