@@ -1,0 +1,508 @@
+{
+  "schema": "wlr50_clean.final_videos.v1",
+  "status": "PASS",
+  "valid": true,
+  "selected_reference": "v010_20260806_220745_363972_manual",
+  "rear_leg_order": "RR_FIRST",
+  "videos": {
+    "recording": {
+      "schema": "wlr50_clean.video_validation.v1",
+      "path": "C:\\robotics_sim\\wlr_robot\\fsm_50mm_recording_shaped_clean_v1\\outputs\\final\\recording_v010_50mm_clean.mp4",
+      "valid": true,
+      "status": "PASS",
+      "stitched": false,
+      "speed_modified": false,
+      "full_decode": true,
+      "timestamps_monotonic": true,
+      "error": "",
+      "sha256": "50a82b5417f413114c4b9c4e81e0b41944ca0da6af2dfdb1f6fb0bc7bb023504",
+      "bytes": 138746819,
+      "duration_s": 89.66666699999999,
+      "container_duration_s": 89.67,
+      "fps": 15.0,
+      "frame_count": 1345,
+      "resolution": [
+        1280,
+        720
+      ],
+      "width": 1280,
+      "height": 720,
+      "codec": "h264",
+      "pixel_format": "yuv420p",
+      "first_pts_s": 0.0,
+      "last_pts_s": 89.6,
+      "unique_frame_checksums": 1345,
+      "longest_identical_frame_run": 1,
+      "motion_evidence_valid": true,
+      "black_like_frame_count": 0,
+      "black_cover_absent": true,
+      "expected_frame_count": null,
+      "frame_count_matches": true,
+      "ffmpeg_path": "C:\\Users\\kskzz\\miniconda3\\envs\\env_isaaclab\\Lib\\site-packages\\imageio_ffmpeg\\binaries\\ffmpeg-win-x86_64-v7.1.exe",
+      "ffmpeg_returncode": 0
+    },
+    "fsm": {
+      "schema": "wlr50_clean.video_validation.v1",
+      "path": "C:\\robotics_sim\\wlr_robot\\fsm_50mm_recording_shaped_clean_v1\\outputs\\final\\fsm_v010_shaped_50mm_clean.mp4",
+      "valid": true,
+      "status": "PASS",
+      "stitched": false,
+      "speed_modified": false,
+      "full_decode": true,
+      "timestamps_monotonic": true,
+      "error": "",
+      "sha256": "9be254d20a2a3a8e8242d2a786949fb836bc7f727ffb4939cbe41ec07f0800a9",
+      "bytes": 171895469,
+      "duration_s": 108.13333399999999,
+      "container_duration_s": 286331153.0,
+      "fps": 15.0,
+      "frame_count": 1622,
+      "resolution": [
+        1280,
+        720
+      ],
+      "width": 1280,
+      "height": 720,
+      "codec": "h264",
+      "pixel_format": "yuv420p",
+      "first_pts_s": 0.0,
+      "last_pts_s": 108.066667,
+      "unique_frame_checksums": 1622,
+      "longest_identical_frame_run": 1,
+      "motion_evidence_valid": true,
+      "black_like_frame_count": 0,
+      "black_cover_absent": true,
+      "expected_frame_count": null,
+      "frame_count_matches": true,
+      "ffmpeg_path": "C:\\Users\\kskzz\\miniconda3\\envs\\env_isaaclab\\Lib\\site-packages\\imageio_ffmpeg\\binaries\\ffmpeg-win-x86_64-v7.1.exe",
+      "ffmpeg_returncode": 0
+    },
+    "comparison": {
+      "schema": "wlr50_clean.video_validation.v1",
+      "path": "C:\\robotics_sim\\wlr_robot\\fsm_50mm_recording_shaped_clean_v1\\outputs\\final\\recording_vs_fsm_v010_50mm.mp4",
+      "valid": true,
+      "status": "PASS",
+      "stitched": false,
+      "speed_modified": false,
+      "full_decode": true,
+      "timestamps_monotonic": true,
+      "error": "",
+      "sha256": "12b2d25fdb193df7c7a5d7c3ebb398534f14fe36feabff24257fca2f01ce1ca6",
+      "bytes": 4509899,
+      "duration_s": 109.066667,
+      "container_duration_s": 109.07,
+      "fps": 15.0,
+      "frame_count": 1636,
+      "resolution": [
+        1280,
+        720
+      ],
+      "width": 1280,
+      "height": 720,
+      "codec": "h264",
+      "pixel_format": "yuv420p",
+      "first_pts_s": 0.0,
+      "last_pts_s": 109.0,
+      "unique_frame_checksums": 1636,
+      "longest_identical_frame_run": 1,
+      "motion_evidence_valid": true,
+      "black_like_frame_count": 0,
+      "black_cover_absent": true,
+      "expected_frame_count": null,
+      "frame_count_matches": true,
+      "ffmpeg_path": "C:\\Users\\kskzz\\miniconda3\\envs\\env_isaaclab\\Lib\\site-packages\\imageio_ffmpeg\\binaries\\ffmpeg-win-x86_64-v7.1.exe",
+      "ffmpeg_returncode": 0
+    },
+    "diagnostic": {
+      "schema": "wlr50_clean.video_validation.v1",
+      "path": "C:\\robotics_sim\\wlr_robot\\fsm_50mm_recording_shaped_clean_v1\\outputs\\final\\fsm_v010_shaped_50mm_diagnostic.mp4",
+      "valid": true,
+      "status": "PASS",
+      "stitched": false,
+      "speed_modified": false,
+      "full_decode": true,
+      "timestamps_monotonic": true,
+      "error": "",
+      "sha256": "14aee3ecfcf99897b664eeb978066cec159db91061024ad0ff217b0b47e20b1d",
+      "bytes": 9065149,
+      "duration_s": 108.13333399999999,
+      "container_duration_s": 108.13,
+      "fps": 15.0,
+      "frame_count": 1622,
+      "resolution": [
+        1280,
+        720
+      ],
+      "width": 1280,
+      "height": 720,
+      "codec": "h264",
+      "pixel_format": "yuv420p",
+      "first_pts_s": 0.0,
+      "last_pts_s": 108.066667,
+      "unique_frame_checksums": 1622,
+      "longest_identical_frame_run": 1,
+      "motion_evidence_valid": true,
+      "black_like_frame_count": 0,
+      "black_cover_absent": true,
+      "expected_frame_count": null,
+      "frame_count_matches": true,
+      "ffmpeg_path": "C:\\Users\\kskzz\\miniconda3\\envs\\env_isaaclab\\Lib\\site-packages\\imageio_ffmpeg\\binaries\\ffmpeg-win-x86_64-v7.1.exe",
+      "ffmpeg_returncode": 0
+    }
+  },
+  "error": "",
+  "successful_trial": {
+    "manifest_path": "C:\\robotics_sim\\wlr_robot\\fsm_50mm_recording_shaped_clean_v1\\runs\\trial_025_20260902_clean_v010\\trial_manifest.json",
+    "manifest_sha256": "3b8f076b59fefe652cd21d77705522a28676c0d89013125a4d3e999817fdf70c",
+    "recorder_manifest_path": "C:\\robotics_sim\\wlr_robot\\fsm_50mm_recording_shaped_clean_v1\\runs\\trial_025_20260902_clean_v010\\viewport_buffer_video_manifest.json",
+    "recorder_manifest_sha256": "c86ddce288ac7ad891bfa0d444c4df7ad34e40b054b7d3e185c8154a2ecdd6fd",
+    "video_path": "C:\\robotics_sim\\wlr_robot\\fsm_50mm_recording_shaped_clean_v1\\runs\\trial_025_20260902_clean_v010\\actual_viewport_video.mp4",
+    "video_sha256": "9be254d20a2a3a8e8242d2a786949fb836bc7f727ffb4939cbe41ec07f0800a9",
+    "checks": {
+      "task_result_success": true,
+      "continuous_success_declared": true,
+      "body_collision_false": true,
+      "wheel_only_climb_false": true,
+      "rear_order_rr_first": true,
+      "no_root_state_write": true,
+      "no_teleport": true,
+      "no_external_force_or_impulse": true,
+      "p01_p13_completed": true
+    }
+  },
+  "source_validation": {
+    "recording": {
+      "schema": "wlr50_clean.video_validation.v1",
+      "path": "C:\\robotics_sim\\wlr_robot\\fsm_50mm_recording_shaped_clean_v1\\reference\\v010\\recording_clean.mp4",
+      "valid": true,
+      "status": "PASS",
+      "stitched": false,
+      "speed_modified": false,
+      "full_decode": true,
+      "timestamps_monotonic": true,
+      "error": "",
+      "sha256": "50a82b5417f413114c4b9c4e81e0b41944ca0da6af2dfdb1f6fb0bc7bb023504",
+      "bytes": 138746819,
+      "duration_s": 89.66666699999999,
+      "container_duration_s": 89.67,
+      "fps": 15.0,
+      "frame_count": 1345,
+      "resolution": [
+        1280,
+        720
+      ],
+      "width": 1280,
+      "height": 720,
+      "codec": "h264",
+      "pixel_format": "yuv420p",
+      "first_pts_s": 0.0,
+      "last_pts_s": 89.6,
+      "unique_frame_checksums": 1345,
+      "longest_identical_frame_run": 1,
+      "motion_evidence_valid": true,
+      "black_like_frame_count": 0,
+      "black_cover_absent": true,
+      "expected_frame_count": null,
+      "frame_count_matches": true,
+      "ffmpeg_path": "C:\\Users\\kskzz\\miniconda3\\envs\\env_isaaclab\\Lib\\site-packages\\imageio_ffmpeg\\binaries\\ffmpeg-win-x86_64-v7.1.exe",
+      "ffmpeg_returncode": 0
+    },
+    "fsm": {
+      "schema": "wlr50_clean.video_validation.v1",
+      "path": "C:\\robotics_sim\\wlr_robot\\fsm_50mm_recording_shaped_clean_v1\\runs\\trial_025_20260902_clean_v010\\actual_viewport_video.mp4",
+      "valid": true,
+      "status": "PASS",
+      "stitched": false,
+      "speed_modified": false,
+      "full_decode": true,
+      "timestamps_monotonic": true,
+      "error": "",
+      "sha256": "9be254d20a2a3a8e8242d2a786949fb836bc7f727ffb4939cbe41ec07f0800a9",
+      "bytes": 171895469,
+      "duration_s": 108.13333399999999,
+      "container_duration_s": 286331153.0,
+      "fps": 15.0,
+      "frame_count": 1622,
+      "resolution": [
+        1280,
+        720
+      ],
+      "width": 1280,
+      "height": 720,
+      "codec": "h264",
+      "pixel_format": "yuv420p",
+      "first_pts_s": 0.0,
+      "last_pts_s": 108.066667,
+      "unique_frame_checksums": 1622,
+      "longest_identical_frame_run": 1,
+      "motion_evidence_valid": true,
+      "black_like_frame_count": 0,
+      "black_cover_absent": true,
+      "expected_frame_count": null,
+      "frame_count_matches": true,
+      "ffmpeg_path": "C:\\Users\\kskzz\\miniconda3\\envs\\env_isaaclab\\Lib\\site-packages\\imageio_ffmpeg\\binaries\\ffmpeg-win-x86_64-v7.1.exe",
+      "ffmpeg_returncode": 0
+    }
+  },
+  "semantic_alignment": {
+    "phases": [
+      {
+        "phase": "P01",
+        "reference": {
+          "phase": "P01",
+          "state": "INITIAL_LOAD_TRANSFER_FR",
+          "start_s": 0.0,
+          "end_s": 14.191666666666418,
+          "duration_s": 14.191666666666418
+        },
+        "fsm": {
+          "phase": "P01",
+          "state": "P01",
+          "start_s": 0.0,
+          "end_s": 13.333333333333334,
+          "duration_s": 13.333333333333334
+        },
+        "output_duration_s": 14.191666666666418,
+        "alignment_method": "native-speed_with_last-frame-hold"
+      },
+      {
+        "phase": "P02",
+        "reference": {
+          "phase": "P02",
+          "state": "FR_ACTIVE_LIFT",
+          "start_s": 14.191666666666418,
+          "end_s": 14.724999999999723,
+          "duration_s": 0.5333333333333048
+        },
+        "fsm": {
+          "phase": "P02",
+          "state": "P02",
+          "start_s": 13.333333333333334,
+          "end_s": 13.866666666666667,
+          "duration_s": 0.5333333333333332
+        },
+        "output_duration_s": 0.5333333333333332,
+        "alignment_method": "native-speed_with_last-frame-hold"
+      },
+      {
+        "phase": "P03",
+        "reference": {
+          "phase": "P03",
+          "state": "FR_CROSS_AND_PLACE",
+          "start_s": 14.724999999999723,
+          "end_s": 15.991666666666317,
+          "duration_s": 1.2666666666665947
+        },
+        "fsm": {
+          "phase": "P03",
+          "state": "P03",
+          "start_s": 13.866666666666667,
+          "end_s": 15.133333333333333,
+          "duration_s": 1.2666666666666657
+        },
+        "output_duration_s": 1.2666666666666657,
+        "alignment_method": "native-speed_with_last-frame-hold"
+      },
+      {
+        "phase": "P04",
+        "reference": {
+          "phase": "P04",
+          "state": "FL_UNLOAD_PREP",
+          "start_s": 15.991666666666317,
+          "end_s": 20.85833333333271,
+          "duration_s": 4.866666666666392
+        },
+        "fsm": {
+          "phase": "P04",
+          "state": "P04",
+          "start_s": 15.133333333333333,
+          "end_s": 20.0,
+          "duration_s": 4.866666666666667
+        },
+        "output_duration_s": 4.866666666666667,
+        "alignment_method": "native-speed_with_last-frame-hold"
+      },
+      {
+        "phase": "P05",
+        "reference": {
+          "phase": "P05",
+          "state": "FL_ACTIVE_LIFT_AND_PLACE",
+          "start_s": 20.85833333333271,
+          "end_s": 30.658333333332155,
+          "duration_s": 9.799999999999446
+        },
+        "fsm": {
+          "phase": "P05",
+          "state": "P05",
+          "start_s": 20.0,
+          "end_s": 29.8,
+          "duration_s": 9.8
+        },
+        "output_duration_s": 9.8,
+        "alignment_method": "native-speed_with_last-frame-hold"
+      },
+      {
+        "phase": "P06",
+        "reference": {
+          "phase": "P06",
+          "state": "FRONT_PAIR_ADVANCE",
+          "start_s": 30.658333333332155,
+          "end_s": 56.2583333333307,
+          "duration_s": 25.59999999999854
+        },
+        "fsm": {
+          "phase": "P06",
+          "state": "P06",
+          "start_s": 29.8,
+          "end_s": 55.4,
+          "duration_s": 25.599999999999998
+        },
+        "output_duration_s": 25.599999999999998,
+        "alignment_method": "native-speed_with_last-frame-hold"
+      },
+      {
+        "phase": "P07",
+        "reference": {
+          "phase": "P07",
+          "state": "REAR_ENTRY_ALIGNMENT",
+          "start_s": 56.2583333333307,
+          "end_s": 57.99166666666393,
+          "duration_s": 1.7333333333332348
+        },
+        "fsm": {
+          "phase": "P07",
+          "state": "P07",
+          "start_s": 55.4,
+          "end_s": 57.13333333333333,
+          "duration_s": 1.7333333333333343
+        },
+        "output_duration_s": 1.7333333333333343,
+        "alignment_method": "native-speed_with_last-frame-hold"
+      },
+      {
+        "phase": "P08",
+        "reference": {
+          "phase": "P08",
+          "state": "FIRST_REAR_LOAD_TRANSFER",
+          "start_s": 57.99166666666393,
+          "end_s": 58.45833333333057,
+          "duration_s": 0.46666666666664014
+        },
+        "fsm": {
+          "phase": "P08",
+          "state": "P08",
+          "start_s": 57.13333333333333,
+          "end_s": 57.6,
+          "duration_s": 0.46666666666666856
+        },
+        "output_duration_s": 0.46666666666666856,
+        "alignment_method": "native-speed_with_last-frame-hold"
+      },
+      {
+        "phase": "P09",
+        "reference": {
+          "phase": "P09",
+          "state": "RR_ACTIVE_LIFT_AND_PLACE",
+          "start_s": 58.45833333333057,
+          "end_s": 65.72499999999958,
+          "duration_s": 7.2666666666690105
+        },
+        "fsm": {
+          "phase": "P09",
+          "state": "P09",
+          "start_s": 57.6,
+          "end_s": 64.93333333333334,
+          "duration_s": 7.333333333333336
+        },
+        "output_duration_s": 7.333333333333336,
+        "alignment_method": "native-speed_with_last-frame-hold"
+      },
+      {
+        "phase": "P10",
+        "reference": {
+          "phase": "P10",
+          "state": "SECOND_REAR_TRANSFER_PREP",
+          "start_s": 65.72499999999958,
+          "end_s": 65.92499999999974,
+          "duration_s": 0.20000000000015916
+        },
+        "fsm": {
+          "phase": "P10",
+          "state": "P10",
+          "start_s": 64.93333333333334,
+          "end_s": 65.13333333333333,
+          "duration_s": 0.19999999999998863
+        },
+        "output_duration_s": 0.20000000000015916,
+        "alignment_method": "native-speed_with_last-frame-hold"
+      },
+      {
+        "phase": "P11",
+        "reference": {
+          "phase": "P11",
+          "state": "TRANSFER_TOWARD_FR",
+          "start_s": 65.92499999999974,
+          "end_s": 66.4583333333335,
+          "duration_s": 0.5333333333337578
+        },
+        "fsm": {
+          "phase": "P11",
+          "state": "P11",
+          "start_s": 65.13333333333333,
+          "end_s": 65.66666666666667,
+          "duration_s": 0.5333333333333456
+        },
+        "output_duration_s": 0.5333333333337578,
+        "alignment_method": "native-speed_with_last-frame-hold"
+      },
+      {
+        "phase": "P12",
+        "reference": {
+          "phase": "P12",
+          "state": "RL_ACTIVE_LIFT_AND_PLACE",
+          "start_s": 66.4583333333335,
+          "end_s": 71.1916666666706,
+          "duration_s": 4.7333333333371
+        },
+        "fsm": {
+          "phase": "P12",
+          "state": "P12",
+          "start_s": 65.66666666666667,
+          "end_s": 70.4,
+          "duration_s": 4.733333333333334
+        },
+        "output_duration_s": 4.7333333333371,
+        "alignment_method": "native-speed_with_last-frame-hold"
+      },
+      {
+        "phase": "P13",
+        "reference": {
+          "phase": "P13",
+          "state": "FINAL_ADVANCE_AND_RECOVERY",
+          "start_s": 71.1916666666706,
+          "end_s": 89.66666699999999,
+          "duration_s": 18.47500033332939
+        },
+        "fsm": {
+          "phase": "P13",
+          "state": "P13",
+          "start_s": 70.4,
+          "end_s": 108.13333333333333,
+          "duration_s": 37.73333333333332
+        },
+        "output_duration_s": 37.73333333333332,
+        "alignment_method": "native-speed_with_last-frame-hold"
+      }
+    ],
+    "speed_modified": false,
+    "multi_trial_splice": false,
+    "shorter_phase_policy": "hold_last_frame",
+    "output_duration_s": 108.99166666667077
+  },
+  "diagnostic_overlay": {
+    "small_top_band_only": true,
+    "source_trial_count": 1,
+    "speed_modified": false
+  },
+  "checksums_sha256": "e3792a2602158fdf97ebd54674b24d9c1a0641173a1bb25c81ede439944db9ef"
+}
