@@ -18773,30 +18773,32 @@
         1
       ],
       "drive_feedback": {
-        "kind": "late_tail_carry_phase_alignment",
-        "channel": "rear_left_knee",
-        "channel_index": 5,
-        "effect_channel": "rear_right_knee",
-        "goal": "advance the positive P09-to-P10 rear-right-knee rebound while leaving the live P10 entry guard authoritative",
-        "source": "two-sample compact corridor from locked v010 120 Hz physical observation evidence plus the Trial012 one-sided causal response to the opposite-sign pulse",
+        "kind": "verify_tail_carry_alignment",
+        "probe_channel": "rear_right_knee",
+        "probe_channel_index": 7,
+        "correction_channel": "rear_left_knee",
+        "correction_channel_index": 5,
+        "goal": "preserve the late P09 support release until the signed rear-right-knee rebound reaches the live P10 entry corridor",
+        "source": "two-sample locked-v010 rear-right-knee endpoint corridor plus the Trial010 no-pulse physical tail response",
         "probe_samples": [
           {
-            "motion_tick": 743,
-            "reference_actual_deg": 20.18301304299565
+            "motion_tick": 862,
+            "reference_actual_deg": -51.50794810030658
           },
           {
-            "motion_tick": 744,
-            "reference_actual_deg": 20.18210292028875
+            "motion_tick": 863,
+            "reference_actual_deg": -51.549332216487684
           }
         ],
-        "lag_threshold_deg": 0.14,
+        "lag_threshold_deg": 1.7,
         "required_consecutive_samples": 2,
-        "first_bias_tick": 745,
-        "last_bias_tick": 758,
-        "logical_bias_deg": -0.4,
+        "first_bias_tick": 864,
+        "last_bias_tick": 871,
+        "teardown_tick": 872,
+        "logical_bias_deg": 1.25,
         "reference_excursion_deg": 19.4,
-        "peak_fraction_of_reference": 0.02061855670103093,
-        "cumulative_fraction_of_reference": 0.04123711340206186,
+        "peak_fraction_of_reference": 0.06443298969072164,
+        "cumulative_fraction_of_reference": 0.12886597938144329,
         "nominal_endpoint_restored": true,
         "raw_recording_runtime_access_required": false
       },
@@ -22152,6 +22154,14 @@
         0,
         0
       ],
+      "entry_velocity_alignment": {
+        "channel": "rear_right_knee",
+        "channel_index": 7,
+        "reference_velocity_deg_s": 23.585333053160202,
+        "relative_limit": 0.15,
+        "signed_positive_rebound_required": true,
+        "raw_recording_runtime_access_required": false
+      },
       "reference_sim_readback_end_s": 67.37499999999969,
       "reference_command_readback_latency_s": 0.008333333333339965,
       "reference_actual": {

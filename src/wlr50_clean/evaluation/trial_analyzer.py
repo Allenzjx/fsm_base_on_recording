@@ -314,7 +314,7 @@ def _recovery_evidence(
             continue
         feedback_trigger_seen = True
         try:
-            channel = str(int(feedback["channel_index"]))
+            channel = str(int(feedback["correction_channel_index"]))
         except (KeyError, TypeError, ValueError):
             channel = "invalid_drive_feedback"
             parsed = math.inf
@@ -372,7 +372,9 @@ def _reference_wheel_decay_threshold(contract: Mapping[str, Any]) -> float:
 
 
 def _drive_feedback_ledger_valid(
-    commands: Sequence[Mapping[str, Any]], contract: Mapping[str, Any]
+    commands: Sequence[Mapping[str, Any]],
+    contract: Mapping[str, Any],
+    observations: Sequence[Mapping[str, Any]] | None = None,
 ) -> bool:
     """Audit any post-mapper correction against its explicit final-drive log."""
 
@@ -400,9 +402,11 @@ def _drive_feedback_ledger_valid(
     previous_tick_by_phase: dict[str, int] = {}
     row_attempts: list[tuple[str, int, int | None]] = []
     trigger_attempts: dict[str, tuple[int, int]] = {}
-    for row in rows:
+    row_index_by_attempt_tick: dict[tuple[str, int, int], int] = {}
+    for row_index, row in enumerate(rows):
         phase_id = _phase(row)
-        raw_tick = row.get("motion_tick_index")
+        feedback = row["drive_feedback"]
+        raw_tick = feedback.get("tick_index", row.get("motion_tick_index"))
         try:
             tick = None if raw_tick is None else int(raw_tick)
         except (TypeError, ValueError):
@@ -414,8 +418,11 @@ def _drive_feedback_ledger_valid(
                 attempt += 1
                 attempt_by_phase[phase_id] = attempt
             previous_tick_by_phase[phase_id] = tick
+            key = (phase_id, attempt, tick)
+            if key in row_index_by_attempt_tick:
+                return False
+            row_index_by_attempt_tick[key] = row_index
         row_attempts.append((phase_id, attempt, tick))
-        feedback = row["drive_feedback"]
         if feedback.get("just_triggered") is True:
             if phase_id in trigger_attempts or tick is None:
                 return False
@@ -453,8 +460,10 @@ def _drive_feedback_ledger_valid(
         expected_active = False
         if spec is not None and tick is not None:
             try:
-                channel = str(spec["channel"])
-                channel_index = int(spec["channel_index"])
+                probe_channel = str(spec["probe_channel"])
+                probe_channel_index = int(spec["probe_channel_index"])
+                correction_channel = str(spec["correction_channel"])
+                correction_channel_index = int(spec["correction_channel_index"])
                 probe_ticks = tuple(int(item["motion_tick"]) for item in spec["probe_samples"])
                 first_bias_tick = int(spec["first_bias_tick"])
                 last_bias_tick = int(spec["last_bias_tick"])
@@ -464,8 +473,11 @@ def _drive_feedback_ledger_valid(
             except (KeyError, TypeError, ValueError):
                 return False
             if (
-                feedback.get("channel") != channel
-                or feedback.get("channel_index") != channel_index
+                feedback.get("probe_channel") != probe_channel
+                or feedback.get("probe_channel_index") != probe_channel_index
+                or feedback.get("correction_channel") != correction_channel
+                or feedback.get("correction_channel_index")
+                != correction_channel_index
             ):
                 return False
             if triggered is not None:
@@ -477,7 +489,7 @@ def _drive_feedback_ledger_valid(
                     expected_latched and first_bias_tick <= tick <= last_bias_tick
                 )
                 if expected_active:
-                    expected_requested[channel_index] = logical_bias
+                    expected_requested[correction_channel_index] = logical_bias
             expected_peak = peak_fraction if expected_latched else 0.0
             expected_cumulative = cumulative_fraction if expected_latched else 0.0
             try:
@@ -505,11 +517,18 @@ def _drive_feedback_ledger_valid(
             if any(
                 abs(value) > 1.0e-8
                 for index, value in enumerate(realized)
-                if index != channel_index
+                if index != correction_channel_index
             ):
                 return False
-            realized_traces[phase_id].append(realized[channel_index])
-            if not expected_active and abs(realized[channel_index]) > 1.0e-8:
+            realized_traces[phase_id].append(realized[correction_channel_index])
+            if (
+                not expected_active
+                and abs(realized[correction_channel_index]) > 1.0e-8
+            ):
+                return False
+            if expected_active and abs(
+                realized[correction_channel_index] - logical_bias
+            ) > 1.0e-8:
                 return False
         else:
             try:
@@ -535,6 +554,139 @@ def _drive_feedback_ledger_valid(
         ):
             return False
         previous_final = final
+    observation_by_time: dict[float, Mapping[str, Any]] = {}
+    if observations is not None:
+        try:
+            for observation in observations:
+                observation_by_time[round(_time(observation), 12)] = observation
+        except TrialAnalysisError:
+            return False
+    teardown_row_by_phase: dict[str, Mapping[str, Any]] = {}
+    for phase_id, (trigger_attempt, trigger_tick) in trigger_attempts.items():
+        spec = feedback_specs.get(phase_id)
+        if spec is None:
+            return False
+        try:
+            probe_rows = tuple(spec["probe_samples"])
+            probe_ticks = tuple(int(item["motion_tick"]) for item in probe_rows)
+            first_bias_tick = int(spec["first_bias_tick"])
+            last_bias_tick = int(spec["last_bias_tick"])
+            teardown_tick = int(spec["teardown_tick"])
+            lag_threshold = float(spec["lag_threshold_deg"])
+            probe_index = int(spec["probe_channel_index"])
+            correction_index = int(spec["correction_channel_index"])
+        except (KeyError, TypeError, ValueError):
+            return False
+        if not probe_ticks or trigger_tick != probe_ticks[-1]:
+            return False
+        required_ticks = tuple(range(probe_ticks[0], last_bias_tick + 1))
+        required_indices = []
+        for tick in required_ticks:
+            row_index = row_index_by_attempt_tick.get(
+                (phase_id, trigger_attempt, tick)
+            )
+            if row_index is None:
+                return False
+            required_indices.append(row_index)
+        if any(
+            right != left + 1
+            for left, right in zip(required_indices, required_indices[1:])
+        ):
+            return False
+        try:
+            physics_dt_s = 1.0 / float(contract["physics_hz"])
+            if any(
+                abs(_time(rows[right]) - _time(rows[left]) - physics_dt_s)
+                > 1.0e-9
+                for left, right in zip(
+                    required_indices, required_indices[1:]
+                )
+            ):
+                return False
+        except (KeyError, TypeError, ValueError, ZeroDivisionError, TrialAnalysisError):
+            return False
+        for probe in probe_rows:
+            try:
+                probe_tick = int(probe["motion_tick"])
+                expected_reference = float(probe["reference_actual_deg"])
+            except (KeyError, TypeError, ValueError):
+                return False
+            row_index = row_index_by_attempt_tick.get(
+                (phase_id, trigger_attempt, probe_tick)
+            )
+            if row_index is None:
+                return False
+            row = rows[row_index]
+            feedback = row["drive_feedback"]
+            observed = _number(feedback, "observed_deg")
+            logged_reference = _number(feedback, "reference_deg")
+            if (
+                observed is None
+                or logged_reference is None
+                or abs(logged_reference - expected_reference) > 1.0e-9
+                or expected_reference - observed + 1.0e-12 < lag_threshold
+            ):
+                return False
+            if observations is not None:
+                observation = observation_by_time.get(round(_time(row), 12))
+                actual = (
+                    None
+                    if observation is None
+                    else _vector(observation, "actual_full12")
+                )
+                if (
+                    actual is None
+                    or abs(actual[probe_index] - observed) > 1.0e-9
+                ):
+                    return False
+        if first_bias_tick != trigger_tick + 1:
+            return False
+        last_bias_index = row_index_by_attempt_tick[
+            (phase_id, trigger_attempt, last_bias_tick)
+        ]
+        teardown_index = row_index_by_attempt_tick.get(
+            (phase_id, trigger_attempt, teardown_tick)
+        )
+        if teardown_index is None:
+            teardown_index = last_bias_index + 1
+        if teardown_index != last_bias_index + 1 or teardown_index >= len(rows):
+            return False
+        teardown_row = rows[teardown_index]
+        teardown_phase, teardown_attempt, logged_teardown_tick = row_attempts[
+            teardown_index
+        ]
+        if (
+            teardown_phase == phase_id
+            and teardown_attempt == trigger_attempt
+            and logged_teardown_tick != teardown_tick
+        ):
+            return False
+        try:
+            if abs(
+                _time(teardown_row)
+                - _time(rows[last_bias_index])
+                - physics_dt_s
+            ) > 1.0e-9:
+                return False
+        except (KeyError, TypeError, ValueError, ZeroDivisionError, TrialAnalysisError):
+            return False
+        requested = _vector(
+            teardown_row, "drive_feedback_bias_requested_full12"
+        )
+        realized = _vector(
+            teardown_row, "drive_feedback_bias_realized_full12"
+        )
+        declared = _vector(teardown_row["drive_feedback"], "bias_full12")
+        if (
+            requested is None
+            or realized is None
+            or declared is None
+            or abs(requested[correction_index]) > 1.0e-9
+            or abs(realized[correction_index]) > 1.0e-8
+            or abs(declared[correction_index]) > 1.0e-9
+        ):
+            return False
+        teardown_row_by_phase[phase_id] = teardown_row
     for phase_id, spec in feedback_specs.items():
         trace = realized_traces[phase_id]
         if not trace:
@@ -547,6 +699,15 @@ def _drive_feedback_ledger_valid(
             return False
         if excursion <= 0.0:
             return False
+        triggered = trigger_attempts.get(phase_id)
+        if triggered is not None and abs(trace[-1]) > 1.0e-8:
+            correction_index = int(spec["correction_channel_index"])
+            teardown = _vector(
+                teardown_row_by_phase[phase_id],
+                "drive_feedback_bias_realized_full12",
+            )
+            assert teardown is not None
+            trace.append(teardown[correction_index])
         realized_peak = max(abs(value) for value in trace) / excursion
         realized_cumulative = sum(
             abs(right - left) for left, right in zip(trace, trace[1:])
@@ -651,7 +812,9 @@ def analyze_trial(
         "source_full12_atomic_events_exact": nominal_atomic == expected_atomic,
         "feedback_correction_reference_bounded": all(value <= 0.15 + 1.0e-12 for value in correction_values)
         and all(count <= 1 for count in retry_counts.values()),
-        "drive_feedback_ledger_valid": _drive_feedback_ledger_valid(commands, contract),
+        "drive_feedback_ledger_valid": _drive_feedback_ledger_valid(
+            commands, contract, observations
+        ),
         "final_wheel_targets_zero": final_command is not None
         and all(abs(value) <= 1.0e-9 for value in final_command[8:]),
         "measured_wheel_velocity_stable_decay": wheel_decay_status.passed,

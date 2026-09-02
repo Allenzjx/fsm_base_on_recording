@@ -86,6 +86,7 @@ class SensorFsmController:
         self._pending_blocker: GuardEvidence | WatchdogBlocker | None = None
         self._first_blocker: dict[str, Any] | None = None
         self._tracking_servo_names: tuple[str, ...] = ()
+        self._drive_feedback_tick_index: int | None = None
         self.termination: TaskTermination | None = None
         self.history: list[ControllerEvent] = []
 
@@ -139,6 +140,7 @@ class SensorFsmController:
         if self.termination is None and self.lifecycle is Lifecycle.EXECUTE_MOTION:
             motion_tick = self.motion.tick()
             command = motion_tick.full12
+            self._drive_feedback_tick_index = motion_tick.tick_index
             drive_feedback = self.drive_feedback.update(
                 state_id=self.state.state_id,
                 motion_tick_index=motion_tick.tick_index,
@@ -168,6 +170,19 @@ class SensorFsmController:
                     self._remember_blocker(blocker)
                     self._recover_or_terminate(blocker, now, events)
         else:
+            if (
+                self.termination is None
+                and self.lifecycle is Lifecycle.VERIFY_RESULT
+                and self.phase.drive_feedback is not None
+                and self._drive_feedback_tick_index is not None
+            ):
+                self._drive_feedback_tick_index += 1
+                drive_feedback = self.drive_feedback.update(
+                    state_id=self.state.state_id,
+                    motion_tick_index=self._drive_feedback_tick_index,
+                    actual_full12=_actual_full12(observation),
+                    spec=self.phase.drive_feedback,
+                )
             command = self._held_or_safe_command()
             if (
                 self.termination is None
@@ -378,6 +393,7 @@ class SensorFsmController:
         # A blocked next entry must not keep accumulating the prior phase's
         # tracking compensation.
         self._tracking_servo_names = ()
+        self._drive_feedback_tick_index = None
         self.guard_evaluator.reset_state(next_state.state_id)
         self.watchdog.reset()
         event = ControllerEvent(
@@ -436,6 +452,9 @@ class SensorFsmController:
 
     def _entry_compatibility(self, observation: Any) -> GuardEvidence:
         actual = _actual_servo_positions(observation, self.contract.full12_order[:8])
+        velocity = _actual_servo_velocities(
+            observation, self.contract.full12_order[:8]
+        )
         active = set(self.phase.active_channels)
         checked = [
             index
@@ -471,12 +490,38 @@ class SensorFsmController:
                 "limit_deg": limit,
             }
             passed = passed and abs(error) <= limit + 1e-12
+        alignment = self.phase.entry_velocity_alignment
+        if alignment is not None:
+            reference_velocity = alignment.reference_velocity_deg_s
+            velocity_limit = alignment.relative_limit * abs(reference_velocity)
+            actual_velocity = (
+                None if velocity is None else velocity[alignment.channel_index]
+            )
+            velocity_error = (
+                None
+                if actual_velocity is None
+                else actual_velocity - reference_velocity
+            )
+            velocity_passed = bool(
+                velocity_error is not None
+                and actual_velocity is not None
+                and actual_velocity > 0.0
+                and abs(velocity_error) <= velocity_limit + 1.0e-12
+            )
+            errors[f"{alignment.channel}_velocity"] = {
+                "actual_deg_s": actual_velocity,
+                "reference_deg_s": reference_velocity,
+                "error_deg_s": velocity_error,
+                "limit_deg_s": velocity_limit,
+                "signed_positive_rebound_required": True,
+            }
+            passed = passed and velocity_passed
         return GuardEvidence(
             "reference_entry_compatible",
             passed,
             errors,
             "controller.live_servo_vs_v010_actual_start",
-            "active servos compare with the measured reference entry using max(2 deg, 15% of reference phase delta)",
+            "active servos compare with measured v010 entry position; any authored signed entry velocity must also remain within 15%",
         )
 
     def _final_pose_compatibility(self, observation: Any) -> GuardEvidence:
@@ -633,6 +678,48 @@ def _actual_full12(observation: Any) -> tuple[float, ...] | None:
     except (TypeError, ValueError):
         return None
     return values if len(values) == 12 else None
+
+
+def _actual_servo_velocities(
+    observation: Any, servo_order: Sequence[str]
+) -> tuple[float, ...] | None:
+    if isinstance(observation, Mapping):
+        direct = observation.get(
+            "velocity_full12", observation.get("actual_velocity_full12")
+        )
+        joints = observation.get("joints")
+    else:
+        direct = getattr(
+            observation,
+            "velocity_full12",
+            getattr(observation, "actual_velocity_full12", None),
+        )
+        joints = getattr(observation, "joints", None)
+    if direct is not None:
+        try:
+            values = tuple(float(item) for item in direct)
+        except (TypeError, ValueError):
+            return None
+        return values[:8] if len(values) >= 8 else None
+    if not isinstance(joints, Mapping):
+        return None
+    values = []
+    for channel in servo_order:
+        if channel not in joints:
+            return None
+        joint = joints[channel]
+        value = (
+            joint.get("velocity_deg_s")
+            if isinstance(joint, Mapping)
+            else getattr(joint, "velocity_deg_s", None)
+        )
+        if value is None:
+            return None
+        try:
+            values.append(float(value))
+        except (TypeError, ValueError):
+            return None
+    return tuple(values)
 
 
 def _report_details(report: GuardReport) -> Mapping[str, Any]:

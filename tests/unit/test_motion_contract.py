@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+import pytest
 import yaml
 
 from wlr50_clean.reference.motion_contract import load_motion_contract
@@ -100,17 +101,36 @@ def test_p09_carry_phase_feedback_is_compact_and_strictly_reference_bounded() ->
     feedback = contract.phase("P09").drive_feedback
     assert feedback is not None
     assert [(item.motion_tick, item.reference_actual_deg) for item in feedback.probe_samples] == [
-        (743, 20.18301304299565),
-        (744, 20.18210292028875),
+        (862, -51.50794810030658),
+        (863, -51.549332216487684),
     ]
-    assert feedback.first_bias_tick == 745
-    assert feedback.last_bias_tick == 758
-    assert feedback.logical_bias_deg == -0.4
-    assert feedback.peak_fraction_of_reference == 0.4 / 19.4
-    assert feedback.cumulative_fraction_of_reference == 0.8 / 19.4
+    assert feedback.probe_channel == "rear_right_knee"
+    assert feedback.probe_channel_index == 7
+    assert feedback.correction_channel == "rear_left_knee"
+    assert feedback.correction_channel_index == 5
+    assert feedback.first_bias_tick == 864
+    assert feedback.last_bias_tick == 871
+    assert feedback.teardown_tick == 872
+    assert feedback.logical_bias_deg == 1.25
+    assert feedback.peak_fraction_of_reference == pytest.approx(1.25 / 19.4)
+    assert feedback.cumulative_fraction_of_reference == pytest.approx(2.5 / 19.4)
     assert feedback.cumulative_fraction_of_reference < 0.15
     assert all(
         phase.drive_feedback is None
         for phase in contract.phases
         if phase.state_id != "P09"
+    )
+
+    alignment = contract.phase("P10").entry_velocity_alignment
+    assert alignment is not None
+    assert alignment.channel == "rear_right_knee"
+    assert alignment.channel_index == 7
+    assert alignment.reference_velocity_deg_s == pytest.approx(
+        23.585333053160202
+    )
+    assert alignment.relative_limit == 0.15
+    assert all(
+        phase.entry_velocity_alignment is None
+        for phase in contract.phases
+        if phase.state_id != "P10"
     )

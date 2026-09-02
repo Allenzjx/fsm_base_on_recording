@@ -20,13 +20,16 @@ class DriveFeedback:
     bias_full12: tuple[float, ...]
     active: bool
     just_triggered: bool
+    tick_index: int | None
     trigger_tick: int | None
     observed_deg: float | None
     reference_deg: float | None
     peak_fraction_of_reference: float
     cumulative_fraction_of_reference: float
-    channel: str | None
-    channel_index: int | None
+    probe_channel: str | None
+    probe_channel_index: int | None
+    correction_channel: str | None
+    correction_channel_index: int | None
     reason: str
 
     def as_dict(self) -> dict[str, object]:
@@ -35,26 +38,28 @@ class DriveFeedback:
             "bias_full12": list(self.bias_full12),
             "active": self.active,
             "just_triggered": self.just_triggered,
+            "tick_index": self.tick_index,
             "trigger_tick": self.trigger_tick,
             "observed_deg": self.observed_deg,
             "reference_deg": self.reference_deg,
             "peak_fraction_of_reference": self.peak_fraction_of_reference,
             "cumulative_fraction_of_reference": self.cumulative_fraction_of_reference,
-            "channel": self.channel,
-            "channel_index": self.channel_index,
+            "probe_channel": self.probe_channel,
+            "probe_channel_index": self.probe_channel_index,
+            "correction_channel": self.correction_channel,
+            "correction_channel_index": self.correction_channel_index,
             "reason": self.reason,
         }
 
 
 class ReferenceBoundedDriveFeedback:
-    """Latch the measured late-P09 corridor deficit and align carry phase once.
+    """Latch a direct late-P09 RRK deficit and align the verify-tail carry.
 
-    The Trial012 opposite-sign physical probe showed that increasing the
-    rear-left-knee target weakens late support and removes the rear-right-knee
-    rebound needed at P10 entry.  The contract therefore requests a smaller
-    negative pulse while keeping the live P10 entry guard authoritative.  The
-    correction remains downstream of the mature target mapper so it cannot
-    reset the mapper's requested-target or tracking-compensation lifecycle.
+    Trial012 and Trial013 proved that early rear-left-knee pulses of either
+    sign select the wrong contact branch.  The compact contract now observes
+    the causal rear-right-knee endpoint deficit directly, then applies one
+    bounded rear-left-knee support-release correction only across the P09
+    verify tail.  The signed P10 velocity guard remains authoritative.
     """
 
     def __init__(self) -> None:
@@ -83,7 +88,7 @@ class ReferenceBoundedDriveFeedback:
 
         actual = _full12_or_none(actual_full12)
         just_triggered = False
-        channel_index = None if spec is None else spec.channel_index
+        channel_index = None if spec is None else spec.probe_channel_index
         observed = (
             None if actual is None or channel_index is None else actual[channel_index]
         )
@@ -124,7 +129,7 @@ class ReferenceBoundedDriveFeedback:
         )
         bias = [0.0] * ACTION_COUNT
         if active and spec is not None:
-            bias[spec.channel_index] = spec.logical_bias_deg
+            bias[spec.correction_channel_index] = spec.logical_bias_deg
 
         peak_fraction = 0.0 if spec is None else spec.peak_fraction_of_reference
         cumulative_fraction = (
@@ -137,6 +142,7 @@ class ReferenceBoundedDriveFeedback:
             bias_full12=tuple(bias),
             active=active,
             just_triggered=just_triggered,
+            tick_index=tick,
             trigger_tick=self._trigger_tick if triggered else None,
             observed_deg=observed,
             reference_deg=(
@@ -146,10 +152,18 @@ class ReferenceBoundedDriveFeedback:
             cumulative_fraction_of_reference=(
                 cumulative_fraction if triggered else 0.0
             ),
-            channel=spec.channel if spec is not None else None,
-            channel_index=spec.channel_index if spec is not None else None,
+            probe_channel=spec.probe_channel if spec is not None else None,
+            probe_channel_index=(
+                spec.probe_channel_index if spec is not None else None
+            ),
+            correction_channel=(
+                spec.correction_channel if spec is not None else None
+            ),
+            correction_channel_index=(
+                spec.correction_channel_index if spec is not None else None
+            ),
             reason=(
-                f"live {state_id} {spec.channel} corridor deficit predicts a phase-late rear-right-knee rebound"
+                f"live {state_id} {spec.probe_channel} endpoint deficit requests {spec.correction_channel} verify-tail carry alignment"
                 if triggered and spec is not None
                 else "no live reference-corridor deficit latched"
             ),

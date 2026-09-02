@@ -233,33 +233,36 @@ def test_post_mapper_drive_feedback_is_included_in_cumulative_budget(tmp_path: P
         "state_id": "P09",
         "drive_feedback": {
             "just_triggered": True,
-            "channel_index": 5,
-            "cumulative_fraction_of_reference": 0.8 / 19.4,
+            "correction_channel_index": 5,
+            "cumulative_fraction_of_reference": 2.5 / 19.4,
         },
     }
     values, _ = _recovery_evidence([], [command])
-    assert max(values) == pytest.approx(0.8 / 19.4)
+    assert max(values) == pytest.approx(2.5 / 19.4)
 
     duplicate = json.loads(json.dumps(command))
-    values, _ = _recovery_evidence([], [command, duplicate, duplicate, duplicate])
-    assert max(values) == pytest.approx(3.2 / 19.4)
+    values, _ = _recovery_evidence([], [command, duplicate])
+    assert max(values) == pytest.approx(5.0 / 19.4)
     assert max(values) > 0.15
 
 
 def _feedback_ledger_rows(*, residual_after_window: float = 0.0) -> list[dict]:
-    peak = 0.4 / 19.4
-    cumulative = 0.8 / 19.4
+    peak = 1.25 / 19.4
+    cumulative = 2.5 / 19.4
     rows = []
-    for tick in range(743, 761):
-        latched = tick >= 744
-        active = 745 <= tick <= 758
+    for tick in range(862, 872):
+        latched = tick >= 863
+        active = 864 <= tick <= 871
+        reference = {
+            862: -51.50794810030658,
+            863: -51.549332216487684,
+        }.get(tick)
+        observed = None if reference is None else reference - 1.7
         requested = [0.0] * 12
         realized = [0.0] * 12
         if active:
-            requested[5] = -0.4
-            realized[5] = -0.4
-        elif tick == 759:
-            realized[5] = residual_after_window
+            requested[5] = 1.25
+            realized[5] = 1.25
         native = [0.0] * 12
         final = [left + right for left, right in zip(native, realized, strict=True)]
         rows.append({
@@ -270,18 +273,53 @@ def _feedback_ledger_rows(*, residual_after_window: float = 0.0) -> list[dict]:
                 "schema": "wlr50_clean.drive_feedback.v1",
                 "bias_full12": requested,
                 "active": active,
-                "just_triggered": tick == 744,
-                "trigger_tick": 744 if latched else None,
+                "just_triggered": tick == 863,
+                "tick_index": tick,
+                "trigger_tick": 863 if latched else None,
+                "observed_deg": observed,
+                "reference_deg": reference,
                 "peak_fraction_of_reference": peak if latched else 0.0,
                 "cumulative_fraction_of_reference": cumulative if latched else 0.0,
-                "channel": "rear_left_knee",
-                "channel_index": 5,
+                "probe_channel": "rear_right_knee",
+                "probe_channel_index": 7,
+                "correction_channel": "rear_left_knee",
+                "correction_channel_index": 5,
             },
             "drive_feedback_bias_requested_full12": requested,
             "drive_feedback_bias_realized_full12": realized,
             "native_drive_target_full12": native,
             "drive_target_full12": final,
         })
+    requested = [0.0] * 12
+    realized = [0.0] * 12
+    realized[5] = residual_after_window
+    native = [0.0] * 12
+    final = [left + right for left, right in zip(native, realized, strict=True)]
+    rows.append(
+        {
+            "state_id": "P10",
+            "sim_time_s": 872 / 120.0,
+            "motion_tick_index": None,
+            "drive_feedback": {
+                "schema": "wlr50_clean.drive_feedback.v1",
+                "bias_full12": requested,
+                "active": False,
+                "just_triggered": False,
+                "tick_index": None,
+                "trigger_tick": None,
+                "peak_fraction_of_reference": 0.0,
+                "cumulative_fraction_of_reference": 0.0,
+                "probe_channel": None,
+                "probe_channel_index": None,
+                "correction_channel": None,
+                "correction_channel_index": None,
+            },
+            "drive_feedback_bias_requested_full12": requested,
+            "drive_feedback_bias_realized_full12": realized,
+            "native_drive_target_full12": native,
+            "drive_target_full12": final,
+        }
+    )
     return rows
 
 
@@ -291,10 +329,62 @@ def test_drive_feedback_ledger_enforces_window_and_endpoint_restoration() -> Non
             encoding="utf-8"
         )
     )
-    assert _drive_feedback_ledger_valid(_feedback_ledger_rows(), contract)
+    valid_rows = _feedback_ledger_rows()
+    observations = []
+    for row in valid_rows:
+        actual = [0.0] * 12
+        observed = row["drive_feedback"].get("observed_deg")
+        if observed is not None:
+            actual[7] = observed
+        observations.append(
+            {"simulation_time_s": row["sim_time_s"], "actual_full12": actual}
+        )
+    assert _drive_feedback_ledger_valid(valid_rows, contract, observations)
+    mismatched_observations = json.loads(json.dumps(observations))
+    mismatched_observations[0]["actual_full12"][7] += 0.01
+    assert not _drive_feedback_ledger_valid(
+        valid_rows, contract, mismatched_observations
+    )
     assert not _drive_feedback_ledger_valid(
         _feedback_ledger_rows(residual_after_window=0.4), contract
     )
+    missing_active_tick = _feedback_ledger_rows()
+    del missing_active_tick[6]
+    assert not _drive_feedback_ledger_valid(missing_active_tick, contract)
+    unrealized_active = _feedback_ledger_rows()
+    for row in unrealized_active:
+        if row["drive_feedback"]["active"]:
+            row["drive_feedback_bias_realized_full12"][5] = 0.0
+            row["drive_target_full12"][5] = row["native_drive_target_full12"][5]
+    assert not _drive_feedback_ledger_valid(unrealized_active, contract)
+    wrong_cadence = _feedback_ledger_rows()
+    base_time = wrong_cadence[0]["sim_time_s"]
+    for index, row in enumerate(wrong_cadence[:-1]):
+        row["sim_time_s"] = base_time + index / 240.0
+    wrong_cadence[-1]["sim_time_s"] = (
+        wrong_cadence[-2]["sim_time_s"] + 1.0 / 120.0
+    )
+    assert not _drive_feedback_ledger_valid(wrong_cadence, contract)
+    mislabeled_teardown = _feedback_ledger_rows()
+    teardown = mislabeled_teardown[-1]
+    teardown["state_id"] = "P09"
+    teardown["motion_tick_index"] = 873
+    teardown["drive_feedback"].update(
+        {
+            "tick_index": 873,
+            "trigger_tick": 863,
+            "peak_fraction_of_reference": 1.25 / 19.4,
+            "cumulative_fraction_of_reference": 2.5 / 19.4,
+            "probe_channel": "rear_right_knee",
+            "probe_channel_index": 7,
+            "correction_channel": "rear_left_knee",
+            "correction_channel_index": 5,
+        }
+    )
+    assert not _drive_feedback_ledger_valid(mislabeled_teardown, contract)
+    missing_probe_evidence = _feedback_ledger_rows()
+    missing_probe_evidence[0]["drive_feedback"]["observed_deg"] = None
+    assert not _drive_feedback_ledger_valid(missing_probe_evidence, contract)
     missing_restore = _feedback_ledger_rows()
     del missing_restore[-1]["drive_feedback"]
     assert not _drive_feedback_ledger_valid(missing_restore, contract)

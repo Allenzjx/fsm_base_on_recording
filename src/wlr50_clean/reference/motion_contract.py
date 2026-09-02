@@ -53,17 +53,28 @@ class DriveFeedbackProbe:
 @dataclass(frozen=True)
 class DriveFeedbackSpec:
     kind: str
-    channel: str
-    channel_index: int
+    probe_channel: str
+    probe_channel_index: int
+    correction_channel: str
+    correction_channel_index: int
     probe_samples: tuple[DriveFeedbackProbe, ...]
     lag_threshold_deg: float
     required_consecutive_samples: int
     first_bias_tick: int
     last_bias_tick: int
+    teardown_tick: int
     logical_bias_deg: float
     reference_excursion_deg: float
     peak_fraction_of_reference: float
     cumulative_fraction_of_reference: float
+
+
+@dataclass(frozen=True)
+class EntryVelocityAlignmentSpec:
+    channel: str
+    channel_index: int
+    reference_velocity_deg_s: float
+    relative_limit: float
 
 
 @dataclass(frozen=True)
@@ -82,6 +93,7 @@ class MotionPhase:
     completion_event: str
     action_mask_full12: tuple[int, ...]
     drive_feedback: DriveFeedbackSpec | None
+    entry_velocity_alignment: EntryVelocityAlignmentSpec | None
 
     def nominal_at(self, elapsed_s: float) -> tuple[float, ...]:
         """Sample the causal source request without advancing FSM state."""
@@ -163,8 +175,10 @@ def _parse_phase(value: Mapping[str, Any]) -> MotionPhase:
     if isinstance(raw_feedback, Mapping):
         drive_feedback = DriveFeedbackSpec(
             kind=str(raw_feedback["kind"]),
-            channel=str(raw_feedback["channel"]),
-            channel_index=int(raw_feedback["channel_index"]),
+            probe_channel=str(raw_feedback["probe_channel"]),
+            probe_channel_index=int(raw_feedback["probe_channel_index"]),
+            correction_channel=str(raw_feedback["correction_channel"]),
+            correction_channel_index=int(raw_feedback["correction_channel_index"]),
             probe_samples=tuple(
                 DriveFeedbackProbe(
                     motion_tick=int(row["motion_tick"]),
@@ -178,6 +192,7 @@ def _parse_phase(value: Mapping[str, Any]) -> MotionPhase:
             ),
             first_bias_tick=int(raw_feedback["first_bias_tick"]),
             last_bias_tick=int(raw_feedback["last_bias_tick"]),
+            teardown_tick=int(raw_feedback["teardown_tick"]),
             logical_bias_deg=float(raw_feedback["logical_bias_deg"]),
             reference_excursion_deg=float(raw_feedback["reference_excursion_deg"]),
             peak_fraction_of_reference=float(
@@ -186,6 +201,17 @@ def _parse_phase(value: Mapping[str, Any]) -> MotionPhase:
             cumulative_fraction_of_reference=float(
                 raw_feedback["cumulative_fraction_of_reference"]
             ),
+        )
+    raw_alignment = value.get("entry_velocity_alignment")
+    entry_velocity_alignment = None
+    if isinstance(raw_alignment, Mapping):
+        entry_velocity_alignment = EntryVelocityAlignmentSpec(
+            channel=str(raw_alignment["channel"]),
+            channel_index=int(raw_alignment["channel_index"]),
+            reference_velocity_deg_s=float(
+                raw_alignment["reference_velocity_deg_s"]
+            ),
+            relative_limit=float(raw_alignment["relative_limit"]),
         )
     return MotionPhase(
         state_id=str(value["state_id"]),
@@ -202,6 +228,7 @@ def _parse_phase(value: Mapping[str, Any]) -> MotionPhase:
         completion_event=str(value["completion_event"]),
         action_mask_full12=tuple(int(item) for item in value["ppo_action_mask_full12"]),
         drive_feedback=drive_feedback,
+        entry_velocity_alignment=entry_velocity_alignment,
     )
 
 
@@ -252,12 +279,17 @@ def _validate_phases(
             raise ValueError(f"{phase.state_id}: invalid PPO action mask")
         feedback = phase.drive_feedback
         if feedback is not None:
-            if feedback.kind != "late_tail_carry_phase_alignment":
+            if feedback.kind != "verify_tail_carry_alignment":
                 raise ValueError(f"{phase.state_id}: unknown drive-feedback kind")
             if (
-                feedback.channel_index < 0
-                or feedback.channel_index >= SERVO_COUNT
-                or full12_order[feedback.channel_index] != feedback.channel
+                feedback.probe_channel_index < 0
+                or feedback.probe_channel_index >= SERVO_COUNT
+                or full12_order[feedback.probe_channel_index]
+                != feedback.probe_channel
+                or feedback.correction_channel_index < 0
+                or feedback.correction_channel_index >= SERVO_COUNT
+                or full12_order[feedback.correction_channel_index]
+                != feedback.correction_channel
             ):
                 raise ValueError(f"{phase.state_id}: drive-feedback channel mismatch")
             probe_ticks = tuple(item.motion_tick for item in feedback.probe_samples)
@@ -267,11 +299,19 @@ def _validate_phases(
                 or feedback.required_consecutive_samples != len(probe_ticks)
                 or feedback.first_bias_tick != probe_ticks[-1] + 1
                 or feedback.last_bias_tick < feedback.first_bias_tick
+                or feedback.teardown_tick != feedback.last_bias_tick + 1
             ):
                 raise ValueError(f"{phase.state_id}: invalid drive-feedback timing")
             endpoint_tick = round(phase.active_duration_s * 120.0)
-            if feedback.last_bias_tick >= endpoint_tick:
-                raise ValueError(f"{phase.state_id}: drive feedback reaches the endpoint")
+            decision_stride = 8
+            if (
+                feedback.first_bias_tick < endpoint_tick
+                or feedback.last_bias_tick > endpoint_tick + decision_stride - 1
+                or feedback.teardown_tick != endpoint_tick + decision_stride
+            ):
+                raise ValueError(
+                    f"{phase.state_id}: drive feedback is not confined to the verify tail"
+                )
             peak = abs(feedback.logical_bias_deg) / abs(feedback.reference_excursion_deg)
             cumulative = 2.0 * peak
             if (
@@ -280,6 +320,19 @@ def _validate_phases(
                 or cumulative > 0.15 + 1.0e-12
             ):
                 raise ValueError(f"{phase.state_id}: drive-feedback budget is invalid")
+        alignment = phase.entry_velocity_alignment
+        if alignment is not None:
+            if (
+                alignment.channel_index < 0
+                or alignment.channel_index >= SERVO_COUNT
+                or full12_order[alignment.channel_index] != alignment.channel
+                or alignment.channel not in phase.active_channels
+                or alignment.reference_velocity_deg_s <= 0.0
+                or abs(alignment.relative_limit - 0.15) > 1.0e-12
+            ):
+                raise ValueError(
+                    f"{phase.state_id}: invalid entry-velocity alignment"
+                )
         if not phase.waypoints or abs(phase.waypoints[0].time_s) > 1e-9:
             raise ValueError(f"{phase.state_id}: missing phase-entry waypoint")
         previous = -1.0

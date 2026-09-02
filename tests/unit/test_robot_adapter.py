@@ -61,24 +61,14 @@ def test_unknown_servo_limit_fails_closed() -> None:
         authoritative_servo_limits_rad("not_a_joint", 0.0)
 
 
-def test_p09_negative_feedback_bias_restores_at_759_and_preserves_final_slew() -> None:
-    base = {
-        743: 13.521235,
-        744: 14.428796,
-        745: 14.428796,
-        746: 14.428796,
-        747: 14.428796,
-        748: 15.678796,
-        752: 16.928796,
-        756: 18.178796,
-        760: 19.428796,
-    }
-    previous = base[743]
+def test_p09_positive_verify_tail_bias_restores_at_872_and_preserves_final_slew() -> None:
+    base = {863: 18.885057, 872: 18.885057}
+    previous = base[863]
     observed: dict[int, float] = {}
-    for tick in range(744, 761):
+    for tick in range(864, 873):
         native_tick = max(item for item in base if item <= tick)
         native = base[native_tick]
-        bias = -0.4 if 745 <= tick <= 758 else 0.0
+        bias = 1.25 if 864 <= tick <= 871 else 0.0
         final = bounded_drive_feedback_step(
             previous_deg=previous,
             native_deg=native,
@@ -91,14 +81,9 @@ def test_p09_negative_feedback_bias_restores_at_759_and_preserves_final_slew() -
         observed[tick] = final
         previous = final
 
-    assert observed[744] == pytest.approx(14.428796)
-    assert observed[745] == pytest.approx(14.028796)
-    assert observed[748] == pytest.approx(15.278796)
-    assert observed[752] == pytest.approx(16.528796)
-    assert observed[756] == pytest.approx(17.778796)
-    assert observed[758] == pytest.approx(17.778796)
-    assert observed[759] == pytest.approx(18.178796)
-    assert observed[760] == pytest.approx(19.428796)
+    assert observed[864] == pytest.approx(20.135057)
+    assert observed[871] == pytest.approx(20.135057)
+    assert observed[872] == pytest.approx(18.885057)
 
 
 def test_adapter_authors_all_limits_on_session_layer_and_syncs_caches(

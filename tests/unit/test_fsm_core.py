@@ -193,13 +193,21 @@ def test_p10_entry_keeps_the_unmodified_reference_motion(
     controller = SensorFsmController(spec, contract)
     controller.state = spec.state("P10")
     p10 = contract.phase("P10")
+    alignment = p10.entry_velocity_alignment
+    assert alignment is not None
     guards = _live_guards(completion=False)
     actual = list(controller.state.reference_actual_start_full12)
     # Trial011 proved that a full +15% P10 excursion correction was physically
     # too late to repair the carry-in phase.  A guard-compatible entry must
     # therefore retain v010's authored P10 request unchanged.
     actual[7] = -51.465317474601946
-    observation = {"guards": guards, "actual_full12": actual}
+    velocity = [0.0] * 12
+    velocity[7] = alignment.reference_velocity_deg_s
+    observation = {
+        "guards": guards,
+        "actual_full12": actual,
+        "velocity_full12": velocity,
+    }
 
     frames = [controller.step(observation, sim_time_s=0.0)]
     for tick_index in range(1, 17):
@@ -232,18 +240,18 @@ def test_controller_exposes_live_latched_p09_drive_feedback(spec, contract) -> N
     assert feedback is not None
     controller.motion.start_phase(phase)
     guards = _live_guards(completion=False)
-    frame = None
-    for tick in range(feedback.first_bias_tick + 1):
+    frames = {}
+    for tick in range(feedback.teardown_tick + 1):
         actual = list(controller.state.reference_actual_start_full12)
         probe = next(
             (item for item in feedback.probe_samples if item.motion_tick == tick),
             None,
         )
         if probe is not None:
-            actual[feedback.channel_index] = (
+            actual[feedback.probe_channel_index] = (
                 probe.reference_actual_deg - feedback.lag_threshold_deg
             )
-        frame = controller.step(
+        frames[tick] = controller.step(
             {
                 "guards": guards,
                 "actual_full12": actual,
@@ -252,15 +260,174 @@ def test_controller_exposes_live_latched_p09_drive_feedback(spec, contract) -> N
             sim_time_s=tick / 120.0,
         )
 
-    assert frame is not None
-    assert frame.drive_feedback_bias_full12[feedback.channel_index] == pytest.approx(
+    first = frames[feedback.first_bias_tick]
+    tail = frames[feedback.last_bias_tick]
+    restored = frames[feedback.teardown_tick]
+    assert first.lifecycle is Lifecycle.VERIFY_RESULT
+    assert first.drive_feedback_bias_full12[
+        feedback.correction_channel_index
+    ] == pytest.approx(
         feedback.logical_bias_deg
     )
-    assert frame.drive_feedback_details["cumulative_fraction_of_reference"] == pytest.approx(
+    assert tail.drive_feedback_bias_full12[
+        feedback.correction_channel_index
+    ] == pytest.approx(feedback.logical_bias_deg)
+    assert restored.drive_feedback_bias_full12 == pytest.approx((0.0,) * 12)
+    assert first.drive_feedback_details[
+        "cumulative_fraction_of_reference"
+    ] == pytest.approx(
         feedback.cumulative_fraction_of_reference
     )
-    assert frame.drive_feedback_details["channel"] == feedback.channel
-    assert frame.drive_feedback_details["channel_index"] == feedback.channel_index
+    assert (
+        first.drive_feedback_details["probe_channel"] == feedback.probe_channel
+    )
+    assert (
+        first.drive_feedback_details["probe_channel_index"]
+        == feedback.probe_channel_index
+    )
+    assert (
+        first.drive_feedback_details["correction_channel"]
+        == feedback.correction_channel
+    )
+    assert (
+        first.drive_feedback_details["correction_channel_index"]
+        == feedback.correction_channel_index
+    )
+    assert restored.drive_feedback_details["tick_index"] == feedback.teardown_tick
+
+
+@pytest.mark.parametrize(
+    ("velocity_scale", "expected_lifecycle", "expected_motion_tick"),
+    (
+        (1.0, Lifecycle.EXECUTE_MOTION, 0),
+        (0.5, Lifecycle.WAIT_ENTRY, None),
+    ),
+)
+def test_p09_teardown_and_p10_velocity_gate_share_tick_872_safely(
+    spec,
+    contract,
+    velocity_scale: float,
+    expected_lifecycle: Lifecycle,
+    expected_motion_tick: int | None,
+) -> None:
+    controller = SensorFsmController(spec, contract)
+    controller.state = spec.state("P09")
+    controller.lifecycle = Lifecycle.EXECUTE_MOTION
+    p09 = contract.phase("P09")
+    feedback = p09.drive_feedback
+    alignment = contract.phase("P10").entry_velocity_alignment
+    assert feedback is not None and alignment is not None
+    controller.motion.start_phase(p09)
+
+    frame = None
+    for tick in range(feedback.teardown_tick + 1):
+        completing = tick == feedback.teardown_tick
+        guards = _live_guards(completion=False)
+        for name in (
+            "reference_like_active_lift:RR",
+            "leg_front_face_crossed_latched:RR",
+            "leg_top_loaded_latched:RR",
+        ):
+            guards[name] = completing
+        actual = list(
+            controller.state.reference_actual_start_full12
+            if not completing
+            else spec.state("P10").reference_actual_start_full12
+        )
+        probe = next(
+            (item for item in feedback.probe_samples if item.motion_tick == tick),
+            None,
+        )
+        if probe is not None:
+            actual[feedback.probe_channel_index] = (
+                probe.reference_actual_deg - feedback.lag_threshold_deg
+            )
+        velocity = [0.0] * 12
+        if completing:
+            velocity[alignment.channel_index] = (
+                alignment.reference_velocity_deg_s * velocity_scale
+            )
+        frame = controller.step(
+            {
+                "guards": guards,
+                "actual_full12": actual,
+                "velocity_full12": velocity,
+                "progress_vector": (float(tick),),
+            },
+            sim_time_s=tick / 120.0,
+        )
+
+    assert frame is not None
+    assert frame.state_id == "P10"
+    assert frame.lifecycle is expected_lifecycle
+    assert frame.drive_feedback_bias_full12 == pytest.approx((0.0,) * 12)
+    assert frame.drive_feedback_details["tick_index"] == expected_motion_tick
+    assert any(
+        event.state_id == "P09" and event.to_lifecycle == Lifecycle.DONE.value
+        for event in frame.events
+    )
+    if expected_lifecycle is Lifecycle.EXECUTE_MOTION:
+        assert any(
+            event.state_id == "P10"
+            and event.to_lifecycle == Lifecycle.EXECUTE_MOTION.value
+            for event in frame.events
+        )
+    else:
+        assert not any(
+            event.state_id == "P10"
+            and event.to_lifecycle == Lifecycle.EXECUTE_MOTION.value
+            for event in frame.events
+        )
+
+
+@pytest.mark.parametrize(
+    ("velocity_scale", "passed"),
+    (
+        (0.85, True),
+        (1.15, True),
+        (0.849, False),
+        (1.151, False),
+        (-1.0, False),
+    ),
+)
+def test_p10_entry_requires_signed_reference_velocity_corridor(
+    spec, contract, velocity_scale: float, passed: bool
+) -> None:
+    controller = SensorFsmController(spec, contract)
+    controller.state = spec.state("P10")
+    alignment = controller.phase.entry_velocity_alignment
+    assert alignment is not None
+    velocity = [0.0] * 12
+    velocity[alignment.channel_index] = (
+        alignment.reference_velocity_deg_s * velocity_scale
+    )
+
+    evidence = controller._entry_compatibility(
+        {
+            "actual_full12": controller.state.reference_actual_start_full12,
+            "velocity_full12": velocity,
+        }
+    )
+
+    assert evidence.passed is passed
+    details = evidence.value[f"{alignment.channel}_velocity"]
+    assert details["reference_deg_s"] == pytest.approx(
+        alignment.reference_velocity_deg_s
+    )
+    assert details["limit_deg_s"] == pytest.approx(
+        0.15 * alignment.reference_velocity_deg_s
+    )
+
+
+def test_p10_entry_velocity_guard_fails_closed_without_live_velocity(
+    spec, contract
+) -> None:
+    controller = SensorFsmController(spec, contract)
+    controller.state = spec.state("P10")
+    evidence = controller._entry_compatibility(
+        {"actual_full12": controller.state.reference_actual_start_full12}
+    )
+    assert evidence.passed is False
 
 
 def test_watchdog_reports_detailed_first_stall() -> None:
