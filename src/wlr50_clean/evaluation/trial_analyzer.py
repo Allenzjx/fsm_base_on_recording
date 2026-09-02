@@ -84,19 +84,6 @@ _WHEEL_REBOUND_RESULTING_INTEGRAL_RAD = -0.8526666666679271
 _WHEEL_REFERENCE_PEAK_ABS_RAD_S = 1.07
 _WHEEL_REBOUND_RESULTING_PEAK_ABS_RAD_S = 1.07
 _MAX_FEEDBACK_FRACTION = 0.15
-_CONTACT_ALIGNMENT_KIND = "post_probe_rear_left_air_alignment"
-_CONTACT_ALIGNMENT_WHEEL_BODY = "rear_left_wheel"
-_CONTACT_ALIGNMENT_REQUIRED_CLASS = "AIR"
-_CONTACT_ALIGNMENT_TRIGGER_TICK = 859
-_CONTACT_ALIGNMENT_FIRST_BIAS_TICK = 860
-_CONTACT_ALIGNMENT_LAST_FULL_BIAS_TICK = 870
-_CONTACT_ALIGNMENT_RELEASE_TICK = 871
-_CONTACT_ALIGNMENT_TEARDOWN_TICK = 872
-_CONTACT_ALIGNMENT_FINAL_SLEW_DEG_PER_TICK = 1.25
-_CONTACT_ALIGNMENT_CHANNELS = (
-    ("rear_left_hip", 4, 15.8, -1.185, 0.0, 2.37, 0.15),
-    ("rear_left_knee", 5, 19.4, -1.455, -0.205, 2.91, 0.15),
-)
 
 
 def _json_value(value: Any) -> Any:
@@ -376,8 +363,6 @@ def _recovery_evidence(
             )
     nonzero_feedback_seen = False
     feedback_trigger_seen = False
-    nonzero_alignment_seen = False
-    alignment_trigger_seen = False
     for row in commands:
         feedback = row.get("drive_feedback")
         if not isinstance(feedback, Mapping):
@@ -389,83 +374,20 @@ def _recovery_evidence(
             parsed = math.inf
         parsed = parsed if math.isfinite(parsed) else math.inf
         nonzero_feedback_seen = nonzero_feedback_seen or parsed > 1.0e-12
-        if feedback.get("just_triggered") is True:
-            feedback_trigger_seen = True
-            try:
-                channel = str(int(feedback["correction_channel_index"]))
-            except (KeyError, TypeError, ValueError):
-                channel = "invalid_drive_feedback"
-                parsed = math.inf
-            key = (_phase(row), channel)
-            cumulative_by_phase_channel[key] = (
-                cumulative_by_phase_channel.get(key, 0.0) + parsed
-            )
-        alignment = feedback.get("contact_alignment")
-        if feedback.get("kind") == _WHEEL_REBOUND_FEEDBACK_KIND:
-            declared_bias = _vector(feedback, "bias_full12")
-            nonzero_alignment_seen = nonzero_alignment_seen or bool(
-                declared_bias is None
-                or any(
-                    abs(declared_bias[index]) > 1.0e-12
-                    for _, index, *_ in _CONTACT_ALIGNMENT_CHANNELS
-                )
-            )
-        if not isinstance(alignment, Mapping):
+        if feedback.get("just_triggered") is not True:
             continue
-        raw_requested = alignment.get("requested_bias_deg_by_channel")
-        requested_nonzero = False
-        if isinstance(raw_requested, Mapping):
-            try:
-                requested_nonzero = any(
-                    abs(float(value)) > 1.0e-12
-                    for value in raw_requested.values()
-                )
-            except (TypeError, ValueError):
-                requested_nonzero = True
-        nonzero_alignment_seen = nonzero_alignment_seen or bool(
-            alignment.get("active") is True
-            or alignment.get("condition_passed") is True
-            or alignment.get("trigger_tick") is not None
-            or requested_nonzero
+        feedback_trigger_seen = True
+        try:
+            channel = str(int(feedback["correction_channel_index"]))
+        except (KeyError, TypeError, ValueError):
+            channel = "invalid_drive_feedback"
+            parsed = math.inf
+        key = (_phase(row), channel)
+        cumulative_by_phase_channel[key] = (
+            cumulative_by_phase_channel.get(key, 0.0) + parsed
         )
-        if alignment.get("just_triggered") is not True:
-            continue
-        alignment_trigger_seen = True
-        raw_channels = alignment.get("channels")
-        if (
-            not isinstance(raw_channels, Sequence)
-            or isinstance(raw_channels, (str, bytes))
-            or not raw_channels
-        ):
-            cumulative_by_phase_channel[
-                (_phase(row), "invalid_contact_alignment")
-            ] = math.inf
-            continue
-        for alignment_channel in raw_channels:
-            try:
-                if not isinstance(alignment_channel, Mapping):
-                    raise TypeError
-                channel = str(int(alignment_channel["channel_index"]))
-                fraction = abs(
-                    float(
-                        alignment_channel[
-                            "cumulative_fraction_of_reference"
-                        ]
-                    )
-                )
-                if not math.isfinite(fraction):
-                    raise ValueError
-            except (KeyError, TypeError, ValueError):
-                channel = "invalid_contact_alignment"
-                fraction = math.inf
-            key = (_phase(row), channel)
-            cumulative_by_phase_channel[key] = (
-                cumulative_by_phase_channel.get(key, 0.0) + fraction
-            )
     if nonzero_feedback_seen and not feedback_trigger_seen:
         cumulative_by_phase_channel[("invalid", "drive_feedback")] = math.inf
-    if nonzero_alignment_seen and not alignment_trigger_seen:
-        cumulative_by_phase_channel[("invalid", "contact_alignment")] = math.inf
     return list(cumulative_by_phase_channel.values()), {
         phase: sum(_phase(row) == phase for row in recovery_rows) for phase in PHASE_IDS
     }
@@ -993,191 +915,6 @@ def _wheel_rebound_atomic_ack_valid(
     )
 
 
-def _contact_alignment_contract_valid(
-    value: Any,
-    *,
-    phase: Mapping[str, Any],
-    full12_order: tuple[str, ...],
-    maximum_delta: float,
-) -> bool:
-    """Validate the locked P09 servo pulse and both independent 15% budgets."""
-
-    if not isinstance(value, Mapping):
-        return False
-    raw_channels = value.get("channels")
-    if (
-        not isinstance(raw_channels, Sequence)
-        or isinstance(raw_channels, (str, bytes))
-    ):
-        return False
-    try:
-        signature = tuple(
-            (
-                str(channel["channel"]),
-                int(channel["channel_index"]),
-                float(channel["reference_motion_magnitude_deg"]),
-                float(channel["logical_full_bias_deg"]),
-                float(channel["logical_release_bias_deg"]),
-                float(channel["outbound_plus_teardown_deg"]),
-                float(channel["cumulative_fraction_of_reference"]),
-            )
-            for channel in raw_channels
-            if isinstance(channel, Mapping)
-        )
-        start = tuple(float(item) for item in phase["start_full12"])
-        end = tuple(float(item) for item in phase["end_full12"])
-        final_slew = float(value["final_slew_limit_deg_per_tick"])
-    except (KeyError, TypeError, ValueError):
-        return False
-    if (
-        len(signature) != len(raw_channels)
-        or len(start) != 12
-        or len(end) != 12
-        or value.get("kind") != _CONTACT_ALIGNMENT_KIND
-        or value.get("wheel_body") != _CONTACT_ALIGNMENT_WHEEL_BODY
-        or value.get("required_contact_class")
-        != _CONTACT_ALIGNMENT_REQUIRED_CLASS
-        or value.get("require_ground_pair_verified") is not True
-        or value.get("require_obstacle_pair_verified") is not True
-        or (
-            value.get("configured_trigger_tick")
-            if "configured_trigger_tick" in value
-            else value.get("trigger_tick")
-        )
-        != _CONTACT_ALIGNMENT_TRIGGER_TICK
-        or value.get("first_bias_tick") != _CONTACT_ALIGNMENT_FIRST_BIAS_TICK
-        or value.get("last_full_bias_tick")
-        != _CONTACT_ALIGNMENT_LAST_FULL_BIAS_TICK
-        or value.get("release_tick") != _CONTACT_ALIGNMENT_RELEASE_TICK
-        or value.get("teardown_tick") != _CONTACT_ALIGNMENT_TEARDOWN_TICK
-        or not math.isfinite(final_slew)
-        or abs(final_slew - _CONTACT_ALIGNMENT_FINAL_SLEW_DEG_PER_TICK)
-        > 1.0e-12
-        or abs(final_slew - maximum_delta) > 1.0e-12
-        or value.get("realized_zero_required_at_teardown") is not True
-        or value.get("nominal_endpoint_restored") is not True
-        or value.get("raw_recording_runtime_access_required") is not False
-        or signature != _CONTACT_ALIGNMENT_CHANNELS
-    ):
-        return False
-    active_channels = phase.get("active_channels")
-    if (
-        not isinstance(active_channels, Sequence)
-        or isinstance(active_channels, (str, bytes))
-    ):
-        return False
-    active_names = {str(item) for item in active_channels}
-    for (
-        channel,
-        channel_index,
-        reference_magnitude,
-        full_bias,
-        release_bias,
-        path,
-        fraction,
-    ) in signature:
-        derived_reference = abs(end[channel_index] - start[channel_index])
-        derived_path = (
-            abs(full_bias)
-            + abs(release_bias - full_bias)
-            + abs(release_bias)
-        )
-        if (
-            channel_index < 0
-            or channel_index >= 8
-            or full12_order[channel_index] != channel
-            or channel not in active_names
-            or any(
-                not math.isfinite(item)
-                for item in (
-                    reference_magnitude,
-                    full_bias,
-                    release_bias,
-                    path,
-                    fraction,
-                )
-            )
-            or abs(reference_magnitude - derived_reference) > 1.0e-12
-            or abs(path - derived_path) > 1.0e-12
-            or abs(fraction - derived_path / derived_reference) > 1.0e-12
-            or fraction > _MAX_FEEDBACK_FRACTION + 1.0e-12
-            or abs(release_bias - full_bias) > final_slew + 1.0e-12
-            or abs(release_bias) > final_slew + 1.0e-12
-        ):
-            return False
-    return True
-
-
-def _contact_evidence_from_observation(
-    observation: Mapping[str, Any] | None,
-) -> dict[str, object]:
-    def strict_bool(value: Any) -> bool | None:
-        return value if isinstance(value, bool) else None
-
-    contacts = None if observation is None else observation.get("contacts")
-    contact = (
-        contacts.get(_CONTACT_ALIGNMENT_WHEEL_BODY)
-        if isinstance(contacts, Mapping)
-        else None
-    )
-    ground = contact.get("ground") if isinstance(contact, Mapping) else None
-    obstacle = (
-        contact.get("obstacle") if isinstance(contact, Mapping) else None
-    )
-    body = contact.get("body_name") if isinstance(contact, Mapping) else None
-    contact_class = (
-        contact.get("contact_class") if isinstance(contact, Mapping) else None
-    )
-    return {
-        "wheel_body": body if isinstance(body, str) else None,
-        "contact_class": (
-            contact_class if isinstance(contact_class, str) else None
-        ),
-        "ground_pair_verified": strict_bool(
-            ground.get("pair_verified") if isinstance(ground, Mapping) else None
-        ),
-        "ground_active": strict_bool(
-            ground.get("active") if isinstance(ground, Mapping) else None
-        ),
-        "obstacle_pair_verified": strict_bool(
-            obstacle.get("pair_verified")
-            if isinstance(obstacle, Mapping)
-            else None
-        ),
-        "obstacle_active": strict_bool(
-            obstacle.get("active") if isinstance(obstacle, Mapping) else None
-        ),
-    }
-
-
-def _contact_evidence_is_verified_air(evidence: Mapping[str, object]) -> bool:
-    return bool(
-        evidence.get("wheel_body") == _CONTACT_ALIGNMENT_WHEEL_BODY
-        and evidence.get("contact_class") == _CONTACT_ALIGNMENT_REQUIRED_CLASS
-        and evidence.get("ground_pair_verified") is True
-        and evidence.get("ground_active") is False
-        and evidence.get("obstacle_pair_verified") is True
-        and evidence.get("obstacle_active") is False
-    )
-
-
-def _contact_alignment_biases(
-    tick: int, *, latched: bool
-) -> tuple[tuple[float, ...], str | None]:
-    result = [0.0] * 12
-    stage = None
-    if latched:
-        if _CONTACT_ALIGNMENT_FIRST_BIAS_TICK <= tick <= _CONTACT_ALIGNMENT_LAST_FULL_BIAS_TICK:
-            stage = "full_bias"
-            for _, index, _, full_bias, _, _, _ in _CONTACT_ALIGNMENT_CHANNELS:
-                result[index] = full_bias
-        elif tick == _CONTACT_ALIGNMENT_RELEASE_TICK:
-            stage = "release_ramp"
-            for _, index, _, _, release_bias, _, _ in _CONTACT_ALIGNMENT_CHANNELS:
-                result[index] = release_bias
-    return tuple(result), stage
-
-
 def _drive_feedback_ledger_valid(
     commands: Sequence[Mapping[str, Any]],
     contract: Mapping[str, Any],
@@ -1319,21 +1056,11 @@ def _drive_feedback_ledger_valid(
                         > 1.0e-12
                     )
                 )
-                or (
-                    mode == "wheel_rebound"
-                    and not _contact_alignment_contract_valid(
-                        spec.get("contact_alignment"),
-                        phase=phase,
-                        full12_order=full12_order,
-                        maximum_delta=maximum_delta,
-                    )
-                )
             ):
                 return False
     previous_final: tuple[float, ...] | None = None
     attempt_by_phase: dict[str, int] = {}
     previous_tick_by_phase: dict[str, int] = {}
-    recovery_boundary_by_phase: set[str] = set()
     row_attempts: list[tuple[str, int, int | None]] = []
     logged_trigger_attempts: dict[str, tuple[int, int]] = {}
     row_index_by_attempt_tick: dict[tuple[str, int, int], int] = {}
@@ -1346,20 +1073,9 @@ def _drive_feedback_ledger_valid(
         except (TypeError, ValueError):
             return False
         attempt = attempt_by_phase.setdefault(phase_id, 0)
-        recovery_row = str(row.get("lifecycle")) == "RECOVERY"
-        if recovery_row:
-            recovery_boundary_by_phase.add(phase_id)
         if tick is not None:
             previous_tick = previous_tick_by_phase.get(phase_id)
-            if (
-                phase_id in recovery_boundary_by_phase
-                and previous_tick is not None
-                and not recovery_row
-            ):
-                attempt += 1
-                attempt_by_phase[phase_id] = attempt
-                recovery_boundary_by_phase.discard(phase_id)
-            elif not recovery_row and tick == 0 and previous_tick is not None:
+            if tick == 0 and previous_tick is not None:
                 attempt += 1
                 attempt_by_phase[phase_id] = attempt
             previous_tick_by_phase[phase_id] = tick
@@ -1465,38 +1181,8 @@ def _drive_feedback_ledger_valid(
     if logged_trigger_attempts != trigger_attempts:
         return False
 
-    alignment_conditions: dict[
-        str, tuple[int, int, dict[str, object], bool]
-    ] = {}
-    for phase_id, (trigger_attempt, trigger_tick) in trigger_attempts.items():
-        spec = feedback_specs.get(phase_id)
-        if spec is None or _drive_feedback_mode(spec) != "wheel_rebound":
-            continue
-        trigger_row_index = row_index_by_attempt_tick.get(
-            (phase_id, trigger_attempt, trigger_tick)
-        )
-        if trigger_row_index is None or observations is None:
-            return False
-        trigger_row = rows[trigger_row_index]
-        observation = observation_by_time.get(round(_time(trigger_row), 12))
-        if observation is None:
-            return False
-        evidence = _contact_evidence_from_observation(observation)
-        alignment_conditions[phase_id] = (
-            trigger_attempt,
-            trigger_tick,
-            evidence,
-            _contact_evidence_is_verified_air(evidence),
-        )
-
     realized_traces: dict[str, list[float]] = {
         phase_id: [] for phase_id in feedback_specs
-    }
-    realized_alignment_traces: dict[tuple[str, int], list[float]] = {
-        (phase_id, channel_index): []
-        for phase_id, spec in feedback_specs.items()
-        if _drive_feedback_mode(spec) == "wheel_rebound"
-        for _, channel_index, *_ in _CONTACT_ALIGNMENT_CHANNELS
     }
     for row, (phase_id, attempt, tick) in zip(rows, row_attempts, strict=True):
         feedback = row["drive_feedback"]
@@ -1723,89 +1409,6 @@ def _drive_feedback_ledger_valid(
                     != expected_segment_last
                 ):
                     return False
-            alignment_requested = (0.0,) * 12
-            alignment_active = False
-            alignment_indices: set[int] = set()
-            if mode == "wheel_rebound":
-                raw_alignment = spec.get("contact_alignment")
-                logged_alignment = feedback.get("contact_alignment")
-                if (
-                    not isinstance(logged_alignment, Mapping)
-                    or not _contact_alignment_contract_valid(
-                        logged_alignment,
-                        phase=feedback_phases[phase_id],
-                        full12_order=full12_order,
-                        maximum_delta=maximum_delta,
-                    )
-                ):
-                    return False
-                condition = alignment_conditions.get(phase_id)
-                condition_applies = bool(
-                    condition is not None
-                    and attempt == condition[0]
-                    and tick >= condition[1]
-                )
-                condition_passed = bool(
-                    condition_applies
-                    and condition is not None
-                    and condition[3]
-                )
-                evidence = (
-                    condition[2]
-                    if condition_applies and condition is not None
-                    else None
-                )
-                alignment_requested, expected_stage = _contact_alignment_biases(
-                    tick, latched=condition_passed
-                )
-                alignment_active = any(
-                    abs(value) > 1.0e-12 for value in alignment_requested
-                )
-                alignment_indices = {
-                    channel_index
-                    for _, channel_index, *_ in _CONTACT_ALIGNMENT_CHANNELS
-                }
-                raw_requested_by_channel = logged_alignment.get(
-                    "requested_bias_deg_by_channel"
-                )
-                if not isinstance(raw_requested_by_channel, Mapping):
-                    return False
-                try:
-                    requested_by_channel = {
-                        str(name): float(value)
-                        for name, value in raw_requested_by_channel.items()
-                    }
-                except (TypeError, ValueError):
-                    return False
-                expected_requested_by_channel = {
-                    channel: alignment_requested[channel_index]
-                    for channel, channel_index, *_ in _CONTACT_ALIGNMENT_CHANNELS
-                }
-                if (
-                    raw_alignment is None
-                    or logged_alignment.get("condition_evaluated")
-                    is not condition_applies
-                    or logged_alignment.get("condition_passed")
-                    is not condition_passed
-                    or logged_alignment.get("contact_evidence") != evidence
-                    or logged_alignment.get("active") is not alignment_active
-                    or logged_alignment.get("just_triggered")
-                    is not bool(
-                        condition_passed
-                        and condition is not None
-                        and tick == condition[1]
-                    )
-                    or logged_alignment.get("trigger_tick")
-                    != (condition[1] if condition_passed and condition else None)
-                    or logged_alignment.get("active_schedule_stage")
-                    != expected_stage
-                    or requested_by_channel != expected_requested_by_channel
-                    or not isinstance(logged_alignment.get("reason"), str)
-                ):
-                    return False
-                for index in alignment_indices:
-                    expected_requested[index] = alignment_requested[index]
-                expected_active = expected_active or alignment_active
             expected_peak = peak_fraction if expected_latched else 0.0
             expected_cumulative = cumulative_fraction if expected_latched else 0.0
             try:
@@ -1830,23 +1433,13 @@ def _drive_feedback_ledger_valid(
                 for value, expected in zip(requested, expected_requested, strict=True)
             ):
                 return False
-            allowed_feedback_indices = {correction_channel_index} | alignment_indices
             if any(
                 abs(value) > 1.0e-8
                 for index, value in enumerate(realized)
-                if index not in allowed_feedback_indices
+                if index != correction_channel_index
             ):
                 return False
             realized_traces[phase_id].append(realized[correction_channel_index])
-            for alignment_index in alignment_indices:
-                realized_alignment_traces[(phase_id, alignment_index)].append(
-                    realized[alignment_index]
-                )
-                if abs(
-                    realized[alignment_index]
-                    - alignment_requested[alignment_index]
-                ) > 1.0e-8:
-                    return False
             if (
                 not expected_active
                 and abs(realized[correction_channel_index]) > 1.0e-8
@@ -1917,7 +1510,6 @@ def _drive_feedback_ledger_valid(
                 or feedback.get("active") is True
                 or feedback.get("just_triggered") is True
                 or feedback.get("trigger_tick") is not None
-                or feedback.get("contact_alignment") is not None
             ):
                 return False
         if previous_final is not None and any(
@@ -2132,20 +1724,6 @@ def _drive_feedback_ledger_valid(
                     or feedback.get("instantaneous_direction_reversal") is not False
                 ):
                     return False
-                for _, alignment_index, *_ in _CONTACT_ALIGNMENT_CHANNELS:
-                    if (
-                        abs(requested[alignment_index]) > 1.0e-9
-                        or abs(realized[alignment_index]) > 1.0e-8
-                        or abs(declared[alignment_index]) > 1.0e-9
-                        or abs(
-                            final[alignment_index] - native[alignment_index]
-                        )
-                        > 1.0e-8
-                    ):
-                        return False
-                    realized_alignment_traces[
-                        (phase_id, alignment_index)
-                    ].append(realized[alignment_index])
         teardown_row_by_phase[phase_id] = teardown_row
     for phase_id, spec in feedback_specs.items():
         trace = realized_traces[phase_id]
@@ -2199,42 +1777,6 @@ def _drive_feedback_ledger_valid(
                 > _MAX_FEEDBACK_FRACTION + 1.0e-9
             ):
                 return False
-            if mode == "wheel_rebound":
-                alignment_triggered = bool(
-                    phase_id in alignment_conditions
-                    and alignment_conditions[phase_id][3]
-                )
-                for (
-                    _,
-                    alignment_index,
-                    reference_magnitude,
-                    _,
-                    _,
-                    _,
-                    declared_fraction,
-                ) in _CONTACT_ALIGNMENT_CHANNELS:
-                    alignment_trace = realized_alignment_traces[
-                        (phase_id, alignment_index)
-                    ]
-                    if not alignment_trace:
-                        return False
-                    realized_fraction = sum(
-                        abs(right - left)
-                        for left, right in zip(
-                            alignment_trace, alignment_trace[1:]
-                        )
-                    ) / reference_magnitude
-                    if (
-                        (
-                            abs(realized_fraction - declared_fraction)
-                            > 1.0e-9
-                            if alignment_triggered
-                            else realized_fraction > 1.0e-9
-                        )
-                        or realized_fraction
-                        > _MAX_FEEDBACK_FRACTION + 1.0e-9
-                    ):
-                        return False
         else:
             try:
                 excursion = abs(float(spec["reference_excursion_deg"]))

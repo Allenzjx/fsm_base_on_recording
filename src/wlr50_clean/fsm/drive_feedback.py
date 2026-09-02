@@ -11,13 +11,6 @@ from wlr50_clean.reference.motion_contract import (
     DriveFeedbackSpec,
 )
 
-from .contact_alignment import (
-    ContactAlignmentFeedback,
-    WheelContactEvidence,
-    runtime_spec_valid as contact_alignment_spec_valid,
-    wheel_contact_evidence,
-)
-
 
 ACTION_COUNT = 12
 SERVO_COUNT = 8
@@ -86,7 +79,6 @@ class DriveFeedback:
     probe_channel_index: int | None
     correction_channel: str | None
     correction_channel_index: int | None
-    contact_alignment: ContactAlignmentFeedback | None
     reason: str
 
     def as_dict(self) -> dict[str, object]:
@@ -124,11 +116,6 @@ class DriveFeedback:
             "probe_channel_index": self.probe_channel_index,
             "correction_channel": self.correction_channel,
             "correction_channel_index": self.correction_channel_index,
-            "contact_alignment": (
-                None
-                if self.contact_alignment is None
-                else self.contact_alignment.as_dict()
-            ),
             "reason": self.reason,
         }
 
@@ -149,10 +136,6 @@ class ReferenceBoundedDriveFeedback:
         self._trigger_tick: int | None = None
         self._trigger_consumed = False
         self._consecutive_lag_samples = 0
-        self._contact_alignment_trigger_tick: int | None = None
-        self._contact_alignment_condition_evaluated = False
-        self._contact_alignment_condition_passed = False
-        self._contact_alignment_evidence: WheelContactEvidence | None = None
 
     @property
     def trigger_latched(self) -> bool:
@@ -165,7 +148,6 @@ class ReferenceBoundedDriveFeedback:
         motion_tick_index: int | None,
         actual_full12: Sequence[float] | None,
         spec: DriveFeedbackSpec | None,
-        rear_left_contact: object | None = None,
     ) -> DriveFeedback:
         tick = None if motion_tick_index is None else int(motion_tick_index)
         if state_id != self._state_id:
@@ -173,17 +155,9 @@ class ReferenceBoundedDriveFeedback:
             self._trigger_tick = None
             self._trigger_consumed = False
             self._consecutive_lag_samples = 0
-            self._contact_alignment_trigger_tick = None
-            self._contact_alignment_condition_evaluated = False
-            self._contact_alignment_condition_passed = False
-            self._contact_alignment_evidence = None
         if tick == 0:
             self._trigger_tick = None
             self._consecutive_lag_samples = 0
-            self._contact_alignment_trigger_tick = None
-            self._contact_alignment_condition_evaluated = False
-            self._contact_alignment_condition_passed = False
-            self._contact_alignment_evidence = None
 
         if spec is not None:
             _validate_runtime_spec(spec, state_id=state_id)
@@ -223,48 +197,12 @@ class ReferenceBoundedDriveFeedback:
                 self._trigger_consumed = True
                 just_triggered = True
 
-                alignment = spec.contact_alignment
-                if alignment is not None:
-                    contact_evidence = wheel_contact_evidence(
-                        rear_left_contact
-                    )
-                    self._contact_alignment_condition_evaluated = True
-                    self._contact_alignment_condition_passed = (
-                        contact_evidence.is_verified_air
-                    )
-                    self._contact_alignment_evidence = contact_evidence
-                    if contact_evidence.is_verified_air:
-                        self._contact_alignment_trigger_tick = tick
-
         active_segment = (
             None
             if spec is None or tick is None or self._trigger_tick is None
             else spec.bias_segment_at(tick)
         )
-        alignment_spec = None if spec is None else spec.contact_alignment
-        alignment_latched = bool(
-            alignment_spec is not None
-            and self._contact_alignment_trigger_tick is not None
-        )
-        alignment_bias = (
-            (0.0,) * ACTION_COUNT
-            if alignment_spec is None
-            or tick is None
-            or not alignment_latched
-            else alignment_spec.bias_at(tick)
-        )
-        alignment_stage = None
-        if alignment_latched and alignment_spec is not None and tick is not None:
-            if (
-                alignment_spec.first_bias_tick
-                <= tick
-                <= alignment_spec.last_full_bias_tick
-            ):
-                alignment_stage = "full_bias"
-            elif tick == alignment_spec.release_tick:
-                alignment_stage = "release_ramp"
-        alignment_active = any(abs(value) > 1.0e-12 for value in alignment_bias)
-        active = active_segment is not None or alignment_active
+        active = active_segment is not None
         active_segment_index = (
             None if active_segment is None else active_segment[0]
         )
@@ -275,47 +213,6 @@ class ReferenceBoundedDriveFeedback:
         if active_segment_spec is not None and spec is not None:
             bias[spec.correction_channel_index] = (
                 active_segment_spec.logical_bias_rad_s
-            )
-        for index, value in enumerate(alignment_bias):
-            bias[index] += value
-
-        contact_alignment_feedback = None
-        if alignment_spec is not None:
-            contact_alignment_feedback = ContactAlignmentFeedback(
-                spec=alignment_spec,
-                active=alignment_active,
-                just_triggered=bool(
-                    just_triggered
-                    and self._contact_alignment_trigger_tick == tick
-                ),
-                trigger_tick=(
-                    self._contact_alignment_trigger_tick
-                    if alignment_latched
-                    else None
-                ),
-                condition_evaluated=(
-                    self._contact_alignment_condition_evaluated
-                ),
-                condition_passed=self._contact_alignment_condition_passed,
-                evidence=self._contact_alignment_evidence,
-                active_schedule_stage=alignment_stage,
-                requested_bias_deg_by_channel=tuple(
-                    (
-                        channel.channel,
-                        alignment_bias[channel.channel_index],
-                    )
-                    for channel in alignment_spec.channels
-                ),
-                reason=(
-                    "live rear-left wheel exact-pair evidence verified AIR"
-                    if self._contact_alignment_condition_passed
-                    else (
-                        "live rear-left wheel evidence was missing, malformed, "
-                        "unverified, or not AIR; alignment suppressed"
-                        if self._contact_alignment_condition_evaluated
-                        else "alignment condition not yet evaluated"
-                    )
-                ),
             )
 
         cumulative_fraction = (
@@ -397,7 +294,6 @@ class ReferenceBoundedDriveFeedback:
             correction_channel_index=(
                 spec.correction_channel_index if spec is not None else None
             ),
-            contact_alignment=contact_alignment_feedback,
             reason=(
                 f"live {state_id} {spec.probe_channel} pre-endpoint deficit "
                 f"requests {spec.correction_channel} direction-preserving "
@@ -518,7 +414,6 @@ def _validate_runtime_spec(spec: DriveFeedbackSpec, *, state_id: str) -> None:
             default=math.inf,
         )
         > spec.resulting_wheel_peak_abs_rad_s + 1.0e-12
-        or not contact_alignment_spec_valid(spec.contact_alignment)
     ):
         raise RuntimeError(f"{state_id} drive feedback is not a valid wheel rebound")
 

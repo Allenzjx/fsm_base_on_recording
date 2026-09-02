@@ -704,34 +704,9 @@ def _feedback_observations(rows: list[dict]) -> list[dict]:
         observed = row["drive_feedback"].get("observed_deg")
         if observed is not None:
             actual[7] = observed
-        observation = {
-            "simulation_time_s": row["sim_time_s"],
-            "actual_full12": actual,
-        }
-        alignment = row["drive_feedback"].get("contact_alignment")
-        evidence = (
-            alignment.get("contact_evidence")
-            if isinstance(alignment, dict)
-            else None
+        observations.append(
+            {"simulation_time_s": row["sim_time_s"], "actual_full12": actual}
         )
-        if isinstance(evidence, dict) and evidence.get("wheel_body") is not None:
-            observation["contacts"] = {
-                "rear_left_wheel": {
-                    "body_name": evidence["wheel_body"],
-                    "contact_class": evidence["contact_class"],
-                    "ground": {
-                        "pair_verified": evidence["ground_pair_verified"],
-                        "active": evidence["ground_active"],
-                    },
-                    "obstacle": {
-                        "pair_verified": evidence[
-                            "obstacle_pair_verified"
-                        ],
-                        "active": evidence["obstacle_active"],
-                    },
-                }
-            }
-        observations.append(observation)
     return observations
 
 
@@ -911,46 +886,6 @@ _WHEEL_REBOUND_SEGMENTS = [
 _WHEEL_REBOUND_ADDITIONAL_INTEGRAL = 0.05333333333333334
 _WHEEL_REBOUND_RESULTING_INTEGRAL = -0.8526666666679271
 _WHEEL_REBOUND_FRACTION = 0.05886681383361936
-_CONTACT_ALIGNMENT_CHANNELS = [
-    {
-        "channel": "rear_left_hip",
-        "channel_index": 4,
-        "reference_motion_magnitude_deg": 15.8,
-        "logical_full_bias_deg": -1.185,
-        "logical_release_bias_deg": 0.0,
-        "outbound_plus_teardown_deg": 2.37,
-        "cumulative_fraction_of_reference": 0.15,
-    },
-    {
-        "channel": "rear_left_knee",
-        "channel_index": 5,
-        "reference_motion_magnitude_deg": 19.4,
-        "logical_full_bias_deg": -1.455,
-        "logical_release_bias_deg": -0.205,
-        "outbound_plus_teardown_deg": 2.91,
-        "cumulative_fraction_of_reference": 0.15,
-    },
-]
-
-
-def _contact_alignment_spec() -> dict:
-    return {
-        "kind": "post_probe_rear_left_air_alignment",
-        "trigger_tick": 859,
-        "wheel_body": "rear_left_wheel",
-        "required_contact_class": "AIR",
-        "require_ground_pair_verified": True,
-        "require_obstacle_pair_verified": True,
-        "first_bias_tick": 860,
-        "last_full_bias_tick": 870,
-        "release_tick": 871,
-        "teardown_tick": 872,
-        "final_slew_limit_deg_per_tick": 1.25,
-        "realized_zero_required_at_teardown": True,
-        "nominal_endpoint_restored": True,
-        "raw_recording_runtime_access_required": False,
-        "channels": json.loads(json.dumps(_CONTACT_ALIGNMENT_CHANNELS)),
-    }
 
 
 def _wheel_rebound_segment_index(tick: int) -> int | None:
@@ -988,7 +923,6 @@ def _wheel_rebound_feedback_spec() -> dict:
         "cumulative_fraction_of_reference": _WHEEL_REBOUND_FRACTION,
         "nominal_endpoint_restored": True,
         "raw_recording_runtime_access_required": False,
-        "contact_alignment": _contact_alignment_spec(),
     }
 
 
@@ -1032,56 +966,8 @@ def _sync_wheel_rebound_atomic_ack(row: dict) -> None:
     )
 
 
-def _contact_alignment_runtime_log(tick: int, *, verified_air: bool) -> dict:
-    latched = verified_air and tick >= 859
-    full_bias = latched and 860 <= tick <= 870
-    release = latched and tick == 871
-    biases = {
-        "rear_left_hip": -1.185 if full_bias else 0.0,
-        "rear_left_knee": -1.455 if full_bias else -0.205 if release else 0.0,
-    }
-    evidence = (
-        {
-            "wheel_body": "rear_left_wheel",
-            "contact_class": "AIR",
-            "ground_pair_verified": True,
-            "ground_active": False,
-            "obstacle_pair_verified": True,
-            "obstacle_active": False,
-        }
-        if verified_air
-        else {
-            "wheel_body": None,
-            "contact_class": None,
-            "ground_pair_verified": None,
-            "ground_active": None,
-            "obstacle_pair_verified": None,
-            "obstacle_active": None,
-        }
-    )
-    return {
-        **_contact_alignment_spec(),
-        "active": full_bias or release,
-        "just_triggered": verified_air and tick == 859,
-        "configured_trigger_tick": 859,
-        "trigger_tick": 859 if latched else None,
-        "condition_evaluated": tick >= 859,
-        "condition_passed": verified_air and tick >= 859,
-        "contact_evidence": evidence if tick >= 859 else None,
-        "active_schedule_stage": (
-            "full_bias" if full_bias else "release_ramp" if release else None
-        ),
-        "requested_bias_deg_by_channel": biases,
-        "reason": (
-            "live rear-left wheel exact-pair evidence verified AIR"
-            if verified_air and tick >= 859
-            else "alignment suppressed"
-        ),
-    }
-
-
 def _wheel_rebound_feedback_ledger_rows(
-    *, residual_after_window: float = 0.0, verified_air: bool = False
+    *, residual_after_window: float = 0.0
 ) -> list[dict]:
     rows = []
     references = {
@@ -1105,15 +991,6 @@ def _wheel_rebound_feedback_ledger_rows(
             requested[8] = logical_bias
             realized[8] = logical_bias
         native = [0.0] * 12
-        native[4:6] = (
-            [15.58, 18.99] if tick < 860 else [16.22, 20.09]
-        )
-        if verified_air and 860 <= tick <= 870:
-            requested[4:6] = [-1.185, -1.455]
-            realized[4:6] = [-1.185, -1.455]
-        elif verified_air and tick == 871:
-            requested[4:6] = [0.0, -0.205]
-            realized[4:6] = [0.0, -0.205]
         if tick < 864:
             native[8] = _WHEEL_TAIL_VELOCITY
         final = [
@@ -1128,7 +1005,7 @@ def _wheel_rebound_feedback_ledger_rows(
                     "schema": "wlr50_clean.drive_feedback.v1",
                     "kind": "pre_endpoint_wheel_rebound_alignment",
                     "bias_full12": requested,
-                    "active": active or (verified_air and 860 <= tick <= 871),
+                    "active": active,
                     "just_triggered": tick == 859,
                     "tick_index": tick,
                     "trigger_tick": 859 if latched else None,
@@ -1173,9 +1050,6 @@ def _wheel_rebound_feedback_ledger_rows(
                     "probe_channel_index": 7,
                     "correction_channel": "front_left_ankle",
                     "correction_channel_index": 8,
-                    "contact_alignment": _contact_alignment_runtime_log(
-                        tick, verified_air=verified_air
-                    ),
                 },
                 "drive_feedback_bias_requested_full12": requested,
                 "drive_feedback_bias_realized_full12": realized,
@@ -1190,7 +1064,6 @@ def _wheel_rebound_feedback_ledger_rows(
     realized = [0.0] * 12
     realized[8] = residual_after_window
     native = [0.0] * 12
-    native[4:6] = [16.22, 20.09]
     final = [left + right for left, right in zip(native, realized, strict=True)]
     rows.append(
         {
@@ -1224,7 +1097,6 @@ def _wheel_rebound_feedback_ledger_rows(
                 "probe_channel_index": None,
                 "correction_channel": None,
                 "correction_channel_index": None,
-                "contact_alignment": None,
             },
             "drive_feedback_bias_requested_full12": requested,
             "drive_feedback_bias_realized_full12": realized,
@@ -1307,163 +1179,6 @@ def test_wheel_rebound_feedback_accepts_exact_partial_counteraction_and_reversal
     assert teardown["atomic_ack"]["wheel_target_physical_rad_s"][0] == 0.0
 
 
-def test_rear_left_air_alignment_is_exact_and_budgeted_per_servo_channel() -> None:
-    contract = _wheel_rebound_feedback_contract()
-    rows = _wheel_rebound_feedback_ledger_rows(verified_air=True)
-    observations = _feedback_observations(rows)
-
-    assert _drive_feedback_ledger_valid(rows, contract, observations)
-    for tick in range(860, 871):
-        row = next(row for row in rows if row["motion_tick_index"] == tick)
-        assert row["drive_feedback_bias_requested_full12"][4:6] == pytest.approx(
-            (-1.185, -1.455)
-        )
-    release = next(row for row in rows if row["motion_tick_index"] == 871)
-    assert release["drive_feedback_bias_requested_full12"][4:6] == pytest.approx(
-        (0.0, -0.205)
-    )
-    assert rows[-1]["drive_feedback_bias_realized_full12"][4:6] == pytest.approx(
-        (0.0, 0.0)
-    )
-    fractions, _ = _recovery_evidence([], rows)
-    assert sorted(value for value in fractions if value > 0.0) == pytest.approx(
-        sorted((_WHEEL_REBOUND_FRACTION, 0.15, 0.15))
-    )
-
-
-@pytest.mark.parametrize(
-    "mutation",
-    (
-        "live_ground_contact",
-        "live_unverified_ground_pair",
-        "forged_logged_air",
-        "wrong_requested_schedule",
-        "unrealized_bias",
-        "teardown_residual",
-    ),
-)
-def test_rear_left_air_alignment_ledger_fails_closed(mutation: str) -> None:
-    contract = _wheel_rebound_feedback_contract()
-    rows = _wheel_rebound_feedback_ledger_rows(verified_air=True)
-    observations = _feedback_observations(rows)
-    trigger_row = next(row for row in rows if row["motion_tick_index"] == 859)
-    trigger_observation = next(
-        observation
-        for observation in observations
-        if observation["simulation_time_s"] == trigger_row["sim_time_s"]
-    )
-    first_bias = next(row for row in rows if row["motion_tick_index"] == 860)
-    if mutation == "live_ground_contact":
-        contact = trigger_observation["contacts"]["rear_left_wheel"]
-        contact["contact_class"] = "GROUND"
-        contact["ground"]["active"] = True
-    elif mutation == "live_unverified_ground_pair":
-        trigger_observation["contacts"]["rear_left_wheel"]["ground"][
-            "pair_verified"
-        ] = False
-    elif mutation == "forged_logged_air":
-        trigger_row["drive_feedback"]["contact_alignment"][
-            "contact_evidence"
-        ]["contact_class"] = "GROUND"
-    elif mutation == "wrong_requested_schedule":
-        for key in (
-            "drive_feedback_bias_requested_full12",
-            "drive_feedback_bias_realized_full12",
-        ):
-            first_bias[key][4] = -1.18
-        first_bias["drive_feedback"]["bias_full12"][4] = -1.18
-        first_bias["drive_feedback"]["contact_alignment"][
-            "requested_bias_deg_by_channel"
-        ]["rear_left_hip"] = -1.18
-        first_bias["drive_target_full12"][4] = (
-            first_bias["native_drive_target_full12"][4] - 1.18
-        )
-        _sync_wheel_rebound_atomic_ack(first_bias)
-    elif mutation == "unrealized_bias":
-        first_bias["drive_feedback_bias_realized_full12"][5] = -1.25
-        first_bias["drive_target_full12"][5] = (
-            first_bias["native_drive_target_full12"][5] - 1.25
-        )
-        _sync_wheel_rebound_atomic_ack(first_bias)
-    elif mutation == "teardown_residual":
-        teardown = rows[-1]
-        teardown["drive_feedback_bias_realized_full12"][5] = -0.01
-        teardown["drive_target_full12"][5] = (
-            teardown["native_drive_target_full12"][5] - 0.01
-        )
-        _sync_wheel_rebound_atomic_ack(teardown)
-    assert not _drive_feedback_ledger_valid(rows, contract, observations)
-
-
-@pytest.mark.parametrize(
-    ("path", "invalid_value"),
-    (
-        (("release_tick",), 872),
-        (("require_obstacle_pair_verified",), False),
-        (("channels", 0, "logical_full_bias_deg"), -1.186),
-        (("channels", 1, "cumulative_fraction_of_reference"), 0.149),
-    ),
-)
-def test_rear_left_alignment_analyzer_pins_contract(
-    path: tuple[object, ...], invalid_value: object
-) -> None:
-    contract = _wheel_rebound_feedback_contract()
-    alignment = contract["phases"][8]["drive_feedback"]["contact_alignment"]
-    target = alignment
-    for key in path[:-1]:
-        target = target[key]
-    target[path[-1]] = invalid_value
-    rows = _wheel_rebound_feedback_ledger_rows(verified_air=True)
-
-    assert not _drive_feedback_ledger_valid(
-        rows, contract, _feedback_observations(rows)
-    )
-
-
-def test_rear_left_alignment_analyzer_requires_explicit_contract() -> None:
-    contract = _wheel_rebound_feedback_contract()
-    del contract["phases"][8]["drive_feedback"]["contact_alignment"]
-    rows = _wheel_rebound_feedback_ledger_rows()
-
-    assert not _drive_feedback_ledger_valid(
-        rows, contract, _feedback_observations(rows)
-    )
-
-
-def test_drive_feedback_attempt_restarts_after_terminal_endpoint_recovery() -> None:
-    contract = _wheel_rebound_feedback_contract()
-    rows = _wheel_rebound_feedback_ledger_rows()
-    template = json.loads(json.dumps(rows[-1]))
-    start_time = template["sim_time_s"] + 1.0 / 120.0
-
-    first_endpoint = json.loads(json.dumps(template))
-    first_endpoint.update(
-        {
-            "state_id": "P13",
-            "sim_time_s": start_time,
-            "lifecycle": "VERIFY_RESULT",
-            "motion_tick_index": 2136,
-        }
-    )
-    first_endpoint["drive_feedback"]["tick_index"] = 2136
-    recovery = json.loads(json.dumps(template))
-    recovery.update(
-        {
-            "state_id": "P13",
-            "sim_time_s": start_time + 1.0 / 120.0,
-            "lifecycle": "RECOVERY",
-            "motion_tick_index": None,
-        }
-    )
-    retry_endpoint = json.loads(json.dumps(first_endpoint))
-    retry_endpoint["sim_time_s"] = start_time + 2.0 / 120.0
-    rows.extend((first_endpoint, recovery, retry_endpoint))
-
-    assert _drive_feedback_ledger_valid(
-        rows, contract, _feedback_observations(rows)
-    )
-
-
 def test_wheel_rebound_feedback_rederives_mandatory_trigger() -> None:
     contract = _wheel_rebound_feedback_contract()
     rows = _wheel_rebound_feedback_ledger_rows()
@@ -1494,22 +1209,6 @@ def test_wheel_rebound_feedback_rederives_mandatory_trigger() -> None:
         if reference is not None:
             row["drive_feedback"]["observed_deg"] = reference
             observation["actual_full12"][7] = reference
-        alignment = row["drive_feedback"]["contact_alignment"]
-        alignment.update(
-            {
-                "active": False,
-                "just_triggered": False,
-                "trigger_tick": None,
-                "condition_evaluated": False,
-                "condition_passed": False,
-                "contact_evidence": None,
-                "active_schedule_stage": None,
-                "requested_bias_deg_by_channel": {
-                    "rear_left_hip": 0.0,
-                    "rear_left_knee": 0.0,
-                },
-            }
-        )
     assert _drive_feedback_ledger_valid(rows, contract, observations)
 
 
@@ -1542,9 +1241,6 @@ def test_wheel_rebound_trigger_is_consumed_across_same_phase_retry() -> None:
             "probe_channel_index": 7,
             "correction_channel": "front_left_ankle",
             "correction_channel_index": 8,
-            "contact_alignment": _contact_alignment_runtime_log(
-                872, verified_air=False
-            ),
         }
     )
     _sync_wheel_rebound_atomic_ack(teardown)
@@ -1563,22 +1259,6 @@ def test_wheel_rebound_trigger_is_consumed_across_same_phase_retry() -> None:
                 "active_segment_first_bias_tick": None,
                 "active_segment_last_bias_tick": None,
                 "logical_bias_rad_s": 0.0,
-            }
-        )
-        alignment = row["drive_feedback"]["contact_alignment"]
-        alignment.update(
-            {
-                "active": False,
-                "just_triggered": False,
-                "trigger_tick": None,
-                "condition_evaluated": False,
-                "condition_passed": False,
-                "contact_evidence": None,
-                "active_schedule_stage": None,
-                "requested_bias_deg_by_channel": {
-                    "rear_left_hip": 0.0,
-                    "rear_left_knee": 0.0,
-                },
             }
         )
         row["drive_feedback_bias_requested_full12"] = zeros

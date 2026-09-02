@@ -18843,43 +18843,7 @@
         "resulting_wheel_peak_abs_rad_s": 1.07,
         "instantaneous_direction_reversal": true,
         "nominal_endpoint_restored": true,
-        "raw_recording_runtime_access_required": false,
-        "contact_alignment": {
-          "kind": "post_probe_rear_left_air_alignment",
-          "trigger_tick": 859,
-          "wheel_body": "rear_left_wheel",
-          "required_contact_class": "AIR",
-          "require_ground_pair_verified": true,
-          "require_obstacle_pair_verified": true,
-          "first_bias_tick": 860,
-          "last_full_bias_tick": 870,
-          "release_tick": 871,
-          "teardown_tick": 872,
-          "final_slew_limit_deg_per_tick": 1.25,
-          "realized_zero_required_at_teardown": true,
-          "nominal_endpoint_restored": true,
-          "raw_recording_runtime_access_required": false,
-          "channels": [
-            {
-              "channel": "rear_left_hip",
-              "channel_index": 4,
-              "reference_motion_magnitude_deg": 15.8,
-              "logical_full_bias_deg": -1.185,
-              "logical_release_bias_deg": 0.0,
-              "outbound_plus_teardown_deg": 2.37,
-              "cumulative_fraction_of_reference": 0.15
-            },
-            {
-              "channel": "rear_left_knee",
-              "channel_index": 5,
-              "reference_motion_magnitude_deg": 19.4,
-              "logical_full_bias_deg": -1.455,
-              "logical_release_bias_deg": -0.205,
-              "outbound_plus_teardown_deg": 2.91,
-              "cumulative_fraction_of_reference": 0.15
-            }
-          ]
-        }
+        "raw_recording_runtime_access_required": false
       },
       "reference_sim_readback_end_s": 67.17499999999953,
       "reference_command_readback_latency_s": 0.008333333333339965,

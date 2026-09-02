@@ -125,41 +125,6 @@ def test_p09_positive_verify_tail_bias_restores_at_880_and_preserves_final_slew(
     assert observed[880] == pytest.approx(18.885057)
 
 
-def test_p09_rear_left_alignment_release_restores_zero_realized_bias_at_872() -> None:
-    previous = {4: 15.58, 5: 18.99}
-    native = {4: 16.22, 5: 20.09}
-    full_bias = {4: -1.185, 5: -1.455}
-    release_bias = {4: 0.0, 5: -0.205}
-    realized: dict[int, dict[int, float]] = {}
-
-    for tick in range(860, 873):
-        requested = (
-            full_bias
-            if tick <= 870
-            else release_bias
-            if tick == 871
-            else {4: 0.0, 5: 0.0}
-        )
-        realized[tick] = {}
-        for index in (4, 5):
-            final = bounded_drive_feedback_step(
-                previous_deg=previous[index],
-                native_deg=native[index],
-                bias_deg=requested[index],
-                maximum_delta_deg=1.25,
-                lower_deg=-135.0 if index == 4 else -60.0,
-                upper_deg=135.0 if index == 4 else 210.0,
-            )
-            assert abs(final - previous[index]) <= 1.25 + 1.0e-12
-            realized[tick][index] = final - native[index]
-            previous[index] = final
-
-    assert realized[860] == pytest.approx(full_bias)
-    assert realized[870] == pytest.approx(full_bias)
-    assert realized[871] == pytest.approx(release_bias)
-    assert realized[872] == pytest.approx({4: 0.0, 5: 0.0})
-
-
 def test_full12_feedback_applies_exact_fl_minus_1_07_and_tears_down() -> None:
     adapter, staged = _adapter_for_full12_feedback()
     zero = [0.0] * len(FULL12_ORDER)

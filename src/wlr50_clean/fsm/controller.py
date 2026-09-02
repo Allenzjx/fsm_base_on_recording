@@ -137,7 +137,6 @@ class SensorFsmController:
             motion_tick_index=None,
             actual_full12=_actual_full12(observation),
             spec=None,
-            rear_left_contact=_rear_left_wheel_contact(observation),
         )
         if self.termination is None and self.lifecycle is Lifecycle.EXECUTE_MOTION:
             motion_tick = self.motion.tick()
@@ -148,7 +147,6 @@ class SensorFsmController:
                 motion_tick_index=motion_tick.tick_index,
                 actual_full12=_actual_full12(observation),
                 spec=self.phase.drive_feedback,
-                rear_left_contact=_rear_left_wheel_contact(observation),
             )
             self._tracking_servo_names = motion_tick.tracking_servo_names
             if motion_tick.endpoint_issued:
@@ -185,7 +183,6 @@ class SensorFsmController:
                     motion_tick_index=self._drive_feedback_tick_index,
                     actual_full12=_actual_full12(observation),
                     spec=self.phase.drive_feedback,
-                    rear_left_contact=_rear_left_wheel_contact(observation),
                 )
             command = self._held_or_safe_command()
             if (
@@ -758,17 +755,6 @@ def _actual_full12(observation: Any) -> tuple[float, ...] | None:
     except (TypeError, ValueError):
         return None
     return values if len(values) == 12 else None
-
-
-def _rear_left_wheel_contact(observation: Any) -> object | None:
-    contacts = (
-        observation.get("contacts")
-        if isinstance(observation, Mapping)
-        else getattr(observation, "contacts", None)
-    )
-    if not isinstance(contacts, Mapping):
-        return None
-    return contacts.get("rear_left_wheel")
 
 
 def _actual_servo_velocities(
