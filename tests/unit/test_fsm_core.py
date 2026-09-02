@@ -261,17 +261,19 @@ def test_controller_exposes_live_latched_p09_drive_feedback(spec, contract) -> N
         )
 
     first = frames[feedback.first_bias_tick]
+    secondary_first = frames[feedback.bias_segments[1].first_bias_tick]
     tail = frames[feedback.last_bias_tick]
     restored = frames[feedback.teardown_tick]
     assert first.lifecycle is Lifecycle.EXECUTE_MOTION
     assert first.drive_feedback_bias_full12[
         feedback.correction_channel_index
-    ] == pytest.approx(
-        feedback.logical_bias_rad_s
-    )
+    ] == pytest.approx(feedback.bias_segments[0].logical_bias_rad_s)
+    assert secondary_first.drive_feedback_bias_full12[
+        feedback.correction_channel_index
+    ] == pytest.approx(feedback.bias_segments[1].logical_bias_rad_s)
     assert tail.drive_feedback_bias_full12[
         feedback.correction_channel_index
-    ] == pytest.approx(feedback.logical_bias_rad_s)
+    ] == pytest.approx(feedback.bias_segments[1].logical_bias_rad_s)
     assert first.full12[feedback.correction_channel_index] == pytest.approx(-1.07)
     assert first.full12[feedback.correction_channel_index] + first.drive_feedback_bias_full12[
         feedback.correction_channel_index
@@ -279,7 +281,7 @@ def test_controller_exposes_live_latched_p09_drive_feedback(spec, contract) -> N
     assert tail.full12[feedback.correction_channel_index] == 0.0
     assert tail.full12[feedback.correction_channel_index] + tail.drive_feedback_bias_full12[
         feedback.correction_channel_index
-    ] == pytest.approx(0.33)
+    ] == pytest.approx(0.22)
     assert restored.drive_feedback_bias_full12 == pytest.approx((0.0,) * 12)
     assert first.drive_feedback_details[
         "cumulative_fraction_of_reference"
@@ -287,6 +289,12 @@ def test_controller_exposes_live_latched_p09_drive_feedback(spec, contract) -> N
         feedback.cumulative_fraction_of_reference
     )
     assert first.drive_feedback_details["kind"] == feedback.kind
+    assert first.drive_feedback_details["active_segment_index"] == 0
+    assert first.drive_feedback_details["logical_bias_rad_s"] == pytest.approx(0.33)
+    assert secondary_first.drive_feedback_details["active_segment_index"] == 1
+    assert secondary_first.drive_feedback_details[
+        "logical_bias_rad_s"
+    ] == pytest.approx(0.22)
     assert first.drive_feedback_details[
         "resulting_wheel_integral_rad"
     ] == pytest.approx(feedback.resulting_wheel_integral_rad)
@@ -322,7 +330,7 @@ def test_controller_exposes_live_latched_p09_drive_feedback(spec, contract) -> N
         (0.5, Lifecycle.WAIT_ENTRY, None),
     ),
 )
-def test_p09_wheel_rebound_is_zero_at_the_p10_velocity_decision(
+def test_p09_wheel_rebound_is_zero_at_the_delayed_p10_entry_decision(
     spec,
     contract,
     velocity_scale: float,
@@ -396,7 +404,7 @@ def test_p09_wheel_rebound_is_zero_at_the_p10_velocity_decision(
     assert held.lifecycle is Lifecycle.EXECUTE_MOTION
     assert held.drive_feedback_bias_full12[
         feedback.correction_channel_index
-    ] == pytest.approx(feedback.logical_bias_rad_s)
+    ] == pytest.approx(feedback.bias_segments[0].logical_bias_rad_s)
     assert held.full12[feedback.correction_channel_index] == pytest.approx(-1.07)
     assert held.full12[feedback.correction_channel_index] + held.drive_feedback_bias_full12[
         feedback.correction_channel_index
@@ -405,7 +413,8 @@ def test_p09_wheel_rebound_is_zero_at_the_p10_velocity_decision(
         event.to_lifecycle == Lifecycle.DONE.value for event in held.events
     )
     endpoint_tick = round(p09.active_duration_s * 120.0)
-    for tick in range(feedback.first_bias_tick, endpoint_tick):
+    primary, secondary = feedback.bias_segments
+    for tick in range(primary.first_bias_tick, endpoint_tick):
         active = frames[tick]
         assert active.lifecycle is Lifecycle.EXECUTE_MOTION
         assert active.full12[feedback.correction_channel_index] == pytest.approx(
@@ -416,7 +425,7 @@ def test_p09_wheel_rebound_is_zero_at_the_p10_velocity_decision(
         ] + active.drive_feedback_bias_full12[
             feedback.correction_channel_index
         ] == pytest.approx(-0.74)
-    for tick in range(endpoint_tick, feedback.last_bias_tick + 1):
+    for tick in range(endpoint_tick, primary.last_bias_tick + 1):
         active = frames[tick]
         assert active.lifecycle is Lifecycle.VERIFY_RESULT
         assert active.full12[feedback.correction_channel_index] == pytest.approx(
@@ -427,6 +436,19 @@ def test_p09_wheel_rebound_is_zero_at_the_p10_velocity_decision(
         ] + active.drive_feedback_bias_full12[
             feedback.correction_channel_index
         ] == pytest.approx(0.33)
+    for tick in range(
+        secondary.first_bias_tick, secondary.last_bias_tick + 1
+    ):
+        active = frames[tick]
+        assert active.lifecycle is Lifecycle.VERIFY_RESULT
+        assert active.full12[feedback.correction_channel_index] == pytest.approx(
+            0.0
+        )
+        assert active.full12[
+            feedback.correction_channel_index
+        ] + active.drive_feedback_bias_full12[
+            feedback.correction_channel_index
+        ] == pytest.approx(0.22)
     frame = frames[feedback.teardown_tick]
     assert frame.state_id == "P10"
     assert frame.lifecycle is expected_lifecycle

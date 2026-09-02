@@ -116,25 +116,35 @@ def test_p09_wheel_rebound_is_compact_and_strictly_reference_bounded() -> None:
     assert feedback.probe_channel_index == 7
     assert feedback.correction_channel == "front_left_ankle"
     assert feedback.correction_channel_index == 8
+    assert [
+        (
+            segment.first_bias_tick,
+            segment.last_bias_tick,
+            segment.logical_bias_rad_s,
+        )
+        for segment in feedback.bias_segments
+    ] == [
+        (860, 871, 0.33),
+        (872, 879, 0.22),
+    ]
     assert feedback.first_bias_tick == 860
-    assert feedback.last_bias_tick == 871
-    assert feedback.teardown_tick == 872
-    assert feedback.logical_bias_rad_s == 0.33
+    assert feedback.last_bias_tick == 879
+    assert feedback.teardown_tick == 880
     assert feedback.reference_wheel_integral_rad == pytest.approx(
         -0.9060000000012605
     )
     assert feedback.additional_wheel_integral_rad == pytest.approx(
-        0.33 * 12.0 / 120.0
+        (0.33 * 12.0 + 0.22 * 8.0) / 120.0
     )
     assert feedback.resulting_wheel_integral_rad == pytest.approx(
-        -0.8730000000012605
+        -0.8583333333345938
     )
     assert feedback.resulting_wheel_integral_rad == pytest.approx(
         feedback.reference_wheel_integral_rad
         + feedback.additional_wheel_integral_rad
     )
     assert feedback.cumulative_fraction_of_reference == pytest.approx(
-        0.03642384105955198
+        0.0526122148637973
     )
     assert feedback.cumulative_fraction_of_reference == pytest.approx(
         abs(feedback.additional_wheel_integral_rad)
@@ -150,14 +160,21 @@ def test_p09_wheel_rebound_is_compact_and_strictly_reference_bounded() -> None:
         "front_left_ankle"
     ] == pytest.approx(-0.9060000000012605)
     endpoint_tick = round(contract.phase("P09").active_duration_s * 120.0)
-    for tick in range(feedback.first_bias_tick, endpoint_tick):
+    primary, secondary = feedback.bias_segments
+    for tick in range(primary.first_bias_tick, endpoint_tick):
         native = contract.phase("P09").nominal_at(tick / 120.0)[8]
         assert native == pytest.approx(-1.07)
-        assert native + feedback.logical_bias_rad_s == pytest.approx(-0.74)
-    for tick in range(endpoint_tick, feedback.last_bias_tick + 1):
+        assert native + primary.logical_bias_rad_s == pytest.approx(-0.74)
+    for tick in range(endpoint_tick, primary.last_bias_tick + 1):
         native = contract.phase("P09").end_full12[8]
         assert native == pytest.approx(0.0)
-        assert native + feedback.logical_bias_rad_s == pytest.approx(0.33)
+        assert native + primary.logical_bias_rad_s == pytest.approx(0.33)
+    for tick in range(
+        secondary.first_bias_tick, secondary.last_bias_tick + 1
+    ):
+        native = contract.phase("P09").end_full12[8]
+        assert native == pytest.approx(0.0)
+        assert native + secondary.logical_bias_rad_s == pytest.approx(0.22)
     assert all(
         phase.drive_feedback is None
         for phase in contract.phases
@@ -186,8 +203,7 @@ def test_p09_wheel_rebound_is_compact_and_strictly_reference_bounded() -> None:
         ("probe_channel", "rear_left_knee"),
         ("lag_threshold_deg", 1.69),
         ("correction_channel_index", 5),
-        ("first_bias_tick", 861),
-        ("logical_bias_rad_s", 1.07),
+        ("teardown_tick", 879),
         ("additional_wheel_integral_rad", 0.107),
         ("resulting_wheel_integral_rad", -0.7990000000012605),
         ("cumulative_fraction_of_reference", 0.118101545253699),
@@ -204,6 +220,34 @@ def test_p09_wheel_rebound_contract_fails_closed(
     p09 = next(phase for phase in payload["phases"] if phase["state_id"] == "P09")
     p09["drive_feedback"][field] = invalid_value
     candidate = tmp_path / f"invalid_{field}.json"
+    candidate.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="P09:.*drive-feedback"):
+        load_motion_contract(candidate)
+
+
+@pytest.mark.parametrize(
+    ("segment_index", "field", "invalid_value"),
+    (
+        (0, "first_bias_tick", 861),
+        (0, "last_bias_tick", 870),
+        (0, "logical_bias_rad_s", 1.07),
+        (1, "first_bias_tick", 873),
+        (1, "last_bias_tick", 880),
+        (1, "logical_bias_rad_s", 0.33),
+    ),
+)
+def test_p09_wheel_rebound_segments_fail_closed(
+    tmp_path: Path,
+    segment_index: int,
+    field: str,
+    invalid_value: object,
+) -> None:
+    source = ROOT / "configs" / "recording_motion_contract.json"
+    payload = json.loads(source.read_text(encoding="utf-8"))
+    p09 = next(phase for phase in payload["phases"] if phase["state_id"] == "P09")
+    p09["drive_feedback"]["bias_segments"][segment_index][field] = invalid_value
+    candidate = tmp_path / f"invalid_segment_{segment_index}_{field}.json"
     candidate.write_text(json.dumps(payload), encoding="utf-8")
 
     with pytest.raises(ValueError, match="P09:.*drive-feedback"):

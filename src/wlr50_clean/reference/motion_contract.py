@@ -32,11 +32,15 @@ REBOUND_PROBES = (
 REBOUND_LAG_THRESHOLD_DEG = 1.7
 REBOUND_CORRECTION_CHANNEL = "front_left_ankle"
 REBOUND_CORRECTION_CHANNEL_INDEX = 8
-REBOUND_LOGICAL_BIAS_RAD_S = 0.33
+REBOUND_BIAS_SEGMENTS = (
+    (860, 871, 0.33),
+    (872, 879, 0.22),
+)
 REBOUND_PRE_ENDPOINT_NATIVE_RAD_S = -1.07
 REBOUND_PRE_ENDPOINT_FINAL_RAD_S = -0.74
 REBOUND_POST_ENDPOINT_NATIVE_RAD_S = 0.0
-REBOUND_POST_ENDPOINT_FINAL_RAD_S = 0.33
+REBOUND_PRIMARY_POST_ENDPOINT_FINAL_RAD_S = 0.33
+REBOUND_SECONDARY_POST_ENDPOINT_FINAL_RAD_S = 0.22
 
 
 def _vector(value: Sequence[Any], *, label: str) -> tuple[float, ...]:
@@ -78,6 +82,16 @@ class DriveFeedbackProbe:
 
 
 @dataclass(frozen=True)
+class DriveFeedbackBiasSegment:
+    first_bias_tick: int
+    last_bias_tick: int
+    logical_bias_rad_s: float
+
+    def contains(self, motion_tick: int) -> bool:
+        return self.first_bias_tick <= motion_tick <= self.last_bias_tick
+
+
+@dataclass(frozen=True)
 class DriveFeedbackSpec:
     kind: str
     probe_channel: str
@@ -87,10 +101,8 @@ class DriveFeedbackSpec:
     probe_samples: tuple[DriveFeedbackProbe, ...]
     lag_threshold_deg: float
     required_consecutive_samples: int
-    first_bias_tick: int
-    last_bias_tick: int
+    bias_segments: tuple[DriveFeedbackBiasSegment, ...]
     teardown_tick: int
-    logical_bias_rad_s: float
     reference_wheel_integral_rad: float
     additional_wheel_integral_rad: float
     resulting_wheel_integral_rad: float
@@ -98,6 +110,26 @@ class DriveFeedbackSpec:
     reference_wheel_peak_abs_rad_s: float
     resulting_wheel_peak_abs_rad_s: float
     instantaneous_direction_reversal: bool
+
+    @property
+    def first_bias_tick(self) -> int:
+        """First tick of the contiguous bias envelope (controller compatibility)."""
+
+        return self.bias_segments[0].first_bias_tick
+
+    @property
+    def last_bias_tick(self) -> int:
+        """Last tick of the contiguous bias envelope (controller compatibility)."""
+
+        return self.bias_segments[-1].last_bias_tick
+
+    def bias_segment_at(
+        self, motion_tick: int
+    ) -> tuple[int, DriveFeedbackBiasSegment] | None:
+        for index, segment in enumerate(self.bias_segments):
+            if segment.contains(motion_tick):
+                return index, segment
+        return None
 
 
 @dataclass(frozen=True)
@@ -221,10 +253,15 @@ def _parse_phase(value: Mapping[str, Any]) -> MotionPhase:
             required_consecutive_samples=int(
                 raw_feedback["required_consecutive_samples"]
             ),
-            first_bias_tick=int(raw_feedback["first_bias_tick"]),
-            last_bias_tick=int(raw_feedback["last_bias_tick"]),
+            bias_segments=tuple(
+                DriveFeedbackBiasSegment(
+                    first_bias_tick=int(row["first_bias_tick"]),
+                    last_bias_tick=int(row["last_bias_tick"]),
+                    logical_bias_rad_s=float(row["logical_bias_rad_s"]),
+                )
+                for row in raw_feedback["bias_segments"]
+            ),
             teardown_tick=int(raw_feedback["teardown_tick"]),
-            logical_bias_rad_s=float(raw_feedback["logical_bias_rad_s"]),
             reference_wheel_integral_rad=float(
                 raw_feedback["reference_wheel_integral_rad"]
             ),
@@ -331,7 +368,11 @@ def _validate_phases(
             ):
                 raise ValueError(f"{phase.state_id}: unknown drive-feedback kind")
             if (
-                feedback.probe_channel != REBOUND_PROBE_CHANNEL
+                feedback.probe_channel_index < 0
+                or feedback.probe_channel_index >= ACTION_COUNT
+                or feedback.correction_channel_index < 0
+                or feedback.correction_channel_index >= ACTION_COUNT
+                or feedback.probe_channel != REBOUND_PROBE_CHANNEL
                 or feedback.probe_channel_index != REBOUND_PROBE_CHANNEL_INDEX
                 or full12_order[feedback.probe_channel_index]
                 != feedback.probe_channel
@@ -347,30 +388,41 @@ def _validate_phases(
                 (item.motion_tick, item.reference_actual_deg)
                 for item in feedback.probe_samples
             )
+            segment_ticks = tuple(
+                (segment.first_bias_tick, segment.last_bias_tick)
+                for segment in feedback.bias_segments
+            )
             if (
                 probes != REBOUND_PROBES
                 or feedback.required_consecutive_samples != len(REBOUND_PROBES)
                 or abs(feedback.lag_threshold_deg - REBOUND_LAG_THRESHOLD_DEG)
                 > 1.0e-12
+                or not feedback.bias_segments
                 or feedback.first_bias_tick <= probe_ticks[-1]
                 or feedback.last_bias_tick < feedback.first_bias_tick
                 or feedback.teardown_tick != feedback.last_bias_tick + 1
+                or segment_ticks
+                != tuple((first, last) for first, last, _ in REBOUND_BIAS_SEGMENTS)
             ):
                 raise ValueError(f"{phase.state_id}: invalid drive-feedback timing")
             endpoint_tick = round(phase.active_duration_s * PHYSICS_HZ)
             if (
                 probe_ticks != (endpoint_tick - 6, endpoint_tick - 5)
                 or feedback.first_bias_tick != endpoint_tick - 4
-                or feedback.last_bias_tick != endpoint_tick + DECISION_STRIDE - 1
-                or feedback.teardown_tick != endpoint_tick + DECISION_STRIDE
+                or feedback.bias_segments[0].last_bias_tick
+                != endpoint_tick + DECISION_STRIDE - 1
+                or feedback.bias_segments[1].first_bias_tick
+                != endpoint_tick + DECISION_STRIDE
+                or feedback.last_bias_tick
+                != endpoint_tick + 2 * DECISION_STRIDE - 1
+                or feedback.teardown_tick != endpoint_tick + 2 * DECISION_STRIDE
             ):
                 raise ValueError(
                     f"{phase.state_id}: drive-feedback does not match the "
-                    "bounded pre-endpoint wheel rebound"
+                    "bounded two-segment pre-endpoint wheel rebound"
                 )
             values = (
                 feedback.lag_threshold_deg,
-                feedback.logical_bias_rad_s,
                 feedback.reference_wheel_integral_rad,
                 feedback.additional_wheel_integral_rad,
                 feedback.resulting_wheel_integral_rad,
@@ -378,9 +430,22 @@ def _validate_phases(
                 feedback.reference_wheel_peak_abs_rad_s,
                 feedback.resulting_wheel_peak_abs_rad_s,
                 *(probe.reference_actual_deg for probe in feedback.probe_samples),
+                *(
+                    value
+                    for segment in feedback.bias_segments
+                    for value in (
+                        float(segment.first_bias_tick),
+                        float(segment.last_bias_tick),
+                        segment.logical_bias_rad_s,
+                    )
+                ),
             )
-            active_ticks = feedback.last_bias_tick - feedback.first_bias_tick + 1
-            additional = feedback.logical_bias_rad_s * active_ticks / PHYSICS_HZ
+            additional = sum(
+                segment.logical_bias_rad_s
+                * (segment.last_bias_tick - segment.first_bias_tick + 1)
+                / PHYSICS_HZ
+                for segment in feedback.bias_segments
+            )
             reference = feedback.reference_wheel_integral_rad
             derived_reference = _zoh_channel_integral(
                 phase, feedback.correction_channel_index
@@ -395,34 +460,50 @@ def _validate_phases(
             resulting_peak = _feedback_channel_peak_abs(
                 phase,
                 feedback.correction_channel_index,
-                first_bias_tick=feedback.first_bias_tick,
-                last_bias_tick=feedback.last_bias_tick,
-                bias=feedback.logical_bias_rad_s,
+                bias_segments=feedback.bias_segments,
             )
+            primary_segment, secondary_segment = feedback.bias_segments
             pre_endpoint_native = tuple(
                 _channel_at_motion_tick(
                     phase, feedback.correction_channel_index, tick
                 )
-                for tick in range(feedback.first_bias_tick, endpoint_tick)
+                for tick in range(primary_segment.first_bias_tick, endpoint_tick)
             )
-            post_endpoint_native = tuple(
+            primary_post_endpoint_native = tuple(
                 _channel_at_motion_tick(
                     phase, feedback.correction_channel_index, tick
                 )
-                for tick in range(endpoint_tick, feedback.last_bias_tick + 1)
+                for tick in range(endpoint_tick, primary_segment.last_bias_tick + 1)
+            )
+            secondary_post_endpoint_native = tuple(
+                _channel_at_motion_tick(
+                    phase, feedback.correction_channel_index, tick
+                )
+                for tick in range(
+                    secondary_segment.first_bias_tick,
+                    secondary_segment.last_bias_tick + 1,
+                )
             )
             if (
                 any(not math.isfinite(value) for value in values)
                 or feedback.lag_threshold_deg <= 0.0
-                or abs(feedback.logical_bias_rad_s - REBOUND_LOGICAL_BIAS_RAD_S)
-                > 1.0e-12
+                or tuple(
+                    (
+                        segment.first_bias_tick,
+                        segment.last_bias_tick,
+                        segment.logical_bias_rad_s,
+                    )
+                    for segment in feedback.bias_segments
+                )
+                != REBOUND_BIAS_SEGMENTS
                 or not pre_endpoint_native
-                or not post_endpoint_native
+                or not primary_post_endpoint_native
+                or not secondary_post_endpoint_native
                 or any(
                     abs(native - REBOUND_PRE_ENDPOINT_NATIVE_RAD_S) > 1.0e-12
                     or abs(
                         native
-                        + feedback.logical_bias_rad_s
+                        + primary_segment.logical_bias_rad_s
                         - REBOUND_PRE_ENDPOINT_FINAL_RAD_S
                     )
                     > 1.0e-12
@@ -432,15 +513,28 @@ def _validate_phases(
                     abs(native - REBOUND_POST_ENDPOINT_NATIVE_RAD_S) > 1.0e-12
                     or abs(
                         native
-                        + feedback.logical_bias_rad_s
-                        - REBOUND_POST_ENDPOINT_FINAL_RAD_S
+                        + primary_segment.logical_bias_rad_s
+                        - REBOUND_PRIMARY_POST_ENDPOINT_FINAL_RAD_S
                     )
                     > 1.0e-12
-                    for native in post_endpoint_native
+                    for native in primary_post_endpoint_native
+                )
+                or any(
+                    abs(native - REBOUND_POST_ENDPOINT_NATIVE_RAD_S) > 1.0e-12
+                    or abs(
+                        native
+                        + secondary_segment.logical_bias_rad_s
+                        - REBOUND_SECONDARY_POST_ENDPOINT_FINAL_RAD_S
+                    )
+                    > 1.0e-12
+                    for native in secondary_post_endpoint_native
                 )
                 or abs(phase.end_full12[feedback.correction_channel_index])
                 > 1.0e-12
-                or feedback.logical_bias_rad_s * reference >= 0.0
+                or any(
+                    segment.logical_bias_rad_s * reference >= 0.0
+                    for segment in feedback.bias_segments
+                )
                 or feedback.instantaneous_direction_reversal is not True
                 or abs(reference - derived_reference) > 1.0e-12
                 or abs(additional - feedback.additional_wheel_integral_rad)
@@ -533,25 +627,21 @@ def _feedback_channel_peak_abs(
     phase: MotionPhase,
     channel_index: int,
     *,
-    first_bias_tick: int,
-    last_bias_tick: int,
-    bias: float,
+    bias_segments: tuple[DriveFeedbackBiasSegment, ...],
 ) -> float:
-    """Re-derive the peak after applying a bounded tick-indexed correction."""
+    """Re-derive the peak after applying bounded tick-indexed corrections."""
 
-    endpoint_tick = round(phase.active_duration_s * PHYSICS_HZ)
     values = [
         abs(waypoint.full12[channel_index]) for waypoint in phase.waypoints
     ]
-    values.extend(
-        abs(
-            _channel_at_motion_tick(phase, channel_index, tick) + bias
-        )
-        for tick in range(first_bias_tick, min(last_bias_tick, endpoint_tick - 1) + 1)
-    )
-    if last_bias_tick >= endpoint_tick:
+    for segment in bias_segments:
         values.extend(
-            abs(bias)
-            for _ in range(endpoint_tick, last_bias_tick + 1)
+            abs(
+                _channel_at_motion_tick(phase, channel_index, tick)
+                + segment.logical_bias_rad_s
+            )
+            for tick in range(
+                segment.first_bias_tick, segment.last_bias_tick + 1
+            )
         )
     return max(values)

@@ -6,7 +6,10 @@ import math
 from dataclasses import dataclass
 from typing import Sequence
 
-from wlr50_clean.reference.motion_contract import DriveFeedbackSpec
+from wlr50_clean.reference.motion_contract import (
+    DriveFeedbackBiasSegment,
+    DriveFeedbackSpec,
+)
 
 
 ACTION_COUNT = 12
@@ -25,12 +28,15 @@ REBOUND_PROBE_REFERENCES_DEG = (
 REBOUND_LAG_THRESHOLD_DEG = 1.7
 REBOUND_CORRECTION_CHANNEL = "front_left_ankle"
 REBOUND_CORRECTION_CHANNEL_INDEX = 8
-REBOUND_FIRST_BIAS_TICK = 860
-REBOUND_LAST_BIAS_TICK = 871
-REBOUND_TEARDOWN_TICK = 872
-REBOUND_LOGICAL_BIAS_RAD_S = 0.33
+REBOUND_BIAS_SEGMENTS = (
+    (860, 871, 0.33),
+    (872, 879, 0.22),
+)
+REBOUND_TEARDOWN_TICK = 880
 REBOUND_REFERENCE_INTEGRAL_RAD = -0.9060000000012605
-REBOUND_RESULTING_INTEGRAL_RAD = -0.8730000000012605
+REBOUND_ADDITIONAL_INTEGRAL_RAD = 0.0476666666666667
+REBOUND_RESULTING_INTEGRAL_RAD = -0.8583333333345938
+REBOUND_CUMULATIVE_FRACTION = 0.0526122148637973
 REBOUND_PEAK_ABS_RAD_S = 1.07
 
 
@@ -52,6 +58,10 @@ class DriveFeedback:
     reference_deg: float | None
     peak_fraction_of_reference: float
     cumulative_fraction_of_reference: float
+    bias_segments: tuple[DriveFeedbackBiasSegment, ...]
+    active_segment_index: int | None
+    active_segment_first_bias_tick: int | None
+    active_segment_last_bias_tick: int | None
     logical_bias_rad_s: float
     reference_wheel_integral_rad: float
     additional_wheel_integral_rad: float
@@ -78,6 +88,17 @@ class DriveFeedback:
             "reference_deg": self.reference_deg,
             "peak_fraction_of_reference": self.peak_fraction_of_reference,
             "cumulative_fraction_of_reference": self.cumulative_fraction_of_reference,
+            "bias_segments": [
+                {
+                    "first_bias_tick": segment.first_bias_tick,
+                    "last_bias_tick": segment.last_bias_tick,
+                    "logical_bias_rad_s": segment.logical_bias_rad_s,
+                }
+                for segment in self.bias_segments
+            ],
+            "active_segment_index": self.active_segment_index,
+            "active_segment_first_bias_tick": self.active_segment_first_bias_tick,
+            "active_segment_last_bias_tick": self.active_segment_last_bias_tick,
             "logical_bias_rad_s": self.logical_bias_rad_s,
             "reference_wheel_integral_rad": self.reference_wheel_integral_rad,
             "additional_wheel_integral_rad": self.additional_wheel_integral_rad,
@@ -98,8 +119,10 @@ class ReferenceBoundedDriveFeedback:
 
     Two locked pre-endpoint rear-right-knee samples arm a counter-command.  It
     partially counteracts four remaining native wheel ticks, reverses the wheel
-    request for the eight ticks after the nominal endpoint, and tears down at
-    the first P10 decision without changing the frozen nominal command.
+    request for the eight ticks after the nominal endpoint, retains a smaller
+    P09-owned entry-alignment tail for another eight ticks, and tears down
+    before the live P10 entry decision without changing the frozen nominal
+    command.
     """
 
     def __init__(self) -> None:
@@ -168,15 +191,23 @@ class ReferenceBoundedDriveFeedback:
                 self._trigger_consumed = True
                 just_triggered = True
 
-        active = bool(
-            spec is not None
-            and tick is not None
-            and self._trigger_tick is not None
-            and spec.first_bias_tick <= tick <= spec.last_bias_tick
+        active_segment = (
+            None
+            if spec is None or tick is None or self._trigger_tick is None
+            else spec.bias_segment_at(tick)
+        )
+        active = active_segment is not None
+        active_segment_index = (
+            None if active_segment is None else active_segment[0]
+        )
+        active_segment_spec = (
+            None if active_segment is None else active_segment[1]
         )
         bias = [0.0] * ACTION_COUNT
-        if active and spec is not None:
-            bias[spec.correction_channel_index] = spec.logical_bias_rad_s
+        if active_segment_spec is not None and spec is not None:
+            bias[spec.correction_channel_index] = (
+                active_segment_spec.logical_bias_rad_s
+            )
 
         cumulative_fraction = (
             0.0 if spec is None else spec.cumulative_fraction_of_reference
@@ -210,8 +241,24 @@ class ReferenceBoundedDriveFeedback:
             cumulative_fraction_of_reference=(
                 cumulative_fraction if triggered else 0.0
             ),
+            bias_segments=(
+                () if spec is None else spec.bias_segments
+            ),
+            active_segment_index=active_segment_index,
+            active_segment_first_bias_tick=(
+                None
+                if active_segment_spec is None
+                else active_segment_spec.first_bias_tick
+            ),
+            active_segment_last_bias_tick=(
+                None
+                if active_segment_spec is None
+                else active_segment_spec.last_bias_tick
+            ),
             logical_bias_rad_s=(
-                0.0 if spec is None else spec.logical_bias_rad_s
+                0.0
+                if active_segment_spec is None
+                else active_segment_spec.logical_bias_rad_s
             ),
             reference_wheel_integral_rad=(
                 0.0 if spec is None else spec.reference_wheel_integral_rad
@@ -244,8 +291,7 @@ class ReferenceBoundedDriveFeedback:
             reason=(
                 f"live {state_id} {spec.probe_channel} pre-endpoint deficit "
                 f"requests {spec.correction_channel} pre-endpoint partial "
-                "counteraction "
-                "and opposite-direction wheel rebound"
+                "counteraction and two-segment opposite-direction wheel rebound"
                 if triggered and spec is not None
                 else "no live reference-corridor deficit latched"
             ),
@@ -253,17 +299,37 @@ class ReferenceBoundedDriveFeedback:
 
 
 def _validate_runtime_spec(spec: DriveFeedbackSpec, *, state_id: str) -> None:
+    segment_shape = tuple(
+        (
+            segment.first_bias_tick,
+            segment.last_bias_tick,
+            segment.logical_bias_rad_s,
+        )
+        for segment in spec.bias_segments
+    )
     values = (
-        spec.logical_bias_rad_s,
         spec.reference_wheel_integral_rad,
         spec.additional_wheel_integral_rad,
         spec.resulting_wheel_integral_rad,
         spec.cumulative_fraction_of_reference,
         spec.reference_wheel_peak_abs_rad_s,
         spec.resulting_wheel_peak_abs_rad_s,
+        *(
+            value
+            for segment in spec.bias_segments
+            for value in (
+                float(segment.first_bias_tick),
+                float(segment.last_bias_tick),
+                segment.logical_bias_rad_s,
+            )
+        ),
     )
-    active_ticks = spec.last_bias_tick - spec.first_bias_tick + 1
-    expected_integral = spec.logical_bias_rad_s * active_ticks / PHYSICS_HZ
+    expected_integral = sum(
+        segment.logical_bias_rad_s
+        * (segment.last_bias_tick - segment.first_bias_tick + 1)
+        / PHYSICS_HZ
+        for segment in spec.bias_segments
+    )
     reference = abs(spec.reference_wheel_integral_rad)
     expected_fraction = (
         math.inf if reference == 0.0 else abs(expected_integral) / reference
@@ -285,23 +351,29 @@ def _validate_runtime_spec(spec: DriveFeedbackSpec, *, state_id: str) -> None:
         or spec.correction_channel_index < SERVO_COUNT
         or spec.correction_channel_index >= ACTION_COUNT
         or any(not math.isfinite(value) for value in values)
-        or active_ticks <= 0
+        or segment_shape != REBOUND_BIAS_SEGMENTS
         or probe_ticks != REBOUND_PROBE_TICKS
         or probe_references != REBOUND_PROBE_REFERENCES_DEG
         or spec.required_consecutive_samples != len(REBOUND_PROBE_TICKS)
         or abs(spec.lag_threshold_deg - REBOUND_LAG_THRESHOLD_DEG) > 1.0e-12
-        or spec.first_bias_tick != REBOUND_FIRST_BIAS_TICK
-        or spec.last_bias_tick != REBOUND_LAST_BIAS_TICK
         or spec.teardown_tick != REBOUND_TEARDOWN_TICK
-        or abs(spec.logical_bias_rad_s - REBOUND_LOGICAL_BIAS_RAD_S) > 1.0e-12
         or abs(
             spec.reference_wheel_integral_rad
             - REBOUND_REFERENCE_INTEGRAL_RAD
         )
         > 1.0e-12
-        or spec.logical_bias_rad_s * spec.reference_wheel_integral_rad >= 0.0
+        or any(
+            segment.logical_bias_rad_s * spec.reference_wheel_integral_rad
+            >= 0.0
+            for segment in spec.bias_segments
+        )
         or spec.instantaneous_direction_reversal is not True
         or abs(expected_integral - spec.additional_wheel_integral_rad) > 1.0e-12
+        or abs(
+            spec.additional_wheel_integral_rad
+            - REBOUND_ADDITIONAL_INTEGRAL_RAD
+        )
+        > 1.0e-12
         or abs(
             expected_resulting_integral - spec.resulting_wheel_integral_rad
         )
@@ -312,6 +384,11 @@ def _validate_runtime_spec(spec: DriveFeedbackSpec, *, state_id: str) -> None:
         )
         > 1.0e-12
         or abs(expected_fraction - spec.cumulative_fraction_of_reference) > 1.0e-12
+        or abs(
+            spec.cumulative_fraction_of_reference
+            - REBOUND_CUMULATIVE_FRACTION
+        )
+        > 1.0e-12
         or expected_fraction > MAX_CUMULATIVE_CORRECTION_FRACTION + 1.0e-12
         or spec.reference_wheel_peak_abs_rad_s <= 0.0
         or abs(
@@ -325,7 +402,10 @@ def _validate_runtime_spec(spec: DriveFeedbackSpec, *, state_id: str) -> None:
         > 1.0e-12
         or spec.resulting_wheel_peak_abs_rad_s
         > WHEEL_HARD_LIMIT_RAD_S + 1.0e-12
-        or abs(spec.logical_bias_rad_s)
+        or max(
+            (abs(segment.logical_bias_rad_s) for segment in spec.bias_segments),
+            default=math.inf,
+        )
         > spec.resulting_wheel_peak_abs_rad_s + 1.0e-12
     ):
         raise RuntimeError(f"{state_id} drive feedback is not a valid wheel rebound")

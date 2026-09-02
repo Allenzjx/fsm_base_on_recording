@@ -18778,8 +18778,8 @@
         "probe_channel_index": 7,
         "correction_channel": "front_left_ankle",
         "correction_channel_index": 8,
-        "goal": "partially counteract the final four native front-left wheel ticks and request an eight-tick opposite-direction rebound before the first P10 decision when the live rear-right-knee deficit predicts a weak entry rebound",
-        "source": "two-sample locked-v010 rear-right-knee pre-endpoint deficit plus a bounded front-left wheel counter-command whose signed phase integral remains inside the v010 contract",
+        "goal": "partially counteract the final four native front-left wheel ticks, request an eight-tick primary rebound, then retain a lower eight-tick P09-owned entry-alignment tail before the live P10 entry decision when the rear-right-knee deficit predicts a weak rebound",
+        "source": "two-sample locked-v010 rear-right-knee pre-endpoint deficit plus a bounded two-segment front-left wheel counter-command whose signed phase integral remains inside the v010 contract",
         "probe_samples": [
           {
             "motion_tick": 858,
@@ -18792,14 +18792,23 @@
         ],
         "lag_threshold_deg": 1.7,
         "required_consecutive_samples": 2,
-        "first_bias_tick": 860,
-        "last_bias_tick": 871,
-        "teardown_tick": 872,
-        "logical_bias_rad_s": 0.33,
+        "bias_segments": [
+          {
+            "first_bias_tick": 860,
+            "last_bias_tick": 871,
+            "logical_bias_rad_s": 0.33
+          },
+          {
+            "first_bias_tick": 872,
+            "last_bias_tick": 879,
+            "logical_bias_rad_s": 0.22
+          }
+        ],
+        "teardown_tick": 880,
         "reference_wheel_integral_rad": -0.9060000000012605,
-        "additional_wheel_integral_rad": 0.033,
-        "resulting_wheel_integral_rad": -0.8730000000012605,
-        "cumulative_fraction_of_reference": 0.03642384105955198,
+        "additional_wheel_integral_rad": 0.0476666666666667,
+        "resulting_wheel_integral_rad": -0.8583333333345938,
+        "cumulative_fraction_of_reference": 0.0526122148637973,
         "reference_wheel_peak_abs_rad_s": 1.07,
         "resulting_wheel_peak_abs_rad_s": 1.07,
         "instantaneous_direction_reversal": true,

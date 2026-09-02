@@ -66,12 +66,15 @@ _WHEEL_TAIL_LAST_TICK = 871
 _WHEEL_TAIL_TEARDOWN_TICK = 872
 _WHEEL_TAIL_VELOCITY_RAD_S = -1.07
 _WHEEL_REBOUND_FIRST_TICK = 860
-_WHEEL_REBOUND_LAST_TICK = 871
-_WHEEL_REBOUND_TEARDOWN_TICK = 872
-_WHEEL_REBOUND_BIAS_RAD_S = 0.33
+_WHEEL_REBOUND_LAST_TICK = 879
+_WHEEL_REBOUND_TEARDOWN_TICK = 880
+_WHEEL_REBOUND_BIAS_SEGMENTS = (
+    (860, 871, 0.33),
+    (872, 879, 0.22),
+)
 _WHEEL_REFERENCE_INTEGRAL_RAD = -0.9060000000012605
-_WHEEL_REBOUND_ADDITIONAL_INTEGRAL_RAD = 0.033
-_WHEEL_REBOUND_RESULTING_INTEGRAL_RAD = -0.8730000000012605
+_WHEEL_REBOUND_ADDITIONAL_INTEGRAL_RAD = 0.0476666666666667
+_WHEEL_REBOUND_RESULTING_INTEGRAL_RAD = -0.8583333333345938
 _WHEEL_REFERENCE_PEAK_ABS_RAD_S = 1.07
 _WHEEL_REBOUND_RESULTING_PEAK_ABS_RAD_S = 1.07
 _MAX_FEEDBACK_FRACTION = 0.15
@@ -430,9 +433,78 @@ def _wheel_feedback_shape(
             _WHEEL_REBOUND_FIRST_TICK,
             _WHEEL_REBOUND_LAST_TICK,
             _WHEEL_REBOUND_TEARDOWN_TICK,
-            _WHEEL_REBOUND_BIAS_RAD_S,
+            _WHEEL_REBOUND_BIAS_SEGMENTS[0][2],
         )
     return None
+
+
+def _wheel_feedback_segments(
+    spec: Mapping[str, Any], mode: str | None
+) -> tuple[tuple[int, int, float], ...] | None:
+    """Parse the exact logical-bias schedule used by a wheel correction."""
+
+    if mode == "wheel":
+        try:
+            segments = ((
+                int(spec["first_bias_tick"]),
+                int(spec["last_bias_tick"]),
+                float(spec["logical_bias_rad_s"]),
+            ),)
+        except (KeyError, TypeError, ValueError):
+            return None
+    elif mode == "wheel_rebound":
+        raw_segments = spec.get("bias_segments")
+        if (
+            not isinstance(raw_segments, Sequence)
+            or isinstance(raw_segments, (str, bytes))
+        ):
+            return None
+        parsed: list[tuple[int, int, float]] = []
+        try:
+            for raw in raw_segments:
+                if (
+                    not isinstance(raw, Mapping)
+                    or set(raw) != {
+                        "first_bias_tick",
+                        "last_bias_tick",
+                        "logical_bias_rad_s",
+                    }
+                    or isinstance(raw["first_bias_tick"], bool)
+                    or not isinstance(raw["first_bias_tick"], int)
+                    or isinstance(raw["last_bias_tick"], bool)
+                    or not isinstance(raw["last_bias_tick"], int)
+                    or isinstance(raw["logical_bias_rad_s"], bool)
+                ):
+                    return None
+                parsed.append((
+                    int(raw["first_bias_tick"]),
+                    int(raw["last_bias_tick"]),
+                    float(raw["logical_bias_rad_s"]),
+                ))
+        except (KeyError, TypeError, ValueError):
+            return None
+        segments = tuple(parsed)
+        # Trial020's shape is deliberately immutable: accepting a shifted,
+        # shortened, extended, or re-amplituded segment would make its signed
+        # integral look valid while changing the actual physical timing.
+        if segments != _WHEEL_REBOUND_BIAS_SEGMENTS:
+            return None
+    else:
+        return None
+    if not segments or any(
+        first < 0
+        or last < first
+        or not math.isfinite(bias)
+        or abs(bias) <= 1.0e-12
+        for first, last, bias in segments
+    ):
+        return None
+    if any(
+        right[0] != left[1] + 1
+        for left, right in zip(segments, segments[1:])
+    ):
+        return None
+    return segments
 
 
 def _wheel_feedback_contract_values(
@@ -448,11 +520,10 @@ def _wheel_feedback_contract_values(
 
     selected_mode = _drive_feedback_mode(spec) if mode is None else mode
     shape = _wheel_feedback_shape(selected_mode)
-    if shape is None:
+    segments = _wheel_feedback_segments(spec, selected_mode)
+    if shape is None or segments is None:
         return None
-    _, first_bias_tick, last_bias_tick, _, expected_bias = shape
     try:
-        logical_bias = float(spec["logical_bias_rad_s"])
         signed_reference_integral = float(spec["reference_wheel_integral_rad"])
         reference_integral = abs(signed_reference_integral)
         declared_integral = float(spec["additional_wheel_integral_rad"])
@@ -460,7 +531,6 @@ def _wheel_feedback_contract_values(
     except (KeyError, TypeError, ValueError):
         return None
     values = (
-        logical_bias,
         signed_reference_integral,
         reference_integral,
         declared_integral,
@@ -472,12 +542,17 @@ def _wheel_feedback_contract_values(
     if (
         physics_hz <= 0.0
         or reference_integral <= 0.0
-        or abs(logical_bias - expected_bias) > 1.0e-12
     ):
         return None
-    active_ticks = last_bias_tick - first_bias_tick + 1
-    expected_signed_integral = logical_bias * active_ticks / physics_hz
-    derived_fraction = abs(expected_signed_integral) / reference_integral
+    expected_signed_integral = sum(
+        bias * (last - first + 1) / physics_hz
+        for first, last, bias in segments
+    )
+    expected_absolute_integral = sum(
+        abs(bias) * (last - first + 1) / physics_hz
+        for first, last, bias in segments
+    )
+    derived_fraction = expected_absolute_integral / reference_integral
     if (
         abs(declared_integral - expected_signed_integral) > 1.0e-12
         or declared_fraction < 0.0
@@ -490,7 +565,7 @@ def _wheel_feedback_contract_values(
         # be smuggled through this kind merely because its absolute peak is
         # unchanged.
         if (
-            logical_bias * signed_reference_integral <= 0.0
+            segments[0][2] * signed_reference_integral <= 0.0
             or spec.get("instantaneous_direction_reversal") is True
         ):
             return None
@@ -516,7 +591,10 @@ def _wheel_feedback_contract_values(
             else abs(resulting_peak - reference_peak) / reference_peak
         )
         if (
-            logical_bias * signed_reference_integral >= 0.0
+            any(
+                bias * signed_reference_integral >= 0.0
+                for _, _, bias in segments
+            )
             or spec.get("instantaneous_direction_reversal") is not True
             or abs(
                 signed_reference_integral - _WHEEL_REFERENCE_INTEGRAL_RAD
@@ -1102,6 +1180,7 @@ def _drive_feedback_ledger_valid(
         expected_latched = False
         expected_active = False
         if spec is not None and tick is not None:
+            wheel_segments: tuple[tuple[int, int, float], ...] | None = None
             try:
                 mode = _drive_feedback_mode(spec)
                 probe_channel = str(spec["probe_channel"])
@@ -1109,21 +1188,29 @@ def _drive_feedback_ledger_valid(
                 correction_channel = str(spec["correction_channel"])
                 correction_channel_index = int(spec["correction_channel_index"])
                 probe_ticks = tuple(int(item["motion_tick"]) for item in spec["probe_samples"])
-                first_bias_tick = int(spec["first_bias_tick"])
-                last_bias_tick = int(spec["last_bias_tick"])
                 cumulative_fraction = float(spec["cumulative_fraction_of_reference"])
                 peak_fraction = (
                     0.0
                     if _is_wheel_feedback_mode(mode)
                     else float(spec["peak_fraction_of_reference"])
                 )
-                logical_bias = float(
-                    spec[
-                        "logical_bias_rad_s"
-                        if _is_wheel_feedback_mode(mode)
-                        else "logical_bias_deg"
-                    ]
-                )
+                if mode == "wheel_rebound":
+                    wheel_segments = _wheel_feedback_segments(spec, mode)
+                    if wheel_segments is None:
+                        return False
+                    first_bias_tick = wheel_segments[0][0]
+                    last_bias_tick = wheel_segments[-1][1]
+                    logical_bias = 0.0
+                else:
+                    first_bias_tick = int(spec["first_bias_tick"])
+                    last_bias_tick = int(spec["last_bias_tick"])
+                    logical_bias = float(
+                        spec[
+                            "logical_bias_rad_s"
+                            if _is_wheel_feedback_mode(mode)
+                            else "logical_bias_deg"
+                        ]
+                    )
             except (KeyError, TypeError, ValueError):
                 return False
             if mode is None or any(
@@ -1168,12 +1255,14 @@ def _drive_feedback_ledger_valid(
                     or first_bias_tick != expected_first_tick
                     or last_bias_tick != expected_last_tick
                     or int(spec["teardown_tick"]) != expected_teardown_tick
-                    or abs(logical_bias - expected_bias) > 1.0e-12
+                    or (
+                        mode != "wheel_rebound"
+                        and abs(logical_bias - expected_bias) > 1.0e-12
+                    )
                     or abs(peak_fraction) > 1.0e-12
                 ):
                     return False
                 for field in (
-                    "logical_bias_rad_s",
                     "reference_wheel_integral_rad",
                     "additional_wheel_integral_rad",
                 ):
@@ -1185,6 +1274,12 @@ def _drive_feedback_ledger_valid(
                     if logged is None or abs(logged - expected) > 1.0e-12:
                         return False
                 if mode == "wheel_rebound":
+                    if (
+                        wheel_segments is None
+                        or _wheel_feedback_segments(feedback, mode)
+                        != wheel_segments
+                    ):
+                        return False
                     for field in (
                         "resulting_wheel_integral_rad",
                         "reference_wheel_peak_abs_rad_s",
@@ -1202,16 +1297,83 @@ def _drive_feedback_ledger_valid(
                         or spec.get("instantaneous_direction_reversal") is not True
                     ):
                         return False
+                else:
+                    logged_bias = _number(feedback, "logical_bias_rad_s")
+                    if (
+                        logged_bias is None
+                        or abs(logged_bias - logical_bias) > 1.0e-12
+                    ):
+                        return False
+            expected_segment_index: int | None = None
             if triggered is not None:
                 trigger_attempt, trigger_tick = triggered
                 if trigger_tick != probe_ticks[-1]:
                     return False
                 expected_latched = attempt == trigger_attempt and tick is not None and tick >= trigger_tick
-                expected_active = bool(
-                    expected_latched and first_bias_tick <= tick <= last_bias_tick
-                )
+                if mode == "wheel_rebound":
+                    assert wheel_segments is not None
+                    if expected_latched:
+                        expected_segment_index = next(
+                            (
+                                index
+                                for index, (first, last, _) in enumerate(
+                                    wheel_segments
+                                )
+                                if first <= tick <= last
+                            ),
+                            None,
+                        )
+                    expected_active = bool(
+                        expected_latched and expected_segment_index is not None
+                    )
+                    logical_bias = (
+                        wheel_segments[expected_segment_index][2]
+                        if expected_active
+                        and expected_segment_index is not None
+                        else 0.0
+                    )
+                else:
+                    expected_active = bool(
+                        expected_latched
+                        and first_bias_tick <= tick <= last_bias_tick
+                    )
                 if expected_active:
                     expected_requested[correction_channel_index] = logical_bias
+            elif mode == "wheel_rebound":
+                logical_bias = 0.0
+            if mode == "wheel_rebound":
+                logged_segment_index = feedback.get("active_segment_index")
+                if expected_segment_index is None:
+                    if logged_segment_index is not None:
+                        return False
+                    expected_segment_first = None
+                    expected_segment_last = None
+                else:
+                    if (
+                        isinstance(logged_segment_index, bool)
+                        or not isinstance(logged_segment_index, int)
+                        or logged_segment_index != expected_segment_index
+                    ):
+                        return False
+                    assert wheel_segments is not None
+                    expected_segment_first = wheel_segments[
+                        expected_segment_index
+                    ][0]
+                    expected_segment_last = wheel_segments[
+                        expected_segment_index
+                    ][1]
+                logged_logical_bias = _number(
+                    feedback, "logical_bias_rad_s"
+                )
+                if (
+                    logged_logical_bias is None
+                    or abs(logged_logical_bias - logical_bias) > 1.0e-12
+                    or feedback.get("active_segment_first_bias_tick")
+                    != expected_segment_first
+                    or feedback.get("active_segment_last_bias_tick")
+                    != expected_segment_last
+                ):
+                    return False
             expected_peak = peak_fraction if expected_latched else 0.0
             expected_cumulative = cumulative_fraction if expected_latched else 0.0
             try:
@@ -1330,8 +1492,15 @@ def _drive_feedback_ledger_valid(
             mode = _drive_feedback_mode(spec)
             probe_rows = tuple(spec["probe_samples"])
             probe_ticks = tuple(int(item["motion_tick"]) for item in probe_rows)
-            first_bias_tick = int(spec["first_bias_tick"])
-            last_bias_tick = int(spec["last_bias_tick"])
+            if mode == "wheel_rebound":
+                wheel_segments = _wheel_feedback_segments(spec, mode)
+                if wheel_segments is None:
+                    return False
+                first_bias_tick = wheel_segments[0][0]
+                last_bias_tick = wheel_segments[-1][1]
+            else:
+                first_bias_tick = int(spec["first_bias_tick"])
+                last_bias_tick = int(spec["last_bias_tick"])
             teardown_tick = int(spec["teardown_tick"])
             lag_threshold = float(spec["lag_threshold_deg"])
             probe_index = int(spec["probe_channel_index"])
@@ -1503,6 +1672,15 @@ def _drive_feedback_ledger_valid(
                     return False
                 if not same_phase_teardown and (
                     feedback.get("kind") is not None
+                    or feedback.get("bias_segments") not in (None, [], ())
+                    or feedback.get("active_segment_index") is not None
+                    or feedback.get("active_segment_first_bias_tick") is not None
+                    or feedback.get("active_segment_last_bias_tick") is not None
+                    or (
+                        (value := _number(feedback, "logical_bias_rad_s"))
+                        is None
+                        or abs(value) > 1.0e-12
+                    )
                     or any(
                         (value := _number(feedback, field)) is None
                         or abs(value) > 1.0e-12
@@ -1536,7 +1714,7 @@ def _drive_feedback_ledger_valid(
                 return False
             reference_integral, integral_budget = values
             realized_signed_integral = sum(trace) / physics_hz
-            realized_integral_fraction = (
+            realized_absolute_integral_fraction = (
                 sum(abs(value) for value in trace) / physics_hz / reference_integral
             )
             try:
@@ -1552,8 +1730,15 @@ def _drive_feedback_ledger_valid(
                     if triggered is not None
                     else abs(realized_signed_integral) > 1.0e-9
                 )
-                or realized_integral_fraction > integral_budget + 1.0e-9
-                or realized_integral_fraction
+                or (
+                    abs(
+                        realized_absolute_integral_fraction - integral_budget
+                    )
+                    > 1.0e-9
+                    if triggered is not None
+                    else realized_absolute_integral_fraction > 1.0e-9
+                )
+                or realized_absolute_integral_fraction
                 > _MAX_FEEDBACK_FRACTION + 1.0e-9
             ):
                 return False

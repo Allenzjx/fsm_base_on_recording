@@ -81,17 +81,22 @@ def test_p09_two_sample_live_deficit_latches_bounded_wheel_rebound() -> None:
     assert all(not item.active for item in armed_gap)
     assert all(item.trigger_tick == second.motion_tick for item in armed_gap)
     assert all(item.active for item in active)
-    assert len(active) == 12
-    assert all(
-        item.bias_full12[spec.correction_channel_index]
-        == pytest.approx(spec.logical_bias_rad_s)
-        for item in active
-    )
-    assert all(
-        sum(abs(value) for value in item.bias_full12)
-        == pytest.approx(abs(spec.logical_bias_rad_s))
-        for item in active
-    )
+    assert len(active) == 20
+    assert [item.active_segment_index for item in active] == [0] * 12 + [1] * 8
+    for item in active:
+        assert item.active_segment_index is not None
+        segment = spec.bias_segments[item.active_segment_index]
+        assert item.bias_full12[
+            spec.correction_channel_index
+        ] == pytest.approx(segment.logical_bias_rad_s)
+        assert sum(abs(value) for value in item.bias_full12) == pytest.approx(
+            abs(segment.logical_bias_rad_s)
+        )
+        assert item.logical_bias_rad_s == pytest.approx(
+            segment.logical_bias_rad_s
+        )
+        assert item.active_segment_first_bias_tick == segment.first_bias_tick
+        assert item.active_segment_last_bias_tick == segment.last_bias_tick
     assert active[0].peak_fraction_of_reference == 0.0
     assert active[0].cumulative_fraction_of_reference == pytest.approx(
         abs(spec.additional_wheel_integral_rad)
@@ -99,37 +104,71 @@ def test_p09_two_sample_live_deficit_latches_bounded_wheel_rebound() -> None:
     )
     assert active[0].kind == "pre_endpoint_wheel_rebound_alignment"
     assert active[0].logical_bias_rad_s == 0.33
+    assert active[12].logical_bias_rad_s == 0.22
+    assert active[0].bias_segments == spec.bias_segments
     assert active[0].reference_wheel_integral_rad == pytest.approx(
         -0.9060000000012605
     )
     assert active[0].additional_wheel_integral_rad == pytest.approx(
-        0.33 * 12.0 / 120.0
+        (0.33 * 12.0 + 0.22 * 8.0) / 120.0
     )
     assert active[0].resulting_wheel_integral_rad == pytest.approx(
-        -0.8730000000012605
+        -0.8583333333345938
     )
     assert active[0].cumulative_fraction_of_reference == pytest.approx(
-        0.03642384105955198
+        0.0526122148637973
     )
     assert active[0].reference_wheel_peak_abs_rad_s == pytest.approx(1.07)
     assert active[0].resulting_wheel_peak_abs_rad_s == pytest.approx(1.07)
     assert active[0].instantaneous_direction_reversal is True
     endpoint_tick = round(phase.active_duration_s * 120.0)
     active_by_tick = {item.tick_index: item for item in active}
-    for tick in range(spec.first_bias_tick, endpoint_tick):
+    primary, secondary = spec.bias_segments
+    for tick in range(primary.first_bias_tick, endpoint_tick):
         native = phase.nominal_at(tick / 120.0)[spec.correction_channel_index]
         assert native == pytest.approx(-1.07)
         assert native + active_by_tick[tick].bias_full12[
             spec.correction_channel_index
         ] == pytest.approx(-0.74)
-    for tick in range(endpoint_tick, spec.last_bias_tick + 1):
+    for tick in range(endpoint_tick, primary.last_bias_tick + 1):
         native = phase.end_full12[spec.correction_channel_index]
         assert native == pytest.approx(0.0)
         assert native + active_by_tick[tick].bias_full12[
             spec.correction_channel_index
         ] == pytest.approx(0.33)
+    for tick in range(
+        secondary.first_bias_tick, secondary.last_bias_tick + 1
+    ):
+        native = phase.end_full12[spec.correction_channel_index]
+        assert native == pytest.approx(0.0)
+        assert native + active_by_tick[tick].bias_full12[
+            spec.correction_channel_index
+        ] == pytest.approx(0.22)
     assert restored.bias_full12 == pytest.approx((0.0,) * 12)
+    assert restored.active_segment_index is None
+    assert restored.logical_bias_rad_s == 0.0
     assert restored.cumulative_fraction_of_reference < 0.15
+    first_details = active[0].as_dict()
+    second_details = active[12].as_dict()
+    restored_details = restored.as_dict()
+    assert first_details["bias_segments"] == [
+        {
+            "first_bias_tick": 860,
+            "last_bias_tick": 871,
+            "logical_bias_rad_s": 0.33,
+        },
+        {
+            "first_bias_tick": 872,
+            "last_bias_tick": 879,
+            "logical_bias_rad_s": 0.22,
+        },
+    ]
+    assert first_details["active_segment_index"] == 0
+    assert first_details["logical_bias_rad_s"] == pytest.approx(0.33)
+    assert second_details["active_segment_index"] == 1
+    assert second_details["logical_bias_rad_s"] == pytest.approx(0.22)
+    assert restored_details["active_segment_index"] is None
+    assert restored_details["logical_bias_rad_s"] == 0.0
 
 
 def test_p09_wheel_rebound_requires_both_live_deficit_samples() -> None:
@@ -222,7 +261,7 @@ def test_p09_wheel_rebound_is_one_shot_across_a_same_state_retry() -> None:
     ("field", "invalid_value"),
     (
         ("kind", "verify_tail_wheel_carry_alignment"),
-        ("logical_bias_rad_s", 1.07),
+        ("teardown_tick", 879),
         ("additional_wheel_integral_rad", 0.107),
         ("resulting_wheel_integral_rad", -0.7990000000012605),
         ("cumulative_fraction_of_reference", 0.118101545253699),
@@ -240,6 +279,42 @@ def test_p09_wheel_rebound_runtime_fails_closed(
     spec = phase.drive_feedback
     assert spec is not None
     invalid = replace(spec, **{field: invalid_value})
+
+    with pytest.raises(RuntimeError, match="not a valid wheel rebound"):
+        ReferenceBoundedDriveFeedback().update(
+            state_id="P09",
+            motion_tick_index=spec.probe_samples[0].motion_tick,
+            actual_full12=_actual(spec.probe_channel_index, 0.0),
+            spec=invalid,
+        )
+
+
+@pytest.mark.parametrize(
+    ("segment_index", "field", "invalid_value"),
+    (
+        (0, "first_bias_tick", 861),
+        (0, "last_bias_tick", 870),
+        (0, "logical_bias_rad_s", 1.07),
+        (1, "first_bias_tick", 873),
+        (1, "last_bias_tick", 880),
+        (1, "logical_bias_rad_s", 0.33),
+    ),
+)
+def test_p09_wheel_rebound_runtime_rejects_mutated_segments(
+    segment_index: int,
+    field: str,
+    invalid_value: object,
+) -> None:
+    phase = load_motion_contract(
+        ROOT / "configs" / "recording_motion_contract.json"
+    ).phase("P09")
+    spec = phase.drive_feedback
+    assert spec is not None
+    segments = list(spec.bias_segments)
+    segments[segment_index] = replace(
+        segments[segment_index], **{field: invalid_value}
+    )
+    invalid = replace(spec, bias_segments=tuple(segments))
 
     with pytest.raises(RuntimeError, match="not a valid wheel rebound"):
         ReferenceBoundedDriveFeedback().update(
