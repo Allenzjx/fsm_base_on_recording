@@ -281,7 +281,7 @@ def test_controller_exposes_live_latched_p09_drive_feedback(spec, contract) -> N
     assert tail.full12[feedback.correction_channel_index] == 0.0
     assert tail.full12[feedback.correction_channel_index] + tail.drive_feedback_bias_full12[
         feedback.correction_channel_index
-    ] == pytest.approx(0.22)
+    ] == pytest.approx(0.17)
     assert restored.drive_feedback_bias_full12 == pytest.approx((0.0,) * 12)
     assert first.drive_feedback_details[
         "cumulative_fraction_of_reference"
@@ -294,7 +294,7 @@ def test_controller_exposes_live_latched_p09_drive_feedback(spec, contract) -> N
     assert secondary_first.drive_feedback_details["active_segment_index"] == 1
     assert secondary_first.drive_feedback_details[
         "logical_bias_rad_s"
-    ] == pytest.approx(0.22)
+    ] == pytest.approx(0.17)
     assert first.drive_feedback_details[
         "resulting_wheel_integral_rad"
     ] == pytest.approx(feedback.resulting_wheel_integral_rad)
@@ -448,7 +448,7 @@ def test_p09_wheel_rebound_is_zero_at_the_delayed_p10_entry_decision(
             feedback.correction_channel_index
         ] + active.drive_feedback_bias_full12[
             feedback.correction_channel_index
-        ] == pytest.approx(0.22)
+        ] == pytest.approx(0.17)
     frame = frames[feedback.teardown_tick]
     assert frame.state_id == "P10"
     assert frame.lifecycle is expected_lifecycle

@@ -18801,14 +18801,14 @@
           {
             "first_bias_tick": 872,
             "last_bias_tick": 879,
-            "logical_bias_rad_s": 0.22
+            "logical_bias_rad_s": 0.17
           }
         ],
         "teardown_tick": 880,
         "reference_wheel_integral_rad": -0.9060000000012605,
-        "additional_wheel_integral_rad": 0.0476666666666667,
-        "resulting_wheel_integral_rad": -0.8583333333345938,
-        "cumulative_fraction_of_reference": 0.0526122148637973,
+        "additional_wheel_integral_rad": 0.044333333333333336,
+        "resulting_wheel_integral_rad": -0.8616666666679271,
+        "cumulative_fraction_of_reference": 0.04893303899919609,
         "reference_wheel_peak_abs_rad_s": 1.07,
         "resulting_wheel_peak_abs_rad_s": 1.07,
         "instantaneous_direction_reversal": true,

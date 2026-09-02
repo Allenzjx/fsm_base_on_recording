@@ -104,19 +104,19 @@ def test_p09_two_sample_live_deficit_latches_bounded_wheel_rebound() -> None:
     )
     assert active[0].kind == "pre_endpoint_wheel_rebound_alignment"
     assert active[0].logical_bias_rad_s == 0.33
-    assert active[12].logical_bias_rad_s == 0.22
+    assert active[12].logical_bias_rad_s == 0.17
     assert active[0].bias_segments == spec.bias_segments
     assert active[0].reference_wheel_integral_rad == pytest.approx(
         -0.9060000000012605
     )
     assert active[0].additional_wheel_integral_rad == pytest.approx(
-        (0.33 * 12.0 + 0.22 * 8.0) / 120.0
+        (0.33 * 12.0 + 0.17 * 8.0) / 120.0
     )
     assert active[0].resulting_wheel_integral_rad == pytest.approx(
-        -0.8583333333345938
+        -0.8616666666679271
     )
     assert active[0].cumulative_fraction_of_reference == pytest.approx(
-        0.0526122148637973
+        0.04893303899919609
     )
     assert active[0].reference_wheel_peak_abs_rad_s == pytest.approx(1.07)
     assert active[0].resulting_wheel_peak_abs_rad_s == pytest.approx(1.07)
@@ -143,7 +143,7 @@ def test_p09_two_sample_live_deficit_latches_bounded_wheel_rebound() -> None:
         assert native == pytest.approx(0.0)
         assert native + active_by_tick[tick].bias_full12[
             spec.correction_channel_index
-        ] == pytest.approx(0.22)
+        ] == pytest.approx(0.17)
     assert restored.bias_full12 == pytest.approx((0.0,) * 12)
     assert restored.active_segment_index is None
     assert restored.logical_bias_rad_s == 0.0
@@ -160,13 +160,13 @@ def test_p09_two_sample_live_deficit_latches_bounded_wheel_rebound() -> None:
         {
             "first_bias_tick": 872,
             "last_bias_tick": 879,
-            "logical_bias_rad_s": 0.22,
+            "logical_bias_rad_s": 0.17,
         },
     ]
     assert first_details["active_segment_index"] == 0
     assert first_details["logical_bias_rad_s"] == pytest.approx(0.33)
     assert second_details["active_segment_index"] == 1
-    assert second_details["logical_bias_rad_s"] == pytest.approx(0.22)
+    assert second_details["logical_bias_rad_s"] == pytest.approx(0.17)
     assert restored_details["active_segment_index"] is None
     assert restored_details["logical_bias_rad_s"] == 0.0
 
