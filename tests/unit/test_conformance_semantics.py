@@ -152,7 +152,11 @@ def _synthetic_evidence(*, wheel: bool) -> tuple[
                 "velocity_full12": _vector(channel_index, 0.0),
             }
         )
-    contract = {"full12_order": list(ORDER), "phases": phases}
+    contract = {
+        "full12_order": list(ORDER),
+        "wheel_radius_m": 0.04998999834060672,
+        "phases": phases,
+    }
     return contract, observations, commands, windows
 
 
@@ -167,11 +171,11 @@ def test_servo_velocity_uses_whole_phase_and_post_end_physics_sample() -> None:
     assert _summary(rows)["all_normal_states_within_15_percent"] is True
 
 
-def test_wheels_gate_target_metrics_but_keep_physical_response_diagnostics() -> None:
+def test_wheels_gate_target_metrics_and_actual_integral() -> None:
     contract, observations, commands, windows = _synthetic_evidence(wheel=True)
     rows = _similarity_rows(contract, observations, commands, windows)
 
-    assert _summary(rows)["all_normal_states_within_15_percent"] is True
+    assert _summary(rows)["all_normal_states_within_15_percent"] is False
     assert all(row["fsm_average_velocity"] == pytest.approx(0.3) for row in rows)
     assert all(row["fsm_peak_velocity"] == pytest.approx(0.3) for row in rows)
     assert all(row["fsm_measured_peak_velocity"] == pytest.approx(100.0) for row in rows)
@@ -179,7 +183,13 @@ def test_wheels_gate_target_metrics_but_keep_physical_response_diagnostics() -> 
     assert all(row["delta_error_percent"] == 0.0 for row in rows)
     assert all(row["actual_endpoint_error_percent"] > 15.0 for row in rows)
     assert all(row["actual_wheel_integral_error_percent"] > 15.0 for row in rows)
-    assert all(row["wheel_integral_error_percent"] == pytest.approx(0.0) for row in rows)
+    assert all(row["wheel_integral_error_percent"] > 15.0 for row in rows)
+    assert all(row["reference_wheel_integral"] == pytest.approx(0.3) for row in rows)
+    assert all(row["fsm_wheel_integral"] == pytest.approx(0.3) for row in rows)
+    assert all(
+        row["wheel_integral_gate_basis"] == "max(command_target,measured_actual)"
+        for row in rows
+    )
 
 
 def test_wheel_command_integral_and_one_degree_servo_velocity_floor_gate() -> None:
@@ -222,4 +232,3 @@ def test_wheel_command_integral_and_one_degree_servo_velocity_floor_gate() -> No
         actual_velocity=1.1,
     )
     assert servo.within_15_percent is False
-

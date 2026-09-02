@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -134,6 +135,71 @@ def _run_ffmpeg(command: Sequence[str], *, label: str) -> None:
         raise VideoBuildError(f"{label} ffmpeg failed ({completed.returncode}): {tail}")
 
 
+_FFMPEG_SHA256_RE = re.compile(r"^SHA256=([0-9a-f]{64})$", re.IGNORECASE | re.MULTILINE)
+
+
+def _h264_elementary_stream_sha256(ffmpeg: Path, source: Path) -> str:
+    """Hash packet-copied Annex-B H.264, independent of MP4 container atoms."""
+
+    completed = subprocess.run(
+        [
+            str(ffmpeg), "-hide_banner", "-nostdin", "-v", "error",
+            "-i", str(source), "-map", "0:v:0", "-an", "-sn", "-dn",
+            "-c:v", "copy", "-bsf:v", "h264_mp4toannexb",
+            "-f", "hash", "-hash", "sha256", "-",
+        ],
+        capture_output=True,
+        text=True,
+        errors="replace",
+    )
+    match = _FFMPEG_SHA256_RE.search(completed.stdout)
+    if completed.returncode != 0 or match is None:
+        tail = (completed.stderr or completed.stdout)[-3000:].replace("\r", " ").replace("\n", " ")
+        raise VideoBuildError(
+            f"H.264 elementary-stream hash failed ({completed.returncode}): {tail}"
+        )
+    return match.group(1).lower()
+
+
+def _atomic_packet_copy_remux(
+    ffmpeg: Path,
+    source: Path,
+    destination: Path,
+) -> dict[str, Any]:
+    """Repair MP4 atoms without re-encoding, retiming, or joining sources."""
+
+    partial = destination.with_name(destination.stem + ".partial" + destination.suffix)
+    source_elementary_sha256 = _h264_elementary_stream_sha256(ffmpeg, source)
+    try:
+        _run_ffmpeg(
+            [
+                str(ffmpeg), "-hide_banner", "-nostdin", "-y",
+                "-copyts", "-start_at_zero", "-i", str(source),
+                "-map", "0:v:0", "-map_metadata", "0", "-an", "-sn", "-dn",
+                "-c:v", "copy", "-movflags", "+faststart", str(partial),
+            ],
+            label="FSM packet-copy remux",
+        )
+        output_elementary_sha256 = _h264_elementary_stream_sha256(ffmpeg, partial)
+        if output_elementary_sha256 != source_elementary_sha256:
+            raise VideoBuildError("packet-copy remux changed the H.264 elementary stream")
+        os.replace(partial, destination)
+    finally:
+        partial.unlink(missing_ok=True)
+    return {
+        "performed": True,
+        "method": "ffmpeg_single_input_single_video_packet_copy",
+        "source_sha256": sha256_file(source),
+        "output_sha256": sha256_file(destination),
+        "h264_elementary_stream_sha256": source_elementary_sha256,
+        "elementary_stream_unchanged": True,
+        "timestamps_unchanged": False,
+        "decoded_frames_unchanged": False,
+        "stitched": False,
+        "speed_modified": False,
+    }
+
+
 def _encode_comparison(
     ffmpeg: Path,
     reference: Path,
@@ -220,7 +286,11 @@ class FinalVideoBuilder:
             trial = validate_successful_trial(Path(successful_trial_dir), trial_manifest)
             source_fsm = Path(trial["video_path"])
             source_fsm_validation = validate_mp4(
-                source_fsm, ffmpeg=self.ffmpeg, stitched=False, speed_modified=False
+                source_fsm,
+                ffmpeg=self.ffmpeg,
+                stitched=False,
+                speed_modified=False,
+                require_sane_container_duration=False,
             )
             if source_fsm_validation.get("valid") is not True:
                 raise VideoBuildError("successful FSM viewport video failed validation")
@@ -230,7 +300,23 @@ class FinalVideoBuilder:
             comparison_out = self.output_dir / FINAL_COMPARISON_NAME
             diagnostic_out = self.output_dir / FINAL_DIAGNOSTIC_NAME
             _atomic_copy(source_reference, recording_out)
-            _atomic_copy(source_fsm, fsm_out)
+            if source_fsm_validation.get("container_duration_valid") is True:
+                _atomic_copy(source_fsm, fsm_out)
+                fsm_publication = {
+                    "performed": False,
+                    "method": "byte_exact_copy",
+                    "source_sha256": source_fsm_validation["sha256"],
+                    "output_sha256": sha256_file(fsm_out),
+                    "elementary_stream_unchanged": True,
+                    "timestamps_unchanged": True,
+                    "decoded_frames_unchanged": True,
+                    "stitched": False,
+                    "speed_modified": False,
+                }
+            else:
+                fsm_publication = _atomic_packet_copy_remux(
+                    self.ffmpeg, source_fsm, fsm_out
+                )
 
             reference_windows = reference_windows_from_contract(
                 Path(reference_contract), video_duration_s=float(source_reference_validation["duration_s"])
@@ -269,8 +355,25 @@ class FinalVideoBuilder:
                 raise VideoBuildError("one or more published final videos failed validation")
             if sha256_file(recording_out) != source_reference_validation["sha256"]:
                 raise VideoBuildError("published Recording is not a byte-exact copy of selected v010")
-            if sha256_file(fsm_out) != source_fsm_validation["sha256"]:
-                raise VideoBuildError("published FSM is not a byte-exact copy of the successful trial")
+            fsm_validation = validation["videos"]["fsm"]
+            timestamp_fields = ("frame_count", "first_pts_s", "last_pts_s", "frame_pts_sha256")
+            timestamps_unchanged = all(
+                source_fsm_validation.get(field) == fsm_validation.get(field)
+                for field in timestamp_fields
+            )
+            decoded_frames_unchanged = (
+                source_fsm_validation.get("decoded_frame_checksums_sha256")
+                == fsm_validation.get("decoded_frame_checksums_sha256")
+            )
+            if not timestamps_unchanged:
+                raise VideoBuildError("published FSM packet timestamps differ from the successful trial")
+            if not decoded_frames_unchanged:
+                raise VideoBuildError("published FSM decoded frames differ from the successful trial")
+            fsm_publication.update(
+                output_sha256=sha256_file(fsm_out),
+                timestamps_unchanged=True,
+                decoded_frames_unchanged=True,
+            )
 
             validation.update(
                 status="PASS",
@@ -293,6 +396,7 @@ class FinalVideoBuilder:
                     "source_trial_count": 1,
                     "speed_modified": False,
                 },
+                fsm_publication=fsm_publication,
             )
             checksums = "".join(
                 f"{sha256_file(path)}  {path.name}\n" for path in destinations.values()

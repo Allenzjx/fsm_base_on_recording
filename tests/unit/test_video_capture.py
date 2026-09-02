@@ -76,6 +76,7 @@ def _fake_recorder(tmp_path: Path, *, callback_count: int = 1) -> tuple[ActiveVi
     def validator(path: Path, **kwargs):
         assert path.read_bytes() == b"synthetic-mp4"
         assert kwargs["expected_frame_count"] == encoder.frames
+        assert kwargs["require_sane_container_duration"] is False
         return {
             "valid": True,
             "frame_count": encoder.frames,
@@ -151,8 +152,44 @@ Stream #0:0: Video: h264 (High), yuv420p(progressive), 1280x720, 15 fps, 15 tbr
     assert result["valid"] is True
     assert result["full_decode"] is True
     assert result["timestamps_monotonic"] is True
+    assert result["timestamps_continuous"] is True
     assert result["codec"] == "h264"
     assert result["pixel_format"] == "yuv420p"
+    assert result["container_duration_valid"] is True
+    assert len(result["frame_pts_sha256"]) == 64
+    assert len(result["decoded_frame_checksums_sha256"]) == 64
+
+
+def test_validate_mp4_rejects_malformed_container_duration(tmp_path: Path, monkeypatch) -> None:
+    source = tmp_path / "clip.mp4"
+    source.write_bytes(b"not-used-by-fake-ffmpeg")
+    executable = tmp_path / "ffmpeg.exe"
+    executable.write_bytes(b"x")
+    stderr = """
+Duration: 79536:25:53.00, start: 0.000000, bitrate: 0 kb/s
+Stream #0:0: Video: h264 (High), yuv420p(progressive), 1280x720, 15 fps, 15 tbr
+[showinfo] n: 0 pts: 0 pts_time:0 duration:1 duration_time:0.0667 checksum:AAAA mean:[100 128 128]
+[showinfo] n: 1 pts: 1 pts_time:0.0666667 duration:1 duration_time:0.0667 checksum:BBBB mean:[101 128 128]
+"""
+    monkeypatch.setattr(video_capture, "find_ffmpeg", lambda _: executable)
+    monkeypatch.setattr(
+        video_capture.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=0, stderr=stderr),
+    )
+    result = validate_mp4(source, expected_frame_count=2)
+    assert result["valid"] is False
+    assert result["container_duration_bounded"] is False
+    assert result["container_duration_valid"] is False
+
+    repairable = validate_mp4(
+        source,
+        expected_frame_count=2,
+        require_sane_container_duration=False,
+    )
+    assert repairable["valid"] is True
+    assert repairable["container_duration_required"] is False
+    assert repairable["container_duration_valid"] is False
 
 
 def test_validate_mp4_rejects_non_monotonic_pts(tmp_path: Path, monkeypatch) -> None:
@@ -172,3 +209,4 @@ Stream #0:0: Video: h264, yuv420p, 1280x720, 15 fps
     assert result["valid"] is False
     assert result["status"] == VIDEO_ERROR_CODE
     assert result["timestamps_monotonic"] is False
+    assert result["timestamps_continuous"] is False

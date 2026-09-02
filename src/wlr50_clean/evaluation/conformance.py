@@ -39,10 +39,20 @@ SIMILARITY_COLUMNS = (
     "reference_measured_average_velocity", "fsm_measured_average_velocity",
     "measured_average_velocity_error_percent", "reference_measured_peak_velocity",
     "fsm_measured_peak_velocity", "measured_peak_velocity_error_percent",
+    "channel_kind", "wheel_velocity_gate_basis", "wheel_integral_gate_basis",
+    "reference_wheel_surface_travel", "fsm_wheel_surface_travel",
+    "wheel_surface_travel_error_percent",
+    "reference_command_wheel_surface_travel",
+    "fsm_command_wheel_surface_travel",
+    "command_wheel_surface_travel_error_percent",
+    "reference_actual_wheel_surface_travel",
+    "fsm_actual_wheel_surface_travel",
+    "actual_wheel_surface_travel_error_percent",
 )
 
 
 PHYSICS_DT_S = 1.0 / 120.0
+DEFAULT_WHEEL_RADIUS_M = 0.04998999834060672
 
 
 class TrialAnalysisError(ValueError):
@@ -229,6 +239,9 @@ def _similarity_rows(
     phases = contract.get("phases")
     if len(order) != 12 or not isinstance(phases, list) or len(phases) != 13:
         raise TrialAnalysisError("compact contract does not contain full12/P01--P13")
+    wheel_radius_m = float(contract.get("wheel_radius_m", DEFAULT_WHEEL_RADIUS_M))
+    if not math.isfinite(wheel_radius_m) or wheel_radius_m <= 0.0:
+        raise TrialAnalysisError("compact contract has no valid wheel radius")
     result: list[dict[str, Any]] = []
     for phase in phases:
         phase_id = str(phase.get("state_id"))
@@ -297,7 +310,13 @@ def _similarity_rows(
                 command_abs_integral = _integral(
                     command_rows,
                     index,
-                    ("full12", "command_full12", "commanded_full12"),
+                    (
+                        "drive_target_full12",
+                        "applied_full12",
+                        "full12",
+                        "command_full12",
+                        "commanded_full12",
+                    ),
                     absolute=True,
                 )
                 fsm_average = command_abs_integral / max(
@@ -309,6 +328,8 @@ def _similarity_rows(
                     if (
                         vector := _vector(
                             row,
+                            "drive_target_full12",
+                            "applied_full12",
                             "full12",
                             "command_full12",
                             "commanded_full12",
@@ -323,7 +344,17 @@ def _similarity_rows(
                 fsm_peak = measured_fsm_peak
             ref_command_integral = float(phase["command_metrics"]["wheel_integral_rad"][channel]) if wheel else 0.0
             ref_actual_integral = float(reference_actual["actual_wheel_integral_rad"][channel]) if wheel else 0.0
-            fsm_command_integral = _integral(command_rows, index, ("full12", "command_full12", "commanded_full12")) if wheel else 0.0
+            fsm_command_integral = _integral(
+                command_rows,
+                index,
+                (
+                    "drive_target_full12",
+                    "applied_full12",
+                    "full12",
+                    "command_full12",
+                    "commanded_full12",
+                ),
+            ) if wheel else 0.0
             fsm_actual_integral = _integral(active_observations, index, ("actual_full12",), trapezoid=True) if wheel else 0.0
             command_delta = command_end[index] - command_start[index]
             actual_delta = actual_end[index] - actual_start[index]
@@ -369,7 +400,10 @@ def _similarity_rows(
                 "fsm_command_end": command_end[index], "fsm_actual_end": actual_end[index],
                 "fsm_delta": actual_delta, "fsm_active_duration": clock["active_duration_s"],
                 "fsm_average_velocity": fsm_average, "fsm_peak_velocity": fsm_peak,
-                "fsm_wheel_integral": fsm_actual_integral,
+                # The required legacy wheel-integral trio is command-space on
+                # both sides.  Measured physical response remains explicit in
+                # the dedicated actual columns and is an independent gate.
+                "fsm_wheel_integral": fsm_command_integral,
                 "endpoint_error_percent": conformance.endpoint_error_percent,
                 "delta_error_percent": conformance.delta_error_percent,
                 "duration_error_percent": conformance.duration_error_percent,
@@ -397,6 +431,42 @@ def _similarity_rows(
                 "reference_measured_peak_velocity": measured_ref_peak,
                 "fsm_measured_peak_velocity": measured_fsm_peak,
                 "measured_peak_velocity_error_percent": measured_peak_error,
+                "channel_kind": "wheel" if wheel else "servo",
+                "wheel_velocity_gate_basis": (
+                    "effective_drive_target" if wheel else "measured_actual"
+                ),
+                "wheel_integral_gate_basis": (
+                    "max(command_target,measured_actual)" if wheel else "not_applicable"
+                ),
+                "reference_wheel_surface_travel": (
+                    ref_command_integral * wheel_radius_m if wheel else 0.0
+                ),
+                "fsm_wheel_surface_travel": (
+                    fsm_command_integral * wheel_radius_m if wheel else 0.0
+                ),
+                "wheel_surface_travel_error_percent": (
+                    conformance.wheel_integral_error_percent if wheel else 0.0
+                ),
+                "reference_command_wheel_surface_travel": (
+                    ref_command_integral * wheel_radius_m if wheel else 0.0
+                ),
+                "fsm_command_wheel_surface_travel": (
+                    fsm_command_integral * wheel_radius_m if wheel else 0.0
+                ),
+                "command_wheel_surface_travel_error_percent": (
+                    conformance.commanded_wheel_integral_error_percent
+                    if wheel else 0.0
+                ),
+                "reference_actual_wheel_surface_travel": (
+                    ref_actual_integral * wheel_radius_m if wheel else 0.0
+                ),
+                "fsm_actual_wheel_surface_travel": (
+                    fsm_actual_integral * wheel_radius_m if wheel else 0.0
+                ),
+                "actual_wheel_surface_travel_error_percent": (
+                    conformance.actual_wheel_integral_error_percent
+                    if wheel else 0.0
+                ),
             })
     return result
 
@@ -409,10 +479,40 @@ def _summary(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         "maximum_velocity_error_percent": "velocity_error_percent",
         "maximum_wheel_integral_error_percent": "wheel_integral_error_percent",
         "maximum_trajectory_rmse_percent": "trajectory_rmse_percent",
+        "maximum_command_wheel_integral_error_percent": (
+            "command_wheel_integral_error_percent"
+        ),
+        "maximum_actual_wheel_integral_error_percent": (
+            "actual_wheel_integral_error_percent"
+        ),
+        "maximum_wheel_surface_travel_error_percent": (
+            "wheel_surface_travel_error_percent"
+        ),
     }
     result = {name: max((float(row[field]) for row in rows), default=math.inf) for name, field in fields.items()}
+    wheel_rows = [row for row in rows if str(row.get("channel_kind")) == "wheel"]
     result.update(
         conformance_row_count=len(rows), phase_coverage=sorted({str(row["phase"]) for row in rows}),
         all_normal_states_within_15_percent=bool(rows) and all(bool(row["within_15_percent"]) for row in rows),
+        wheel_velocity_gate_basis=(
+            "effective command-target average and peak; measured response retained as diagnostics"
+        ),
+        wheel_integral_gate_basis=(
+            "both effective command target and measured actual angular integral/surface travel"
+        ),
+        maximum_measured_wheel_average_velocity_error_percent=max(
+            (
+                float(row["measured_average_velocity_error_percent"])
+                for row in wheel_rows
+            ),
+            default=math.inf,
+        ),
+        maximum_measured_wheel_peak_velocity_diagnostic_error_percent=max(
+            (
+                float(row["measured_peak_velocity_error_percent"])
+                for row in wheel_rows
+            ),
+            default=math.inf,
+        ),
     )
     return result

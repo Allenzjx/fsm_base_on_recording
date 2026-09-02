@@ -52,7 +52,7 @@
       "source_path": "C:/robotics_sim/wlr_robot/height_based_obstacle_replay/fsm_50mm_recording_derived_v3/viewport_buffer_video.py",
       "source_sha256": "9812b3896b843eda3db20a517856dc45b3637c91894172ffe9def613b6409a2b",
       "destination_path": "src/wlr50_clean/infrastructure/video_capture.py",
-      "destination_sha256": "515da79117bdea229a8d7d03c90c14b1bd9fde3cd92b2d0744df2b1654de9dd4",
+      "destination_sha256": "4de41b906d506cc98165c66e44afa767a9f8111a1483a09492a25df43346dbd6",
       "reuse_reason": "Narrow clean derivation of the proven active-viewport render-product callback and encoder lifecycle; no replay or FSM logic."
     },
     {

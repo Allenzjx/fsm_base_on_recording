@@ -134,7 +134,7 @@ _VIDEO_RE = re.compile(
 _FPS_RE = re.compile(r",\s*([0-9]+(?:\.[0-9]+)?)\s+fps\b")
 _FRAME_RE = re.compile(
     r"\bn:\s*(\d+)\s+pts:\s*(-?\d+)\s+pts_time:\s*([-+0-9.eE]+).*?"
-    r"checksum:([0-9A-Fa-f]+).*?mean:\[([^]]+)\]"
+    r"checksum:([0-9A-Fa-f]+).*?mean:\[\s*([-+0-9.eE]+)"
 )
 
 
@@ -152,8 +152,14 @@ def validate_mp4(
     maximum_duration_s: float = MAX_VIDEO_DURATION_S,
     stitched: bool = False,
     speed_modified: bool = False,
+    require_sane_container_duration: bool = True,
 ) -> dict[str, Any]:
-    """Fully decode; inspect every PTS/checksum rather than trusting metadata."""
+    """Fully decode and require sane MP4 timing metadata by default.
+
+    ``require_sane_container_duration=False`` is reserved for inspecting a
+    repairable legacy capture before a packet-copy remux.  Decoded duration is
+    always bounded, regardless of this flag.
+    """
     source = Path(path).resolve()
     result: dict[str, Any] = {
         "schema": "wlr50_clean.video_validation.v1",
@@ -162,6 +168,7 @@ def validate_mp4(
         "status": VIDEO_ERROR_CODE,
         "stitched": bool(stitched),
         "speed_modified": bool(speed_modified),
+        "container_duration_required": bool(require_sane_container_duration),
         "full_decode": False,
         "timestamps_monotonic": False,
         "error": "",
@@ -171,7 +178,7 @@ def validate_mp4(
         return result
     try:
         executable = find_ffmpeg(ffmpeg)
-        command = [str(executable), "-hide_banner", "-nostdin", "-i", str(source),
+        command = [str(executable), "-hide_banner", "-nostats", "-nostdin", "-i", str(source),
                    "-map", "0:v:0", "-vf", "showinfo", "-an", "-fps_mode",
                    "passthrough", "-f", "null", os.devnull]
         completed = subprocess.run(command, capture_output=True, text=True, errors="replace")
@@ -187,7 +194,7 @@ def validate_mp4(
             frame_numbers.append(int(match.group(1)))
             timestamps.append(float(match.group(3)))
             checksums.append(match.group(4).upper())
-            mean_luma.append(float(match.group(5).split()[0]))
+            mean_luma.append(float(match.group(5)))
         codec = stream_match.group(1).lower() if stream_match else ""
         pixel_format = stream_match.group(2).lower() if stream_match else ""
         width = int(stream_match.group(3)) if stream_match else 0
@@ -198,6 +205,19 @@ def validate_mp4(
         sequential_frames = frame_numbers == list(range(count))
         monotonic = count > 0 and all(b > a for a, b in zip(timestamps, timestamps[1:]))
         deltas = [b - a for a, b in zip(timestamps, timestamps[1:])]
+        expected_frame_interval = 1.0 / expected_fps
+        frame_interval_tolerance = max(1.0e-6, expected_frame_interval * 1.0e-4)
+        timestamps_continuous = bool(
+            deltas
+            and all(
+                abs(delta - expected_frame_interval) <= frame_interval_tolerance
+                for delta in deltas
+            )
+        )
+        maximum_frame_interval_deviation = max(
+            (abs(delta - expected_frame_interval) for delta in deltas),
+            default=math.inf,
+        )
         decoded_duration = (
             timestamps[-1] - timestamps[0] + (statistics.median(deltas) if deltas else 1.0 / fps)
             if count and fps > 0.0 else 0.0
@@ -215,12 +235,36 @@ def validate_mp4(
         black_cover_absent = count > 0 and black_like <= max(1, int(math.floor(0.10 * count)))
         fps_ok = math.isclose(fps, float(expected_fps), rel_tol=0.0, abs_tol=0.01)
         duration_ok = 0.0 < decoded_duration <= float(maximum_duration_s) + 1.0 / expected_fps
+        container_duration_bounded = (
+            0.0 < container_duration
+            <= float(maximum_duration_s) + 1.0 / expected_fps
+        )
+        container_duration_tolerance = 1.0 / expected_fps + 1.0e-4
+        container_duration_matches_decode = bool(
+            count
+            and abs(container_duration - decoded_duration)
+            < container_duration_tolerance
+        )
+        container_duration_valid = bool(
+            container_duration_bounded and container_duration_matches_decode
+        )
         frame_count_ok = expected_frame_count is None or count == int(expected_frame_count)
+        frame_pts_sha256 = hashlib.sha256(
+            b"".join(struct.pack(">d", value) for value in timestamps)
+        ).hexdigest()
+        decoded_frame_checksums_sha256 = hashlib.sha256(
+            "\n".join(checksums).encode("ascii")
+        ).hexdigest()
         valid = bool(completed.returncode == 0 and count >= 2 and sequential_frames
-                     and monotonic and codec == "h264" and pixel_format == "yuv420p"
+                     and monotonic and timestamps_continuous
+                     and codec == "h264" and pixel_format == "yuv420p"
                      and width == int(expected_width) and height == int(expected_height)
                      and fps_ok and duration_ok and frame_count_ok and not stitched
-                     and not speed_modified and black_cover_absent and motion_evidence)
+                     and not speed_modified and black_cover_absent and motion_evidence
+                     and (
+                         container_duration_valid
+                         or not require_sane_container_duration
+                     ))
         result.update(
             {
                 "valid": valid,
@@ -229,6 +273,10 @@ def validate_mp4(
                 "bytes": source.stat().st_size,
                 "duration_s": decoded_duration,
                 "container_duration_s": container_duration,
+                "container_duration_bounded": container_duration_bounded,
+                "container_duration_matches_decode": container_duration_matches_decode,
+                "container_duration_tolerance_s": container_duration_tolerance,
+                "container_duration_valid": container_duration_valid,
                 "fps": fps,
                 "frame_count": count,
                 "resolution": [width, height],
@@ -238,8 +286,14 @@ def validate_mp4(
                 "pixel_format": pixel_format,
                 "full_decode": completed.returncode == 0 and count >= 2 and sequential_frames,
                 "timestamps_monotonic": monotonic,
+                "timestamps_continuous": timestamps_continuous,
+                "expected_frame_interval_s": expected_frame_interval,
+                "frame_interval_tolerance_s": frame_interval_tolerance,
+                "maximum_frame_interval_deviation_s": maximum_frame_interval_deviation,
                 "first_pts_s": timestamps[0] if timestamps else None,
                 "last_pts_s": timestamps[-1] if timestamps else None,
+                "frame_pts_sha256": frame_pts_sha256,
+                "decoded_frame_checksums_sha256": decoded_frame_checksums_sha256,
                 "unique_frame_checksums": len(set(checksums)),
                 "longest_identical_frame_run": longest_repeat,
                 "motion_evidence_valid": motion_evidence,
@@ -538,6 +592,11 @@ class ActiveViewportVideoRecorder:
                     expected_frame_count=len(self._rows),
                     stitched=False,
                     speed_modified=False,
+                    # NVIDIA may finalize an otherwise valid single-stream MP4
+                    # with UINT32_MAX duration atoms.  Preserve the immutable
+                    # raw capture here; final publication packet-copy remuxes
+                    # and then strictly validates its container timeline.
+                    require_sane_container_duration=False,
                 )
             except Exception as exc:
                 self._fail(f"full decode failed: {type(exc).__name__}: {exc}")

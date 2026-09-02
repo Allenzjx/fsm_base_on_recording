@@ -125,6 +125,7 @@ def channel_conformance(
         actual_velocity, reference_velocity, absolute_floor=velocity_floor
     )
     command_integral_ok = True
+    actual_integral_ok = True
     command_integral_error = 0.0
     actual_integral_error = 0.0
     if wheel_channel:
@@ -138,6 +139,11 @@ def channel_conformance(
         command_integral_ok = within_contract(
             fsm_command_wheel_integral,
             reference_command_wheel_integral,
+            absolute_floor=WHEEL_INTEGRAL_FLOOR_RAD,
+        )
+        actual_integral_ok = within_contract(
+            fsm_actual_wheel_integral,
+            reference_actual_wheel_integral,
             absolute_floor=WHEEL_INTEGRAL_FLOOR_RAD,
         )
         command_integral_error = error_percent(
@@ -196,7 +202,9 @@ def channel_conformance(
         ),
         commanded_wheel_integral_error_percent=command_integral_error,
         actual_wheel_integral_error_percent=actual_integral_error,
-        wheel_integral_error_percent=command_integral_error,
+        wheel_integral_error_percent=max(
+            command_integral_error, actual_integral_error
+        ),
         within_15_percent=(
             command_endpoint_ok
             and actual_endpoint_ok
@@ -205,5 +213,6 @@ def channel_conformance(
             and duration_ok
             and velocity_ok
             and command_integral_ok
+            and actual_integral_ok
         ),
     )
