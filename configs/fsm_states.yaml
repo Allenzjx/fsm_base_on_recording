@@ -3306,3 +3306,4 @@ states:
     geometry and final pose; zero wheel targets are applied, then the new FSM must
     add a measured stable-decay debounce before SUCCESS.
   elapsed_time_is_not_completion_evidence: true
+  recovery_max_verify_wait: 1.5

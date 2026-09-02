@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -43,6 +44,7 @@ class StateSpec:
     completion_guards: tuple[GuardSpec, ...]
     hard_abort_guards: tuple[GuardSpec, ...]
     max_verify_wait_s: float
+    recovery_max_verify_wait_s: float
     retry_budget: int
     next_state: str
     recovery_state: str
@@ -118,6 +120,9 @@ def _parse_state(value: Mapping[str, Any]) -> StateSpec:
             value["hard_abort_conditions"], "hard_abort_conditions"
         ),
         max_verify_wait_s=float(value["max_verify_wait"]),
+        recovery_max_verify_wait_s=float(
+            value.get("recovery_max_verify_wait", value["max_verify_wait"])
+        ),
         retry_budget=int(value["retry_budget"]),
         next_state=str(value["next_state"]),
         recovery_state=str(value["recovery_state"]),
@@ -185,8 +190,18 @@ def _validate(spec: FsmSpec, raw_states: Sequence[Mapping[str, Any]]) -> None:
             raise ValueError(f"{state.state_id}: invalid next state")
         if state.retry_budget != 1:
             raise ValueError(f"{state.state_id}: exactly one retry is required")
-        if state.max_verify_wait_s <= 0.0:
+        if (
+            not math.isfinite(state.max_verify_wait_s)
+            or state.max_verify_wait_s <= 0.0
+        ):
             raise ValueError(f"{state.state_id}: verify wait must be positive")
+        if (
+            not math.isfinite(state.recovery_max_verify_wait_s)
+            or state.recovery_max_verify_wait_s < state.max_verify_wait_s
+        ):
+            raise ValueError(
+                f"{state.state_id}: recovery verify wait must be finite and cannot be shorter"
+            )
         if raw.get("elapsed_time_is_not_completion_evidence") is not True:
             raise ValueError(f"{state.state_id}: elapsed time cannot complete a state")
         if (

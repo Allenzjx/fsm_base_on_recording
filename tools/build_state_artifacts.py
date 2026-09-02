@@ -260,6 +260,13 @@ def build_state_specs(contract: dict[str, Any]) -> dict[str, Any]:
             ],
             "elapsed_time_is_not_completion_evidence": True,
         }
+        if state_id == "P13":
+            # Recovery restarts the measured wheel-decay evidence.  Preserve
+            # the normal one-second pose-settle window, then reserve the full
+            # authored debounce interval for the single bounded retry.
+            state["recovery_max_verify_wait"] = max_verify_wait + float(
+                decay_guard["debounce_s"]
+            )
         states.append(state)
     return {
         "schema": "wlr50_clean.fsm_states.v1",
@@ -286,8 +293,8 @@ def _write_docs(specs: dict[str, Any], derivation: Path, transitions: Path) -> N
         "",
         "Every state follows WAIT_ENTRY → EXECUTE_MOTION → VERIFY_RESULT → RECOVERY/DONE. A 0.5 s no-progress watchdog applies only during EXECUTE_MOTION; reference response carry-over is not treated as a reason to settle or freeze.",
         "",
-        "| State | Live completion guards | Next | Maximum verify wait (s) | Transition rationale |",
-        "|---|---|---|---:|---|",
+        "| State | Live completion guards | Next | Maximum verify wait (s) | Recovery verify wait (s) | Transition rationale |",
+        "|---|---|---|---:|---:|---|",
     ]
     for state in specs["states"]:
         steps = ",".join(str(item) for item in state["reference_step"])
@@ -298,7 +305,7 @@ def _write_docs(specs: dict[str, Any], derivation: Path, transitions: Path) -> N
             str(item["guard"]) for item in state["completion_conditions"]
         )
         transition_lines.append(
-            f"| {state['state_id']} | {guards} | {state['next_state']} | {state['max_verify_wait']:.3f} | {state['transition_reason']} |"
+            f"| {state['state_id']} | {guards} | {state['next_state']} | {state['max_verify_wait']:.3f} | {state.get('recovery_max_verify_wait', state['max_verify_wait']):.3f} | {state['transition_reason']} |"
         )
     derivation.parent.mkdir(parents=True, exist_ok=True)
     derivation.write_text("\n".join(derivation_lines) + "\n", encoding="utf-8")

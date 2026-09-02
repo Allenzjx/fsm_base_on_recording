@@ -877,6 +877,50 @@ def test_measured_wheel_decay_is_debounced_inside_controller(spec, contract) -> 
     assert frame.sim_time_s >= 0.5
 
 
+def test_p13_retry_reserves_full_wheel_decay_debounce_after_settling(
+    spec, contract
+) -> None:
+    state = spec.state("P13")
+    assert state.max_verify_wait_s == pytest.approx(1.0)
+    assert state.recovery_max_verify_wait_s == pytest.approx(1.5)
+
+    controller = SensorFsmController(spec, contract)
+    controller.state = state
+    controller.lifecycle = Lifecycle.VERIFY_RESULT
+    controller.retries_used = 1
+    controller._endpoint_issued = True
+    controller._verify_started_s = 0.0
+    guards = {guard.name: True for guard in state.completion_guards}
+    threshold = next(
+        float(guard.parameters["absolute_threshold_rad_s"])
+        for guard in state.completion_guards
+        if guard.name == "measured_wheel_velocity_stable_decay"
+    )
+
+    frame = None
+    for index in range(181):
+        # Trial023 first entered the measured velocity envelope 0.8 seconds
+        # after the corrected retry endpoint.  The existing 0.5-second
+        # debounce therefore cannot finish inside the normal 1.0-second
+        # verification window.
+        velocity = (threshold + 0.01,) * 4 if index < 96 else (0.0,) * 4
+        frame = controller.step(
+            {
+                "guards": guards,
+                "wheel_velocities_rad_s": velocity,
+                "commanded_full12": (0.0,) * 12,
+                "actual_full12": state.reference_actual_endpoint_full12,
+            },
+            sim_time_s=index / 120.0,
+        )
+        if frame.termination is not None:
+            break
+
+    assert frame is not None and frame.termination is not None
+    assert frame.termination.result is TaskResult.SUCCESS
+    assert frame.sim_time_s == pytest.approx(4.0 / 3.0)
+
+
 def test_nondecision_wheel_velocity_spike_resets_continuous_debounce(
     spec, contract
 ) -> None:

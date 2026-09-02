@@ -331,7 +331,12 @@ class SensorFsmController:
                     now if self._verify_started_s is None else self._verify_started_s
                 )
                 verify_elapsed = now - verify_start
-                if verify_elapsed + 1e-12 >= self.state.max_verify_wait_s:
+                verify_wait_s = (
+                    self.state.recovery_max_verify_wait_s
+                    if self.retries_used > 0
+                    else self.state.max_verify_wait_s
+                )
+                if verify_elapsed + 1e-12 >= verify_wait_s:
                     self._recover_or_terminate(report.first_blocker, now, events)
                 return
 
