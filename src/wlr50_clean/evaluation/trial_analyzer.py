@@ -1061,6 +1061,7 @@ def _drive_feedback_ledger_valid(
     previous_final: tuple[float, ...] | None = None
     attempt_by_phase: dict[str, int] = {}
     previous_tick_by_phase: dict[str, int] = {}
+    recovery_boundary_by_phase: set[str] = set()
     row_attempts: list[tuple[str, int, int | None]] = []
     logged_trigger_attempts: dict[str, tuple[int, int]] = {}
     row_index_by_attempt_tick: dict[tuple[str, int, int], int] = {}
@@ -1073,9 +1074,20 @@ def _drive_feedback_ledger_valid(
         except (TypeError, ValueError):
             return False
         attempt = attempt_by_phase.setdefault(phase_id, 0)
+        recovery_row = str(row.get("lifecycle")) == "RECOVERY"
+        if recovery_row:
+            recovery_boundary_by_phase.add(phase_id)
         if tick is not None:
             previous_tick = previous_tick_by_phase.get(phase_id)
-            if tick == 0 and previous_tick is not None:
+            if (
+                phase_id in recovery_boundary_by_phase
+                and previous_tick is not None
+                and not recovery_row
+            ):
+                attempt += 1
+                attempt_by_phase[phase_id] = attempt
+                recovery_boundary_by_phase.discard(phase_id)
+            elif not recovery_row and tick == 0 and previous_tick is not None:
                 attempt += 1
                 attempt_by_phase[phase_id] = attempt
             previous_tick_by_phase[phase_id] = tick

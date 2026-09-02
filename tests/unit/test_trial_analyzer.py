@@ -1179,6 +1179,40 @@ def test_wheel_rebound_feedback_accepts_exact_partial_counteraction_and_reversal
     assert teardown["atomic_ack"]["wheel_target_physical_rad_s"][0] == 0.0
 
 
+def test_drive_feedback_attempt_restarts_after_terminal_endpoint_recovery() -> None:
+    contract = _wheel_rebound_feedback_contract()
+    rows = _wheel_rebound_feedback_ledger_rows()
+    template = json.loads(json.dumps(rows[-1]))
+    start_time = template["sim_time_s"] + 1.0 / 120.0
+
+    first_endpoint = json.loads(json.dumps(template))
+    first_endpoint.update(
+        {
+            "state_id": "P13",
+            "sim_time_s": start_time,
+            "lifecycle": "VERIFY_RESULT",
+            "motion_tick_index": 2136,
+        }
+    )
+    first_endpoint["drive_feedback"]["tick_index"] = 2136
+    recovery = json.loads(json.dumps(template))
+    recovery.update(
+        {
+            "state_id": "P13",
+            "sim_time_s": start_time + 1.0 / 120.0,
+            "lifecycle": "RECOVERY",
+            "motion_tick_index": None,
+        }
+    )
+    retry_endpoint = json.loads(json.dumps(first_endpoint))
+    retry_endpoint["sim_time_s"] = start_time + 2.0 / 120.0
+    rows.extend((first_endpoint, recovery, retry_endpoint))
+
+    assert _drive_feedback_ledger_valid(
+        rows, contract, _feedback_observations(rows)
+    )
+
+
 def test_wheel_rebound_feedback_rederives_mandatory_trigger() -> None:
     contract = _wheel_rebound_feedback_contract()
     rows = _wheel_rebound_feedback_ledger_rows()
