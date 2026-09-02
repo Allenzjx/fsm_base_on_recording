@@ -143,7 +143,7 @@ def test_p09_wheel_rebound_is_compact_and_strictly_reference_bounded() -> None:
         (865, 865, 0.23),
         (866, 867, 1.03),
         (868, 868, 0.73),
-        (869, 869, 0.31),
+        (869, 869, 0.14),
         (870, 870, 0.01),
         (871, 871, 1.07),
     ]
@@ -161,21 +161,21 @@ def test_p09_wheel_rebound_is_compact_and_strictly_reference_bounded() -> None:
             + 0.33
             + 1.03 * 2.0
             + 0.73
-            + 0.31
+            + 0.14
             + 0.01
             + 1.07
         )
         / 120.0
     )
     assert feedback.resulting_wheel_integral_rad == pytest.approx(
-        -0.8438333333345938
+        -0.8452500000012605
     )
     assert feedback.resulting_wheel_integral_rad == pytest.approx(
         feedback.reference_wheel_integral_rad
         + feedback.additional_wheel_integral_rad
     )
     assert feedback.cumulative_fraction_of_reference == pytest.approx(
-        0.06861662987481255
+        0.06705298013235704
     )
     assert feedback.cumulative_fraction_of_reference == pytest.approx(
         abs(feedback.additional_wheel_integral_rad)
@@ -201,7 +201,7 @@ def test_p09_wheel_rebound_is_compact_and_strictly_reference_bounded() -> None:
         (866, 0.0, 1.03),
         (867, 0.0, 1.03),
         (868, 0.0, 0.73),
-        (869, 0.0, 0.31),
+        (869, 0.0, 0.14),
         (870, 0.0, 0.01),
         (871, 0.0, 1.07),
     )

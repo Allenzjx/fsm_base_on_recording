@@ -17,7 +17,7 @@ EXPECTED_BIAS_SEGMENTS = (
     (865, 865, 0.23),
     (866, 867, 1.03),
     (868, 868, 0.73),
-    (869, 869, 0.31),
+    (869, 869, 0.14),
     (870, 870, 0.01),
     (871, 871, 1.07),
 )
@@ -32,7 +32,7 @@ EXPECTED_NATIVE_AND_FINAL_BY_TICK = (
     (866, 0.0, 1.03),
     (867, 0.0, 1.03),
     (868, 0.0, 0.73),
-    (869, 0.0, 0.31),
+    (869, 0.0, 0.14),
     (870, 0.0, 0.01),
     (871, 0.0, 1.07),
 )
@@ -158,10 +158,10 @@ def test_p09_two_sample_live_deficit_latches_bounded_wheel_rebound() -> None:
         / 120.0
     )
     assert active[0].resulting_wheel_integral_rad == pytest.approx(
-        -0.8438333333345938
+        -0.8452500000012605
     )
     assert active[0].cumulative_fraction_of_reference == pytest.approx(
-        0.06861662987481255
+        0.06705298013235704
     )
     assert active[0].reference_wheel_peak_abs_rad_s == pytest.approx(1.07)
     assert active[0].resulting_wheel_peak_abs_rad_s == pytest.approx(1.07)
