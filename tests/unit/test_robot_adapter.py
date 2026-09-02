@@ -19,6 +19,7 @@ from wlr50_clean.infrastructure.robot_adapter import (
     RobotAdapter,
     RobotAdapterError,
     authoritative_servo_limits_rad,
+    bounded_drive_feedback_step,
 )
 
 
@@ -58,6 +59,44 @@ def test_authoritative_limits_cover_every_canonical_command_endpoint() -> None:
 def test_unknown_servo_limit_fails_closed() -> None:
     with pytest.raises(RobotAdapterError, match="unknown servo"):
         authoritative_servo_limits_rad("not_a_joint", 0.0)
+
+
+def test_p09_feedback_bias_preserves_final_150_degree_per_second_slew() -> None:
+    base = {
+        743: 13.521235,
+        744: 14.428796,
+        745: 14.428796,
+        746: 14.428796,
+        747: 14.428796,
+        748: 15.678796,
+        752: 16.928796,
+        756: 18.178796,
+        760: 19.428796,
+    }
+    previous = base[743]
+    observed: dict[int, float] = {}
+    for tick in range(744, 761):
+        native_tick = max(item for item in base if item <= tick)
+        native = base[native_tick]
+        bias = 0.9 if 745 <= tick <= 759 else 0.0
+        final = bounded_drive_feedback_step(
+            previous_deg=previous,
+            native_deg=native,
+            bias_deg=bias,
+            maximum_delta_deg=1.25,
+            lower_deg=-60.0,
+            upper_deg=210.0,
+        )
+        assert abs(final - previous) <= 1.25 + 1.0e-12
+        observed[tick] = final
+        previous = final
+
+    assert observed[744] == pytest.approx(14.428796)
+    assert observed[745] == pytest.approx(15.328796)
+    assert observed[748] == pytest.approx(16.578796)
+    assert observed[752] == pytest.approx(17.828796)
+    assert observed[756] == pytest.approx(19.078796)
+    assert observed[760] == pytest.approx(19.428796)
 
 
 def test_adapter_authors_all_limits_on_session_layer_and_syncs_caches(

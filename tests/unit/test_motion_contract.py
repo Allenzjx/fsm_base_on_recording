@@ -93,3 +93,22 @@ def test_p04_p05_boundary_and_atomic_ticks_remain_frozen() -> None:
     assert p04.end_full12 == p05.start_full12
     assert [round(group.time_s * 120) for group in p04.atomic_groups] == [0, 528]
     assert [round(group.time_s * 120) for group in p05.atomic_groups] == [104, 1088]
+
+
+def test_p09_tail_feedback_is_compact_and_strictly_reference_bounded() -> None:
+    contract = load_motion_contract(ROOT / "configs" / "recording_motion_contract.json")
+    feedback = contract.phase("P09").drive_feedback
+    assert feedback is not None
+    assert [(item.motion_tick, item.reference_actual_deg) for item in feedback.probe_samples] == [
+        (743, 20.18301304299565),
+        (744, 20.18210292028875),
+    ]
+    assert feedback.first_bias_tick == 745
+    assert feedback.last_bias_tick == 759
+    assert feedback.logical_bias_deg == 0.9
+    assert feedback.cumulative_fraction_of_reference < 0.15
+    assert all(
+        phase.drive_feedback is None
+        for phase in contract.phases
+        if phase.state_id != "P09"
+    )

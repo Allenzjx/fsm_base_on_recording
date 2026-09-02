@@ -18772,6 +18772,32 @@
         1,
         1
       ],
+      "drive_feedback": {
+        "kind": "late_tail_support_alignment",
+        "channel": "rear_left_knee",
+        "channel_index": 5,
+        "source": "two-sample compact corridor from locked v010 120 Hz physical observation evidence",
+        "probe_samples": [
+          {
+            "motion_tick": 743,
+            "reference_actual_deg": 20.18301304299565
+          },
+          {
+            "motion_tick": 744,
+            "reference_actual_deg": 20.18210292028875
+          }
+        ],
+        "lag_threshold_deg": 0.14,
+        "required_consecutive_samples": 2,
+        "first_bias_tick": 745,
+        "last_bias_tick": 759,
+        "logical_bias_deg": 0.9,
+        "reference_excursion_deg": 19.4,
+        "peak_fraction_of_reference": 0.04639175257731959,
+        "cumulative_fraction_of_reference": 0.09278350515463918,
+        "nominal_endpoint_restored": true,
+        "raw_recording_runtime_access_required": false
+      },
       "reference_sim_readback_end_s": 67.17499999999953,
       "reference_command_readback_latency_s": 0.008333333333339965,
       "reference_actual": {

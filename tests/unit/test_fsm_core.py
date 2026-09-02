@@ -187,7 +187,7 @@ def test_feedback_correction_cannot_exceed_fifteen_percent(contract) -> None:
     assert atomic.full12[1] == pytest.approx(expected_knee)
 
 
-def test_p10_live_entry_lag_scales_only_rr_knee_within_feedback_cap(
+def test_p10_entry_keeps_the_unmodified_reference_motion(
     spec, contract
 ) -> None:
     controller = SensorFsmController(spec, contract)
@@ -195,9 +195,9 @@ def test_p10_live_entry_lag_scales_only_rr_knee_within_feedback_cap(
     p10 = contract.phase("P10")
     guards = _live_guards(completion=False)
     actual = list(controller.state.reference_actual_start_full12)
-    # Trial010's guard-pass entry is 1.068 degrees behind v010.  Relative to
-    # v010's 4.594 degree measured P10 response, that requests more than the
-    # 15% correction cap while remaining inside the 2 degree entry envelope.
+    # Trial011 proved that a full +15% P10 excursion correction was physically
+    # too late to repair the carry-in phase.  A guard-compatible entry must
+    # therefore retain v010's authored P10 request unchanged.
     actual[7] = -51.465317474601946
     observation = {"guards": guards, "actual_full12": actual}
 
@@ -214,19 +214,53 @@ def test_p10_live_entry_lag_scales_only_rr_knee_within_feedback_cap(
         and event.to_lifecycle == Lifecycle.EXECUTE_MOTION.value
     )
     fractions = transition.details["correction_fractions"]
-    assert fractions[7] == pytest.approx(0.15)
-    assert all(value == 0.0 for index, value in enumerate(fractions) if index != 7)
-    assert frames[0].full12[7] == pytest.approx(-34.12)
-    assert frames[8].full12[7] == pytest.approx(-28.025)
-    assert frames[16].full12[7] == pytest.approx(-25.61)
+    assert fractions == pytest.approx((0.0,) * 12)
+    assert frames[0].full12[7] == pytest.approx(-34.6)
+    assert frames[8].full12[7] == pytest.approx(-29.3)
+    assert frames[16].full12[7] == pytest.approx(-27.2)
     assert frames[0].full12[:7] + frames[0].full12[8:] == pytest.approx(
         p10.waypoints[1].full12[:7] + p10.waypoints[1].full12[8:]
     )
 
-    other_phase = SensorFsmController(spec, contract)
-    assert other_phase._initial_feedback_correction(observation).fractions == (
-        0.0,
-    ) * 12
+
+def test_controller_exposes_live_latched_p09_drive_feedback(spec, contract) -> None:
+    controller = SensorFsmController(spec, contract)
+    controller.state = spec.state("P09")
+    controller.lifecycle = Lifecycle.EXECUTE_MOTION
+    phase = contract.phase("P09")
+    feedback = phase.drive_feedback
+    assert feedback is not None
+    controller.motion.start_phase(phase)
+    guards = _live_guards(completion=False)
+    frame = None
+    for tick in range(feedback.first_bias_tick + 1):
+        actual = list(controller.state.reference_actual_start_full12)
+        probe = next(
+            (item for item in feedback.probe_samples if item.motion_tick == tick),
+            None,
+        )
+        if probe is not None:
+            actual[feedback.channel_index] = (
+                probe.reference_actual_deg - feedback.lag_threshold_deg
+            )
+        frame = controller.step(
+            {
+                "guards": guards,
+                "actual_full12": actual,
+                "progress_vector": (float(tick),),
+            },
+            sim_time_s=tick / 120.0,
+        )
+
+    assert frame is not None
+    assert frame.drive_feedback_bias_full12[feedback.channel_index] == pytest.approx(
+        feedback.logical_bias_deg
+    )
+    assert frame.drive_feedback_details["cumulative_fraction_of_reference"] == pytest.approx(
+        feedback.cumulative_fraction_of_reference
+    )
+    assert frame.drive_feedback_details["channel"] == feedback.channel
+    assert frame.drive_feedback_details["channel_index"] == feedback.channel_index
 
 
 def test_watchdog_reports_detailed_first_stall() -> None:

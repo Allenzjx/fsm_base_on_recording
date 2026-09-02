@@ -257,7 +257,10 @@ def _terminal_success(task_rows: Sequence[Mapping[str, Any]]) -> bool:
     return bool(results) and results[-1] == "SUCCESS" and not any(item in failures for item in results)
 
 
-def _recovery_evidence(transitions: Sequence[Mapping[str, Any]]) -> tuple[list[float], dict[str, int]]:
+def _recovery_evidence(
+    transitions: Sequence[Mapping[str, Any]],
+    commands: Sequence[Mapping[str, Any]] = (),
+) -> tuple[list[float], dict[str, int]]:
     recovery_rows = [
         row for row in transitions
         if str(row.get("from_lifecycle")) == "RECOVERY"
@@ -274,22 +277,54 @@ def _recovery_evidence(transitions: Sequence[Mapping[str, Any]]) -> tuple[list[f
         and isinstance(row.get("details"), Mapping)
         and "correction_fractions" in row["details"]
     )
-    values: list[float] = []
+    cumulative_by_phase_channel: dict[tuple[str, str], float] = {}
     for row in rows:
         details = row.get("details")
         raw = details.get("correction_fractions") if isinstance(details, Mapping) else None
         if isinstance(raw, Mapping):
-            candidates: Sequence[Any] = tuple(raw.values())
+            candidates = tuple((str(name), value) for name, value in raw.items())
         elif isinstance(raw, Sequence) and not isinstance(raw, (str, bytes)) and len(raw) == 12:
-            candidates = raw
+            candidates = tuple((str(index), value) for index, value in enumerate(raw))
         else:
-            candidates = (math.inf,)
+            candidates = (("invalid", math.inf),)
+        for channel, item in candidates:
+            try:
+                parsed = abs(float(item))
+            except (TypeError, ValueError):
+                parsed = math.inf
+            key = (_phase(row), channel)
+            cumulative_by_phase_channel[key] = (
+                cumulative_by_phase_channel.get(key, 0.0)
+                + (parsed if math.isfinite(parsed) else math.inf)
+            )
+    nonzero_feedback_seen = False
+    feedback_trigger_seen = False
+    for row in commands:
+        feedback = row.get("drive_feedback")
+        if not isinstance(feedback, Mapping):
+            continue
+        raw = feedback.get("cumulative_fraction_of_reference")
         try:
-            parsed = [abs(float(item)) for item in candidates]
+            parsed = abs(float(raw))
         except (TypeError, ValueError):
-            parsed = [math.inf]
-        values.extend(item if math.isfinite(item) else math.inf for item in parsed)
-    return values, {
+            parsed = math.inf
+        parsed = parsed if math.isfinite(parsed) else math.inf
+        nonzero_feedback_seen = nonzero_feedback_seen or parsed > 1.0e-12
+        if feedback.get("just_triggered") is not True:
+            continue
+        feedback_trigger_seen = True
+        try:
+            channel = str(int(feedback["channel_index"]))
+        except (KeyError, TypeError, ValueError):
+            channel = "invalid_drive_feedback"
+            parsed = math.inf
+        key = (_phase(row), channel)
+        cumulative_by_phase_channel[key] = (
+            cumulative_by_phase_channel.get(key, 0.0) + parsed
+        )
+    if nonzero_feedback_seen and not feedback_trigger_seen:
+        cumulative_by_phase_channel[("invalid", "drive_feedback")] = math.inf
+    return list(cumulative_by_phase_channel.values()), {
         phase: sum(_phase(row) == phase for row in recovery_rows) for phase in PHASE_IDS
     }
 
@@ -336,6 +371,194 @@ def _reference_wheel_decay_threshold(contract: Mapping[str, Any]) -> float:
     return 0.05
 
 
+def _drive_feedback_ledger_valid(
+    commands: Sequence[Mapping[str, Any]], contract: Mapping[str, Any]
+) -> bool:
+    """Audit any post-mapper correction against its explicit final-drive log."""
+
+    feedback_specs = {
+        str(phase.get("state_id")): phase["drive_feedback"]
+        for phase in contract.get("phases", ())
+        if isinstance(phase, Mapping) and isinstance(phase.get("drive_feedback"), Mapping)
+    }
+    rows = sorted(
+        (row for row in commands if isinstance(row.get("drive_feedback"), Mapping)),
+        key=_time,
+    )
+    if not feedback_specs:
+        return not rows
+    if not commands or len(rows) != len(commands):
+        return False
+    try:
+        maximum_delta = float(contract["servo_reference_velocity_deg_s"]) / float(
+            contract["physics_hz"]
+        )
+    except (KeyError, TypeError, ValueError, ZeroDivisionError):
+        maximum_delta = 1.25
+    previous_final: tuple[float, ...] | None = None
+    attempt_by_phase: dict[str, int] = {}
+    previous_tick_by_phase: dict[str, int] = {}
+    row_attempts: list[tuple[str, int, int | None]] = []
+    trigger_attempts: dict[str, tuple[int, int]] = {}
+    for row in rows:
+        phase_id = _phase(row)
+        raw_tick = row.get("motion_tick_index")
+        try:
+            tick = None if raw_tick is None else int(raw_tick)
+        except (TypeError, ValueError):
+            return False
+        attempt = attempt_by_phase.setdefault(phase_id, 0)
+        if tick is not None:
+            previous_tick = previous_tick_by_phase.get(phase_id)
+            if tick == 0 and previous_tick is not None:
+                attempt += 1
+                attempt_by_phase[phase_id] = attempt
+            previous_tick_by_phase[phase_id] = tick
+        row_attempts.append((phase_id, attempt, tick))
+        feedback = row["drive_feedback"]
+        if feedback.get("just_triggered") is True:
+            if phase_id in trigger_attempts or tick is None:
+                return False
+            trigger_attempts[phase_id] = (attempt, tick)
+
+    realized_traces: dict[str, list[float]] = {
+        phase_id: [] for phase_id in feedback_specs
+    }
+    for row, (phase_id, attempt, tick) in zip(rows, row_attempts, strict=True):
+        feedback = row["drive_feedback"]
+        if feedback.get("schema") != "wlr50_clean.drive_feedback.v1":
+            return False
+        declared = _vector(feedback, "bias_full12")
+        requested = _vector(row, "drive_feedback_bias_requested_full12")
+        realized = _vector(row, "drive_feedback_bias_realized_full12")
+        native = _vector(row, "native_drive_target_full12")
+        final = _vector(row, "drive_target_full12")
+        if any(item is None for item in (declared, requested, realized, native, final)):
+            return False
+        assert declared is not None and requested is not None
+        assert realized is not None and native is not None and final is not None
+        if any(abs(left - right) > 1.0e-9 for left, right in zip(declared, requested, strict=True)):
+            return False
+        if any(
+            abs((actual - base) - correction) > 1.0e-8
+            for actual, base, correction in zip(final[:8], native[:8], realized[:8], strict=True)
+        ):
+            return False
+        if any(abs(value) > 1.0e-12 for value in requested[8:] + realized[8:]):
+            return False
+        spec = feedback_specs.get(phase_id)
+        expected_requested = [0.0] * 12
+        triggered = trigger_attempts.get(phase_id)
+        expected_latched = False
+        expected_active = False
+        if spec is not None and tick is not None:
+            try:
+                channel = str(spec["channel"])
+                channel_index = int(spec["channel_index"])
+                probe_ticks = tuple(int(item["motion_tick"]) for item in spec["probe_samples"])
+                first_bias_tick = int(spec["first_bias_tick"])
+                last_bias_tick = int(spec["last_bias_tick"])
+                logical_bias = float(spec["logical_bias_deg"])
+                peak_fraction = float(spec["peak_fraction_of_reference"])
+                cumulative_fraction = float(spec["cumulative_fraction_of_reference"])
+            except (KeyError, TypeError, ValueError):
+                return False
+            if (
+                feedback.get("channel") != channel
+                or feedback.get("channel_index") != channel_index
+            ):
+                return False
+            if triggered is not None:
+                trigger_attempt, trigger_tick = triggered
+                if trigger_tick != probe_ticks[-1]:
+                    return False
+                expected_latched = attempt == trigger_attempt and tick is not None and tick >= trigger_tick
+                expected_active = bool(
+                    expected_latched and first_bias_tick <= tick <= last_bias_tick
+                )
+                if expected_active:
+                    expected_requested[channel_index] = logical_bias
+            expected_peak = peak_fraction if expected_latched else 0.0
+            expected_cumulative = cumulative_fraction if expected_latched else 0.0
+            try:
+                logged_peak = float(feedback.get("peak_fraction_of_reference"))
+                logged_cumulative = float(feedback.get("cumulative_fraction_of_reference"))
+            except (TypeError, ValueError):
+                return False
+            if (
+                abs(logged_peak - expected_peak) > 1.0e-12
+                or abs(logged_cumulative - expected_cumulative) > 1.0e-12
+                or bool(feedback.get("active")) != expected_active
+                or (feedback.get("trigger_tick") if expected_latched else None)
+                != (trigger_tick if expected_latched else None)
+            ):
+                return False
+            if feedback.get("just_triggered") is True and not (
+                expected_latched and tick == trigger_tick
+            ):
+                return False
+            if any(
+                abs(value - expected) > 1.0e-9
+                for value, expected in zip(requested, expected_requested, strict=True)
+            ):
+                return False
+            if any(
+                abs(value) > 1.0e-8
+                for index, value in enumerate(realized)
+                if index != channel_index
+            ):
+                return False
+            realized_traces[phase_id].append(realized[channel_index])
+            if not expected_active and abs(realized[channel_index]) > 1.0e-8:
+                return False
+        else:
+            try:
+                logged_peak = float(feedback.get("peak_fraction_of_reference"))
+                logged_cumulative = float(
+                    feedback.get("cumulative_fraction_of_reference")
+                )
+            except (TypeError, ValueError):
+                return False
+            if (
+                any(abs(value) > 1.0e-12 for value in requested)
+                or any(abs(value) > 1.0e-8 for value in realized)
+                or abs(logged_peak) > 1.0e-12
+                or abs(logged_cumulative) > 1.0e-12
+                or feedback.get("active") is True
+                or feedback.get("just_triggered") is True
+                or feedback.get("trigger_tick") is not None
+            ):
+                return False
+        if previous_final is not None and any(
+            abs(current - previous) > maximum_delta + 1.0e-8
+            for current, previous in zip(final[:8], previous_final[:8], strict=True)
+        ):
+            return False
+        previous_final = final
+    for phase_id, spec in feedback_specs.items():
+        trace = realized_traces[phase_id]
+        if not trace:
+            continue
+        try:
+            excursion = abs(float(spec["reference_excursion_deg"]))
+            peak_budget = float(spec["peak_fraction_of_reference"])
+            cumulative_budget = float(spec["cumulative_fraction_of_reference"])
+        except (KeyError, TypeError, ValueError):
+            return False
+        if excursion <= 0.0:
+            return False
+        realized_peak = max(abs(value) for value in trace) / excursion
+        realized_cumulative = sum(
+            abs(right - left) for left, right in zip(trace, trace[1:])
+        ) / excursion
+        if (
+            realized_peak > peak_budget + 1.0e-9
+            or realized_cumulative > cumulative_budget + 1.0e-9
+        ):
+            return False
+    return True
+
+
 def analyze_trial(
     run_dir: Path, contract_path: Path, *, strict_success: bool = True
 ) -> dict[str, Any]:
@@ -368,7 +591,7 @@ def analyze_trial(
         source_full12_atomic_events_observed=nominal_atomic,
         source_full12_atomic_events_total_including_recovery=len(atomic_rows),
     )
-    correction_values, retry_counts = _recovery_evidence(transitions)
+    correction_values, retry_counts = _recovery_evidence(transitions, commands)
     summary.update(
         recovery_count=sum(retry_counts.values()),
         maximum_feedback_correction_fraction=max(correction_values, default=0.0),
@@ -428,6 +651,7 @@ def analyze_trial(
         "source_full12_atomic_events_exact": nominal_atomic == expected_atomic,
         "feedback_correction_reference_bounded": all(value <= 0.15 + 1.0e-12 for value in correction_values)
         and all(count <= 1 for count in retry_counts.values()),
+        "drive_feedback_ledger_valid": _drive_feedback_ledger_valid(commands, contract),
         "final_wheel_targets_zero": final_command is not None
         and all(abs(value) <= 1.0e-9 for value in final_command[8:]),
         "measured_wheel_velocity_stable_decay": wheel_decay_status.passed,

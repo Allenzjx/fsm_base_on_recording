@@ -8,6 +8,7 @@ from typing import Any, Mapping, Sequence
 
 from wlr50_clean.reference.motion_contract import MotionContract, load_motion_contract
 
+from .drive_feedback import ReferenceBoundedDriveFeedback
 from .guard_evaluator import (
     GuardEvidence,
     GuardEvaluator,
@@ -16,7 +17,6 @@ from .guard_evaluator import (
 )
 from .motion_executor import (
     FeedbackCorrection,
-    MAX_CORRECTION_FRACTION,
     MotionExecutor,
     MotionTick,
     ProgressWatchdog,
@@ -26,11 +26,6 @@ from .recovery import RecoveryPlanner
 from .state_graph import StateGraph
 from .state_spec import FsmSpec, Lifecycle, StateSpec, load_fsm_spec
 from .task_result import TaskResult, TaskTermination
-
-
-_P10_INITIAL_FEEDBACK_STATE_ID = "P10"
-_P10_REAR_RIGHT_KNEE_INDEX = 7
-_P10_INITIAL_FEEDBACK_CAP = MAX_CORRECTION_FRACTION
 
 
 @dataclass(frozen=True)
@@ -54,6 +49,8 @@ class ControllerFrame:
     full12_atomic_write_required: bool
     atomic_source_event: bool
     tracking_servo_names: tuple[str, ...]
+    drive_feedback_bias_full12: tuple[float, ...]
+    drive_feedback_details: Mapping[str, Any]
     endpoint_issued: bool
     termination: TaskTermination | None
     first_blocker: Mapping[str, Any] | None
@@ -75,6 +72,7 @@ class SensorFsmController:
             initial_full12=contract.phases[0].start_full12,
         )
         self.recovery = RecoveryPlanner(contract.full12_order)
+        self.drive_feedback = ReferenceBoundedDriveFeedback()
         self.watchdog = ProgressWatchdog(spec.watchdog_s)
         self.state = self.graph.first
         self.lifecycle = Lifecycle.WAIT_ENTRY
@@ -132,9 +130,21 @@ class SensorFsmController:
             self._run_decision_transitions(observation, now, events)
 
         motion_tick: MotionTick | None = None
+        drive_feedback = self.drive_feedback.update(
+            state_id=self.state.state_id,
+            motion_tick_index=None,
+            actual_full12=_actual_full12(observation),
+            spec=None,
+        )
         if self.termination is None and self.lifecycle is Lifecycle.EXECUTE_MOTION:
             motion_tick = self.motion.tick()
             command = motion_tick.full12
+            drive_feedback = self.drive_feedback.update(
+                state_id=self.state.state_id,
+                motion_tick_index=motion_tick.tick_index,
+                actual_full12=_actual_full12(observation),
+                spec=self.phase.drive_feedback,
+            )
             self._tracking_servo_names = motion_tick.tracking_servo_names
             if motion_tick.endpoint_issued:
                 self._endpoint_issued = True
@@ -202,6 +212,8 @@ class SensorFsmController:
                 motion_tick is not None and motion_tick.source_full12_atomic
             ),
             tracking_servo_names=tracking_servo_names,
+            drive_feedback_bias_full12=drive_feedback.bias_full12,
+            drive_feedback_details=drive_feedback.as_dict(),
             endpoint_issued=self._endpoint_issued,
             termination=self.termination,
             first_blocker=self._first_blocker,
@@ -256,7 +268,7 @@ class SensorFsmController:
                     return
                 self._pending_blocker = None
                 self._wait_entry_started_s = None
-                correction = self._initial_feedback_correction(observation)
+                correction = FeedbackCorrection()
                 self.motion.start_phase(self.phase, correction)
                 self.watchdog.reset()
                 self._endpoint_issued = False
@@ -467,53 +479,6 @@ class SensorFsmController:
             "active servos compare with the measured reference entry using max(2 deg, 15% of reference phase delta)",
         )
 
-    def _initial_feedback_correction(self, observation: Any) -> FeedbackCorrection:
-        """Compensate only the measured P10 RR-knee carry-in lag.
-
-        P10 moves the rear-right knee in the positive joint direction.  A live
-        entry that is more negative than the v010 measured entry is therefore
-        behind that reference response.  Scale P10's authored excursion by the
-        lag relative to v010's measured physical response excursion, bounded
-        by the global 15% feedback allowance.  The normal entry guard remains
-        responsible for rejecting observations outside its measured-reference
-        envelope.
-        """
-
-        if self.state.state_id != _P10_INITIAL_FEEDBACK_STATE_ID:
-            return FeedbackCorrection()
-        actual = _actual_servo_positions(observation, self.contract.full12_order[:8])
-        if actual is None:
-            return FeedbackCorrection()
-
-        channel_index = _P10_REAR_RIGHT_KNEE_INDEX
-        command_excursion_deg = self.phase.delta_full12[channel_index]
-        reference_response_excursion_deg = (
-            self.state.reference_actual_endpoint_full12[channel_index]
-            - self.state.reference_actual_start_full12[channel_index]
-        )
-        if (
-            abs(command_excursion_deg) <= 1e-12
-            or abs(reference_response_excursion_deg) <= 1e-12
-        ):
-            return FeedbackCorrection()
-        entry_error_deg = (
-            actual[channel_index]
-            - self.state.reference_actual_start_full12[channel_index]
-        )
-        motion_direction = 1.0 if command_excursion_deg > 0.0 else -1.0
-        lag_along_excursion_deg = -entry_error_deg * motion_direction
-        fraction = min(
-            _P10_INITIAL_FEEDBACK_CAP,
-            max(
-                0.0,
-                lag_along_excursion_deg
-                / abs(reference_response_excursion_deg),
-            ),
-        )
-        fractions = [0.0] * len(self.contract.full12_order)
-        fractions[channel_index] = fraction
-        return FeedbackCorrection(tuple(fractions))
-
     def _final_pose_compatibility(self, observation: Any) -> GuardEvidence:
         if self.state.state_id != "P13":
             return GuardEvidence(
@@ -653,6 +618,21 @@ def _actual_servo_positions(
         except (TypeError, ValueError):
             return None
     return tuple(values)
+
+
+def _actual_full12(observation: Any) -> tuple[float, ...] | None:
+    direct = (
+        observation.get("actual_full12")
+        if isinstance(observation, Mapping)
+        else getattr(observation, "actual_full12", None)
+    )
+    if direct is None:
+        return None
+    try:
+        values = tuple(float(item) for item in direct)
+    except (TypeError, ValueError):
+        return None
+    return values if len(values) == 12 else None
 
 
 def _report_details(report: GuardReport) -> Mapping[str, Any]:

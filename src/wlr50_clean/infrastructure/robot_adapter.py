@@ -187,6 +187,7 @@ class RobotAdapter:
             self.standing_pose_deg,
             physics_dt_s=self.physics_dt_s,
         )
+        self._final_drive_servo_deg = {name: 0.0 for name in SERVO_ORDER}
         # This frozen environment initialization must precede the 1.5 s
         # zero-command settle. It changes only the live USD session layer and
         # Isaac Lab's limit caches; it cannot save or modify the source asset.
@@ -206,6 +207,7 @@ class RobotAdapter:
         *,
         physics_tick: int | None = None,
         tracking_servo_names: Sequence[str] = (),
+        drive_feedback_bias_deg: Sequence[float] = (0.0,) * len(SERVO_ORDER),
     ) -> dict[str, Any]:
         """Stage all 12 targets and issue exactly one articulation write.
 
@@ -228,8 +230,35 @@ class RobotAdapter:
             )
         except ServoTargetMapperError as exc:
             raise RobotAdapterError(f"invalid servo target mapping: {exc}") from exc
+        feedback_bias = _servo_feedback_bias(drive_feedback_bias_deg)
+        native_drive = mapping.applied_drive_command_deg
+        final_drive: list[float] = []
+        realized_bias: list[float] = []
+        for name, native, bias in zip(
+            SERVO_ORDER,
+            native_drive,
+            feedback_bias,
+            strict=True,
+        ):
+            lower, upper = servo_limits_deg(name)
+            previous = self._final_drive_servo_deg[name]
+            final = bounded_drive_feedback_step(
+                previous_deg=previous,
+                native_deg=native,
+                bias_deg=bias,
+                maximum_delta_deg=self.servo_target_mapper.maximum_delta_deg,
+                lower_deg=lower,
+                upper_deg=upper,
+            )
+            self._final_drive_servo_deg[name] = final
+            final_drive.append(final)
+            realized_bias.append(final - native)
         drive_command = Full12Command(
-            mapping.applied_drive_command_deg,
+            tuple(final_drive),
+            logical_applied.wheel_rad_s,
+        )
+        native_drive_command = Full12Command(
+            native_drive,
             logical_applied.wheel_rad_s,
         )
         physical = build_physical_batch(drive_command, self.standing_pose_deg)
@@ -261,10 +290,15 @@ class RobotAdapter:
             # limits.  The separate drive fields expose mature target shaping.
             "applied_full12": list(logical_applied.to_full12()),
             "drive_target_full12": list(drive_command.to_full12()),
-            "command_was_clamped": requested != logical_applied,
-            "servo_applied_drive_command_deg": list(
-                mapping.applied_drive_command_deg
+            "native_drive_target_full12": list(native_drive_command.to_full12()),
+            "drive_feedback_bias_requested_full12": list(feedback_bias) + [0.0] * 4,
+            "drive_feedback_bias_realized_full12": list(realized_bias) + [0.0] * 4,
+            "drive_feedback_final_slew_limit_deg_per_tick": (
+                self.servo_target_mapper.maximum_delta_deg
             ),
+            "command_was_clamped": requested != logical_applied,
+            "servo_applied_drive_command_deg": list(final_drive),
+            "servo_native_drive_command_deg": list(native_drive),
             "servo_tracking_compensation_deg": list(
                 mapping.tracking_compensation_deg
             ),
@@ -624,6 +658,50 @@ def _row_values(value: Any) -> tuple[float, ...]:
     if any(not math.isfinite(item) for item in result):
         raise RobotAdapterError("joint tensor row contains non-finite values")
     return result
+
+
+def _servo_feedback_bias(values: Sequence[float]) -> tuple[float, ...]:
+    try:
+        result = tuple(float(value) for value in values)
+    except (TypeError, ValueError) as exc:
+        raise RobotAdapterError("drive feedback bias must be numeric") from exc
+    if len(result) != len(SERVO_ORDER):
+        raise RobotAdapterError("drive feedback bias must contain eight servo values")
+    if any(not math.isfinite(value) for value in result):
+        raise RobotAdapterError("drive feedback bias contains a non-finite value")
+    if any(
+        abs(value) > SERVO_TRACKING_COMPENSATION_MAX_DEG + 1.0e-12
+        for value in result
+    ):
+        raise RobotAdapterError("drive feedback bias exceeds the bounded mapper envelope")
+    return result
+
+
+def bounded_drive_feedback_step(
+    *,
+    previous_deg: float,
+    native_deg: float,
+    bias_deg: float,
+    maximum_delta_deg: float,
+    lower_deg: float,
+    upper_deg: float,
+) -> float:
+    """Apply a logical post-mapper bias without exceeding final-drive slew."""
+
+    previous = float(previous_deg)
+    native = float(native_deg)
+    bias = float(bias_deg)
+    maximum_delta = float(maximum_delta_deg)
+    lower = float(lower_deg)
+    upper = float(upper_deg)
+    values = (previous, native, bias, maximum_delta, lower, upper)
+    if any(not math.isfinite(value) for value in values):
+        raise RobotAdapterError("bounded drive-feedback step contains non-finite data")
+    if maximum_delta <= 0.0 or lower >= upper:
+        raise RobotAdapterError("bounded drive-feedback step has invalid limits")
+    desired = max(lower, min(upper, native + bias))
+    delta = max(-maximum_delta, min(maximum_delta, desired - previous))
+    return max(lower, min(upper, previous + delta))
 
 
 def _scalar_float(value: Any) -> float:

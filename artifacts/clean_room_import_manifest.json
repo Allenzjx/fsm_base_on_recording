@@ -31,8 +31,8 @@
       "source_path": "C:/robotics_sim/wlr_robot/height_based_obstacle_replay/sim_robot_adapter.py",
       "source_sha256": "04966b8100eeb33ea55de78eaa5a74bbc3662030f82ba4d458eb429608ed64d4",
       "destination_path": "src/wlr50_clean/infrastructure/robot_adapter.py",
-      "destination_sha256": "f1091a8479385d822beba356687830620da111f242272d8e18336f9157f09e52",
-      "reuse_reason": "Narrow clean derivation of exact live-name resolution, authoritative command-space limits on the ephemeral live session layer, requested-to-applied command mapping, and one-write full12 application; source-asset save/edit, restore, respawn, and root-write routes omitted."
+      "destination_sha256": "0810f495da75deba0456ae9a277d57406887923fa9f91d1ad93e4c76e13c7b16",
+      "reuse_reason": "Narrow clean derivation of exact live-name resolution, authoritative command-space limits on the ephemeral live session layer, requested-to-applied command mapping, bounded post-mapper feedback with final-drive slew enforcement, and one-write full12 application; source-asset save/edit, restore, respawn, and root-write routes omitted."
     },
     {
       "source_path": "C:/robotics_sim/wlr_robot/height_based_obstacle_replay/sim_robot_adapter.py",
@@ -59,8 +59,8 @@
       "source_path": "C:/robotics_sim/wlr_robot/height_based_obstacle_replay/sim_worker_process.py",
       "source_sha256": "580412309695e1454bd6ccf8470fa5c79a5b573ad57301205d815ce6273e4394",
       "destination_path": "src/wlr50_clean/infrastructure/app_runtime.py",
-      "destination_sha256": "d57c09fa8058169725ec49b6426d2b731e3c6048bda9bcd55f2f6b29c715adb8",
-      "reuse_reason": "Narrow clean derivation of AppLauncher ownership, one initial application update, frozen environment-integrity checks, anti-throttling, and finalization-before-close lifecycle; replay scheduling and legacy controller paths omitted."
+      "destination_sha256": "f811c706339759ceb51f247d241f23f3f369f8db9ca02b88506d3d2ab5832d80",
+      "reuse_reason": "Narrow clean derivation of AppLauncher ownership, one initial application update, frozen environment-integrity checks, atomic drive-feedback logging, anti-throttling, and finalization-before-close lifecycle; replay scheduling and legacy controller paths omitted."
     }
   ]
 }

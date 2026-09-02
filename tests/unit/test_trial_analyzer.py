@@ -12,6 +12,8 @@ from wlr50_clean.evaluation.trial_analyzer import (
     JSONL_FILES,
     TrialAnalysisError,
     TrialArtifactWriter,
+    _drive_feedback_ledger_valid,
+    _recovery_evidence,
     analyze_trial,
     populate_reference_similarity,
     publish_successful_trial,
@@ -23,6 +25,7 @@ ORDER = (
     "rear_left_hip", "rear_left_knee", "rear_right_hip", "rear_right_knee",
     "front_left_ankle", "front_right_ankle", "rear_left_ankle", "rear_right_ankle",
 )
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def _write_jsonl(path: Path, rows: list[dict]) -> None:
@@ -223,6 +226,81 @@ def test_sequence_recovery_corrections_are_bounded_at_15_percent(tmp_path: Path)
     _write_jsonl(path, rows)
     with pytest.raises(TrialAnalysisError, match="feedback_correction_reference_bounded"):
         analyze_trial(run, contract)
+
+
+def test_post_mapper_drive_feedback_is_included_in_cumulative_budget(tmp_path: Path) -> None:
+    command = {
+        "state_id": "P09",
+        "drive_feedback": {
+            "just_triggered": True,
+            "channel_index": 5,
+            "cumulative_fraction_of_reference": 1.8 / 19.4,
+        },
+    }
+    values, _ = _recovery_evidence([], [command])
+    assert max(values) == pytest.approx(1.8 / 19.4)
+
+    duplicate = json.loads(json.dumps(command))
+    values, _ = _recovery_evidence([], [command, duplicate])
+    assert max(values) == pytest.approx(3.6 / 19.4)
+    assert max(values) > 0.15
+
+
+def _feedback_ledger_rows(*, residual_after_window: float = 0.0) -> list[dict]:
+    peak = 0.9 / 19.4
+    cumulative = 1.8 / 19.4
+    rows = []
+    for tick in range(743, 761):
+        latched = tick >= 744
+        active = 745 <= tick <= 759
+        requested = [0.0] * 12
+        realized = [0.0] * 12
+        if active:
+            requested[5] = 0.9
+            realized[5] = 0.9
+        elif tick == 760:
+            realized[5] = residual_after_window
+        native = [0.0] * 12
+        final = [left + right for left, right in zip(native, realized, strict=True)]
+        rows.append({
+            "state_id": "P09",
+            "sim_time_s": tick / 120.0,
+            "motion_tick_index": tick,
+            "drive_feedback": {
+                "schema": "wlr50_clean.drive_feedback.v1",
+                "bias_full12": requested,
+                "active": active,
+                "just_triggered": tick == 744,
+                "trigger_tick": 744 if latched else None,
+                "peak_fraction_of_reference": peak if latched else 0.0,
+                "cumulative_fraction_of_reference": cumulative if latched else 0.0,
+                "channel": "rear_left_knee",
+                "channel_index": 5,
+            },
+            "drive_feedback_bias_requested_full12": requested,
+            "drive_feedback_bias_realized_full12": realized,
+            "native_drive_target_full12": native,
+            "drive_target_full12": final,
+        })
+    return rows
+
+
+def test_drive_feedback_ledger_enforces_window_and_endpoint_restoration() -> None:
+    contract = json.loads(
+        (ROOT / "configs" / "recording_motion_contract.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert _drive_feedback_ledger_valid(_feedback_ledger_rows(), contract)
+    assert not _drive_feedback_ledger_valid(
+        _feedback_ledger_rows(residual_after_window=0.4), contract
+    )
+    missing_restore = _feedback_ledger_rows()
+    del missing_restore[-1]["drive_feedback"]
+    assert not _drive_feedback_ledger_valid(missing_restore, contract)
+    assert not _drive_feedback_ledger_valid(
+        [{"state_id": "P09", "motion_tick_index": 760}], contract
+    )
 
 
 def test_writer_api_remains_streaming_and_never_reuses_directory(tmp_path: Path) -> None:
