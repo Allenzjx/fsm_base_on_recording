@@ -875,7 +875,7 @@ _WHEEL_REBOUND_SEGMENTS = [
     {
         "first_bias_tick": 870,
         "last_bias_tick": 870,
-        "logical_bias_rad_s": 0.01,
+        "logical_bias_rad_s": 0.73,
     },
     {
         "first_bias_tick": 871,
@@ -883,9 +883,9 @@ _WHEEL_REBOUND_SEGMENTS = [
         "logical_bias_rad_s": 1.07,
     },
 ]
-_WHEEL_REBOUND_ADDITIONAL_INTEGRAL = 0.06566666666666666
-_WHEEL_REBOUND_RESULTING_INTEGRAL = -0.8403333333345938
-_WHEEL_REBOUND_FRACTION = 0.07247976453264382
+_WHEEL_REBOUND_ADDITIONAL_INTEGRAL = 0.07166666666666667
+_WHEEL_REBOUND_RESULTING_INTEGRAL = -0.8343333333345938
+_WHEEL_REBOUND_FRACTION = 0.07910228108892602
 
 
 def _wheel_rebound_segment_index(tick: int) -> int | None:
@@ -1120,13 +1120,13 @@ def test_wheel_rebound_feedback_accepts_exact_partial_counteraction_and_reversal
     spec = contract["phases"][8]["drive_feedback"]
     assert spec["bias_segments"] == _WHEEL_REBOUND_SEGMENTS
     assert spec["additional_wheel_integral_rad"] == pytest.approx(
-        0.06566666666666666
+        0.07166666666666667
     )
     assert spec["resulting_wheel_integral_rad"] == pytest.approx(
-        -0.8403333333345938
+        -0.8343333333345938
     )
     assert spec["cumulative_fraction_of_reference"] == pytest.approx(
-        0.07247976453264382
+        0.07910228108892602
     )
     assert spec["reference_wheel_peak_abs_rad_s"] == 1.07
     assert spec["resulting_wheel_peak_abs_rad_s"] == 1.07
@@ -1141,7 +1141,7 @@ def test_wheel_rebound_feedback_accepts_exact_partial_counteraction_and_reversal
         867: (0.0, 1.03),
         868: (0.0, 0.73),
         869: (0.0, 0.73),
-        870: (0.0, 0.01),
+        870: (0.0, 0.73),
         871: (0.0, 1.07),
     }
     for row in rows[2:14]:

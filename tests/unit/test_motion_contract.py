@@ -143,7 +143,7 @@ def test_p09_wheel_rebound_is_compact_and_strictly_reference_bounded() -> None:
         (865, 865, 0.23),
         (866, 867, 1.03),
         (868, 869, 0.73),
-        (870, 870, 0.01),
+        (870, 870, 0.73),
         (871, 871, 1.07),
     ]
     assert feedback.first_bias_tick == 860
@@ -160,20 +160,20 @@ def test_p09_wheel_rebound_is_compact_and_strictly_reference_bounded() -> None:
             + 0.33
             + 1.03 * 2.0
             + 0.73 * 2.0
-            + 0.01
+            + 0.73
             + 1.07
         )
         / 120.0
     )
     assert feedback.resulting_wheel_integral_rad == pytest.approx(
-        -0.8403333333345938
+        -0.8343333333345938
     )
     assert feedback.resulting_wheel_integral_rad == pytest.approx(
         feedback.reference_wheel_integral_rad
         + feedback.additional_wheel_integral_rad
     )
     assert feedback.cumulative_fraction_of_reference == pytest.approx(
-        0.07247976453264382
+        0.07910228108892602
     )
     assert feedback.cumulative_fraction_of_reference == pytest.approx(
         abs(feedback.additional_wheel_integral_rad)
@@ -200,7 +200,7 @@ def test_p09_wheel_rebound_is_compact_and_strictly_reference_bounded() -> None:
         (867, 0.0, 1.03),
         (868, 0.0, 0.73),
         (869, 0.0, 0.73),
-        (870, 0.0, 0.01),
+        (870, 0.0, 0.73),
         (871, 0.0, 1.07),
     )
     segments_by_tick = {
