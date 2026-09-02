@@ -860,7 +860,7 @@ _WHEEL_REBOUND_SEGMENTS = [
     {
         "first_bias_tick": 865,
         "last_bias_tick": 865,
-        "logical_bias_rad_s": 0.33,
+        "logical_bias_rad_s": 0.23,
     },
     {
         "first_bias_tick": 866,
@@ -869,8 +869,13 @@ _WHEEL_REBOUND_SEGMENTS = [
     },
     {
         "first_bias_tick": 868,
-        "last_bias_tick": 869,
+        "last_bias_tick": 868,
         "logical_bias_rad_s": 0.73,
+    },
+    {
+        "first_bias_tick": 869,
+        "last_bias_tick": 869,
+        "logical_bias_rad_s": 0.31,
     },
     {
         "first_bias_tick": 870,
@@ -883,9 +888,9 @@ _WHEEL_REBOUND_SEGMENTS = [
         "logical_bias_rad_s": 1.07,
     },
 ]
-_WHEEL_REBOUND_ADDITIONAL_INTEGRAL = 0.0665
-_WHEEL_REBOUND_RESULTING_INTEGRAL = -0.8395000000012605
-_WHEEL_REBOUND_FRACTION = 0.07339955849879413
+_WHEEL_REBOUND_ADDITIONAL_INTEGRAL = 0.06216666666666667
+_WHEEL_REBOUND_RESULTING_INTEGRAL = -0.8438333333345938
+_WHEEL_REBOUND_FRACTION = 0.06861662987481255
 
 
 def _wheel_rebound_segment_index(tick: int) -> int | None:
@@ -1120,13 +1125,13 @@ def test_wheel_rebound_feedback_accepts_exact_partial_counteraction_and_reversal
     spec = contract["phases"][8]["drive_feedback"]
     assert spec["bias_segments"] == _WHEEL_REBOUND_SEGMENTS
     assert spec["additional_wheel_integral_rad"] == pytest.approx(
-        0.0665
+        0.06216666666666667
     )
     assert spec["resulting_wheel_integral_rad"] == pytest.approx(
-        -0.8395000000012605
+        -0.8438333333345938
     )
     assert spec["cumulative_fraction_of_reference"] == pytest.approx(
-        0.07339955849879413
+        0.06861662987481255
     )
     assert spec["reference_wheel_peak_abs_rad_s"] == 1.07
     assert spec["resulting_wheel_peak_abs_rad_s"] == 1.07
@@ -1136,11 +1141,11 @@ def test_wheel_rebound_feedback_accepts_exact_partial_counteraction_and_reversal
         862: (-1.07, -0.39),
         863: (-1.07, -0.39),
         864: (0.0, 0.68),
-        865: (0.0, 0.33),
+        865: (0.0, 0.23),
         866: (0.0, 1.03),
         867: (0.0, 1.03),
         868: (0.0, 0.73),
-        869: (0.0, 0.73),
+        869: (0.0, 0.31),
         870: (0.0, 0.01),
         871: (0.0, 1.07),
     }
@@ -1394,7 +1399,7 @@ def test_wheel_rebound_feedback_ledger_fails_closed(mutation: str) -> None:
     elif mutation == "logged_segments_mismatch":
         rows[10]["drive_feedback"]["bias_segments"][5][
             "last_bias_tick"
-        ] = 868
+        ] = 869
     elif mutation == "logged_segment_index_mismatch":
         rows[10]["drive_feedback"]["active_segment_index"] = 0
     elif mutation == "logged_segment_bounds_mismatch":
