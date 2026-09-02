@@ -69,18 +69,18 @@ _WHEEL_REBOUND_FIRST_TICK = 860
 _WHEEL_REBOUND_LAST_TICK = 871
 _WHEEL_REBOUND_TEARDOWN_TICK = 872
 _WHEEL_REBOUND_BIAS_SEGMENTS = (
-    (860, 860, 1.05),
+    (860, 860, 0.68),
     (861, 861, 0.33),
-    (862, 864, 1.05),
+    (862, 864, 0.68),
     (865, 865, 0.33),
-    (866, 867, 0.28),
-    (868, 869, 0.38),
+    (866, 867, 1.03),
+    (868, 869, 0.73),
     (870, 870, 0.28),
     (871, 871, 0.38),
 )
 _WHEEL_REFERENCE_INTEGRAL_RAD = -0.9060000000012605
-_WHEEL_REBOUND_ADDITIONAL_INTEGRAL_RAD = 0.057
-_WHEEL_REBOUND_RESULTING_INTEGRAL_RAD = -0.8490000000012604
+_WHEEL_REBOUND_ADDITIONAL_INTEGRAL_RAD = 0.063
+_WHEEL_REBOUND_RESULTING_INTEGRAL_RAD = -0.8430000000012605
 _WHEEL_REFERENCE_PEAK_ABS_RAD_S = 1.07
 _WHEEL_REBOUND_RESULTING_PEAK_ABS_RAD_S = 1.07
 _MAX_FEEDBACK_FRACTION = 0.15
@@ -519,8 +519,9 @@ def _wheel_feedback_segments(
             return None
         segments = tuple(parsed)
         # The P09 rebound shape is deliberately immutable: accepting a shifted,
-        # shortened, extended, or re-amplituded segment would make its signed
-        # integral look valid while changing the actual physical timing.
+        # shortened, extended, or re-amplituded segment could hide a
+        # pre-endpoint direction reversal or change the actual physical timing
+        # while leaving the signed integral apparently valid.
         if segments != _WHEEL_REBOUND_BIAS_SEGMENTS:
             return None
     else:

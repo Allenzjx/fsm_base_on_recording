@@ -137,12 +137,12 @@ def test_p09_wheel_rebound_is_compact_and_strictly_reference_bounded() -> None:
         )
         for segment in feedback.bias_segments
     ] == [
-        (860, 860, 1.05),
+        (860, 860, 0.68),
         (861, 861, 0.33),
-        (862, 864, 1.05),
+        (862, 864, 0.68),
         (865, 865, 0.33),
-        (866, 867, 0.28),
-        (868, 869, 0.38),
+        (866, 867, 1.03),
+        (868, 869, 0.73),
         (870, 870, 0.28),
         (871, 871, 0.38),
     ]
@@ -154,26 +154,26 @@ def test_p09_wheel_rebound_is_compact_and_strictly_reference_bounded() -> None:
     )
     assert feedback.additional_wheel_integral_rad == pytest.approx(
         (
-            1.05
+            0.68
             + 0.33
-            + 1.05 * 3.0
+            + 0.68 * 3.0
             + 0.33
-            + 0.28 * 2.0
-            + 0.38 * 2.0
+            + 1.03 * 2.0
+            + 0.73 * 2.0
             + 0.28
             + 0.38
         )
         / 120.0
     )
     assert feedback.resulting_wheel_integral_rad == pytest.approx(
-        -0.8490000000012604
+        -0.8430000000012605
     )
     assert feedback.resulting_wheel_integral_rad == pytest.approx(
         feedback.reference_wheel_integral_rad
         + feedback.additional_wheel_integral_rad
     )
     assert feedback.cumulative_fraction_of_reference == pytest.approx(
-        0.06291390728468069
+        0.06953642384096285
     )
     assert feedback.cumulative_fraction_of_reference == pytest.approx(
         abs(feedback.additional_wheel_integral_rad)
@@ -190,16 +190,16 @@ def test_p09_wheel_rebound_is_compact_and_strictly_reference_bounded() -> None:
     ] == pytest.approx(-0.9060000000012605)
     endpoint_tick = round(contract.phase("P09").active_duration_s * 120.0)
     expected_native_and_final = (
-        (860, -1.07, -0.02),
+        (860, -1.07, -0.39),
         (861, -1.07, -0.74),
-        (862, -1.07, -0.02),
-        (863, -1.07, -0.02),
-        (864, 0.0, 1.05),
+        (862, -1.07, -0.39),
+        (863, -1.07, -0.39),
+        (864, 0.0, 0.68),
         (865, 0.0, 0.33),
-        (866, 0.0, 0.28),
-        (867, 0.0, 0.28),
-        (868, 0.0, 0.38),
-        (869, 0.0, 0.38),
+        (866, 0.0, 1.03),
+        (867, 0.0, 1.03),
+        (868, 0.0, 0.73),
+        (869, 0.0, 0.73),
         (870, 0.0, 0.28),
         (871, 0.0, 0.38),
     )
@@ -274,17 +274,17 @@ def test_p09_wheel_rebound_contract_fails_closed(
     (
         (0, "first_bias_tick", 861),
         (0, "last_bias_tick", 861),
-        (0, "logical_bias_rad_s", 1.04),
+        (0, "logical_bias_rad_s", 0.67),
         (1, "first_bias_tick", 860),
         (1, "logical_bias_rad_s", 0.34),
         (2, "last_bias_tick", 863),
-        (2, "logical_bias_rad_s", 1.04),
+        (2, "logical_bias_rad_s", 0.67),
         (3, "first_bias_tick", 864),
         (3, "logical_bias_rad_s", 0.34),
         (4, "last_bias_tick", 866),
-        (4, "logical_bias_rad_s", 0.27),
+        (4, "logical_bias_rad_s", 1.02),
         (5, "last_bias_tick", 868),
-        (5, "logical_bias_rad_s", 0.37),
+        (5, "logical_bias_rad_s", 0.72),
         (6, "logical_bias_rad_s", 0.27),
         (7, "last_bias_tick", 872),
         (7, "logical_bias_rad_s", 0.37),

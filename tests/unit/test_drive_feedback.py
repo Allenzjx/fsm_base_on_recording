@@ -11,27 +11,27 @@ from wlr50_clean.reference.motion_contract import load_motion_contract
 
 ROOT = Path(__file__).resolve().parents[2]
 EXPECTED_BIAS_SEGMENTS = (
-    (860, 860, 1.05),
+    (860, 860, 0.68),
     (861, 861, 0.33),
-    (862, 864, 1.05),
+    (862, 864, 0.68),
     (865, 865, 0.33),
-    (866, 867, 0.28),
-    (868, 869, 0.38),
+    (866, 867, 1.03),
+    (868, 869, 0.73),
     (870, 870, 0.28),
     (871, 871, 0.38),
 )
 
 EXPECTED_NATIVE_AND_FINAL_BY_TICK = (
-    (860, -1.07, -0.02),
+    (860, -1.07, -0.39),
     (861, -1.07, -0.74),
-    (862, -1.07, -0.02),
-    (863, -1.07, -0.02),
-    (864, 0.0, 1.05),
+    (862, -1.07, -0.39),
+    (863, -1.07, -0.39),
+    (864, 0.0, 0.68),
     (865, 0.0, 0.33),
-    (866, 0.0, 0.28),
-    (867, 0.0, 0.28),
-    (868, 0.0, 0.38),
-    (869, 0.0, 0.38),
+    (866, 0.0, 1.03),
+    (867, 0.0, 1.03),
+    (868, 0.0, 0.73),
+    (869, 0.0, 0.73),
     (870, 0.0, 0.28),
     (871, 0.0, 0.38),
 )
@@ -134,7 +134,7 @@ def test_p09_two_sample_live_deficit_latches_bounded_wheel_rebound() -> None:
         / abs(spec.reference_wheel_integral_rad)
     )
     assert active[0].kind == "pre_endpoint_wheel_rebound_alignment"
-    assert active[0].logical_bias_rad_s == 1.05
+    assert active[0].logical_bias_rad_s == 0.68
     assert [
         active[tick - spec.first_bias_tick].logical_bias_rad_s
         for tick in range(spec.first_bias_tick, spec.last_bias_tick + 1)
@@ -157,10 +157,10 @@ def test_p09_two_sample_live_deficit_latches_bounded_wheel_rebound() -> None:
         / 120.0
     )
     assert active[0].resulting_wheel_integral_rad == pytest.approx(
-        -0.8490000000012604
+        -0.8430000000012605
     )
     assert active[0].cumulative_fraction_of_reference == pytest.approx(
-        0.06291390728468069
+        0.06953642384096285
     )
     assert active[0].reference_wheel_peak_abs_rad_s == pytest.approx(1.07)
     assert active[0].resulting_wheel_peak_abs_rad_s == pytest.approx(1.07)
