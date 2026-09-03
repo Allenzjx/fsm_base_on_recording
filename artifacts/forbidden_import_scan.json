@@ -3,6 +3,6 @@
   "manifest_entries": 8,
   "passed": true,
   "project_root": "C:\\robotics_sim\\wlr_robot\\fsm_50mm_recording_shaped_clean_v1",
-  "scanned_files": 38,
+  "scanned_files": 49,
   "schema": "wlr50_clean.forbidden_import_scan.v1"
 }

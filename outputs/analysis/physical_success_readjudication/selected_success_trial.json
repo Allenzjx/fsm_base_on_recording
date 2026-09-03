@@ -1,0 +1,317 @@
+{
+  "schema": "wlr50_clean.physical_success_readjudication.v1",
+  "selected_success_trial": {
+    "trial_id": "trial_043_20260902_clean_v010",
+    "trial_number": 43,
+    "deep_raw_audit": true,
+    "trial_validity": "VALID",
+    "environment_match": true,
+    "environment_hash": "602f6e0893d999e5cb078aadf75541234440a3af918dc58e0154e80ff16ea3cb",
+    "robot_asset_hash": "e8a2a2b1485a32a50e851a07b9dd8ac4945b78ec49b7fada2b61c3eeb1e18892",
+    "continuous_physics_run": true,
+    "physical_ledgers_valid": true,
+    "completed_states": [
+      "P01",
+      "P02",
+      "P03",
+      "P04",
+      "P05",
+      "P06",
+      "P07",
+      "P08",
+      "P09",
+      "P10",
+      "P11",
+      "P12",
+      "P13"
+    ],
+    "P01_P13_complete": true,
+    "physical_traversal_complete": true,
+    "final_obstacle_geometry_success": true,
+    "final_body_position": [
+      1.3706231117248535,
+      -0.07787249237298965,
+      0.15401214361190796
+    ],
+    "final_wheel_positions": {
+      "front_left_ankle": [
+        1.6184026002883911,
+        -0.021342085674405098,
+        0.09880143404006958
+      ],
+      "front_right_ankle": [
+        1.6070451736450195,
+        -0.4209480285644531,
+        0.104056715965271
+      ],
+      "rear_left_ankle": [
+        1.0981698036193848,
+        0.027093619108200073,
+        0.10275188088417053
+      ],
+      "rear_right_ankle": [
+        1.0466296672821045,
+        -0.3661326766014099,
+        0.10049235820770264
+      ]
+    },
+    "four_leg_active_lift_evidence": true,
+    "rear_leg_order": "RR_FIRST",
+    "body_collision": false,
+    "body_collision_evidence": {
+      "body_collision": false,
+      "ledger_row_count": 12953,
+      "reported_collision_row_count": 0,
+      "exact_pair_active_row_count": 0,
+      "persistent_row_count": 0,
+      "penetrating_row_count": 0,
+      "confirmed_collision_row_count": 0,
+      "maximum_penetration_m": 0.0,
+      "maximum_normal_force_n": 0.0,
+      "noise_filter": "single-frame exact-pair activity is ignored only when it has neither positive penetration nor a second consecutive nonzero-force sample"
+    },
+    "wheel_only_climb": false,
+    "wheel_only_climb_evidence": {
+      "detector_positive_count": 0,
+      "per_leg": {
+        "FL": {
+          "events": [
+            "ACTIVE_LIFT",
+            "FRONT_FACE_CROSSED",
+            "TOP_LOADED"
+          ],
+          "ticks": {
+            "ACTIVE_LIFT": 2417,
+            "FRONT_FACE_CROSSED": 3115,
+            "TOP_LOADED": 3583
+          },
+          "event_evidence_passed": true,
+          "lift_precedes_crossing_and_top": true,
+          "complete": true
+        },
+        "FR": {
+          "events": [
+            "ACTIVE_LIFT",
+            "FRONT_FACE_CROSSED",
+            "TOP_LOADED"
+          ],
+          "ticks": {
+            "ACTIVE_LIFT": 1624,
+            "FRONT_FACE_CROSSED": 1665,
+            "TOP_LOADED": 1695
+          },
+          "event_evidence_passed": true,
+          "lift_precedes_crossing_and_top": true,
+          "complete": true
+        },
+        "RR": {
+          "events": [
+            "ACTIVE_LIFT",
+            "FRONT_FACE_CROSSED",
+            "TOP_LOADED"
+          ],
+          "ticks": {
+            "ACTIVE_LIFT": 6918,
+            "FRONT_FACE_CROSSED": 7109,
+            "TOP_LOADED": 7579
+          },
+          "event_evidence_passed": true,
+          "lift_precedes_crossing_and_top": true,
+          "complete": true
+        },
+        "RL": {
+          "events": [
+            "ACTIVE_LIFT",
+            "FRONT_FACE_CROSSED",
+            "TOP_LOADED"
+          ],
+          "ticks": {
+            "ACTIVE_LIFT": 7718,
+            "FRONT_FACE_CROSSED": 8381,
+            "TOP_LOADED": 8410
+          },
+          "event_evidence_passed": true,
+          "lift_precedes_crossing_and_top": true,
+          "complete": true
+        }
+      },
+      "event_logger_per_leg": {
+        "FL": {
+          "events": [
+            "ACTIVE_LIFT",
+            "FRONT_FACE_CROSSED",
+            "TOP_LOADED"
+          ],
+          "ticks": {
+            "ACTIVE_LIFT": 2417,
+            "FRONT_FACE_CROSSED": 3115,
+            "TOP_LOADED": 3583
+          },
+          "event_evidence_passed": true,
+          "lift_precedes_crossing_and_top": true,
+          "complete": true
+        },
+        "FR": {
+          "events": [
+            "ACTIVE_LIFT",
+            "FRONT_FACE_CROSSED",
+            "TOP_LOADED"
+          ],
+          "ticks": {
+            "ACTIVE_LIFT": 1624,
+            "FRONT_FACE_CROSSED": 1665,
+            "TOP_LOADED": 1695
+          },
+          "event_evidence_passed": true,
+          "lift_precedes_crossing_and_top": true,
+          "complete": true
+        },
+        "RR": {
+          "events": [
+            "ACTIVE_LIFT",
+            "FRONT_FACE_CROSSED",
+            "TOP_LOADED"
+          ],
+          "ticks": {
+            "ACTIVE_LIFT": 6918,
+            "FRONT_FACE_CROSSED": 7109,
+            "TOP_LOADED": 7579
+          },
+          "event_evidence_passed": true,
+          "lift_precedes_crossing_and_top": true,
+          "complete": true
+        },
+        "RL": {
+          "events": [
+            "ACTIVE_LIFT",
+            "FRONT_FACE_CROSSED",
+            "TOP_LOADED"
+          ],
+          "ticks": {
+            "ACTIVE_LIFT": 7718,
+            "FRONT_FACE_CROSSED": 8381,
+            "TOP_LOADED": 8410
+          },
+          "event_evidence_passed": true,
+          "lift_precedes_crossing_and_top": true,
+          "complete": true
+        }
+      },
+      "terminal_observation_latches": {
+        "passed": true,
+        "source": "terminal raw observation live latched guard history",
+        "terminal_physics_tick": 12952,
+        "all_four_active_lift_crossing_top_latches": true,
+        "all_leg_front_face_crossings_latched": true,
+        "all_wheels_final_top_geometry": true,
+        "rear_leg_order": "RR_FIRST",
+        "per_leg": {
+          "FL": {
+            "passed": {
+              "ACTIVE_LIFT": true,
+              "FRONT_FACE_CROSSED": true,
+              "TOP_LOADED": true
+            },
+            "ticks": {
+              "ACTIVE_LIFT": 2417,
+              "FRONT_FACE_CROSSED": 3115,
+              "TOP_LOADED": 3583
+            },
+            "lift_precedes_crossing_and_top": true,
+            "complete": true
+          },
+          "FR": {
+            "passed": {
+              "ACTIVE_LIFT": true,
+              "FRONT_FACE_CROSSED": true,
+              "TOP_LOADED": true
+            },
+            "ticks": {
+              "ACTIVE_LIFT": 1624,
+              "FRONT_FACE_CROSSED": 1665,
+              "TOP_LOADED": 1695
+            },
+            "lift_precedes_crossing_and_top": true,
+            "complete": true
+          },
+          "RR": {
+            "passed": {
+              "ACTIVE_LIFT": true,
+              "FRONT_FACE_CROSSED": true,
+              "TOP_LOADED": true
+            },
+            "ticks": {
+              "ACTIVE_LIFT": 6918,
+              "FRONT_FACE_CROSSED": 7109,
+              "TOP_LOADED": 7579
+            },
+            "lift_precedes_crossing_and_top": true,
+            "complete": true
+          },
+          "RL": {
+            "passed": {
+              "ACTIVE_LIFT": true,
+              "FRONT_FACE_CROSSED": true,
+              "TOP_LOADED": true
+            },
+            "ticks": {
+              "ACTIVE_LIFT": 7718,
+              "FRONT_FACE_CROSSED": 8381,
+              "TOP_LOADED": 8410
+            },
+            "lift_precedes_crossing_and_top": true,
+            "complete": true
+          }
+        }
+      },
+      "reason": "each front-face crossing has prior active measured-lift evidence in the event ledger or terminal live-observation latch history"
+    },
+    "fall": false,
+    "physics_explosion": false,
+    "final_pose_stable": true,
+    "stable_decay_span_s": 0.9166666666666714,
+    "recovery_count": 1,
+    "video_path": "C:\\robotics_sim\\wlr_robot\\fsm_50mm_recording_shaped_clean_v1\\runs\\trial_043_20260902_clean_v010\\actual_viewport_video.mp4",
+    "video_decode": true,
+    "video_timestamps_monotonic": true,
+    "video_duration_from_frames": 107.93333333333334,
+    "video_continuous": true,
+    "recording_runtime_access": false,
+    "root_write_count": 0,
+    "teleport_count": 0,
+    "external_force_count": 0,
+    "external_impulse_count": 0,
+    "gravity_override_count": null,
+    "gravity_override_absent": true,
+    "gravity_evidence_source": "hash-bound frozen config/runtime source proof",
+    "forbidden_control_count": 0,
+    "original_result": "INCOMPLETE_CONTROLLER_BLOCKED",
+    "task_result": "SUCCESS",
+    "classification": "TASK_SUCCESS_WITH_REFERENCE_DIVERGENCE_WARNING",
+    "reference_max_error_percent": 36.458636795326846,
+    "reference_max_phase": "P09",
+    "reference_max_channel": "rear_left_ankle",
+    "reference_max_metric": "measured_peak_velocity_error_percent",
+    "reference_within_30_percent": false,
+    "reference_warning": "REFERENCE_DIVERGENCE_WARNING",
+    "duration_s": 107.93333333333334,
+    "selected": true,
+    "selection_reason": "selected by Section 8's explicit Trial 043 acceptance after its raw Layer A and Layer B evidence passed; the ten-level physical-first priority is the documented fallback and Recording divergence never vetoes success"
+  },
+  "selection_priority": [
+    "Section 8 explicit Trial 043 acceptance when raw Layer A and Layer B pass",
+    "otherwise apply the Section 9 fallback order:",
+    "no body collision",
+    "no wheel-only climb",
+    "complete physical traversal",
+    "environment exactly matches reference",
+    "video complete and continuous",
+    "no forbidden control",
+    "stable final pose",
+    "fewer recoveries",
+    "shorter runtime",
+    "lower maximum Recording divergence"
+  ],
+  "recording_divergence_is_task_success_gate": false,
+  "trial_045_authorized_or_needed": false
+}

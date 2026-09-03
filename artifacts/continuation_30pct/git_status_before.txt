@@ -1,0 +1,19 @@
+captured_at=2026-09-02T23:49:34.1231697-04:00
+repository=C:/robotics_sim/wlr_robot/fsm_50mm_recording_shaped_clean_v1
+branch=main
+local_head=b9d44bacbe61999bb7cb9564e3dde21deaf336ad
+remote_head=b9d44bacbe61999bb7cb9564e3dde21deaf336ad
+ahead_behind=0	0
+worktree_status:
+## main...origin/main
+diff_stat:
+
+remote:
+origin	https://github.com/Allenzjx/fsm_base_on_recording.git (fetch)
+origin	https://github.com/Allenzjx/fsm_base_on_recording.git (push)
+trial043_exists=True
+trial043_manifest_exists=True
+trial043_finalized=True
+trial043_p01_p13_complete=True
+trial043_manifest_last_write=2026-09-02T19:42:59.5718222-04:00
+active_project_workers=0

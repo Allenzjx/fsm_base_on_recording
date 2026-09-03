@@ -1,0 +1,57 @@
+schema: wlr50_clean.ppo_reward.v1
+training_enabled: false
+aggregation: sum_over_120hz_ticks_in_one_15hz_decision
+
+terms:
+  task_success:
+    weight: 100.0
+    scale: 1.0
+    clip: [0.0, 1.0]
+  forward_progress:
+    weight: 4.0
+    scale: 0.05
+    clip: [-2.0, 2.0]
+  phase_progress:
+    weight: 1.0
+    scale: 0.1
+    clip: [-1.0, 2.0]
+  active_leg_clearance:
+    weight: 1.0
+    scale: 0.05
+    clip: [0.0, 2.0]
+  body_collision_penalty:
+    weight: -100.0
+    scale: 1.0
+    clip: [0.0, 1.0]
+  wheel_only_climb_penalty:
+    weight: -100.0
+    scale: 1.0
+    clip: [0.0, 1.0]
+  fall_penalty:
+    weight: -100.0
+    scale: 1.0
+    clip: [0.0, 1.0]
+  residual_magnitude_penalty:
+    weight: -0.02
+    scale: 1.0
+    clip: [0.0, 1.0]
+  action_rate_penalty:
+    weight: -0.01
+    scale: 1.0
+    clip: [0.0, 4.0]
+  joint_limit_penalty:
+    weight: -50.0
+    scale: 1.0
+    clip: [0.0, 1.0]
+  body_angular_velocity_penalty:
+    weight: -0.02
+    scale: 20.0
+    clip: [0.0, 1.0]
+  pitch_roll_penalty:
+    weight: -0.02
+    scale: 1.5707963267948966
+    clip: [0.0, 2.0]
+  support_diagnostic:
+    weight: 0.1
+    scale: 0.05
+    clip: [-2.0, 2.0]

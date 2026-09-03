@@ -1,0 +1,14 @@
+schema: wlr50_clean.ppo_termination.v1
+training_enabled: false
+timeout_s: 200.0
+conformance_outside_30pct: diagnostic_only
+
+priority:
+  - NAN_INF
+  - PHYSICS_EXPLOSION
+  - BODY_COLLISION
+  - WHEEL_ONLY_CLIMB
+  - FALL
+  - HARD_JOINT_LIMIT
+  - SUCCESS
+  - TIMEOUT

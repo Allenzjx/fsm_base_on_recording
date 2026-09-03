@@ -162,6 +162,24 @@ def test_analyzer_populates_all_phases_and_maximum_summary(tmp_path: Path) -> No
     assert analysis["conformance_summary"]["all_normal_states_within_15_percent"] is True
 
 
+def test_reference_divergence_is_diagnostic_and_does_not_veto_task_success(
+    tmp_path: Path,
+) -> None:
+    run, contract = _make_success(tmp_path)
+    payload = json.loads(contract.read_text(encoding="utf-8"))
+    payload["phases"][0]["active_duration_s"] = 0.5
+    contract.write_text(json.dumps(payload), encoding="utf-8")
+
+    analysis = analyze_trial(run, contract, strict_success=True)
+
+    assert analysis["result_layers"]["trial_validity"]["result"] == "VALID"
+    assert analysis["result_layers"]["task_success"]["result"] == "SUCCESS"
+    quality = analysis["result_layers"]["quality_and_reference_diagnostics"]
+    assert quality["within_30_percent"] is False
+    assert quality["warning"] == "REFERENCE_DIVERGENCE_WARNING"
+    assert quality["blocks_task_success"] is False
+
+
 def test_similarity_population_must_precede_immutable_manifest(tmp_path: Path) -> None:
     run, contract = _make_success(tmp_path)
     with pytest.raises(TrialAnalysisError, match="after trial_manifest"):
@@ -211,7 +229,7 @@ def test_wheel_only_evidence_is_rejected(tmp_path: Path) -> None:
         analyze_trial(run, contract)
 
 
-def test_sequence_recovery_corrections_are_bounded_at_15_percent(tmp_path: Path) -> None:
+def test_sequence_recovery_correction_limit_is_diagnostic_only(tmp_path: Path) -> None:
     run, contract = _make_success(tmp_path)
     path = run / JSONL_FILES["transition"]
     rows = [json.loads(line) for line in path.read_text().splitlines()]
@@ -223,10 +241,38 @@ def test_sequence_recovery_corrections_are_bounded_at_15_percent(tmp_path: Path)
     _write_jsonl(path, rows)
     assert analyze_trial(run, contract)["checks"]["feedback_correction_reference_bounded"] is True
 
-    rows[-1]["details"]["correction_fractions"][4] = 0.151
+    rows[-1]["details"]["correction_fractions"][4] = 0.150001
     _write_jsonl(path, rows)
-    with pytest.raises(TrialAnalysisError, match="feedback_correction_reference_bounded"):
-        analyze_trial(run, contract)
+    analysis = analyze_trial(run, contract, strict_success=True)
+    assert analysis["result_layers"]["trial_validity"]["result"] == "VALID"
+    assert analysis["result_layers"]["task_success"]["result"] == "SUCCESS"
+    quality = analysis["result_layers"]["quality_and_reference_diagnostics"]
+    assert quality["checks"]["feedback_correction_reference_bounded"] is False
+    assert quality["blocks_task_success"] is False
+
+
+def test_final_wheel_and_stable_decay_checks_are_diagnostic_only(tmp_path: Path) -> None:
+    run, contract = _make_success(tmp_path)
+    command_path = run / JSONL_FILES["command"]
+    commands = [json.loads(line) for line in command_path.read_text().splitlines()]
+    commands[-1]["full12"][8] = 0.25
+    _write_jsonl(command_path, commands)
+
+    observation_path = run / JSONL_FILES["observation"]
+    observations = [
+        json.loads(line) for line in observation_path.read_text().splitlines()
+    ]
+    for row in observations:
+        if row["state_id"] == "P13" and row["simulation_time_s"] >= 15.4:
+            row["actual_full12"][8] = 1.0
+    _write_jsonl(observation_path, observations)
+
+    analysis = analyze_trial(run, contract, strict_success=True)
+    assert analysis["result_layers"]["trial_validity"]["result"] == "VALID"
+    assert analysis["result_layers"]["task_success"]["result"] == "SUCCESS"
+    quality = analysis["result_layers"]["quality_and_reference_diagnostics"]
+    assert quality["checks"]["final_wheel_targets_zero"] is False
+    assert quality["checks"]["measured_wheel_velocity_stable_decay"] is False
 
 
 def test_post_mapper_drive_feedback_is_included_in_cumulative_budget(tmp_path: Path) -> None:

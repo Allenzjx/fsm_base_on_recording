@@ -1,0 +1,91 @@
+schema: wlr50_clean.ppo_action_projection.v1
+action_schema_name: wlr50_clean.residual_full12
+action_schema_version: 1
+
+physics_hz: 120.0
+decision_hz: 15.0
+nominal_action_dimension: 12
+residual_action_dimension: 12
+training_enabled: false
+
+full12_order:
+  - front_left_hip
+  - front_left_knee
+  - front_right_hip
+  - front_right_knee
+  - rear_left_hip
+  - rear_left_knee
+  - rear_right_hip
+  - rear_right_knee
+  - front_left_ankle
+  - front_right_ankle
+  - rear_left_ankle
+  - rear_right_ankle
+
+bounded_transform: tanh
+
+# The accepted Recording envelope remains useful for sizing an initial policy
+# output, but it is deliberately not a run-time safety boundary.  In
+# particular, nominal drift does not consume residual "headroom".
+recording_envelope_diagnostic:
+  source: conformance_policy.yaml
+  hard_projection_constraint: false
+  use_as_initial_policy_initialization_suggestion: true
+
+residual_output_scale:
+  derivation: configured_safe_action_range_span
+  recording_envelope_used_in_projection: false
+phase_scale_fraction:
+  P01: 1.0
+  P02: 1.0
+  P03: 1.0
+  P04: 1.0
+  P05: 1.0
+  P06: 1.0
+  P07: 1.0
+  P08: 1.0
+  P09: 1.0
+  P10: 1.0
+  P11: 1.0
+  P12: 1.0
+  P13: 1.0
+
+phase_action_mask:
+  source: recording_motion_contract.json
+  derive_from: phases.ppo_action_mask_full12
+  inactive_recording_channel_default: 0
+  may_only_close_additional_channels: true
+
+residual_rate_limits:
+  servo_deg_s: 150.0
+  wheel_rad_s2: 31.41592653589793
+  source:
+    servo: frozen_environment_servo_reference_velocity
+    wheel: one_full_wheel_velocity_limit_per_15hz_decision_interval
+
+absolute_action_limits:
+  hip_deg: [-135.0, 135.0]
+  knee_deg: [-60.0, 210.0]
+  wheel_rad_s: [-2.0943951023931953, 2.0943951023931953]
+  source: configs/environment_lock.json
+
+joint_safety_margin_deg:
+  hip: 2.0
+  knee: 2.0
+  interpretation: reserved_inside_absolute_actuator_limits
+
+physical_safety_projection:
+  body_collision_disables_all_residuals: true
+  body_collision_forces_wheels_zero: true
+  wheel_only_climb_disables_all_residuals: true
+  wheel_only_climb_forces_wheels_zero: true
+
+zero_residual:
+  bitwise_nominal_fast_path: true
+  full_episode_equivalence_required: true
+
+hard_safety:
+  applied_after_all_physical_projection_stages: true
+  can_disable_residual_channels: true
+  can_force_wheels_zero: true
+  can_override_full12: true

@@ -1,0 +1,41 @@
+schema: wlr50_clean.ppo_domain_randomization.v1
+enabled: false
+training_enabled: false
+nominal_evaluation_uses_frozen_environment: true
+
+hooks:
+  initial_joint_offsets_deg:
+    enabled: false
+    baseline: 0.0
+    range: [-1.0, 1.0]
+    unit: deg
+  obstacle_longitudinal_distance_m:
+    enabled: false
+    baseline: 0.0
+    range: [-0.01, 0.01]
+    unit: m_delta
+  friction_scale:
+    enabled: false
+    baseline: 1.0
+    range: [0.9, 1.1]
+    unit: multiplier
+  actuator_tracking_scale:
+    enabled: false
+    baseline: 1.0
+    range: [0.9, 1.1]
+    unit: multiplier
+  sensor_noise_scale:
+    enabled: false
+    baseline: 0.0
+    range: [0.0, 1.0]
+    unit: configured_noise_multiplier
+  sensor_delay_s:
+    enabled: false
+    baseline: 0.0
+    range: [0.0, 0.008333333333333333]
+    unit: s
+  body_mass_inertia_scale:
+    enabled: false
+    baseline: 1.0
+    range: [0.95, 1.05]
+    unit: multiplier

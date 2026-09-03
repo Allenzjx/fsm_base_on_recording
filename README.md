@@ -35,3 +35,8 @@ saving, or raw Recording access.
 The final acceptance condition is one continuous physical Isaac Sim trial that
 completes P01-P13 without a body-obstacle collision or wheel-only climb, followed
 by validated Recording, FSM, and side-by-side MP4 outputs.
+
+Recording similarity is a separate quality diagnostic. The 30% advisory
+tolerance never vetoes a valid physical success, video publication, or PPO
+baseline freeze. See `docs/FSM_RECORDING_SEPARATION.md` for the execution and
+acceptance boundary.

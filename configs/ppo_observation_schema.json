@@ -1,0 +1,222 @@
+{
+  "schema": "wlr50_clean.ppo_observation_schema.v1",
+  "schema_name": "wlr50_clean.actor_observation",
+  "schema_version": 1,
+  "dimension": 85,
+  "nan_policy": "reject_episode",
+  "online_normalization_updates": false,
+  "normalization_statistics": {
+    "status": "INITIAL_NORMALIZATION_STATISTICS_NOT_TRAINING_FINAL",
+    "sources": [
+      "v010_20260806_220745_363972_manual",
+      "selected_frozen_fsm_trial_043"
+    ]
+  },
+  "state_ids": [
+    "P01", "P02", "P03", "P04", "P05", "P06", "P07",
+    "P08", "P09", "P10", "P11", "P12", "P13"
+  ],
+  "macro_phase_ids": {
+    "P01": 1, "P02": 2, "P03": 3, "P04": 4, "P05": 5,
+    "P06": 6, "P07": 7, "P08": 8, "P09": 9, "P10": 10,
+    "P11": 11, "P12": 12, "P13": 13
+  },
+  "full12_order": [
+    "front_left_hip",
+    "front_left_knee",
+    "front_right_hip",
+    "front_right_knee",
+    "rear_left_hip",
+    "rear_left_knee",
+    "rear_right_hip",
+    "rear_right_knee",
+    "front_left_ankle",
+    "front_right_ankle",
+    "rear_left_ankle",
+    "rear_right_ankle"
+  ],
+  "features": [
+    {
+      "group": "state_one_hot",
+      "offset": 0,
+      "size": 13,
+      "names": [
+        "state_is_P01", "state_is_P02", "state_is_P03", "state_is_P04",
+        "state_is_P05", "state_is_P06", "state_is_P07", "state_is_P08",
+        "state_is_P09", "state_is_P10", "state_is_P11", "state_is_P12",
+        "state_is_P13"
+      ],
+      "units": "boolean",
+      "normalization": {"method": "identity"},
+      "clip": [0.0, 1.0],
+      "source": "fixed FSM state graph"
+    },
+    {
+      "group": "phase_progress",
+      "offset": 13,
+      "size": 1,
+      "names": ["phase_progress"],
+      "units": "fraction",
+      "normalization": {"method": "identity"},
+      "clip": [0.0, 1.0],
+      "source": "WAIT_ENTRY=0, EXECUTE_MOTION=0..1, VERIFY_RESULT/DONE=1"
+    },
+    {
+      "group": "joint_position_error",
+      "offset": 14,
+      "size": 8,
+      "names": [
+        "front_left_hip_position_error", "front_left_knee_position_error",
+        "front_right_hip_position_error", "front_right_knee_position_error",
+        "rear_left_hip_position_error", "rear_left_knee_position_error",
+        "rear_right_hip_position_error", "rear_right_knee_position_error"
+      ],
+      "units": "deg",
+      "normalization": {
+        "method": "fixed_scale",
+        "scale": [135.0, 210.0, 135.0, 210.0, 135.0, 210.0, 135.0, 210.0]
+      },
+      "clip": [-2.0, 2.0],
+      "source": "authoritative command-space joint limits"
+    },
+    {
+      "group": "joint_velocity",
+      "offset": 22,
+      "size": 8,
+      "names": [
+        "front_left_hip_velocity", "front_left_knee_velocity",
+        "front_right_hip_velocity", "front_right_knee_velocity",
+        "rear_left_hip_velocity", "rear_left_knee_velocity",
+        "rear_right_hip_velocity", "rear_right_knee_velocity"
+      ],
+      "units": "deg_s",
+      "normalization": {"method": "fixed_scale", "scale": 150.0},
+      "clip": [-4.0, 4.0],
+      "source": "frozen servo reference velocity"
+    },
+    {
+      "group": "wheel_velocity",
+      "offset": 30,
+      "size": 4,
+      "names": [
+        "front_left_ankle_velocity", "front_right_ankle_velocity",
+        "rear_left_ankle_velocity", "rear_right_ankle_velocity"
+      ],
+      "units": "rad_s",
+      "normalization": {"method": "fixed_scale", "scale": 2.0943951023931953},
+      "clip": [-1.0, 1.0],
+      "source": "authoritative wheel velocity limit"
+    },
+    {
+      "group": "wheel_contact_code",
+      "offset": 34,
+      "size": 4,
+      "names": [
+        "front_left_wheel_contact_code", "front_right_wheel_contact_code",
+        "rear_left_wheel_contact_code", "rear_right_wheel_contact_code"
+      ],
+      "units": "enum_code",
+      "normalization": {"method": "fixed_scale", "scale": 3.0},
+      "clip": [-1.0, 1.0],
+      "source": "AIR=0, GROUND=1, OBSTACLE=2, GROUND_AND_OBSTACLE=3, UNVERIFIED=-1"
+    },
+    {
+      "group": "leg_air_top_crossing_history",
+      "offset": 38,
+      "size": 12,
+      "names": [
+        "FL_active_lift_latched", "FL_front_face_crossed_latched", "FL_top_loaded_latched",
+        "FR_active_lift_latched", "FR_front_face_crossed_latched", "FR_top_loaded_latched",
+        "RL_active_lift_latched", "RL_front_face_crossed_latched", "RL_top_loaded_latched",
+        "RR_active_lift_latched", "RR_front_face_crossed_latched", "RR_top_loaded_latched"
+      ],
+      "units": "boolean",
+      "normalization": {"method": "identity"},
+      "clip": [0.0, 1.0],
+      "source": "live latched lift/front-plane/top-load guards"
+    },
+    {
+      "group": "body_orientation_wxyz",
+      "offset": 50,
+      "size": 4,
+      "names": ["base_qw", "base_qx", "base_qy", "base_qz"],
+      "units": "unit_quaternion",
+      "normalization": {"method": "identity"},
+      "clip": [-1.0, 1.0],
+      "source": "live base rigid-body orientation"
+    },
+    {
+      "group": "body_angular_velocity",
+      "offset": 54,
+      "size": 3,
+      "names": ["base_angular_velocity_x", "base_angular_velocity_y", "base_angular_velocity_z"],
+      "units": "rad_s",
+      "normalization": {"method": "fixed_scale", "scale": 20.0},
+      "clip": [-1.0, 1.0],
+      "source": "physics-explosion hard-safety angular-speed bound"
+    },
+    {
+      "group": "obstacle_relative_geometry",
+      "offset": 57,
+      "size": 9,
+      "names": [
+        "obstacle_front_dx", "obstacle_back_dx", "obstacle_left_dy",
+        "obstacle_right_dy", "obstacle_bottom_dz", "obstacle_top_dz",
+        "obstacle_length", "obstacle_signed_width", "obstacle_height"
+      ],
+      "units": "m",
+      "normalization": {
+        "method": "fixed_scale",
+        "scale": [2.057375557085507, 2.057375557085507, 2.0, 2.0, 1.0, 1.0, 2.057375557085507, 2.0, 0.05]
+      },
+      "clip": [-4.0, 4.0],
+      "source": "frozen obstacle dimensions and live base position"
+    },
+    {
+      "group": "raw_full_body_com",
+      "offset": 66,
+      "size": 3,
+      "names": ["full_body_com_x", "full_body_com_y", "full_body_com_z"],
+      "units": "m",
+      "normalization": {
+        "method": "fixed_scale",
+        "scale": [2.057375557085507, 2.0, 1.0]
+      },
+      "clip": [-4.0, 4.0],
+      "source": "live full 13-body center of mass"
+    },
+    {
+      "group": "support_diagnostics",
+      "offset": 69,
+      "size": 4,
+      "names": ["support_signed_margin", "support_projection_inside", "support_count", "support_valid"],
+      "units": ["m", "ternary_code", "count", "boolean"],
+      "normalization": {
+        "method": "fixed_scale",
+        "scale": [1.0, 1.0, 13.0, 1.0]
+      },
+      "clip": [-1.0, 1.0],
+      "source": "live support polygon diagnostics; unknown projection is -1"
+    },
+    {
+      "group": "previous_action",
+      "offset": 73,
+      "size": 12,
+      "names": [
+        "previous_front_left_hip", "previous_front_left_knee",
+        "previous_front_right_hip", "previous_front_right_knee",
+        "previous_rear_left_hip", "previous_rear_left_knee",
+        "previous_rear_right_hip", "previous_rear_right_knee",
+        "previous_front_left_ankle", "previous_front_right_ankle",
+        "previous_rear_left_ankle", "previous_rear_right_ankle"
+      ],
+      "units": ["deg", "deg", "deg", "deg", "deg", "deg", "deg", "deg", "rad_s", "rad_s", "rad_s", "rad_s"],
+      "normalization": {
+        "method": "fixed_scale",
+        "scale": [135.0, 210.0, 135.0, 210.0, 135.0, 210.0, 135.0, 210.0, 2.0943951023931953, 2.0943951023931953, 2.0943951023931953, 2.0943951023931953]
+      },
+      "clip": [-1.0, 1.0],
+      "source": "previous 15 Hz applied Full12 policy action"
+    }
+  ]
+}

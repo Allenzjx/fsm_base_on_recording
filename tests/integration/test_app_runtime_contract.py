@@ -9,6 +9,7 @@ import pytest
 from wlr50_clean.infrastructure.app_runtime import (
     MAX_CONTROL_SECONDS,
     RENDER_STRIDE,
+    _physical_acceptance_failures,
     _config_from_args,
     _validate_initial_observation,
     render_due,
@@ -67,6 +68,24 @@ def test_exact_render_cadence_is_one_per_eight_completed_physics_ticks() -> None
     assert source.index("_validate_initial_observation(current_observation)") < source.index("recorder.start()")
 
 
+def test_runtime_never_uses_quality_diagnostics_as_a_success_veto() -> None:
+    result_layers = {
+        "trial_validity": {"checks": {"continuous_physics": True}},
+        "task_success": {"checks": {"physical_traversal": True}},
+        "quality_and_reference_diagnostics": {
+            "checks": {
+                "within_30_percent": False,
+                "feedback_correction_reference_bounded": False,
+                "final_wheel_targets_zero": False,
+                "measured_wheel_velocity_stable_decay": False,
+            },
+            "blocks_task_success": False,
+        },
+    }
+
+    assert _physical_acceptance_failures(result_layers) == []
+
+
 def test_pre_simulation_app_import_boundary_and_lazy_runtime_imports() -> None:
     tree = ast.parse(RUNTIME.read_text(encoding="utf-8"))
     top_import_roots = set()
@@ -84,9 +103,8 @@ def test_pre_simulation_app_import_boundary_and_lazy_runtime_imports() -> None:
     assert "accepted_steps" not in source.lower()
     assert "semantic_segments" not in source.lower()
     assert "root_state" not in source.lower().replace("root_state_write_count", "")
-    assert (
-        "drive_feedback_bias_full12=frame.drive_feedback_bias_full12" in source
-    )
+    assert "total_drive_bias = tuple(" in source
+    assert "drive_feedback_bias_full12=total_drive_bias" in source
     assert "drive_feedback_bias_full12[:8]" not in source
 
 

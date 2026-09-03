@@ -1,0 +1,109 @@
+schema: wlr50_clean.conformance_policy.v3
+
+reference_version: v010_20260806_220745_363972_manual
+rear_leg_order: RR_FIRST
+
+active_tolerance:
+  fraction: 0.30
+  percent: 30.0
+  role: advisory_reference_divergence_diagnostic
+  blocks_task_success: false
+  blocks_baseline_freeze: false
+  blocks_video_publication: false
+  blocks_ppo_readiness: false
+
+legacy_reporting:
+  preserve_15_percent_result: true
+  legacy_fraction: 0.15
+  legacy_percent: 15.0
+
+hard_safety:
+  unchanged: true
+
+absolute_floors:
+  joint_endpoint_delta:
+    absolute_allowance: 2.0
+    unit: deg
+    source: existing_v010_motion_contract_joint_endpoint_delta_floor
+  servo_velocity:
+    absolute_allowance: 1.0
+    unit: deg_s
+    source: existing_validated_similarity_contract
+  wheel_velocity:
+    absolute_allowance: 0.05
+    unit: rad_s
+    source: existing_validated_similarity_contract
+  wheel_integral:
+    absolute_allowance: 0.05
+    unit: rad
+    source: existing_validated_similarity_contract
+  trajectory_scale:
+    absolute_allowance: 2.0
+    unit: deg
+    source: existing_v010_phase_normalized_rmse_scale_floor
+  overlap_timing:
+    absolute_allowance: 0.008333333333333333
+    unit: s
+    source: one_120hz_physics_tick
+
+atomic_event_timing:
+  same_source_event_requires_same_physics_tick: true
+
+runtime:
+  conformance_can_block_entry: false
+  conformance_can_block_completion: false
+  conformance_can_block_task_success: false
+  conformance_is_not_body_safety: true
+  # This is the frozen Trial043 nominal-FSM correction ceiling. It is not a
+  # PPO residual bound and is intentionally independent of the 30% diagnostic.
+  reference_bounded_correction_fraction: 0.15
+
+ppo:
+  reference_divergence_is_hard_action_bound: false
+  reference_divergence_initial_scale_suggestion_fraction: 0.30
+  hard_bound_sources:
+    - actuator_hard_limits
+    - joint_safety_margins
+    - wheel_velocity_limits
+    - phase_action_masks
+    - action_rate_limits
+    - body_collision_safety_projection
+    - wheel_only_climb_safety_projection
+
+result_layers:
+  trial_validity: TRIAL_VALIDITY
+  task_success: TASK_SUCCESS
+  quality_and_reference_diagnostics: QUALITY_AND_REFERENCE_DIAGNOSTICS
+
+gate_classes:
+  hard_physical_safety:
+    - body_chassis_obstacle_collision
+    - wheel_only_climb
+    - fall
+    - nan_inf
+    - physics_explosion
+    - joint_hard_limit_violation
+    - severe_collision_penetration
+    - complete_support_loss_fall
+    - root_write
+    - teleport
+    - external_force_impulse
+    - gravity_or_asset_modification
+  reference_conformance:
+    - endpoint
+    - delta
+    - active_duration
+    - command_velocity
+    - measured_velocity
+    - wheel_integral
+    - trajectory_rmse
+    - entry_corridor
+    - completion_corridor
+    - bounded_feedback_correction
+    - overlap_timing
+  diagnostic_only:
+    - short_force_dip
+    - single_frame_slip
+    - single_frame_effort_spike
+    - millimetre_com_offset
+    - short_support_margin_dip

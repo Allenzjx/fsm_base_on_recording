@@ -1,0 +1,67 @@
+{
+  "schema": "wlr50_clean.trial_attempt_outcome.v1",
+  "trial_id": "trial_044_20260903_clean_v010",
+  "new_physical_trial_ordinal_this_continuation": 1,
+  "selected": false,
+  "result": "INCOMPLETE_CONTROLLER_BLOCKED",
+  "completed_macro_phases": [
+    "P01",
+    "P02",
+    "P03",
+    "P04",
+    "P05",
+    "P06",
+    "P07",
+    "P08",
+    "P09"
+  ],
+  "body_collision": false,
+  "wheel_only_climb": false,
+  "rear_leg_order": "RR_FIRST",
+  "duration_s": 65.4,
+  "targeted_adjustment": {
+    "phase": "P09",
+    "channel": "rear_left_ankle",
+    "motion_tick_first": 232,
+    "motion_tick_last": 639,
+    "native_drive_rad_s": 0.3,
+    "additive_bias_rad_s": 0.09,
+    "final_drive_rad_s": 0.39
+  },
+  "target_metric_recomputed_from_raw_telemetry": {
+    "name": "measured_peak_velocity_error_percent",
+    "reference_rad_s": 1.0827405452728271,
+    "trial_rad_s": 0.6253791451454163,
+    "error_percent": 42.2410892548746,
+    "within_30_percent": false
+  },
+  "related_p09_metrics": {
+    "command_peak_velocity_error_percent": 30.000000000000007,
+    "command_wheel_integral_error_percent": 29.999999999965347,
+    "actual_wheel_integral_error_percent": 12.572835926021076,
+    "measured_average_velocity_error_percent": 12.549851007083483
+  },
+  "terminal_blocker": {
+    "state_id": "P10",
+    "name": "reference_entry_compatible",
+    "rear_right_knee_position_error_deg": 9.16755845116657,
+    "rear_right_knee_position_limit_deg": 3.1799999999999993,
+    "rear_right_knee_velocity_deg_s": 4.118347937423813,
+    "reference_velocity_deg_s": 23.585333053160202,
+    "velocity_error_deg_s": -19.46698511573639,
+    "velocity_error_limit_deg_s": 7.07559991594806
+  },
+  "artifact_integrity": {
+    "manifest_path": "runs/trial_044_20260903_clean_v010/trial_manifest.json",
+    "all_manifest_artifact_hashes_match": true,
+    "video_sha256": "20f9cbe8f5f5eb8376fa6009359f13d97dc69f7ec197cacaefea592668ce079d",
+    "video_full_decode": true,
+    "video_frame_count": 981,
+    "video_stitched": false,
+    "video_speed_modified": false,
+    "encoder_finalized_before_app_close": true,
+    "simulation_app_close_interrupted_after_stable_minutes": 30
+  },
+  "additional_physical_trial_launched": false,
+  "next_trial_requires_explicit_user_authorization": true
+}

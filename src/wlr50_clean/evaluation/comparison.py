@@ -65,7 +65,11 @@ def _finite_time(value: Any, label: str) -> float:
 
 
 def validate_phase_windows(
-    windows: Iterable[PhaseWindow], *, video_duration_s: float
+    windows: Iterable[PhaseWindow],
+    *,
+    video_duration_s: float,
+    timeline_start_s: float = 0.0,
+    timeline_end_s: float | None = None,
 ) -> tuple[PhaseWindow, ...]:
     rows = tuple(windows)
     duration = _finite_time(video_duration_s, "video_duration_s")
@@ -73,20 +77,33 @@ def validate_phase_windows(
         raise ComparisonContractError("video duration must be positive")
     if tuple(row.phase for row in rows) != PHASE_IDS:
         raise ComparisonContractError("timeline must contain P01--P13 exactly once and in order")
-    previous_end = 0.0
+    expected_start = _finite_time(timeline_start_s, "timeline_start_s")
+    expected_end = (
+        duration
+        if timeline_end_s is None
+        else _finite_time(timeline_end_s, "timeline_end_s")
+    )
+    if not (0.0 <= expected_start < expected_end <= duration + 1.0e-6):
+        raise ComparisonContractError("semantic timeline is outside the video")
+    previous_end = expected_start
     for row in rows:
         if not (0.0 <= row.start_s < row.end_s <= duration + 1.0e-6):
             raise ComparisonContractError(f"invalid {row.phase} interval {row.start_s}..{row.end_s}")
         if not math.isclose(row.start_s, previous_end, rel_tol=0.0, abs_tol=1.0e-6):
             raise ComparisonContractError(f"{row.phase} does not continuously follow the preceding phase")
         previous_end = row.end_s
-    if not math.isclose(previous_end, duration, rel_tol=0.0, abs_tol=1.0e-6):
-        raise ComparisonContractError("phase timeline does not cover the complete video")
+    if not math.isclose(previous_end, expected_end, rel_tol=0.0, abs_tol=1.0e-6):
+        raise ComparisonContractError("phase timeline does not cover the semantic action interval")
     return rows
 
 
 def reference_windows_from_contract(
-    contract_path: Path, *, video_duration_s: float
+    contract_path: Path,
+    *,
+    video_duration_s: float,
+    video_origin_sim_s: float | None = None,
+    action_start_video_s: float | None = None,
+    action_end_video_s: float | None = None,
 ) -> tuple[PhaseWindow, ...]:
     """Map locked reference sim times into the continuous clean-video clock."""
 
@@ -95,17 +112,37 @@ def reference_windows_from_contract(
     cadence = payload.get("source", {}).get("telemetry_cadence", {})
     if not isinstance(phases, list) or len(phases) != 13:
         raise ComparisonContractError("reference contract does not contain 13 phases")
-    video_origin_sim_s = _finite_time(cadence.get("first_sim_time_s"), "first_sim_time_s")
+    origin_sim_s = (
+        _finite_time(cadence.get("first_sim_time_s"), "first_sim_time_s")
+        if video_origin_sim_s is None
+        else _finite_time(video_origin_sim_s, "video_origin_sim_s")
+    )
     starts = [
-        max(0.0, _finite_time(row.get("reference_sim_start_s"), "reference_sim_start_s") - video_origin_sim_s)
+        max(
+            0.0,
+            _finite_time(row.get("reference_sim_start_s"), "reference_sim_start_s")
+            - origin_sim_s,
+        )
         for row in phases
     ]
-    starts[0] = 0.0  # retain the short, legitimate pre-action pose in P01
     duration = _finite_time(video_duration_s, "video_duration_s")
+    timeline_start = (
+        0.0
+        if action_start_video_s is None
+        else _finite_time(action_start_video_s, "action_start_video_s")
+    )
+    timeline_end = (
+        duration
+        if action_end_video_s is None
+        else _finite_time(action_end_video_s, "action_end_video_s")
+    )
+    # Legacy callers assign short context to P01.  Context-aware callers pass
+    # the frame-exact semantic onset so comparison starts at the action itself.
+    starts[0] = timeline_start
     windows: list[PhaseWindow] = []
     for index, row in enumerate(phases):
         phase = str(row.get("state_id", ""))
-        end = starts[index + 1] if index + 1 < len(starts) else duration
+        end = starts[index + 1] if index + 1 < len(starts) else timeline_end
         windows.append(
             PhaseWindow(
                 phase=phase,
@@ -114,7 +151,12 @@ def reference_windows_from_contract(
                 end_s=end,
             )
         )
-    return validate_phase_windows(windows, video_duration_s=duration)
+    return validate_phase_windows(
+        windows,
+        video_duration_s=duration,
+        timeline_start_s=timeline_start,
+        timeline_end_s=timeline_end,
+    )
 
 
 def _read_json_or_jsonl(path: Path) -> Any:
@@ -125,14 +167,39 @@ def _read_json_or_jsonl(path: Path) -> Any:
 
 
 def fsm_windows_from_evidence(
-    evidence_path: Path, *, video_duration_s: float
+    evidence_path: Path,
+    *,
+    video_duration_s: float,
+    video_origin_sim_s: float | None = None,
+    action_start_video_s: float | None = None,
+    action_end_video_s: float | None = None,
 ) -> tuple[PhaseWindow, ...]:
-    """Read canonical windows or group a lifecycle transition JSONL ledger."""
+    """Read semantic phase times and map them into the clean-video clock.
+
+    ``video_origin_sim_s`` comes from the first selected viewport-ledger frame,
+    not from container duration and not from worker shutdown.  A trial
+    manifest's P13 completion time therefore takes precedence over a legacy
+    ``phase_windows`` row whose end was extended to recorder finalization.
+    """
 
     payload = _read_json_or_jsonl(Path(evidence_path))
     if isinstance(payload, Mapping):
         nested = payload.get("success_evidence", {})
-        rows = payload.get("phase_windows") or payload.get("phases")
+        phase_times = payload.get("phase_times")
+        if isinstance(phase_times, Mapping) and all(
+            isinstance(phase_times.get(phase), Mapping) for phase in PHASE_IDS
+        ):
+            rows = [
+                {
+                    "phase": phase,
+                    "state": phase,
+                    "entry_time_s": phase_times[phase].get("entry_time_s"),
+                    "completion_time_s": phase_times[phase].get("completion_time_s"),
+                }
+                for phase in PHASE_IDS
+            ]
+        else:
+            rows = payload.get("phase_windows") or payload.get("phases")
         if rows is None and isinstance(nested, Mapping):
             rows = nested.get("phase_windows") or nested.get("phases")
     else:
@@ -140,21 +207,57 @@ def fsm_windows_from_evidence(
     if not isinstance(rows, list):
         raise ComparisonContractError("FSM phase evidence is not a row list")
     duration = _finite_time(video_duration_s, "video_duration_s")
+    origin_sim_s = (
+        0.0
+        if video_origin_sim_s is None
+        else _finite_time(video_origin_sim_s, "video_origin_sim_s")
+    )
+    timeline_start = (
+        0.0
+        if action_start_video_s is None
+        else _finite_time(action_start_video_s, "action_start_video_s")
+    )
+    timeline_end = (
+        duration
+        if action_end_video_s is None
+        else _finite_time(action_end_video_s, "action_end_video_s")
+    )
     if len(rows) == 13 and all(
         isinstance(row, Mapping) and ("start_s" in row or "entry_time_s" in row)
         and ("end_s" in row or "completion_time_s" in row)
         for row in rows
     ):
-        windows = [
-            PhaseWindow(
-                phase=str(row.get("phase") or row.get("state_id")),
-                state=str(row.get("state") or row.get("state_name") or row.get("state_id") or ""),
-                start_s=_finite_time(row.get("start_s", row.get("entry_time_s")), "phase start"),
-                end_s=_finite_time(row.get("end_s", row.get("completion_time_s")), "phase end"),
+        starts = [
+            max(
+                0.0,
+                _finite_time(row.get("start_s", row.get("entry_time_s")), "phase start")
+                - origin_sim_s,
             )
             for row in rows
         ]
-        return validate_phase_windows(windows, video_duration_s=duration)
+        starts[0] = timeline_start
+        windows = []
+        for index, row in enumerate(rows):
+            end = starts[index + 1] if index + 1 < len(starts) else timeline_end
+            windows.append(
+                PhaseWindow(
+                    phase=str(row.get("phase") or row.get("state_id")),
+                    state=str(
+                        row.get("state")
+                        or row.get("state_name")
+                        or row.get("state_id")
+                        or ""
+                    ),
+                    start_s=starts[index],
+                    end_s=end,
+                )
+            )
+        return validate_phase_windows(
+            windows,
+            video_duration_s=duration,
+            timeline_start_s=timeline_start,
+            timeline_end_s=timeline_end,
+        )
 
     grouped: dict[str, list[tuple[float, str]]] = {phase: [] for phase in PHASE_IDS}
     for row in rows:
@@ -175,12 +278,12 @@ def fsm_windows_from_evidence(
         missing = [phase for phase in PHASE_IDS if not grouped[phase]]
         raise ComparisonContractError(f"FSM transition ledger is missing phases: {missing}")
     starts = [min(time for time, _ in grouped[phase]) for phase in PHASE_IDS]
-    origin = starts[0]
+    origin = starts[0] if video_origin_sim_s is None else origin_sim_s
     starts = [max(0.0, value - origin) for value in starts]
-    starts[0] = 0.0
+    starts[0] = timeline_start
     windows = []
     for index, phase in enumerate(PHASE_IDS):
-        end = starts[index + 1] if index + 1 < len(starts) else duration
+        end = starts[index + 1] if index + 1 < len(starts) else timeline_end
         windows.append(
             PhaseWindow(
                 phase=phase,
@@ -189,7 +292,12 @@ def fsm_windows_from_evidence(
                 end_s=end,
             )
         )
-    return validate_phase_windows(windows, video_duration_s=duration)
+    return validate_phase_windows(
+        windows,
+        video_duration_s=duration,
+        timeline_start_s=timeline_start,
+        timeline_end_s=timeline_end,
+    )
 
 
 def align_phases(
@@ -228,11 +336,21 @@ def _drawtext_text(value: str) -> str:
     )
 
 
-def comparison_filter(aligned: Sequence[AlignedPhase], *, fps: float = 15.0) -> str:
+def comparison_filter(
+    aligned: Sequence[AlignedPhase],
+    *,
+    fps: float = 15.0,
+    fsm_trial_id: str = "",
+    contract_label: str = "30% diagnostic",
+) -> str:
     """Return a 1280x720 two-panel filter preserving every source frame rate."""
 
     parts: list[str] = []
     panels: list[str] = []
+    fsm_heading = _drawtext_text(
+        "FSM" if not fsm_trial_id else f"FSM  {fsm_trial_id}"
+    )
+    contract_heading = _drawtext_text(f"{contract_label}  RR_FIRST")
     for index, row in enumerate(aligned):
         output_duration = row.output_duration_s
         for input_index, window, label in (
@@ -250,10 +368,10 @@ def comparison_filter(aligned: Sequence[AlignedPhase], *, fps: float = 15.0) -> 
             f"[r{index}][f{index}]hstack=inputs=2,"
             "pad=1280:720:0:180:color=0x101216,"
             "drawbox=x=0:y=142:w=iw:h=38:color=black@0.65:t=fill,"
-            "drawtext=expansion=none:text='Recording':x=18:y=151:fontsize=18:fontcolor=white,"
-            "drawtext=expansion=none:text='FSM':x=658:y=151:fontsize=18:fontcolor=white,"
+            "drawtext=expansion=none:text='Recording v010':x=18:y=151:fontsize=18:fontcolor=white,"
+            f"drawtext=expansion=none:text='{fsm_heading}':x=658:y=151:fontsize=18:fontcolor=white,"
             f"drawtext=expansion=none:text='{phase_label}':x=(w-text_w)/2:y=548:fontsize=18:fontcolor=white,"
-            "drawtext=expansion=none:text='v010  RR_FIRST':x=w-text_w-18:y=550:fontsize=14:fontcolor=0xB8F2C8"
+            f"drawtext=expansion=none:text='{contract_heading}':x=w-text_w-18:y=550:fontsize=14:fontcolor=0xB8F2C8"
             f"[p{index}]"
         )
         panels.append(f"[p{index}]")

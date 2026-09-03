@@ -1,0 +1,86 @@
+{
+  "schema": "wlr50_clean.legacy_final_archive.v1",
+  "created_at": "2026-09-02T23:50:04.9994609-04:00",
+  "source": "outputs/final",
+  "destination": "outputs/archive/final_15pct_legacy",
+  "classification": "legacy_15pct_outputs",
+  "file_count": 15,
+  "all_hashes_match": true,
+  "files": [
+    {
+      "name": "body_collision_audit.csv",
+      "bytes": 969999,
+      "sha256": "68dd0a8693b74a295c748473ee1150c21871349ce5ac73632c7d095dc03253da"
+    },
+    {
+      "name": "checksums.sha256",
+      "bytes": 392,
+      "sha256": "95f5a5acb71e9bb14b5d63efe1d7d117cf2287b93f99ffb9310ae63b4335be25"
+    },
+    {
+      "name": "fsm_state_table.csv",
+      "bytes": 4267,
+      "sha256": "a90ac9533ff1e193dd0a3822821b63c9f6693f1204464dfd1bbbd9e1b72c11e1"
+    },
+    {
+      "name": "fsm_v010_shaped_50mm_clean.mp4",
+      "bytes": 171708617,
+      "sha256": "c9aa07c4578a7ad2005cad26fec074c6d67b056c8e7705d33cd80e3b6c3624e1"
+    },
+    {
+      "name": "fsm_v010_shaped_50mm_diagnostic.mp4",
+      "bytes": 9065149,
+      "sha256": "14aee3ecfcf99897b664eeb978066cec159db91061024ad0ff217b0b47e20b1d"
+    },
+    {
+      "name": "fsm_vs_recording_similarity.csv",
+      "bytes": 39385,
+      "sha256": "60e44f2bb753f34a02a712a8574f05e6f18b0ea4b96db95d505c45293d3f04ed"
+    },
+    {
+      "name": "leg_crossing_events.csv",
+      "bytes": 4194,
+      "sha256": "3032153e8aad7e0df029b3fac5f6570d1fa020fcf657d41ff9e2b66e58fcbd83"
+    },
+    {
+      "name": "recording_motion_contract.json",
+      "bytes": 1001959,
+      "sha256": "129f8081de37dd348ec5bcc9524a72bcfaf3e882ee20fe24a10153e434548a14"
+    },
+    {
+      "name": "recording_v010_50mm_clean.mp4",
+      "bytes": 138746819,
+      "sha256": "50a82b5417f413114c4b9c4e81e0b41944ca0da6af2dfdb1f6fb0bc7bb023504"
+    },
+    {
+      "name": "recording_vs_fsm_v010_50mm.mp4",
+      "bytes": 4509899,
+      "sha256": "12b2d25fdb193df7c7a5d7c3ebb398534f14fe36feabff24257fca2f01ce1ca6"
+    },
+    {
+      "name": "selected_reference.json",
+      "bytes": 1001,
+      "sha256": "3d7cc5e36c1158da1679662976c5e04e15b35de6141f4b272aca5d216541596d"
+    },
+    {
+      "name": "state_derivation.md",
+      "bytes": 2507,
+      "sha256": "84c22dcf0bcb466ad01ad2cb7f34a196b8aad53154099e8e1fb95688555a0d6f"
+    },
+    {
+      "name": "successful_trial_manifest.json",
+      "bytes": 24705,
+      "sha256": "782dc9b45d69df5489d8ca4c2568d36540c39286457e1ad1065692d4168f995e"
+    },
+    {
+      "name": "video_validation.json",
+      "bytes": 21787,
+      "sha256": "75ddf3b7d5c909efaeea1403708ab516b61ed81c3909c8b46bab88618dc53176"
+    },
+    {
+      "name": "wheel_only_climb_audit.csv",
+      "bytes": 273,
+      "sha256": "e21066da8120fef9efbcf01e43702ca390dea8b94c47ea642a179155175ea27b"
+    }
+  ]
+}

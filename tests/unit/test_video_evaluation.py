@@ -30,13 +30,16 @@ def test_semantic_alignment_preserves_native_speed_and_holds_shorter_side() -> N
     aligned = align_phases(_windows(1.0), _windows(1.1))
     assert len(aligned) == 13
     assert aligned[0].output_duration_s == pytest.approx(1.1)
-    graph = comparison_filter(aligned)
+    graph = comparison_filter(aligned, fsm_trial_id="trial_043")
     assert "setpts=PTS-STARTPTS" in graph
     assert "tpad=stop_mode=clone" in graph
     assert "setpts=PTS/" not in graph
     assert "concat=n=13" in graph
     assert "hstack=inputs=2" in graph
     assert "pad=1280:720" in graph
+    assert "Recording v010" in graph
+    assert "FSM  trial_043" in graph
+    assert r"30\% diagnostic" in graph
 
 
 def test_phase_order_is_exact_and_comparison_is_bounded() -> None:
@@ -116,3 +119,88 @@ def test_successful_trial_binding_is_fail_closed(tmp_path: Path) -> None:
     (tmp_path / "trial_manifest.json").write_text(json.dumps(manifest))
     with pytest.raises(VideoBuildError, match="wheel_only_climb_false"):
         validate_successful_trial(tmp_path)
+
+
+def test_external_physical_reclassification_can_accept_immutable_legacy_status(
+    tmp_path: Path,
+) -> None:
+    video = tmp_path / "actual_viewport_video.mp4"
+    video.write_bytes(b"continuous-video")
+    recorder = {
+        "schema": "wlr50_clean.active_viewport_video.v1",
+        "valid": True,
+        "status": "PASS",
+        "video_path": str(video.resolve()),
+        "video_sha256": sha256_file(video),
+    }
+    (tmp_path / "viewport_buffer_video_manifest.json").write_text(json.dumps(recorder))
+    manifest = _success_manifest()
+    manifest["success_evidence"]["task_result"] = "INCOMPLETE_CONTROLLER_BLOCKED"
+    manifest["success_evidence"]["one_continuous_physical_fsm_success"] = False
+    (tmp_path / "trial_manifest.json").write_text(json.dumps(manifest))
+    physical_checks = {
+        "p01_p13_completed": True,
+        "body_collision_false": True,
+        "wheel_only_climb_false": True,
+        "rear_order_rr_first": True,
+    }
+    reclassification = {
+        "run_dir": str(tmp_path.resolve()),
+        "result_layers": {
+            "trial_validity": {"result": "VALID", "checks": {}},
+            "task_success": {"result": "SUCCESS", "checks": physical_checks},
+        },
+    }
+    result = validate_successful_trial(
+        tmp_path, physical_reclassification=reclassification
+    )
+    assert result["classification_source"] == "external_physical_reclassification"
+    assert result["checks"]["reclassified_task_success"] is True
+
+    reclassification["result_layers"]["task_success"]["result"] = "INCOMPLETE_OR_FAILED"
+    with pytest.raises(VideoBuildError, match="reclassified_task_success"):
+        validate_successful_trial(
+            tmp_path, physical_reclassification=reclassification
+        )
+
+
+def test_wrapped_selected_success_trial_is_authoritative(tmp_path: Path) -> None:
+    video = tmp_path / "actual_viewport_video.mp4"
+    video.write_bytes(b"continuous-video")
+    (tmp_path / "viewport_buffer_video_manifest.json").write_text(
+        json.dumps(
+            {
+                "valid": True,
+                "status": "PASS",
+                "video_path": str(video.resolve()),
+                "video_sha256": sha256_file(video),
+            }
+        )
+    )
+    manifest = _success_manifest()
+    manifest["success_evidence"]["task_result"] = "INCOMPLETE_CONTROLLER_BLOCKED"
+    manifest["success_evidence"]["one_continuous_physical_fsm_success"] = False
+    (tmp_path / "trial_manifest.json").write_text(json.dumps(manifest))
+    row = {
+        "trial_id": tmp_path.name,
+        "trial_validity": "VALID",
+        "task_result": "SUCCESS",
+        "P01_P13_complete": True,
+        "body_collision": False,
+        "wheel_only_climb": False,
+        "rear_leg_order": "RR_FIRST",
+        "video_path": str(video.resolve()),
+        "video_continuous": True,
+        "forbidden_control_count": 0,
+    }
+    result = validate_successful_trial(
+        tmp_path,
+        physical_reclassification={"selected_success_trial": row},
+    )
+    assert result["checks"]["selected_trial_matches_run"] is True
+
+    # Direct rows are supported too, but selection can never be rebound to a
+    # different immutable run directory.
+    row["trial_id"] = "some_other_trial"
+    with pytest.raises(VideoBuildError, match="selected_trial_matches_run"):
+        validate_successful_trial(tmp_path, physical_reclassification=row)

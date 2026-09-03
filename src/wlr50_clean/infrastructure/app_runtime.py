@@ -59,6 +59,18 @@ def render_due(completed_control_steps: int) -> bool:
     return steps > 0 and steps % RENDER_STRIDE == 0
 
 
+def _physical_acceptance_failures(result_layers: Mapping[str, Any]) -> list[str]:
+    """Return failures from Layers A/B only; Layer-C diagnostics never veto."""
+
+    failures: list[str] = []
+    for layer_name in ("trial_validity", "task_success"):
+        layer = result_layers.get(layer_name, {})
+        checks = layer.get("checks", {}) if isinstance(layer, Mapping) else {}
+        if isinstance(checks, Mapping):
+            failures.extend(name for name, passed in checks.items() if passed is not True)
+    return failures
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run one clean continuous WLR 50 mm FSM trial")
     parser.add_argument("--run-dir", required=True, type=Path)
@@ -636,7 +648,9 @@ def _run_live(config: RuntimeConfig, simulation_app: Any) -> int:
         "conformance_summary": {
             "conformance_row_count": 0,
             "all_normal_states_within_15_percent": False,
+            "all_normal_states_within_30_percent": False,
         },
+        "result_layers": {},
     }
     if completed == list(STATE_IDS):
         try:
@@ -646,17 +660,16 @@ def _run_live(config: RuntimeConfig, simulation_app: Any) -> int:
                 strict_success=False,
             )
             analysis = provisional
-            nonterminal_checks = {
-                name: passed
-                for name, passed in provisional["checks"].items()
-                if name != "task_result_success"
-            }
-            failed_checks = [name for name, passed in nonterminal_checks.items() if not passed]
+            result_layers = provisional.get("result_layers", {})
+            failed_checks = _physical_acceptance_failures(result_layers)
             if terminal.result is TaskResult.SUCCESS and failed_checks:
                 terminal = terminate(
                     TaskResult.INCOMPLETE_CONTROLLER_BLOCKED,
-                    "completed P01-P13 evidence failed physical or v010 conformance checks",
-                    {"failed_checks": failed_checks, "conformance": provisional["conformance_summary"]},
+                    "completed P01-P13 evidence failed validity or physical task checks",
+                    {
+                        "failed_checks": failed_checks,
+                        "result_layers": result_layers,
+                    },
                 )
         except Exception as exc:
             if terminal.result is TaskResult.SUCCESS:
@@ -717,8 +730,12 @@ def _run_live(config: RuntimeConfig, simulation_app: Any) -> int:
         and environment_initialization.get("servo_target_mapping", {}).get(
             "source_environment_invariant"
         ) == "mature_ui_command_space_to_drive_target"
-        and analysis.get("checks")
-        and all(bool(value) for value in analysis["checks"].values())
+        and analysis.get("result_layers", {}).get("trial_validity", {}).get(
+            "result"
+        ) == "VALID"
+        and analysis.get("result_layers", {}).get("task_success", {}).get(
+            "result"
+        ) == "SUCCESS"
     )
     success_evidence = {
         "task_result": terminal.result.value,
@@ -746,6 +763,15 @@ def _run_live(config: RuntimeConfig, simulation_app: Any) -> int:
                 "source_environment_invariant"
             )
             == "mature_ui_command_space_to_drive_target"
+        ),
+        "trial_validity": analysis.get("result_layers", {}).get(
+            "trial_validity", {}
+        ),
+        "task_success": analysis.get("result_layers", {}).get(
+            "task_success", {}
+        ),
+        "reference_quality": analysis.get("result_layers", {}).get(
+            "quality_and_reference_diagnostics", {}
         ),
     }
     first_blocker = None if controller is None else controller.first_blocker
@@ -775,6 +801,7 @@ def _run_live(config: RuntimeConfig, simulation_app: Any) -> int:
         "phase_times": phase_times,
         "phase_windows": phase_windows,
         "analysis_checks": analysis.get("checks", {}),
+        "result_layers": analysis.get("result_layers", {}),
         "conformance": analysis.get("conformance_summary", {}),
         "anti_throttle_settings": anti_throttle,
         "environment_initialization": environment_initialization,

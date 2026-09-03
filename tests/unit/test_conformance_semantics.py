@@ -75,7 +75,11 @@ def _synthetic_evidence(*, wheel: bool) -> tuple[
             reference_actual_end = end_value
             reference_actual_delta = 10.0
             reference_actual_integral = 0.0
-            command_metrics = {"wheel_integral_rad": {}}
+            command_metrics = {
+                "servo_average_target_path_velocity_deg_s": {channel: 10.0},
+                "servo_velocity_limit_deg_s": {channel: 10.0},
+                "wheel_integral_rad": {},
+            }
         start_full12 = _vector(channel_index, start_value)
         end_full12 = _vector(channel_index, end_value)
         phases.append(
@@ -168,7 +172,12 @@ def test_servo_velocity_uses_whole_phase_and_post_end_physics_sample() -> None:
     assert all(row["active_sample_count"] == 4 for row in rows)
     assert all(row["fsm_average_velocity"] == pytest.approx(10.0) for row in rows)
     assert all(row["reference_average_velocity"] == pytest.approx(10.0) for row in rows)
-    assert _summary(rows)["all_normal_states_within_15_percent"] is True
+    summary = _summary(rows)
+    assert all(row["command_average_velocity_error_percent"] == 0.0 for row in rows)
+    assert all(row["command_peak_velocity_error_percent"] == 0.0 for row in rows)
+    assert summary["all_normal_states_within_15_percent"] is True
+    assert summary["all_normal_states_within_30_percent"] is True
+    assert summary["all_normal_states_within_active_tolerance"] is True
 
 
 def test_wheels_gate_target_metrics_and_actual_integral() -> None:
@@ -232,3 +241,25 @@ def test_wheel_command_integral_and_one_degree_servo_velocity_floor_gate() -> No
         actual_velocity=1.1,
     )
     assert servo.within_15_percent is False
+
+
+def test_active_thirty_percent_and_legacy_fifteen_percent_flags_are_independent() -> None:
+    result = channel_conformance(
+        reference_command_end=10.0,
+        fsm_command_end=10.0,
+        reference_actual_end=10.0,
+        fsm_actual_end=10.0,
+        reference_command_delta=10.0,
+        fsm_command_delta=10.0,
+        reference_actual_delta=10.0,
+        fsm_actual_delta=10.0,
+        reference_duration=1.0,
+        actual_duration=1.0,
+        reference_velocity=10.0,
+        actual_velocity=12.0,
+    )
+
+    assert result.velocity_error_percent == pytest.approx(20.0)
+    assert result.within_15_percent is False
+    assert result.within_30_percent is True
+    assert result.within_active_tolerance is True
