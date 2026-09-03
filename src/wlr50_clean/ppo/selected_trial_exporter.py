@@ -686,8 +686,8 @@ class SelectedTrialStreamingExporter:
             }
             destination.mkdir(parents=True, exist_ok=True)
             zero_temporary = zero_path.with_name(zero_path.name + ".tmp")
-            zero_temporary.write_text(
-                json.dumps(zero_payload, indent=2) + "\n", encoding="utf-8"
+            zero_temporary.write_bytes(
+                (json.dumps(zero_payload, indent=2) + "\n").encode("utf-8")
             )
             os.replace(zero_temporary, zero_path)
             created.append(zero_path)
@@ -728,8 +728,8 @@ class SelectedTrialStreamingExporter:
                 "sha256": hashlib.sha256(zero_path.read_bytes()).hexdigest(),
             }
             manifest_temporary = manifest_path.with_name(manifest_path.name + ".tmp")
-            manifest_temporary.write_text(
-                json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
+            manifest_temporary.write_bytes(
+                (json.dumps(manifest, indent=2) + "\n").encode("utf-8")
             )
             os.replace(manifest_temporary, manifest_path)
         except Exception:

@@ -321,11 +321,9 @@ def test_required_publication_filenames_are_stable() -> None:
 
 
 def test_checked_in_video_validation_reports_complete_source_context() -> None:
-    payload = json.loads(
-        (ROOT / "outputs" / "final" / "video_validation.json").read_text(
-            encoding="utf-8"
-        )
-    )
+    validation_path = ROOT / "outputs" / "final" / "video_validation.json"
+    assert b"\r\n" not in validation_path.read_bytes()
+    payload = json.loads(validation_path.read_text(encoding="utf-8"))
     required = (
         "source_trial",
         "source_video",

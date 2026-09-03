@@ -294,3 +294,15 @@ def test_terminal_observation_latches_can_replace_missing_event_rows() -> None:
         observation_traversal_proof=observation["passed"],
     )
     assert (validity, task) == ("VALID", "SUCCESS")
+
+
+def test_checked_in_readjudication_evidence_has_stable_lf_bytes() -> None:
+    output = (
+        Path(__file__).resolve().parents[2]
+        / "outputs"
+        / "analysis"
+        / "physical_success_readjudication"
+    )
+    for path in output.iterdir():
+        if path.is_file():
+            assert b"\r\n" not in path.read_bytes(), path.name

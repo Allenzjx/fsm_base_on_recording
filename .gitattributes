@@ -1,0 +1,23 @@
+# Source/configuration snapshots and generated manifests use deterministic LF
+# bytes so runtime hashes equal the bytes stored by Git on every platform.
+*.py text eol=lf
+*.json text eol=lf
+*.jsonl text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.csv text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+*.sha256 text eol=lf
+
+# These generated evidence files are bound by byte-level SHA-256 manifests.
+outputs/analysis/** text eol=lf
+outputs/final/** text eol=lf
+outputs/final/*.parquet -text -eol
+outputs/final/*.mp4 -text -eol
+configs/frozen_successful_fsm.yaml text eol=lf
+
+# Legacy snapshots predate deterministic LF writers.  They are immutable
+# byte-level evidence, so preserve their original CRLF/LF mix without filters.
+artifacts/continuation_30pct/** binary
+outputs/archive/** binary

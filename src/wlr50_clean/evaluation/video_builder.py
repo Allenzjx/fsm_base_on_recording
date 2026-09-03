@@ -200,7 +200,9 @@ def _require_complete_video_metadata(videos: Mapping[str, Mapping[str, Any]]) ->
 
 def _atomic_json(path: Path, payload: Mapping[str, Any]) -> None:
     temporary = path.with_name(path.name + ".tmp")
-    temporary.write_text(json.dumps(dict(payload), indent=2) + "\n", encoding="utf-8")
+    temporary.write_bytes(
+        (json.dumps(dict(payload), indent=2) + "\n").encode("utf-8")
+    )
     os.replace(temporary, path)
 
 
@@ -665,14 +667,13 @@ def _encode_comparison(
 ) -> None:
     partial = destination.with_name(destination.stem + ".partial" + destination.suffix)
     script = destination.with_name(destination.stem + ".filter.txt")
-    script.write_text(
+    script.write_bytes(
         comparison_filter(
             aligned,
             fps=VIDEO_FPS,
             fsm_trial_id=fsm_trial_id,
             contract_label="30% diagnostic",
-        ),
-        encoding="utf-8",
+        ).encode("utf-8")
     )
     try:
         _run_ffmpeg(

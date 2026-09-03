@@ -233,6 +233,9 @@ def test_confirmed_export_writes_real_jsonl_parquet_and_full_tick_proof(tmp_path
     assert set(table.column("trial_id").to_pylist()) == {"trial_test"}
     assert set(table.column("task_result").to_pylist()) == {"SUCCESS"}
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert b"\r\n" not in manifest_path.read_bytes()
+    assert b"\r\n" not in zero_path.read_bytes()
+    assert b"\r\n" not in jsonl_path.read_bytes()
     proof = manifest["source_120hz_zero_residual_equivalence"]
     assert proof["tick_count"] == 16
     assert proof["bitwise_equal"] is True

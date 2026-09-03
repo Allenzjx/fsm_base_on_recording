@@ -1,0 +1,49 @@
+{
+  "schema": "wlr50_clean.physical_success_reclassification.v1",
+  "trial_id": "trial_043_20260902_clean_v010",
+  "original_result": "INCOMPLETE_CONTROLLER_BLOCKED",
+  "original_failure_or_blocker": {
+    "reason": "completed P01-P13 evidence failed physical or v010 conformance checks",
+    "first_blocker": {
+      "name": "measured_wheel_velocity_stable_decay",
+      "passed": false,
+      "value": {
+        "zero_command_readback": true,
+        "max_abs_rad_s": 0.19049382209777832,
+        "threshold_rad_s": 0.256016593426466,
+        "stable_for_s": 0.49166666666666003,
+        "stable_since_s": 88.64166666666667,
+        "reference_tail_peak_rad_s": 0.22262312471866608
+      },
+      "source": "sensor.wheel_velocity_debounce",
+      "reason": "velocity must remain inside the measured v010 post-stop tail plus 15% envelope for the full debounce"
+    }
+  },
+  "new_task_result": "TASK_SUCCESS",
+  "classification": "TASK_SUCCESS_WITH_REFERENCE_DIVERGENCE_WARNING",
+  "reason_for_reclassification": [
+    "P01-P13 completed in one continuous physics run",
+    "final obstacle-relative geometry proves physical traversal",
+    "body/chassis collision is false",
+    "wheel-only climb is false with four-leg active-lift evidence",
+    "continuous unstitched video is valid and fully decodable",
+    "environment and asset identity are valid and forbidden controls are absent",
+    "Recording conformance is a Layer-C diagnostic and cannot veto Layer-B success"
+  ],
+  "reference_divergence": {
+    "row_count": 487,
+    "maximum_error_percent": 36.458636795326846,
+    "maximum_phase": "P09",
+    "maximum_channel": "rear_left_ankle",
+    "maximum_metric": "measured_peak_velocity_error_percent",
+    "within_30_percent": false,
+    "warning": "REFERENCE_DIVERGENCE_WARNING",
+    "blocks_task_success": false
+  },
+  "immutable_raw_manifest": {
+    "path": "C:\\robotics_sim\\wlr_robot\\fsm_50mm_recording_shaped_clean_v1\\runs\\trial_043_20260902_clean_v010\\trial_manifest.json",
+    "bytes": 21506,
+    "sha256": "ac3a3e613edf21e92abd06b7daa0c66437c4a323ba3ae4616fcb03b5b67988cb",
+    "modified": false
+  }
+}

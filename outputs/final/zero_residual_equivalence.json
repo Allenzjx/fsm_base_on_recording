@@ -1,0 +1,44 @@
+{
+  "schema": "wlr50_clean.zero_residual_full_episode_equivalence.v1",
+  "status": "ZERO_RESIDUAL_FULL_EPISODE_EQUIVALENCE",
+  "selected_trial_id": "trial_043_20260902_clean_v010",
+  "full_episode_checked": true,
+  "source_120hz": {
+    "status": "ZERO_RESIDUAL_FULL_EPISODE_EQUIVALENCE",
+    "tick_count": 12952,
+    "nominal_sequence_sha256": "514d336775cb2bfb3e218c50a2a3735415c9c409fb72fc86263960ae034bc849",
+    "applied_sequence_sha256": "514d336775cb2bfb3e218c50a2a3735415c9c409fb72fc86263960ae034bc849",
+    "bitwise_equal": true,
+    "residual_action_all_zero": true,
+    "command_row_count": 12952,
+    "first_physics_tick": 0,
+    "terminal_observation_physics_tick": 12952,
+    "source": "every full12_commands_120hz.jsonl row"
+  },
+  "exported_15hz_transitions": {
+    "status": "ZERO_RESIDUAL_FULL_EPISODE_EQUIVALENCE",
+    "transition_count": 1619,
+    "residual_action_all_zero": true,
+    "applied_action_bitwise_equal_nominal": true,
+    "nominal_sequence_sha256": "e676462ad6e8ab68ec4ba5a232745afb770adec928c865580bd57554d6663c41",
+    "applied_sequence_sha256": "e676462ad6e8ab68ec4ba5a232745afb770adec928c865580bd57554d6663c41"
+  },
+  "zero_residual_action_full12": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+  ],
+  "physics_hz": 120.0,
+  "decision_hz": 15.0,
+  "physics_ticks_per_transition": 8,
+  "ppo_training_started": false
+}

@@ -1,0 +1,43 @@
+{
+  "schema": "wlr50_clean.fsm_recording_separation_audit.v1",
+  "status": "PASS",
+  "selected_trial_id": "trial_043_20260902_clean_v010",
+  "recording_execution": {
+    "source": "reference/v010/accepted_steps.jsonl",
+    "progression": "Recording event time and event cursor",
+    "runtime_scope": "offline Recording runner only"
+  },
+  "fsm_execution": {
+    "raw_recording_event_stream_access": false,
+    "runtime_raw_recording_access_count": 0,
+    "allowed_compact_input": "configs/recording_motion_contract.json",
+    "progression": "live Observation guards and bounded recovery",
+    "live_inputs": [
+      "joint actual and velocity",
+      "wheel actual and contact history",
+      "leg clearance, front-plane crossing, and top geometry/contact",
+      "BODY collision classification",
+      "final obstacle-relative geometry"
+    ],
+    "time_role": [
+      "trajectory generation",
+      "debounce",
+      "timeout"
+    ],
+    "time_is_sole_success_condition": false,
+    "replay_cursor_present": false
+  },
+  "static_runtime_scan": {
+    "passed": true,
+    "runtime_raw_recording_access_count": 0,
+    "scanned_file_count": 34,
+    "scanned_sources_sha256": "513c0072fe2ebdbfc1db33dc3d225fae65cc13bffc176510c32ddfb893fc0ae6",
+    "findings": []
+  },
+  "immutable_trial_runtime_evidence": {
+    "runtime_raw_recording_access": false,
+    "source_manifest": "C:\\robotics_sim\\wlr_robot\\fsm_50mm_recording_shaped_clean_v1\\runs\\trial_043_20260902_clean_v010\\trial_manifest.json",
+    "source_manifest_sha256": "ac3a3e613edf21e92abd06b7daa0c66437c4a323ba3ae4616fcb03b5b67988cb"
+  },
+  "fsm_is_replay": false
+}

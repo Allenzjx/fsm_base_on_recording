@@ -1,0 +1,58 @@
+{
+  "schema": "wlr50_clean.ppo_baseline_dataset_manifest.v1",
+  "source_trial": "trial_043_20260902_clean_v010",
+  "transition_count": 1619,
+  "residual_action": {
+    "classification": "all_zero_baseline_demonstration",
+    "all_zero_verified": true
+  },
+  "ppo_training_started": false,
+  "zero_residual_full_episode_equivalence": {
+    "status": "ZERO_RESIDUAL_FULL_EPISODE_EQUIVALENCE",
+    "transition_count": 1619,
+    "applied_action_bitwise_equal_nominal": true,
+    "nominal_sequence_sha256": "e676462ad6e8ab68ec4ba5a232745afb770adec928c865580bd57554d6663c41",
+    "applied_sequence_sha256": "e676462ad6e8ab68ec4ba5a232745afb770adec928c865580bd57554d6663c41"
+  },
+  "files": {
+    "jsonl": {
+      "path": "ppo_baseline_transitions.jsonl",
+      "bytes": 6290296,
+      "sha256": "dfd07b5b84148e46ad3a1fec193343bf9c898f233ba10fbab5360a3e318232c5"
+    },
+    "parquet": {
+      "path": "ppo_baseline_transitions.parquet",
+      "bytes": 1174054,
+      "sha256": "ff132e9ca7ce7b8356fb22e7939c9d34cba3c5c121df503ebb557bb480bd936e"
+    },
+    "zero_residual_equivalence": {
+      "path": "zero_residual_equivalence.json",
+      "bytes": 1418,
+      "sha256": "2838207e65d690ac4467632b2f6f4e8be2d293f4492d163c28f13c550f96fc94"
+    }
+  },
+  "source_120hz_zero_residual_equivalence": {
+    "status": "ZERO_RESIDUAL_FULL_EPISODE_EQUIVALENCE",
+    "tick_count": 12952,
+    "nominal_sequence_sha256": "514d336775cb2bfb3e218c50a2a3735415c9c409fb72fc86263960ae034bc849",
+    "applied_sequence_sha256": "514d336775cb2bfb3e218c50a2a3735415c9c409fb72fc86263960ae034bc849",
+    "bitwise_equal": true,
+    "residual_action_all_zero": true,
+    "source": "every full12_commands_120hz.jsonl row"
+  },
+  "source_ledgers": {
+    "command_120hz": {
+      "row_count": 12952,
+      "sha256": "9c333ee79712ade21784d05be81aeb08506901c2ed3c907fc066e95e711d633a"
+    },
+    "observation_120hz": {
+      "row_count": 12953,
+      "sha256": "b046ae0a9d90c68d142ac8b82638d7d06316be24c75e792ff4a4ea3bbffba440"
+    },
+    "sampling": {
+      "physics_hz": 120.0,
+      "decision_hz": 15.0,
+      "physics_ticks_per_transition": 8
+    }
+  }
+}

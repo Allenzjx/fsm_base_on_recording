@@ -1,0 +1,1055 @@
+{
+  "schema": "wlr50_clean.final_videos.v2",
+  "status": "PASS",
+  "valid": true,
+  "selected_reference": "v010_20260806_220745_363972_manual",
+  "rear_leg_order": "RR_FIRST",
+  "videos": {
+    "recording_full_raw": {
+      "schema": "wlr50_clean.video_validation.v1",
+      "path": "C:\\robotics_sim\\wlr_robot\\fsm_50mm_recording_shaped_clean_v1\\outputs\\final\\recording_v010_50mm_full_raw.mp4",
+      "valid": true,
+      "status": "PASS",
+      "stitched": false,
+      "speed_modified": false,
+      "container_duration_required": false,
+      "full_decode": true,
+      "timestamps_monotonic": true,
+      "error": "",
+      "sha256": "6b6d2561ef9c9c64f6eca5c009bbe0b4c0de57652b4faa2f83bf786cf2bc4fa3",
+      "bytes": 138901857,
+      "duration_s": 89.66666699999999,
+      "container_duration_s": 286331153.0,
+      "container_duration_bounded": false,
+      "container_duration_matches_decode": false,
+      "container_duration_tolerance_s": 0.06676666666666667,
+      "container_duration_valid": false,
+      "fps": 15.0,
+      "frame_count": 1345,
+      "resolution": [
+        1280,
+        720
+      ],
+      "width": 1280,
+      "height": 720,
+      "codec": "h264",
+      "pixel_format": "yuv420p",
+      "timestamps_continuous": true,
+      "expected_frame_interval_s": 0.06666666666666667,
+      "frame_interval_tolerance_s": 6.666666666666667e-06,
+      "maximum_frame_interval_deviation_s": 6.666666687721312e-07,
+      "first_pts_s": 0.0,
+      "last_pts_s": 89.6,
+      "frame_pts_sha256": "a2eb253c9d2dd3d0569b468b39afa4847aaadf0788a228992f8c4b02104371eb",
+      "decoded_frame_checksums_sha256": "6b3e59c6259b53e57982cd687d80de20da80bb762c5336457d2ed6815a8298c6",
+      "unique_frame_checksums": 1345,
+      "longest_identical_frame_run": 1,
+      "motion_evidence_valid": true,
+      "black_like_frame_count": 0,
+      "black_cover_absent": true,
+      "expected_frame_count": null,
+      "frame_count_matches": true,
+      "ffmpeg_path": "C:\\Users\\kskzz\\miniconda3\\envs\\env_isaaclab\\Lib\\site-packages\\imageio_ffmpeg\\binaries\\ffmpeg-win-x86_64-v7.1.exe",
+      "ffmpeg_returncode": 0,
+      "source_trial": "v010_20260806_220745_363972_manual",
+      "source_video": "C:\\robotics_sim\\wlr_robot\\fsm_50mm_recording_sensor_fsm_v1\\runs\\recording_instrumented\\20260825T220848_736987Z_recording_replays_799b1c3531\\v010_20260806_220745_363972_manual\\20260825T220848_746981Z_clean_fast_replay_7482ccf1b4\\20260825_180939_obstacle-05cm_worker_recording_fast_v010_20260806_220745_363972_manual\\actual_viewport_video.mp4",
+      "time_domain": "source_simulation_time_s_bound_to_decoded_frame_pts",
+      "start_sim_time": 1.5666666666666635,
+      "end_sim_time": 91.23333333335195,
+      "pre_roll_s": 0.7999999999999974,
+      "post_roll_s": 0.6666666666671972,
+      "requested_pre_roll_s": 0.5,
+      "requested_post_roll_s": 0.5,
+      "available_pre_roll_s": 0.7999999999999974,
+      "available_post_roll_s": 0.6666666666671972,
+      "retained_pre_roll_s": 0.7999999999999974,
+      "retained_post_roll_s": 0.6666666666671972,
+      "source_limited": false,
+      "source_limited_pre_roll": false,
+      "source_limited_post_roll": false,
+      "source_limitation_reason": "SOURCE_CONTEXT_SUFFICIENT",
+      "edge_context_padding_applied": false,
+      "edge_context_frames_duplicated": false,
+      "artifact_role": "immutable_raw_process_video_evidence"
+    },
+    "recording": {
+      "schema": "wlr50_clean.video_validation.v1",
+      "path": "C:\\robotics_sim\\wlr_robot\\fsm_50mm_recording_shaped_clean_v1\\outputs\\final\\recording_v010_50mm_clean.mp4",
+      "valid": true,
+      "status": "PASS",
+      "stitched": false,
+      "speed_modified": false,
+      "container_duration_required": true,
+      "full_decode": true,
+      "timestamps_monotonic": true,
+      "error": "",
+      "sha256": "50a82b5417f413114c4b9c4e81e0b41944ca0da6af2dfdb1f6fb0bc7bb023504",
+      "bytes": 138746819,
+      "duration_s": 89.66666699999999,
+      "container_duration_s": 89.67,
+      "container_duration_bounded": true,
+      "container_duration_matches_decode": true,
+      "container_duration_tolerance_s": 0.06676666666666667,
+      "container_duration_valid": true,
+      "fps": 15.0,
+      "frame_count": 1345,
+      "resolution": [
+        1280,
+        720
+      ],
+      "width": 1280,
+      "height": 720,
+      "codec": "h264",
+      "pixel_format": "yuv420p",
+      "timestamps_continuous": true,
+      "expected_frame_interval_s": 0.06666666666666667,
+      "frame_interval_tolerance_s": 6.666666666666667e-06,
+      "maximum_frame_interval_deviation_s": 6.666666687721312e-07,
+      "first_pts_s": 0.0,
+      "last_pts_s": 89.6,
+      "frame_pts_sha256": "a2eb253c9d2dd3d0569b468b39afa4847aaadf0788a228992f8c4b02104371eb",
+      "decoded_frame_checksums_sha256": "6b3e59c6259b53e57982cd687d80de20da80bb762c5336457d2ed6815a8298c6",
+      "unique_frame_checksums": 1345,
+      "longest_identical_frame_run": 1,
+      "motion_evidence_valid": true,
+      "black_like_frame_count": 0,
+      "black_cover_absent": true,
+      "expected_frame_count": 1345,
+      "frame_count_matches": true,
+      "ffmpeg_path": "C:\\Users\\kskzz\\miniconda3\\envs\\env_isaaclab\\Lib\\site-packages\\imageio_ffmpeg\\binaries\\ffmpeg-win-x86_64-v7.1.exe",
+      "ffmpeg_returncode": 0,
+      "source_trial": "v010_20260806_220745_363972_manual",
+      "source_video": "C:\\robotics_sim\\wlr_robot\\fsm_50mm_recording_shaped_clean_v1\\reference\\v010\\recording_clean.mp4",
+      "time_domain": "source_simulation_time_s_bound_to_decoded_frame_pts",
+      "start_sim_time": 1.5666666666666635,
+      "end_sim_time": 91.23333333335195,
+      "pre_roll_s": 0.7999999999999974,
+      "post_roll_s": 0.6666666666671972,
+      "requested_pre_roll_s": 0.5,
+      "requested_post_roll_s": 0.5,
+      "available_pre_roll_s": 0.7999999999999974,
+      "available_post_roll_s": 0.6666666666671972,
+      "retained_pre_roll_s": 0.7999999999999974,
+      "retained_post_roll_s": 0.6666666666671972,
+      "source_limited": false,
+      "source_limited_pre_roll": false,
+      "source_limited_post_roll": false,
+      "source_limitation_reason": "SOURCE_CONTEXT_SUFFICIENT",
+      "edge_context_padding_applied": false,
+      "edge_context_frames_duplicated": false
+    },
+    "fsm": {
+      "schema": "wlr50_clean.video_validation.v1",
+      "path": "C:\\robotics_sim\\wlr_robot\\fsm_50mm_recording_shaped_clean_v1\\outputs\\final\\fsm_50mm_physical_success_clean.mp4",
+      "valid": true,
+      "status": "PASS",
+      "stitched": false,
+      "speed_modified": false,
+      "container_duration_required": true,
+      "full_decode": true,
+      "timestamps_monotonic": true,
+      "error": "",
+      "sha256": "c5a4d406294ef92f02ad9c6e3df89fd9fdc45b0227a71af91bc41aeaf701229a",
+      "bytes": 171661711,
+      "duration_s": 107.933334,
+      "container_duration_s": 107.93,
+      "container_duration_bounded": true,
+      "container_duration_matches_decode": true,
+      "container_duration_tolerance_s": 0.06676666666666667,
+      "container_duration_valid": true,
+      "fps": 15.0,
+      "frame_count": 1619,
+      "resolution": [
+        1280,
+        720
+      ],
+      "width": 1280,
+      "height": 720,
+      "codec": "h264",
+      "pixel_format": "yuv420p",
+      "timestamps_continuous": true,
+      "expected_frame_interval_s": 0.06666666666666667,
+      "frame_interval_tolerance_s": 6.666666666666667e-06,
+      "maximum_frame_interval_deviation_s": 6.666666687721312e-07,
+      "first_pts_s": 0.0,
+      "last_pts_s": 107.866667,
+      "frame_pts_sha256": "e2fe131c4ef5508f805e87a15278653da2f4e9688d31d9b64957f9fb0e48af2c",
+      "decoded_frame_checksums_sha256": "ca9700f9995e7c9108bb717051e6cba97fa39d320330a00a2248d88a5168618f",
+      "unique_frame_checksums": 1619,
+      "longest_identical_frame_run": 1,
+      "motion_evidence_valid": true,
+      "black_like_frame_count": 0,
+      "black_cover_absent": true,
+      "expected_frame_count": 1619,
+      "frame_count_matches": true,
+      "ffmpeg_path": "C:\\Users\\kskzz\\miniconda3\\envs\\env_isaaclab\\Lib\\site-packages\\imageio_ffmpeg\\binaries\\ffmpeg-win-x86_64-v7.1.exe",
+      "ffmpeg_returncode": 0,
+      "source_trial": "trial_043_20260902_clean_v010",
+      "source_video": "C:\\robotics_sim\\wlr_robot\\fsm_50mm_recording_shaped_clean_v1\\runs\\trial_043_20260902_clean_v010\\actual_viewport_video.mp4",
+      "time_domain": "source_simulation_time_s_bound_to_decoded_frame_pts",
+      "start_sim_time": 0.06666666666666667,
+      "end_sim_time": 108.0,
+      "pre_roll_s": 0.0,
+      "post_roll_s": 0.06666666666667709,
+      "requested_pre_roll_s": 0.5,
+      "requested_post_roll_s": 1.0,
+      "available_pre_roll_s": 0.0,
+      "available_post_roll_s": 0.06666666666667709,
+      "retained_pre_roll_s": 0.0,
+      "retained_post_roll_s": 0.06666666666667709,
+      "source_limited": true,
+      "source_limited_pre_roll": true,
+      "source_limited_post_roll": true,
+      "source_limitation_reason": "immutable selected FSM Trial source begins 0.066667 s after semantic action start, so genuine requested pre-roll is unavailable; immutable selected FSM Trial source contains only 0.066667 s of genuine post-roll",
+      "edge_context_padding_applied": false,
+      "edge_context_frames_duplicated": false
+    },
+    "comparison": {
+      "schema": "wlr50_clean.video_validation.v1",
+      "path": "C:\\robotics_sim\\wlr_robot\\fsm_50mm_recording_shaped_clean_v1\\outputs\\final\\recording_vs_fsm_50mm.mp4",
+      "valid": true,
+      "status": "PASS",
+      "stitched": false,
+      "speed_modified": false,
+      "container_duration_required": true,
+      "full_decode": true,
+      "timestamps_monotonic": true,
+      "error": "",
+      "sha256": "8e9ca9fa24a501d3d509c8d8389d7509a63ab0a3ca3f160b2a401396dffc27f4",
+      "bytes": 4501133,
+      "duration_s": 108.0,
+      "container_duration_s": 108.0,
+      "container_duration_bounded": true,
+      "container_duration_matches_decode": true,
+      "container_duration_tolerance_s": 0.06676666666666667,
+      "container_duration_valid": true,
+      "fps": 15.0,
+      "frame_count": 1620,
+      "resolution": [
+        1280,
+        720
+      ],
+      "width": 1280,
+      "height": 720,
+      "codec": "h264",
+      "pixel_format": "yuv420p",
+      "timestamps_continuous": true,
+      "expected_frame_interval_s": 0.06666666666666667,
+      "frame_interval_tolerance_s": 6.666666666666667e-06,
+      "maximum_frame_interval_deviation_s": 6.666666687721312e-07,
+      "first_pts_s": 0.0,
+      "last_pts_s": 107.933333,
+      "frame_pts_sha256": "12ea98eae0738cb73531480360d022a71bf6eb324b20a9f402f1db81c6669514",
+      "decoded_frame_checksums_sha256": "598a05fda80ba28252fc35901ae5a3c578d56ed64b333b8b974530801d403842",
+      "unique_frame_checksums": 1620,
+      "longest_identical_frame_run": 1,
+      "motion_evidence_valid": true,
+      "black_like_frame_count": 0,
+      "black_cover_absent": true,
+      "expected_frame_count": null,
+      "frame_count_matches": true,
+      "ffmpeg_path": "C:\\Users\\kskzz\\miniconda3\\envs\\env_isaaclab\\Lib\\site-packages\\imageio_ffmpeg\\binaries\\ffmpeg-win-x86_64-v7.1.exe",
+      "ffmpeg_returncode": 0,
+      "source_trial": [
+        "v010_20260806_220745_363972_manual",
+        "trial_043_20260902_clean_v010"
+      ],
+      "source_video": [
+        "C:\\robotics_sim\\wlr_robot\\fsm_50mm_recording_shaped_clean_v1\\outputs\\final\\recording_v010_50mm_clean.mp4",
+        "C:\\robotics_sim\\wlr_robot\\fsm_50mm_recording_shaped_clean_v1\\outputs\\final\\fsm_50mm_physical_success_clean.mp4"
+      ],
+      "time_domain": "paired_source_simulation_time_s_by_side",
+      "start_sim_time": {
+        "recording": 1.5666666666666635,
+        "fsm": 0.06666666666666667
+      },
+      "end_sim_time": {
+        "recording": 91.23333333335195,
+        "fsm": 108.0
+      },
+      "pre_roll_s": {
+        "recording": 0.7999999999999974,
+        "fsm": 0.0
+      },
+      "post_roll_s": {
+        "recording": 0.6666666666671972,
+        "fsm": 0.06666666666667709
+      },
+      "requested_pre_roll_s": {
+        "recording": 0.5,
+        "fsm": 0.5
+      },
+      "requested_post_roll_s": {
+        "recording": 0.5,
+        "fsm": 1.0
+      },
+      "available_pre_roll_s": {
+        "recording": 0.7999999999999974,
+        "fsm": 0.0
+      },
+      "available_post_roll_s": {
+        "recording": 0.6666666666671972,
+        "fsm": 0.06666666666667709
+      },
+      "retained_pre_roll_s": {
+        "recording": 0.7999999999999974,
+        "fsm": 0.0
+      },
+      "retained_post_roll_s": {
+        "recording": 0.6666666666671972,
+        "fsm": 0.06666666666667709
+      },
+      "source_limited": true,
+      "source_limited_pre_roll": true,
+      "source_limited_post_roll": true,
+      "source_limitation_reason": {
+        "recording": "SOURCE_CONTEXT_SUFFICIENT",
+        "fsm": "immutable selected FSM Trial source begins 0.066667 s after semantic action start, so genuine requested pre-roll is unavailable; immutable selected FSM Trial source contains only 0.066667 s of genuine post-roll"
+      },
+      "edge_context_padding_applied": false,
+      "edge_context_frames_duplicated": false,
+      "source_sim_time_ranges": {
+        "recording": [
+          2.366666666666661,
+          90.50000000001809
+        ],
+        "fsm": [
+          0.0,
+          107.86666666666666
+        ]
+      }
+    },
+    "diagnostic": {
+      "schema": "wlr50_clean.video_validation.v1",
+      "path": "C:\\robotics_sim\\wlr_robot\\fsm_50mm_recording_shaped_clean_v1\\outputs\\final\\fsm_v010_shaped_50mm_diagnostic.mp4",
+      "valid": true,
+      "status": "PASS",
+      "stitched": false,
+      "speed_modified": false,
+      "container_duration_required": true,
+      "full_decode": true,
+      "timestamps_monotonic": true,
+      "error": "",
+      "sha256": "0cac863564d10eb5585e38de59aff58c237248aab6fa3ebcf7d61442ba7f7ee0",
+      "bytes": 9036313,
+      "duration_s": 107.933334,
+      "container_duration_s": 107.93,
+      "container_duration_bounded": true,
+      "container_duration_matches_decode": true,
+      "container_duration_tolerance_s": 0.06676666666666667,
+      "container_duration_valid": true,
+      "fps": 15.0,
+      "frame_count": 1619,
+      "resolution": [
+        1280,
+        720
+      ],
+      "width": 1280,
+      "height": 720,
+      "codec": "h264",
+      "pixel_format": "yuv420p",
+      "timestamps_continuous": true,
+      "expected_frame_interval_s": 0.06666666666666667,
+      "frame_interval_tolerance_s": 6.666666666666667e-06,
+      "maximum_frame_interval_deviation_s": 6.666666687721312e-07,
+      "first_pts_s": 0.0,
+      "last_pts_s": 107.866667,
+      "frame_pts_sha256": "e2fe131c4ef5508f805e87a15278653da2f4e9688d31d9b64957f9fb0e48af2c",
+      "decoded_frame_checksums_sha256": "ed509265eac752fa8b8a2015ddd13919bd0ee5f6607c06fd7033256f39626128",
+      "unique_frame_checksums": 1619,
+      "longest_identical_frame_run": 1,
+      "motion_evidence_valid": true,
+      "black_like_frame_count": 0,
+      "black_cover_absent": true,
+      "expected_frame_count": null,
+      "frame_count_matches": true,
+      "ffmpeg_path": "C:\\Users\\kskzz\\miniconda3\\envs\\env_isaaclab\\Lib\\site-packages\\imageio_ffmpeg\\binaries\\ffmpeg-win-x86_64-v7.1.exe",
+      "ffmpeg_returncode": 0,
+      "source_trial": "trial_043_20260902_clean_v010",
+      "source_video": "C:\\robotics_sim\\wlr_robot\\fsm_50mm_recording_shaped_clean_v1\\outputs\\final\\fsm_50mm_physical_success_clean.mp4",
+      "time_domain": "source_simulation_time_s_bound_to_decoded_frame_pts",
+      "start_sim_time": 0.06666666666666667,
+      "end_sim_time": 108.0,
+      "pre_roll_s": 0.0,
+      "post_roll_s": 0.06666666666667709,
+      "requested_pre_roll_s": 0.5,
+      "requested_post_roll_s": 1.0,
+      "available_pre_roll_s": 0.0,
+      "available_post_roll_s": 0.06666666666667709,
+      "retained_pre_roll_s": 0.0,
+      "retained_post_roll_s": 0.06666666666667709,
+      "source_limited": true,
+      "source_limited_pre_roll": true,
+      "source_limited_post_roll": true,
+      "source_limitation_reason": "immutable selected FSM Trial source begins 0.066667 s after semantic action start, so genuine requested pre-roll is unavailable; immutable selected FSM Trial source contains only 0.066667 s of genuine post-roll",
+      "edge_context_padding_applied": false,
+      "edge_context_frames_duplicated": false
+    }
+  },
+  "error": "",
+  "successful_trial": {
+    "manifest_path": "C:\\robotics_sim\\wlr_robot\\fsm_50mm_recording_shaped_clean_v1\\runs\\trial_043_20260902_clean_v010\\trial_manifest.json",
+    "manifest_sha256": "ac3a3e613edf21e92abd06b7daa0c66437c4a323ba3ae4616fcb03b5b67988cb",
+    "recorder_manifest_path": "C:\\robotics_sim\\wlr_robot\\fsm_50mm_recording_shaped_clean_v1\\runs\\trial_043_20260902_clean_v010\\viewport_buffer_video_manifest.json",
+    "recorder_manifest_sha256": "43e6e226ad46edc0bbc5d59a8d4311d7c25402bda9470572c1cf7f58cafbc944",
+    "video_path": "C:\\robotics_sim\\wlr_robot\\fsm_50mm_recording_shaped_clean_v1\\runs\\trial_043_20260902_clean_v010\\actual_viewport_video.mp4",
+    "video_sha256": "0d6b89ef4d80bfe977928b471196c6d556c42f01aca4a92e00bc98837845d0c2",
+    "checks": {
+      "reclassified_trial_valid": true,
+      "reclassified_task_success": true,
+      "selected_trial_matches_run": true,
+      "selected_video_matches_run": true,
+      "selected_video_continuous": true,
+      "selected_no_forbidden_control": true,
+      "body_collision_false": true,
+      "wheel_only_climb_false": true,
+      "rear_order_rr_first": true,
+      "no_root_state_write": true,
+      "no_teleport": true,
+      "no_external_force_or_impulse": true,
+      "p01_p13_completed": true
+    },
+    "classification_source": "external_physical_reclassification",
+    "physical_reclassification": {
+      "kind": "external_json",
+      "sha256": "d95b314cbf9ff186823359f6a53234d1a7c33192e5b7aa6ebda314b2d3a42709",
+      "path": "C:\\robotics_sim\\wlr_robot\\fsm_50mm_recording_shaped_clean_v1\\outputs\\analysis\\physical_success_readjudication\\selected_success_trial.json"
+    }
+  },
+  "source_validation": {
+    "recording_raw": {
+      "schema": "wlr50_clean.video_validation.v1",
+      "path": "C:\\robotics_sim\\wlr_robot\\fsm_50mm_recording_sensor_fsm_v1\\runs\\recording_instrumented\\20260825T220848_736987Z_recording_replays_799b1c3531\\v010_20260806_220745_363972_manual\\20260825T220848_746981Z_clean_fast_replay_7482ccf1b4\\20260825_180939_obstacle-05cm_worker_recording_fast_v010_20260806_220745_363972_manual\\actual_viewport_video.mp4",
+      "valid": true,
+      "status": "PASS",
+      "stitched": false,
+      "speed_modified": false,
+      "container_duration_required": false,
+      "full_decode": true,
+      "timestamps_monotonic": true,
+      "error": "",
+      "sha256": "6b6d2561ef9c9c64f6eca5c009bbe0b4c0de57652b4faa2f83bf786cf2bc4fa3",
+      "bytes": 138901857,
+      "duration_s": 89.66666699999999,
+      "container_duration_s": 286331153.0,
+      "container_duration_bounded": false,
+      "container_duration_matches_decode": false,
+      "container_duration_tolerance_s": 0.06676666666666667,
+      "container_duration_valid": false,
+      "fps": 15.0,
+      "frame_count": 1345,
+      "resolution": [
+        1280,
+        720
+      ],
+      "width": 1280,
+      "height": 720,
+      "codec": "h264",
+      "pixel_format": "yuv420p",
+      "timestamps_continuous": true,
+      "expected_frame_interval_s": 0.06666666666666667,
+      "frame_interval_tolerance_s": 6.666666666666667e-06,
+      "maximum_frame_interval_deviation_s": 6.666666687721312e-07,
+      "first_pts_s": 0.0,
+      "last_pts_s": 89.6,
+      "frame_pts_sha256": "a2eb253c9d2dd3d0569b468b39afa4847aaadf0788a228992f8c4b02104371eb",
+      "decoded_frame_checksums_sha256": "6b3e59c6259b53e57982cd687d80de20da80bb762c5336457d2ed6815a8298c6",
+      "unique_frame_checksums": 1345,
+      "longest_identical_frame_run": 1,
+      "motion_evidence_valid": true,
+      "black_like_frame_count": 0,
+      "black_cover_absent": true,
+      "expected_frame_count": null,
+      "frame_count_matches": true,
+      "ffmpeg_path": "C:\\Users\\kskzz\\miniconda3\\envs\\env_isaaclab\\Lib\\site-packages\\imageio_ffmpeg\\binaries\\ffmpeg-win-x86_64-v7.1.exe",
+      "ffmpeg_returncode": 0
+    },
+    "recording": {
+      "schema": "wlr50_clean.video_validation.v1",
+      "path": "C:\\robotics_sim\\wlr_robot\\fsm_50mm_recording_shaped_clean_v1\\reference\\v010\\recording_clean.mp4",
+      "valid": true,
+      "status": "PASS",
+      "stitched": false,
+      "speed_modified": false,
+      "container_duration_required": true,
+      "full_decode": true,
+      "timestamps_monotonic": true,
+      "error": "",
+      "sha256": "50a82b5417f413114c4b9c4e81e0b41944ca0da6af2dfdb1f6fb0bc7bb023504",
+      "bytes": 138746819,
+      "duration_s": 89.66666699999999,
+      "container_duration_s": 89.67,
+      "container_duration_bounded": true,
+      "container_duration_matches_decode": true,
+      "container_duration_tolerance_s": 0.06676666666666667,
+      "container_duration_valid": true,
+      "fps": 15.0,
+      "frame_count": 1345,
+      "resolution": [
+        1280,
+        720
+      ],
+      "width": 1280,
+      "height": 720,
+      "codec": "h264",
+      "pixel_format": "yuv420p",
+      "timestamps_continuous": true,
+      "expected_frame_interval_s": 0.06666666666666667,
+      "frame_interval_tolerance_s": 6.666666666666667e-06,
+      "maximum_frame_interval_deviation_s": 6.666666687721312e-07,
+      "first_pts_s": 0.0,
+      "last_pts_s": 89.6,
+      "frame_pts_sha256": "a2eb253c9d2dd3d0569b468b39afa4847aaadf0788a228992f8c4b02104371eb",
+      "decoded_frame_checksums_sha256": "6b3e59c6259b53e57982cd687d80de20da80bb762c5336457d2ed6815a8298c6",
+      "unique_frame_checksums": 1345,
+      "longest_identical_frame_run": 1,
+      "motion_evidence_valid": true,
+      "black_like_frame_count": 0,
+      "black_cover_absent": true,
+      "expected_frame_count": null,
+      "frame_count_matches": true,
+      "ffmpeg_path": "C:\\Users\\kskzz\\miniconda3\\envs\\env_isaaclab\\Lib\\site-packages\\imageio_ffmpeg\\binaries\\ffmpeg-win-x86_64-v7.1.exe",
+      "ffmpeg_returncode": 0
+    },
+    "fsm": {
+      "schema": "wlr50_clean.video_validation.v1",
+      "path": "C:\\robotics_sim\\wlr_robot\\fsm_50mm_recording_shaped_clean_v1\\runs\\trial_043_20260902_clean_v010\\actual_viewport_video.mp4",
+      "valid": true,
+      "status": "PASS",
+      "stitched": false,
+      "speed_modified": false,
+      "container_duration_required": false,
+      "full_decode": true,
+      "timestamps_monotonic": true,
+      "error": "",
+      "sha256": "0d6b89ef4d80bfe977928b471196c6d556c42f01aca4a92e00bc98837845d0c2",
+      "bytes": 171848267,
+      "duration_s": 107.933334,
+      "container_duration_s": 286331153.0,
+      "container_duration_bounded": false,
+      "container_duration_matches_decode": false,
+      "container_duration_tolerance_s": 0.06676666666666667,
+      "container_duration_valid": false,
+      "fps": 15.0,
+      "frame_count": 1619,
+      "resolution": [
+        1280,
+        720
+      ],
+      "width": 1280,
+      "height": 720,
+      "codec": "h264",
+      "pixel_format": "yuv420p",
+      "timestamps_continuous": true,
+      "expected_frame_interval_s": 0.06666666666666667,
+      "frame_interval_tolerance_s": 6.666666666666667e-06,
+      "maximum_frame_interval_deviation_s": 6.666666687721312e-07,
+      "first_pts_s": 0.0,
+      "last_pts_s": 107.866667,
+      "frame_pts_sha256": "e2fe131c4ef5508f805e87a15278653da2f4e9688d31d9b64957f9fb0e48af2c",
+      "decoded_frame_checksums_sha256": "ca9700f9995e7c9108bb717051e6cba97fa39d320330a00a2248d88a5168618f",
+      "unique_frame_checksums": 1619,
+      "longest_identical_frame_run": 1,
+      "motion_evidence_valid": true,
+      "black_like_frame_count": 0,
+      "black_cover_absent": true,
+      "expected_frame_count": null,
+      "frame_count_matches": true,
+      "ffmpeg_path": "C:\\Users\\kskzz\\miniconda3\\envs\\env_isaaclab\\Lib\\site-packages\\imageio_ffmpeg\\binaries\\ffmpeg-win-x86_64-v7.1.exe",
+      "ffmpeg_returncode": 0
+    }
+  },
+  "action_windows": {
+    "recording": {
+      "schema": "wlr50_clean.video_action_window.v1",
+      "selection_policy": {
+        "start": "frame_at_or_immediately_before_semantic_start",
+        "end": "frame_at_or_immediately_after_semantic_end_inclusive",
+        "clock": "viewport_frame_ledger_sim_time_bound_to_decoded_frame_pts",
+        "container_duration_used": false,
+        "single_contiguous_source": true,
+        "speed_modified": false
+      },
+      "semantic_bounds_sim_s": {
+        "start": 2.366666666666661,
+        "end": 90.50000000001809
+      },
+      "source_frames": {
+        "first_index": 0,
+        "last_index": 1344,
+        "count": 1345,
+        "first_pts_s": 0.0,
+        "last_pts_s": 89.6,
+        "first_sim_time_s": 1.5666666666666635,
+        "last_sim_time_s": 91.16666666668529,
+        "selected_pts_sha256": "a2eb253c9d2dd3d0569b468b39afa4847aaadf0788a228992f8c4b02104371eb",
+        "selected_pts_delta_sha256": "6f5e2b367cd5d5d6d539e36f57274fa780248a72477edf644fed074b722bfc7f",
+        "selected_decoded_checksums_sha256": "6b3e59c6259b53e57982cd687d80de20da80bb762c5336457d2ed6815a8298c6"
+      },
+      "trim": {
+        "start_pts_s": 0.0,
+        "end_pts_s_exclusive": 89.66666699999999,
+        "leading_frames_removed": 0,
+        "trailing_frames_removed": 0,
+        "full_source": true
+      },
+      "output_clock": {
+        "duration_s": 89.66666699999999,
+        "phase_clock_origin_sim_s": 1.5666666666666635,
+        "detected_action_start_s": 0.7999999999999974,
+        "detected_action_end_s": 88.93333333335143,
+        "action_frame_start_pts_s": 0.8,
+        "action_frame_end_pts_s_exclusive": 89.0
+      },
+      "context_roll": {
+        "requested_pre_roll_s": 0.5,
+        "requested_post_roll_s": 0.5,
+        "maximum_preserved_roll_s": 1.0,
+        "available_pre_roll_s": 0.7999999999999974,
+        "available_post_roll_s": 0.6666666666671972,
+        "retained_pre_roll_s": 0.7999999999999974,
+        "retained_post_roll_s": 0.6666666666671972,
+        "capture_lag_after_action_start_s": 0.0,
+        "policy": "preserve the full source edge when its available context is already within the allowed roll; otherwise retain the requested roll"
+      },
+      "ledger_pts_binding": {
+        "sim_minus_pts_offset_s": 1.5666666666660483,
+        "maximum_offset_deviation_s": 3.3335252069832677e-07
+      },
+      "packet_copy": {
+        "eligible": true,
+        "start_is_keyframe": true,
+        "fallback_if_false": "single-source frame-exact H.264 encode"
+      },
+      "source_video_sha256": "50a82b5417f413114c4b9c4e81e0b41944ca0da6af2dfdb1f6fb0bc7bb023504",
+      "frame_ledger_path": "C:\\robotics_sim\\wlr_robot\\fsm_50mm_recording_sensor_fsm_v1\\runs\\recording_instrumented\\20260825T220848_736987Z_recording_replays_799b1c3531\\v010_20260806_220745_363972_manual\\20260825T220848_746981Z_clean_fast_replay_7482ccf1b4\\20260825_180939_obstacle-05cm_worker_recording_fast_v010_20260806_220745_363972_manual\\viewport_frame_ledger.jsonl",
+      "frame_ledger_sha256": "009de1a8e4b11b38e86ae9a88331e331ff5433299f0f93d42cbcc2be1a045f3c",
+      "publication": {
+        "performed": false,
+        "method": "byte_exact_copy",
+        "source_sha256": "50a82b5417f413114c4b9c4e81e0b41944ca0da6af2dfdb1f6fb0bc7bb023504",
+        "output_sha256": "50a82b5417f413114c4b9c4e81e0b41944ca0da6af2dfdb1f6fb0bc7bb023504",
+        "elementary_stream_unchanged": true,
+        "timestamps_rebased_only": true,
+        "stitched": false,
+        "speed_modified": false,
+        "frame_count_matches_selected_source": true,
+        "source_pts_delta_sha256": "6f5e2b367cd5d5d6d539e36f57274fa780248a72477edf644fed074b722bfc7f",
+        "output_pts_delta_sha256": "6f5e2b367cd5d5d6d539e36f57274fa780248a72477edf644fed074b722bfc7f",
+        "exact_pts_delta_sequence_unchanged": true,
+        "native_frame_cadence_unchanged": true,
+        "source_decoded_checksums_sha256": "6b3e59c6259b53e57982cd687d80de20da80bb762c5336457d2ed6815a8298c6",
+        "output_decoded_checksums_sha256": "6b3e59c6259b53e57982cd687d80de20da80bb762c5336457d2ed6815a8298c6",
+        "decoded_frames_unchanged": true,
+        "source_frame_range": [
+          0,
+          1344
+        ],
+        "source_frame_count": 1345,
+        "single_contiguous_source": true
+      }
+    },
+    "fsm": {
+      "schema": "wlr50_clean.video_action_window.v1",
+      "selection_policy": {
+        "start": "frame_at_or_immediately_before_semantic_start",
+        "end": "frame_at_or_immediately_after_semantic_end_inclusive",
+        "clock": "viewport_frame_ledger_sim_time_bound_to_decoded_frame_pts",
+        "container_duration_used": false,
+        "single_contiguous_source": true,
+        "speed_modified": false
+      },
+      "semantic_bounds_sim_s": {
+        "start": 0.0,
+        "end": 107.86666666666666
+      },
+      "source_frames": {
+        "first_index": 0,
+        "last_index": 1618,
+        "count": 1619,
+        "first_pts_s": 0.0,
+        "last_pts_s": 107.866667,
+        "first_sim_time_s": 0.06666666666666667,
+        "last_sim_time_s": 107.93333333333334,
+        "selected_pts_sha256": "e2fe131c4ef5508f805e87a15278653da2f4e9688d31d9b64957f9fb0e48af2c",
+        "selected_pts_delta_sha256": "ba70f4c2aad3e0876705e78fffd5452918e8c50f11500c3c35d4555528540f56",
+        "selected_decoded_checksums_sha256": "ca9700f9995e7c9108bb717051e6cba97fa39d320330a00a2248d88a5168618f"
+      },
+      "trim": {
+        "start_pts_s": 0.0,
+        "end_pts_s_exclusive": 107.933334,
+        "leading_frames_removed": 0,
+        "trailing_frames_removed": 0,
+        "full_source": true
+      },
+      "output_clock": {
+        "duration_s": 107.933334,
+        "phase_clock_origin_sim_s": 0.06666666666666667,
+        "detected_action_start_s": -0.06666666666666667,
+        "detected_action_end_s": 107.8,
+        "action_frame_start_pts_s": 0.0,
+        "action_frame_end_pts_s_exclusive": 107.866667
+      },
+      "context_roll": {
+        "requested_pre_roll_s": 0.5,
+        "requested_post_roll_s": 1.0,
+        "maximum_preserved_roll_s": 1.0,
+        "available_pre_roll_s": 0.0,
+        "available_post_roll_s": 0.06666666666667709,
+        "retained_pre_roll_s": 0.0,
+        "retained_post_roll_s": 0.06666666666667709,
+        "capture_lag_after_action_start_s": 0.06666666666666667,
+        "policy": "preserve the full source edge when its available context is already within the allowed roll; otherwise retain the requested roll"
+      },
+      "ledger_pts_binding": {
+        "sim_minus_pts_offset_s": 0.06666666666666288,
+        "maximum_offset_deviation_s": 3.333333467026023e-07
+      },
+      "packet_copy": {
+        "eligible": true,
+        "start_is_keyframe": true,
+        "fallback_if_false": "single-source frame-exact H.264 encode"
+      },
+      "source_video_sha256": "0d6b89ef4d80bfe977928b471196c6d556c42f01aca4a92e00bc98837845d0c2",
+      "frame_ledger_path": "C:\\robotics_sim\\wlr_robot\\fsm_50mm_recording_shaped_clean_v1\\runs\\trial_043_20260902_clean_v010\\viewport_frame_ledger.jsonl",
+      "frame_ledger_sha256": "baf7dbeabf4da5cc1bbb0d2793cf4484b92263e997b22af7cdecee1d38bd1bfd",
+      "publication": {
+        "performed": true,
+        "method": "ffmpeg_single_input_single_video_packet_copy",
+        "source_sha256": "0d6b89ef4d80bfe977928b471196c6d556c42f01aca4a92e00bc98837845d0c2",
+        "output_sha256": "c5a4d406294ef92f02ad9c6e3df89fd9fdc45b0227a71af91bc41aeaf701229a",
+        "h264_elementary_stream_sha256": "fb8c5f05280ca0ce00a4082910fb7301b4689b4037987fd7366921da4bbfd778",
+        "elementary_stream_unchanged": true,
+        "timestamps_unchanged": false,
+        "decoded_frames_unchanged": true,
+        "stitched": false,
+        "speed_modified": false,
+        "frame_count_matches_selected_source": true,
+        "source_pts_delta_sha256": "ba70f4c2aad3e0876705e78fffd5452918e8c50f11500c3c35d4555528540f56",
+        "output_pts_delta_sha256": "ba70f4c2aad3e0876705e78fffd5452918e8c50f11500c3c35d4555528540f56",
+        "exact_pts_delta_sequence_unchanged": true,
+        "native_frame_cadence_unchanged": true,
+        "source_decoded_checksums_sha256": "ca9700f9995e7c9108bb717051e6cba97fa39d320330a00a2248d88a5168618f",
+        "output_decoded_checksums_sha256": "ca9700f9995e7c9108bb717051e6cba97fa39d320330a00a2248d88a5168618f",
+        "timestamps_rebased_only": true,
+        "source_frame_range": [
+          0,
+          1618
+        ],
+        "source_frame_count": 1619,
+        "single_contiguous_source": true
+      }
+    }
+  },
+  "semantic_alignment": {
+    "phases": [
+      {
+        "phase": "P01",
+        "reference": {
+          "phase": "P01",
+          "state": "INITIAL_LOAD_TRANSFER_FR",
+          "start_s": 0.8,
+          "end_s": 14.133333333333086,
+          "duration_s": 13.333333333333085
+        },
+        "fsm": {
+          "phase": "P01",
+          "state": "P01",
+          "start_s": 0.0,
+          "end_s": 13.266666666666667,
+          "duration_s": 13.266666666666667
+        },
+        "output_duration_s": 13.333333333333085,
+        "alignment_method": "native-speed_with_last-frame-hold"
+      },
+      {
+        "phase": "P02",
+        "reference": {
+          "phase": "P02",
+          "state": "FR_ACTIVE_LIFT",
+          "start_s": 14.133333333333086,
+          "end_s": 14.66666666666639,
+          "duration_s": 0.5333333333333048
+        },
+        "fsm": {
+          "phase": "P02",
+          "state": "P02",
+          "start_s": 13.266666666666667,
+          "end_s": 13.8,
+          "duration_s": 0.5333333333333332
+        },
+        "output_duration_s": 0.5333333333333332,
+        "alignment_method": "native-speed_with_last-frame-hold"
+      },
+      {
+        "phase": "P03",
+        "reference": {
+          "phase": "P03",
+          "state": "FR_CROSS_AND_PLACE",
+          "start_s": 14.66666666666639,
+          "end_s": 15.933333333332985,
+          "duration_s": 1.2666666666665947
+        },
+        "fsm": {
+          "phase": "P03",
+          "state": "P03",
+          "start_s": 13.8,
+          "end_s": 15.066666666666666,
+          "duration_s": 1.2666666666666657
+        },
+        "output_duration_s": 1.2666666666666657,
+        "alignment_method": "native-speed_with_last-frame-hold"
+      },
+      {
+        "phase": "P04",
+        "reference": {
+          "phase": "P04",
+          "state": "FL_UNLOAD_PREP",
+          "start_s": 15.933333333332985,
+          "end_s": 20.799999999999375,
+          "duration_s": 4.86666666666639
+        },
+        "fsm": {
+          "phase": "P04",
+          "state": "P04",
+          "start_s": 15.066666666666666,
+          "end_s": 19.933333333333334,
+          "duration_s": 4.866666666666667
+        },
+        "output_duration_s": 4.866666666666667,
+        "alignment_method": "native-speed_with_last-frame-hold"
+      },
+      {
+        "phase": "P05",
+        "reference": {
+          "phase": "P05",
+          "state": "FL_ACTIVE_LIFT_AND_PLACE",
+          "start_s": 20.799999999999375,
+          "end_s": 30.599999999998822,
+          "duration_s": 9.799999999999446
+        },
+        "fsm": {
+          "phase": "P05",
+          "state": "P05",
+          "start_s": 19.933333333333334,
+          "end_s": 29.733333333333334,
+          "duration_s": 9.8
+        },
+        "output_duration_s": 9.8,
+        "alignment_method": "native-speed_with_last-frame-hold"
+      },
+      {
+        "phase": "P06",
+        "reference": {
+          "phase": "P06",
+          "state": "FRONT_PAIR_ADVANCE",
+          "start_s": 30.599999999998822,
+          "end_s": 56.19999999999737,
+          "duration_s": 25.599999999998545
+        },
+        "fsm": {
+          "phase": "P06",
+          "state": "P06",
+          "start_s": 29.733333333333334,
+          "end_s": 55.33333333333333,
+          "duration_s": 25.599999999999994
+        },
+        "output_duration_s": 25.599999999999994,
+        "alignment_method": "native-speed_with_last-frame-hold"
+      },
+      {
+        "phase": "P07",
+        "reference": {
+          "phase": "P07",
+          "state": "REAR_ENTRY_ALIGNMENT",
+          "start_s": 56.19999999999737,
+          "end_s": 57.9333333333306,
+          "duration_s": 1.7333333333332348
+        },
+        "fsm": {
+          "phase": "P07",
+          "state": "P07",
+          "start_s": 55.33333333333333,
+          "end_s": 57.06666666666666,
+          "duration_s": 1.7333333333333343
+        },
+        "output_duration_s": 1.7333333333333343,
+        "alignment_method": "native-speed_with_last-frame-hold"
+      },
+      {
+        "phase": "P08",
+        "reference": {
+          "phase": "P08",
+          "state": "FIRST_REAR_LOAD_TRANSFER",
+          "start_s": 57.9333333333306,
+          "end_s": 58.39999999999724,
+          "duration_s": 0.46666666666664014
+        },
+        "fsm": {
+          "phase": "P08",
+          "state": "P08",
+          "start_s": 57.06666666666666,
+          "end_s": 57.53333333333333,
+          "duration_s": 0.46666666666666856
+        },
+        "output_duration_s": 0.46666666666666856,
+        "alignment_method": "native-speed_with_last-frame-hold"
+      },
+      {
+        "phase": "P09",
+        "reference": {
+          "phase": "P09",
+          "state": "RR_ACTIVE_LIFT_AND_PLACE",
+          "start_s": 58.39999999999724,
+          "end_s": 65.66666666666625,
+          "duration_s": 7.266666666669003
+        },
+        "fsm": {
+          "phase": "P09",
+          "state": "P09",
+          "start_s": 57.53333333333333,
+          "end_s": 64.8,
+          "duration_s": 7.266666666666666
+        },
+        "output_duration_s": 7.266666666669003,
+        "alignment_method": "native-speed_with_last-frame-hold"
+      },
+      {
+        "phase": "P10",
+        "reference": {
+          "phase": "P10",
+          "state": "SECOND_REAR_TRANSFER_PREP",
+          "start_s": 65.66666666666625,
+          "end_s": 65.8666666666664,
+          "duration_s": 0.20000000000015916
+        },
+        "fsm": {
+          "phase": "P10",
+          "state": "P10",
+          "start_s": 64.8,
+          "end_s": 65.01666666666667,
+          "duration_s": 0.21666666666666856
+        },
+        "output_duration_s": 0.21666666666666856,
+        "alignment_method": "native-speed_with_last-frame-hold"
+      },
+      {
+        "phase": "P11",
+        "reference": {
+          "phase": "P11",
+          "state": "TRANSFER_TOWARD_FR",
+          "start_s": 65.8666666666664,
+          "end_s": 66.40000000000016,
+          "duration_s": 0.5333333333337578
+        },
+        "fsm": {
+          "phase": "P11",
+          "state": "P11",
+          "start_s": 65.01666666666667,
+          "end_s": 65.53333333333333,
+          "duration_s": 0.5166666666666657
+        },
+        "output_duration_s": 0.5333333333337578,
+        "alignment_method": "native-speed_with_last-frame-hold"
+      },
+      {
+        "phase": "P12",
+        "reference": {
+          "phase": "P12",
+          "state": "RL_ACTIVE_LIFT_AND_PLACE",
+          "start_s": 66.40000000000016,
+          "end_s": 71.13333333333726,
+          "duration_s": 4.7333333333371
+        },
+        "fsm": {
+          "phase": "P12",
+          "state": "P12",
+          "start_s": 65.53333333333333,
+          "end_s": 70.26666666666667,
+          "duration_s": 4.733333333333334
+        },
+        "output_duration_s": 4.7333333333371,
+        "alignment_method": "native-speed_with_last-frame-hold"
+      },
+      {
+        "phase": "P13",
+        "reference": {
+          "phase": "P13",
+          "state": "FINAL_ADVANCE_AND_RECOVERY",
+          "start_s": 71.13333333333726,
+          "end_s": 89.0,
+          "duration_s": 17.866666666662738
+        },
+        "fsm": {
+          "phase": "P13",
+          "state": "P13",
+          "start_s": 70.26666666666667,
+          "end_s": 107.866667,
+          "duration_s": 37.60000033333334
+        },
+        "output_duration_s": 37.60000033333334,
+        "alignment_method": "native-speed_with_last-frame-hold"
+      }
+    ],
+    "speed_modified": false,
+    "multi_trial_splice": false,
+    "shorter_phase_policy": "hold_last_frame",
+    "output_duration_s": 107.95000033333962
+  },
+  "diagnostic_overlay": {
+    "small_top_band_only": true,
+    "source_trial_count": 1,
+    "speed_modified": false
+  },
+  "recording_publication": {
+    "performed": false,
+    "method": "byte_exact_copy",
+    "source_sha256": "50a82b5417f413114c4b9c4e81e0b41944ca0da6af2dfdb1f6fb0bc7bb023504",
+    "output_sha256": "50a82b5417f413114c4b9c4e81e0b41944ca0da6af2dfdb1f6fb0bc7bb023504",
+    "elementary_stream_unchanged": true,
+    "timestamps_rebased_only": true,
+    "stitched": false,
+    "speed_modified": false,
+    "frame_count_matches_selected_source": true,
+    "source_pts_delta_sha256": "6f5e2b367cd5d5d6d539e36f57274fa780248a72477edf644fed074b722bfc7f",
+    "output_pts_delta_sha256": "6f5e2b367cd5d5d6d539e36f57274fa780248a72477edf644fed074b722bfc7f",
+    "exact_pts_delta_sequence_unchanged": true,
+    "native_frame_cadence_unchanged": true,
+    "source_decoded_checksums_sha256": "6b3e59c6259b53e57982cd687d80de20da80bb762c5336457d2ed6815a8298c6",
+    "output_decoded_checksums_sha256": "6b3e59c6259b53e57982cd687d80de20da80bb762c5336457d2ed6815a8298c6",
+    "decoded_frames_unchanged": true,
+    "source_frame_range": [
+      0,
+      1344
+    ],
+    "source_frame_count": 1345,
+    "single_contiguous_source": true
+  },
+  "fsm_publication": {
+    "performed": true,
+    "method": "ffmpeg_single_input_single_video_packet_copy",
+    "source_sha256": "0d6b89ef4d80bfe977928b471196c6d556c42f01aca4a92e00bc98837845d0c2",
+    "output_sha256": "c5a4d406294ef92f02ad9c6e3df89fd9fdc45b0227a71af91bc41aeaf701229a",
+    "h264_elementary_stream_sha256": "fb8c5f05280ca0ce00a4082910fb7301b4689b4037987fd7366921da4bbfd778",
+    "elementary_stream_unchanged": true,
+    "timestamps_unchanged": false,
+    "decoded_frames_unchanged": true,
+    "stitched": false,
+    "speed_modified": false,
+    "frame_count_matches_selected_source": true,
+    "source_pts_delta_sha256": "ba70f4c2aad3e0876705e78fffd5452918e8c50f11500c3c35d4555528540f56",
+    "output_pts_delta_sha256": "ba70f4c2aad3e0876705e78fffd5452918e8c50f11500c3c35d4555528540f56",
+    "exact_pts_delta_sequence_unchanged": true,
+    "native_frame_cadence_unchanged": true,
+    "source_decoded_checksums_sha256": "ca9700f9995e7c9108bb717051e6cba97fa39d320330a00a2248d88a5168618f",
+    "output_decoded_checksums_sha256": "ca9700f9995e7c9108bb717051e6cba97fa39d320330a00a2248d88a5168618f",
+    "timestamps_rebased_only": true,
+    "source_frame_range": [
+      0,
+      1618
+    ],
+    "source_frame_count": 1619,
+    "single_contiguous_source": true
+  },
+  "checksums_sha256": "85113092301d5128032bb54d6a1021ddde27841fbecf4190a34779ec33681950"
+}

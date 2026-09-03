@@ -1,0 +1,388 @@
+{
+  "schema": "wlr50_clean.ppo_action_schema.v1",
+  "schema_name": "wlr50_clean.residual_full12",
+  "schema_version": 1,
+  "physics_hz": 120.0,
+  "decision_hz": 15.0,
+  "nominal_action_dimension": 12,
+  "residual_action_dimension": 12,
+  "full12_order": [
+    "front_left_hip",
+    "front_left_knee",
+    "front_right_hip",
+    "front_right_knee",
+    "rear_left_hip",
+    "rear_left_knee",
+    "rear_right_hip",
+    "rear_right_knee",
+    "front_left_ankle",
+    "front_right_ankle",
+    "rear_left_ankle",
+    "rear_right_ankle"
+  ],
+  "state_ids": [
+    "P01",
+    "P02",
+    "P03",
+    "P04",
+    "P05",
+    "P06",
+    "P07",
+    "P08",
+    "P09",
+    "P10",
+    "P11",
+    "P12",
+    "P13"
+  ],
+  "macro_phase_ids": {
+    "P01": 1,
+    "P02": 2,
+    "P03": 3,
+    "P04": 4,
+    "P05": 5,
+    "P06": 6,
+    "P07": 7,
+    "P08": 8,
+    "P09": 9,
+    "P10": 10,
+    "P11": 11,
+    "P12": 12,
+    "P13": 13
+  },
+  "bounded_transform": "tanh",
+  "phase_action_masks": {
+    "P01": [
+      1,
+      1,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      1,
+      1,
+      1,
+      1
+    ],
+    "P02": [
+      0,
+      0,
+      1,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "P03": [
+      1,
+      1,
+      0,
+      1,
+      1,
+      0,
+      0,
+      0,
+      1,
+      1,
+      1,
+      1
+    ],
+    "P04": [
+      0,
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      1,
+      1,
+      1,
+      1
+    ],
+    "P05": [
+      1,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      1,
+      1,
+      1
+    ],
+    "P06": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      1,
+      1,
+      1
+    ],
+    "P07": [
+      1,
+      1,
+      1,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      0,
+      0
+    ],
+    "P08": [
+      0,
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "P09": [
+      1,
+      1,
+      0,
+      0,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    "P10": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      0
+    ],
+    "P11": [
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "P12": [
+      0,
+      0,
+      0,
+      0,
+      1,
+      1,
+      0,
+      0,
+      1,
+      1,
+      1,
+      1
+    ],
+    "P13": [
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1
+    ]
+  },
+  "residual_rate_limits": {
+    "servo_deg_s": 150.0,
+    "wheel_rad_s2": 31.41592653589793,
+    "source": {
+      "servo": "frozen_environment_servo_reference_velocity",
+      "wheel": "one_full_wheel_velocity_limit_per_15hz_decision_interval"
+    }
+  },
+  "absolute_action_limits": {
+    "hip_deg": [
+      -135.0,
+      135.0
+    ],
+    "knee_deg": [
+      -60.0,
+      210.0
+    ],
+    "wheel_rad_s": [
+      -2.0943951023931953,
+      2.0943951023931953
+    ],
+    "source": "configs/environment_lock.json"
+  },
+  "joint_safety_margin_deg": {
+    "hip": 2.0,
+    "knee": 2.0,
+    "interpretation": "reserved_inside_absolute_actuator_limits"
+  },
+  "physical_safety_projection": {
+    "body_collision_disables_all_residuals": true,
+    "body_collision_forces_wheels_zero": true,
+    "wheel_only_climb_disables_all_residuals": true,
+    "wheel_only_climb_forces_wheels_zero": true
+  },
+  "hard_safety": {
+    "applied_after_all_physical_projection_stages": true,
+    "can_disable_residual_channels": true,
+    "can_force_wheels_zero": true,
+    "can_override_full12": true
+  },
+  "hard_bound_sources": [
+    "actuator_hard_limits",
+    "joint_safety_margins",
+    "wheel_velocity_limits",
+    "phase_action_masks",
+    "action_rate_limits",
+    "body_collision_safety_projection",
+    "wheel_only_climb_safety_projection"
+  ],
+  "recording_reference": {
+    "tolerance_percent": 30.0,
+    "role": "ADVISORY_DIAGNOSTIC_AND_INITIAL_SCALE_SUGGESTION_ONLY",
+    "hard_action_bound": false,
+    "task_success_gate": false
+  },
+  "control_authority": {
+    "fsm_owns_state_order": true,
+    "policy_may_skip_phase": false,
+    "rear_leg_order": "RR_FIRST",
+    "policy_may_change_rear_leg_order": false,
+    "body_collision_detector_mandatory": true,
+    "wheel_only_climb_detector_mandatory": true,
+    "future_recording_action_access": false
+  },
+  "zero_residual": {
+    "bitwise_nominal_fast_path": true,
+    "full_episode_equivalence_required": true
+  },
+  "environment_reset": {
+    "seed_required": true,
+    "seed_type": "non_negative_integer",
+    "frozen_environment_hash": "602f6e0893d999e5cb078aadf75541234440a3af918dc58e0154e80ff16ea3cb",
+    "domain_randomization_enabled": false,
+    "nominal_evaluation_uses_frozen_environment": true,
+    "required_backend_metadata": [
+      "environment_hash",
+      "robot_asset_hash",
+      "initial_root_state",
+      "initial_joint_state",
+      "obstacle_pose",
+      "controller_hash",
+      "motion_contract_hash"
+    ],
+    "source": {
+      "config_path": "configs/ppo_domain_randomization.yaml",
+      "config_sha256": "c92247e8041307b279508178883efe4c45d80381c5e9199dfd3b08e882784958",
+      "adapter_path": "src/wlr50_clean/ppo/ppo_env_adapter.py",
+      "adapter_sha256": "a4fb4af83fa99ec0084b51de6a31dafd761b9660af3e451c1b0ef7fe0a4d3bb3"
+    }
+  },
+  "episode_end_contract": {
+    "terminated_reasons": [
+      "SUCCESS",
+      "BODY_COLLISION",
+      "WHEEL_ONLY_CLIMB",
+      "FALL",
+      "NAN_INF",
+      "HARD_JOINT_LIMIT",
+      "PHYSICS_EXPLOSION"
+    ],
+    "truncated_reasons": [
+      "TIMEOUT"
+    ],
+    "diagnostic_only_reasons": [
+      "REFERENCE_CONFORMANCE"
+    ],
+    "priority": [
+      "NAN_INF",
+      "PHYSICS_EXPLOSION",
+      "BODY_COLLISION",
+      "WHEEL_ONLY_CLIMB",
+      "FALL",
+      "HARD_JOINT_LIMIT",
+      "SUCCESS",
+      "TIMEOUT"
+    ],
+    "timeout_s": 200.0,
+    "source": {
+      "config_path": "configs/ppo_termination.yaml",
+      "config_sha256": "2bc55b11693e0a2861275931521fab666ff51d2424f2fb608c2261ffedc0a1ab",
+      "implementation_path": "src/wlr50_clean/ppo/termination.py",
+      "implementation_sha256": "4c31fe45be0c7287e1f0081ab449a3cf419894e3169ad0e74d79680502864d2c"
+    }
+  },
+  "reward_contract": {
+    "aggregation": "sum_over_120hz_ticks_in_one_15hz_decision",
+    "term_names": [
+      "task_success",
+      "forward_progress",
+      "phase_progress",
+      "active_leg_clearance",
+      "body_collision_penalty",
+      "wheel_only_climb_penalty",
+      "fall_penalty",
+      "residual_magnitude_penalty",
+      "action_rate_penalty",
+      "joint_limit_penalty",
+      "body_angular_velocity_penalty",
+      "pitch_roll_penalty",
+      "support_diagnostic"
+    ],
+    "config_path": "configs/ppo_reward.yaml",
+    "config_sha256": "b3b294dfc924d1febb2dd1cc1e37ec1df8c72028a75ae2d04a793aeaabef4df3"
+  },
+  "training_enabled": false,
+  "source": {
+    "path": "configs/ppo_action_projection.yaml",
+    "sha256": "10bd5199104b5b0ef9956b4874ab1b730284f103204c27a4e4ee16887e0b1f5e",
+    "motion_contract_sha256": "f3c930aaf44ff3599c6df87478e3a33a594ea0fb706183e6924e3f025f537a0b"
+  }
+}

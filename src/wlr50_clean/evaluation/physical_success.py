@@ -301,9 +301,10 @@ def _read_object(path: Path) -> dict[str, Any]:
 
 def _write_json(path: Path, payload: Mapping[str, Any]) -> None:
     temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(
-        json.dumps(payload, indent=2, sort_keys=False, allow_nan=False) + "\n",
-        encoding="utf-8",
+    temporary.write_bytes(
+        (
+            json.dumps(payload, indent=2, sort_keys=False, allow_nan=False) + "\n"
+        ).encode("utf-8")
     )
     os.replace(temporary, path)
 
@@ -320,8 +321,13 @@ def _write_csv(
     path: Path, rows: Sequence[Mapping[str, Any]], columns: Sequence[str]
 ) -> None:
     temporary = path.with_suffix(path.suffix + ".tmp")
-    with temporary.open("w", encoding="utf-8", newline="") as stream:
-        writer = csv.DictWriter(stream, fieldnames=columns, extrasaction="ignore")
+    with temporary.open("w", encoding="utf-8", newline="\n") as stream:
+        writer = csv.DictWriter(
+            stream,
+            fieldnames=columns,
+            extrasaction="ignore",
+            lineterminator="\n",
+        )
         writer.writeheader()
         writer.writerows(
             {name: _csv_value(row.get(name)) for name in columns} for row in rows
@@ -2058,7 +2064,7 @@ def readjudicate_physical_success(
             "trial_evidence": detail_rows,
         },
     )
-    report_path.write_text(_report_markdown(records, selected), encoding="utf-8")
+    report_path.write_bytes(_report_markdown(records, selected).encode("utf-8"))
 
     output_files = [
         all_path,

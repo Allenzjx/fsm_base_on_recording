@@ -364,5 +364,5 @@ class EpisodeLogger:
             },
         }
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+        path.write_bytes((json.dumps(payload, indent=2) + "\n").encode("utf-8"))
         return path

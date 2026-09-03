@@ -23,7 +23,7 @@
   },
   "inputs": {
     "contract_path": "C:\\robotics_sim\\wlr_robot\\fsm_50mm_recording_shaped_clean_v1\\configs\\recording_motion_contract.json",
-    "contract_sha256": "ae47db9321d945272f028d5b16d1dcbff31f1a409fd17f90b3921aa4e51eee70",
+    "contract_sha256": "f3c930aaf44ff3599c6df87478e3a33a594ea0fb706183e6924e3f025f537a0b",
     "policy_path": "C:\\robotics_sim\\wlr_robot\\fsm_50mm_recording_shaped_clean_v1\\configs\\conformance_policy.yaml",
     "policy_sha256": "796a93075123d3a13aa984796bda19bb0dae077446bb000dfb1153d5193f51fe",
     "environment_lock_path": "C:\\robotics_sim\\wlr_robot\\fsm_50mm_recording_shaped_clean_v1\\configs\\environment_lock.json",
@@ -63,7 +63,7 @@
         "valid": true
       },
       "runtime_source_file_count": 25,
-      "runtime_source_set_sha256": "e77174c876be0e747313d7d9e49871cc458b446d04425bf6fc978cfce4acfad3",
+      "runtime_source_set_sha256": "496bab7772829bd878c06008e80020a84b0dac7e9dd025a68701f00ecc78cec0",
       "runtime_source_files": [
         {
           "path": "src/wlr50_clean/fsm/__init__.py",
@@ -72,13 +72,13 @@
         },
         {
           "path": "src/wlr50_clean/fsm/controller.py",
-          "bytes": 37226,
-          "sha256": "dfec467cbe248d549086eceb667c7974444ceb7e27cba40b0019eea81bc9765d"
+          "bytes": 36466,
+          "sha256": "f66439948206d506d9551536f2d8d255f590757300ebb89134407f0609da0b0b"
         },
         {
           "path": "src/wlr50_clean/fsm/drive_feedback.py",
-          "bytes": 16829,
-          "sha256": "ac5f68f4e45a92c5eb3f66611590a87dc624ddde9f5e8caa8a1331c8da251d66"
+          "bytes": 16405,
+          "sha256": "50887ec09ba1ad23fdfea67dc69554125033cf3234b7a8d1519a851c0eb71ab6"
         },
         {
           "path": "src/wlr50_clean/fsm/guard_evaluator.py",
@@ -102,8 +102,8 @@
         },
         {
           "path": "src/wlr50_clean/fsm/state_spec.py",
-          "bytes": 10631,
-          "sha256": "e5cb194dc80dfe077c4d9aa60b88b357ace9bcdb4769e7570560582b69a351ef"
+          "bytes": 10424,
+          "sha256": "af1662623a3861fad004a07c42e2f2e3575a08bcd9648491613a5bbf5033aea7"
         },
         {
           "path": "src/wlr50_clean/fsm/task_result.py",
@@ -197,28 +197,28 @@
   "audit_errors": [],
   "output_files": {
     "all_trials.csv": {
-      "bytes": 211129,
-      "sha256": "735272ab4111386c64a834ccbcc803610ca18f5d2f05ebd20c2f2844d3536d45"
+      "bytes": 211084,
+      "sha256": "326b05b2b776936484282a29ae0a6843add82c76187824fa40d3195875f6c2b6"
     },
     "complete_traversal_candidates.csv": {
-      "bytes": 91565,
-      "sha256": "55c5ab5e0d9f2aa8eeeecbdd601b01803a058cd599f09c3d63cdfe1c81246d88"
+      "bytes": 91546,
+      "sha256": "760c69995e44ccec3e83c2c5db1f57f5e0ac1859574082d07a7988f0008f561c"
     },
     "selected_success_trial.json": {
-      "bytes": 10163,
-      "sha256": "ce678c2ddd26c9c308323ffbc223c208b7bdaede77fc9d431b33b218b3b2055d"
+      "bytes": 9846,
+      "sha256": "d95b314cbf9ff186823359f6a53234d1a7c33192e5b7aa6ebda314b2d3a42709"
     },
     "physical_success_evidence.json": {
-      "bytes": 1020975,
-      "sha256": "899b09c5b1cca1d9119d4e911ba35fb32a3a041ef61b774ac962c6343cc34b6a"
+      "bytes": 995824,
+      "sha256": "03b6963dea0af31742175ccafd938b82e4600a06b6d04492ebd39363c6f8d763"
     },
     "reference_divergence_diagnostics.csv": {
-      "bytes": 781659,
-      "sha256": "5734652fe2e20fedd6e461bf660183b93abac713e71a87445763b96aa5a2ff91"
+      "bytes": 777265,
+      "sha256": "101f965d5b77a10fea8b9762c581400ba76d09ef379209ad18e8fe455cabe2a6"
     },
     "readjudication_report.md": {
-      "bytes": 3944,
-      "sha256": "cd1abe467c3b4bf6ac599b373468d557c15d55ba7dab6f9d3c6dca06527ba173"
+      "bytes": 3898,
+      "sha256": "b45f188bd7e6a2fded915677942c2d1b546571c24ce5fe6a34d1bf2e7915f828"
     }
   }
 }

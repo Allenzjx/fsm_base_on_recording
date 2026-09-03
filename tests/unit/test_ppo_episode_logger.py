@@ -121,6 +121,7 @@ def test_parquet_round_trip_has_typed_fixed_size_vectors(tmp_path) -> None:
         ),
     )
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert b"\r\n" not in manifest_path.read_bytes()
     proof = manifest["zero_residual_full_episode_equivalence"]
     assert proof["applied_action_bitwise_equal_nominal"] is True
     assert proof["nominal_sequence_sha256"] == proof["applied_sequence_sha256"]

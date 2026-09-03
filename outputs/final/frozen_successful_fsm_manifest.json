@@ -1,0 +1,316 @@
+{
+  "schema": "wlr50_clean.frozen_baseline_publication.v1",
+  "status": "FROZEN_PHYSICAL_SUCCESS_FSM_BASELINE",
+  "final_status": [
+    "ONE_CONTINUOUS_PHYSICAL_FSM_SUCCESS",
+    "FROZEN_FSM_BASELINE_READY_FOR_PPO",
+    "PPO_INTERFACE_READY",
+    "PPO_TRAINING_NOT_STARTED",
+    "REFERENCE_DIVERGENCE_WARNING"
+  ],
+  "selected_trial_id": "trial_043_20260902_clean_v010",
+  "git_commit": "b870ccd0bed8e458a0b39c6af5d16950929c4d43",
+  "working_tree_hash": "f58aa5cf6a0bc57e65a01e6476c1048d6e6a1c412a40495e35d958c9fef7edc5",
+  "working_tree_hash_definition": "SHA-256 of canonical git HEAD, pre-publication git-status digest, and the exact frozen input file manifest",
+  "environment_hash": "602f6e0893d999e5cb078aadf75541234440a3af918dc58e0154e80ff16ea3cb",
+  "robot_asset_hash": "e8a2a2b1485a32a50e851a07b9dd8ac4945b78ec49b7fada2b61c3eeb1e18892",
+  "scene_hash": "a2e0acc7d3def9e8661b6383a07b652763d60d9de6dce425b4827d01d24c981e",
+  "controller_hash": "ea67e820d94be266d65d4d3361697e1b8d2d67f64fd3e93af8e80b174ffee1be",
+  "state_graph_hash": "c3bfacdf39192e425f670a647f9be40f8b2f5db7295c6edd7bb591ef404b24c7",
+  "motion_contract_hash": "f3c930aaf44ff3599c6df87478e3a33a594ea0fb706183e6924e3f025f537a0b",
+  "reference_version": "v010_20260806_220745_363972_manual",
+  "rear_leg_order": "RR_FIRST",
+  "physics_hz": 120.0,
+  "decision_hz": 15.0,
+  "observation_dimension": 85,
+  "nominal_action_dimension": 12,
+  "residual_action_dimension": 12,
+  "training_enabled": false,
+  "trial_validity": "VALID",
+  "task_result": "SUCCESS",
+  "classification": "TASK_SUCCESS_WITH_REFERENCE_DIVERGENCE_WARNING",
+  "body_collision": false,
+  "wheel_only_climb": false,
+  "reference_max_error_percent": 36.458636795326846,
+  "reference_within_30_percent": false,
+  "reference_warning": "REFERENCE_DIVERGENCE_WARNING",
+  "reference_divergence_blocks_task_success": false,
+  "reference_quality": {
+    "within_30_percent": false,
+    "warning": "REFERENCE_DIVERGENCE_WARNING",
+    "maximum_error_percent": 36.458636795326846,
+    "blocks_task_success": false
+  },
+  "video_source_path": "C:\\robotics_sim\\wlr_robot\\fsm_50mm_recording_shaped_clean_v1\\runs\\trial_043_20260902_clean_v010\\actual_viewport_video.mp4",
+  "source_trial_directory": "C:\\robotics_sim\\wlr_robot\\fsm_50mm_recording_shaped_clean_v1\\runs\\trial_043_20260902_clean_v010",
+  "raw_trial_manifest": {
+    "path": "C:\\robotics_sim\\wlr_robot\\fsm_50mm_recording_shaped_clean_v1\\runs\\trial_043_20260902_clean_v010\\trial_manifest.json",
+    "bytes": 21506,
+    "sha256": "ac3a3e613edf21e92abd06b7daa0c66437c4a323ba3ae4616fcb03b5b67988cb",
+    "artifact_hashes_verified": true
+  },
+  "readjudication_inputs": {
+    "selected_success_trial.json": {
+      "bytes": 9846,
+      "sha256": "d95b314cbf9ff186823359f6a53234d1a7c33192e5b7aa6ebda314b2d3a42709",
+      "declared_in_readjudication_manifest": true,
+      "verified": true
+    },
+    "physical_success_evidence.json": {
+      "bytes": 995824,
+      "sha256": "03b6963dea0af31742175ccafd938b82e4600a06b6d04492ebd39363c6f8d763",
+      "declared_in_readjudication_manifest": true,
+      "verified": true
+    },
+    "reference_divergence_diagnostics.csv": {
+      "bytes": 777265,
+      "sha256": "101f965d5b77a10fea8b9762c581400ba76d09ef379209ad18e8fe455cabe2a6",
+      "declared_in_readjudication_manifest": true,
+      "verified": true
+    }
+  },
+  "frozen_inputs": [
+    {
+      "path": "configs/fsm_states.yaml",
+      "bytes": 76187,
+      "sha256": "f717a1d0d232d2341a1c12080015c1b770924bedacba1dd5853d79d26c8d3dbe"
+    },
+    {
+      "path": "configs/recording_motion_contract.json",
+      "bytes": 968972,
+      "sha256": "f3c930aaf44ff3599c6df87478e3a33a594ea0fb706183e6924e3f025f537a0b"
+    },
+    {
+      "path": "configs/environment_lock.json",
+      "bytes": 5153,
+      "sha256": "602f6e0893d999e5cb078aadf75541234440a3af918dc58e0154e80ff16ea3cb"
+    },
+    {
+      "path": "configs/selected_reference.json",
+      "bytes": 1001,
+      "sha256": "3d7cc5e36c1158da1679662976c5e04e15b35de6141f4b272aca5d216541596d"
+    },
+    {
+      "path": "configs/sensors.yaml",
+      "bytes": 1444,
+      "sha256": "22c3dcdaff6faf11c665070c217ad76740ce727ef502aac5e108f431b1c74a6c"
+    },
+    {
+      "path": "configs/collision_role_map.json",
+      "bytes": 869,
+      "sha256": "38adba9d88ed52438c6bbd9109250fbe917518f0f6fb6c5850adca044e79db12"
+    },
+    {
+      "path": "src/wlr50_clean/fsm/controller.py",
+      "bytes": 36466,
+      "sha256": "f66439948206d506d9551536f2d8d255f590757300ebb89134407f0609da0b0b"
+    },
+    {
+      "path": "src/wlr50_clean/fsm/drive_feedback.py",
+      "bytes": 16405,
+      "sha256": "50887ec09ba1ad23fdfea67dc69554125033cf3234b7a8d1519a851c0eb71ab6"
+    },
+    {
+      "path": "src/wlr50_clean/fsm/guard_evaluator.py",
+      "bytes": 13685,
+      "sha256": "10d3b0de1a317e8fb815072e68a553a77d5c55e951106bce2c31b4cf2b9cdfc9"
+    },
+    {
+      "path": "src/wlr50_clean/fsm/motion_executor.py",
+      "bytes": 11667,
+      "sha256": "1521a76b9fd75eae0cbc25dbbd62aecacc8fe6b7302b6fc1840df7112b0de445"
+    },
+    {
+      "path": "src/wlr50_clean/fsm/recovery.py",
+      "bytes": 6038,
+      "sha256": "975327f2b7ebbb26e88dd85307d6e8b7b970cc4cfe1ed27c081d024154412773"
+    },
+    {
+      "path": "src/wlr50_clean/fsm/state_graph.py",
+      "bytes": 1263,
+      "sha256": "340edd745c0c8af6564e2fb677cff0fc49c305cb1527a3324fdd59429c6eb9d2"
+    },
+    {
+      "path": "src/wlr50_clean/fsm/state_spec.py",
+      "bytes": 10424,
+      "sha256": "af1662623a3861fad004a07c42e2f2e3575a08bcd9648491613a5bbf5033aea7"
+    },
+    {
+      "path": "src/wlr50_clean/fsm/wheel_decay.py",
+      "bytes": 2740,
+      "sha256": "630b7ed9d818ee9b35ce8982cbeb7831711670b006e89bc8f49ed84f36f37669"
+    },
+    {
+      "path": "src/wlr50_clean/sensing/body_collision_detector.py",
+      "bytes": 3375,
+      "sha256": "a03dc1ff04347de233566ccdc8c6ca6d1fb0681c2f7c94da4fa8c63ebc98e542"
+    },
+    {
+      "path": "src/wlr50_clean/sensing/contact_classifier.py",
+      "bytes": 8856,
+      "sha256": "1bba42a231b9cbae1f3f5c28de4eb25ce5b101263114596714113d311f6eb729"
+    },
+    {
+      "path": "src/wlr50_clean/sensing/geometry.py",
+      "bytes": 16807,
+      "sha256": "00da42f5191476c7652db14db7d214b7e8c131d167baf4b9bf707198395e23b2"
+    },
+    {
+      "path": "src/wlr50_clean/sensing/guard_state.py",
+      "bytes": 18015,
+      "sha256": "c4ba1b66b810495e71f8b2b099a9cb4f84d473dae995e431b84ef4d660dd6fb6"
+    },
+    {
+      "path": "src/wlr50_clean/sensing/observation.py",
+      "bytes": 7007,
+      "sha256": "895ad3d0994b39af75f3c85ee26d65e1fbb7d85a13529e049797fdf20841dcb2"
+    },
+    {
+      "path": "src/wlr50_clean/sensing/sensor_reader.py",
+      "bytes": 22208,
+      "sha256": "58c3111b0e3243acf07c9f09b8a1dba3ab384640f828cd19616d24cc34e112f1"
+    },
+    {
+      "path": "src/wlr50_clean/infrastructure/app_runtime.py",
+      "bytes": 38221,
+      "sha256": "47d2ae73464d7eadfc650acead75c56e90df5025aefa9a51dfefcdc63f1ef431"
+    },
+    {
+      "path": "src/wlr50_clean/infrastructure/command_batch.py",
+      "bytes": 9664,
+      "sha256": "dbcee551cd1eba697b06b5f29439325cc9e36938ecdfaaa30ca718632937f0db"
+    },
+    {
+      "path": "src/wlr50_clean/infrastructure/robot_adapter.py",
+      "bytes": 32874,
+      "sha256": "f00a8cc83c05aa1dea590d5e9765865c79f9f7f7cfc024f01b9d08a5f4f4a8a2"
+    },
+    {
+      "path": "src/wlr50_clean/infrastructure/scene_factory.py",
+      "bytes": 13305,
+      "sha256": "02df57b900fc4208ff4959e9db6fb9b39116210a4fe58d9848e6e1aa06b7fca1"
+    },
+    {
+      "path": "src/wlr50_clean/infrastructure/servo_target_mapper.py",
+      "bytes": 12997,
+      "sha256": "ca18b55f60994a6d346a559fccd02f7fdef3dbb924e0cc65efd68035cf165ffa"
+    },
+    {
+      "path": "configs/ppo_interface.yaml",
+      "bytes": 761,
+      "sha256": "d93931fe02ca790278eb66013eedf57e3264d6bf9798584c621b818bdf65bfb8"
+    },
+    {
+      "path": "configs/ppo_observation_schema.json",
+      "bytes": 7601,
+      "sha256": "045e4d1bfae63508a250e407c2ecf01814833a377c6048621a612518510cd90b"
+    },
+    {
+      "path": "configs/ppo_action_projection.yaml",
+      "bytes": 2321,
+      "sha256": "10bd5199104b5b0ef9956b4874ab1b730284f103204c27a4e4ee16887e0b1f5e"
+    },
+    {
+      "path": "configs/ppo_domain_randomization.yaml",
+      "bytes": 902,
+      "sha256": "c92247e8041307b279508178883efe4c45d80381c5e9199dfd3b08e882784958"
+    },
+    {
+      "path": "configs/ppo_reward.yaml",
+      "bytes": 1141,
+      "sha256": "b3b294dfc924d1febb2dd1cc1e37ec1df8c72028a75ae2d04a793aeaabef4df3"
+    },
+    {
+      "path": "configs/ppo_termination.yaml",
+      "bytes": 262,
+      "sha256": "2bc55b11693e0a2861275931521fab666ff51d2424f2fb608c2261ffedc0a1ab"
+    },
+    {
+      "path": "src/wlr50_clean/ppo/action_projection.py",
+      "bytes": 26025,
+      "sha256": "bbde355fef1c5a7a2acad2dc56eab901c724d4fa2cc3f59e5a33c624892f46bd"
+    },
+    {
+      "path": "src/wlr50_clean/ppo/episode_logger.py",
+      "bytes": 15400,
+      "sha256": "6308bffee3433e931876aefde4ec73e4cc002ab35971655792bd70dc362cf0f5"
+    },
+    {
+      "path": "src/wlr50_clean/ppo/observation_schema.py",
+      "bytes": 20833,
+      "sha256": "9c0a0b1502557885c24d244d4db782bd4c1e647db11e3c5783c2b883f0b2fbe1"
+    },
+    {
+      "path": "src/wlr50_clean/ppo/ppo_env_adapter.py",
+      "bytes": 18223,
+      "sha256": "a4fb4af83fa99ec0084b51de6a31dafd761b9660af3e451c1b0ef7fe0a4d3bb3"
+    },
+    {
+      "path": "src/wlr50_clean/ppo/residual_interface.py",
+      "bytes": 5405,
+      "sha256": "bd091e0c76de2e965c08a1978947a7f907bac795695aeb536548036b11870e23"
+    },
+    {
+      "path": "src/wlr50_clean/ppo/reward_terms.py",
+      "bytes": 6592,
+      "sha256": "4bb6303e81c99930daf9682d8b8f6578a01ca64aeb45d69cefa1059042c5abfb"
+    },
+    {
+      "path": "src/wlr50_clean/ppo/termination.py",
+      "bytes": 5524,
+      "sha256": "4c31fe45be0c7287e1f0081ab449a3cf419894e3169ad0e74d79680502864d2c"
+    }
+  ],
+  "publication_files": {
+    "frozen_successful_fsm.yaml": {
+      "path": "C:\\robotics_sim\\wlr_robot\\fsm_50mm_recording_shaped_clean_v1\\configs\\frozen_successful_fsm.yaml",
+      "bytes": 7256,
+      "sha256": "a8bf3a5867779fbf64f9fe20fcca9e40a3124e70e808cc174c53aded6c9dfbed"
+    },
+    "selected_success_trial.json": {
+      "path": "C:\\robotics_sim\\wlr_robot\\fsm_50mm_recording_shaped_clean_v1\\outputs\\final\\selected_success_trial.json",
+      "bytes": 9869,
+      "sha256": "62bca8cc641ec7d91cc18e51c8ebb3847ca157186b719f34b35ac3251f26ba22"
+    },
+    "physical_success_reclassification.json": {
+      "path": "C:\\robotics_sim\\wlr_robot\\fsm_50mm_recording_shaped_clean_v1\\outputs\\final\\physical_success_reclassification.json",
+      "bytes": 2123,
+      "sha256": "21b27d0701020aab7bcc3231a9fe44647c3cb607d9a85c8abc5a7f5c2fcda1c2"
+    },
+    "physical_success_evidence.json": {
+      "path": "C:\\robotics_sim\\wlr_robot\\fsm_50mm_recording_shaped_clean_v1\\outputs\\final\\physical_success_evidence.json",
+      "bytes": 30766,
+      "sha256": "80e259a074927711b1ab846a25e2526f2b8229317cd07078364c0335a9861eb7"
+    },
+    "reference_divergence_diagnostics.csv": {
+      "path": "C:\\robotics_sim\\wlr_robot\\fsm_50mm_recording_shaped_clean_v1\\outputs\\final\\reference_divergence_diagnostics.csv",
+      "bytes": 98567,
+      "sha256": "e5e9e341a6813b07aa9de01bdeb578a6481228377019711767c49ac344d1715e"
+    },
+    "fsm_recording_separation_audit.json": {
+      "path": "C:\\robotics_sim\\wlr_robot\\fsm_50mm_recording_shaped_clean_v1\\outputs\\final\\fsm_recording_separation_audit.json",
+      "bytes": 1625,
+      "sha256": "c14c62cfb33eb817ab92d4cf7074a6e6855cf1dcff1fed20b12e4bf47b513f1e"
+    },
+    "ppo_observation_schema.json": {
+      "path": "C:\\robotics_sim\\wlr_robot\\fsm_50mm_recording_shaped_clean_v1\\outputs\\final\\ppo_observation_schema.json",
+      "bytes": 9455,
+      "sha256": "d76fe4a847c816e848bd9e0ad1b19345e6a4a5be6d96fdd3038fad9e853fcd7a"
+    },
+    "ppo_action_schema.json": {
+      "path": "C:\\robotics_sim\\wlr_robot\\fsm_50mm_recording_shaped_clean_v1\\outputs\\final\\ppo_action_schema.json",
+      "bytes": 7230,
+      "sha256": "13a70083658a4cc535d7420ea7d5daa64161fb52c89f5cbc79c0b841b7e9410c"
+    },
+    "ppo_readiness_report.md": {
+      "path": "C:\\robotics_sim\\wlr_robot\\fsm_50mm_recording_shaped_clean_v1\\outputs\\final\\ppo_readiness_report.md",
+      "bytes": 1244,
+      "sha256": "e708519c987c27cff18844fe07848b84d378675be411df144323994a91364285"
+    }
+  },
+  "policy": {
+    "recording_similarity_role": "ADVISORY_DIAGNOSTIC_ONLY",
+    "recording_divergence_blocks_task_success": false,
+    "recording_divergence_is_ppo_hard_bound": false
+  }
+}
