@@ -11,7 +11,7 @@ from wlr50_clean.ppo.phase_action_masks_v2 import (
     build_action_projector_v2,
     load_phase_action_masks_v2,
 )
-from wlr50_clean.ppo.cli import _smoke_action
+from wlr50_clean.ppo.cli import _smoke_action, _smoke_rate_limit_probe
 
 
 ZERO12 = (0.0,) * 12
@@ -19,35 +19,30 @@ ONE12 = (1,) * 12
 PRIORITY_PHASES = ("P02", "P03", "P08", "P12", "P13")
 
 
-def test_deterministic_small_smoke_pattern_is_sub_five_percent_and_exercises_slew() -> None:
+def test_deterministic_small_smoke_pattern_is_nonzero_and_negligible() -> None:
     env = SimpleNamespace(frame=SimpleNamespace(state_id="P03"))
     positive = _smoke_action(env, 0)
     negative = _smoke_action(env, 1)
-    assert positive[:3] == (1.0e-6,) * 3
-    assert positive[3] == 0.049
-    assert positive[4:] == (1.0e-6,) * 8
-    assert negative[:3] == (0.0,) * 3
-    assert negative[3] == -0.049
-    assert negative[4:] == (0.0,) * 8
+    assert positive == (1.0e-9,) * 12
+    assert negative == (-1.0e-9,) * 12
     assert max(abs(value) for value in positive + negative) < 0.05
 
-    projector = build_action_projector_v2()
-    first = _direct_project(projector, positive, state_id="P03")
-    second = _direct_project(
-        projector,
-        negative,
-        state_id="P03",
-        previous=first.safe_projected_residual_full12,
-    )
-    assert "residual_rate_limit" in second.clipping_stages
+
+def test_deterministic_rate_limit_probe_uses_production_projector_off_robot() -> None:
+    probe = _smoke_rate_limit_probe()
+
+    assert probe["passed"] is True
+    assert probe["applied_to_robot"] is False
+    assert probe["normalized_probe_amplitude"] == 0.049
+    assert "residual_rate_limit" in probe["second_clipping_stages"]
 
 
 def test_smoke_pattern_resets_its_local_counter_and_remains_nonzero_in_every_phase() -> None:
     env = SimpleNamespace(frame=SimpleNamespace(state_id="P01"))
-    assert _smoke_action(env, 0) == (1.0e-6,) * 12
-    assert _smoke_action(env, 1) == (0.0,) * 12
+    assert _smoke_action(env, 0) == (1.0e-9,) * 12
+    assert _smoke_action(env, 1) == (-1.0e-9,) * 12
     env.frame.state_id = "P02"
-    assert _smoke_action(env, 2) == (1.0e-6,) * 12
+    assert _smoke_action(env, 2) == (1.0e-9,) * 12
 
 
 def _direct_project(

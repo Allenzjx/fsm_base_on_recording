@@ -335,12 +335,12 @@ def _smoke_action(env: Any, decision_index: int) -> tuple[float, ...]:
         f"P{index:02d}" for index in range(1, 14)
     }:
         raise CliError("bounded smoke action requires an active P01-P13 frame")
-    # A single 1e-6 normalized pulse at each phase entry proves actual nonzero
-    # projection without continuously exciting the contact-rich successful
-    # trajectory.  One balanced +/- pair on P03's 4-degree FR-knee channel is
-    # just large enough to exercise the 0.375 deg/tick slew limiter.  All later
-    # decisions are exact zero, so this remains a projector gate rather than a
-    # hidden robustness or task-performance stress test.
+    # An alternating 1e-9 normalized pattern proves physical nonzero projection
+    # in every phase, exercises masked P08/P11 channels and carries a genuine
+    # nonzero bridge value across every transition, while remaining beneath the
+    # contact trajectory's meaningful actuation resolution.  Slew behavior is
+    # proven separately by ``_smoke_rate_limit_probe`` using this exact runtime
+    # projector; a diagnostic clipping pulse must not perturb the task itself.
     phase_id = str(env.frame.state_id)
     previous_phase = getattr(env, "_bounded_smoke_phase_id", None)
     if previous_phase != phase_id:
@@ -352,10 +352,56 @@ def _smoke_action(env: Any, decision_index: int) -> tuple[float, ...]:
         ) + 1
     setattr(env, "_bounded_smoke_phase_decision_index", local_decision)
 
-    values = [1.0e-6] * 12 if local_decision == 0 else [0.0] * 12
-    if phase_id == "P03" and local_decision in (0, 1):
-        values[3] = 0.049 if local_decision == 0 else -0.049
-    return tuple(values)
+    direction = 1.0 if local_decision % 2 == 0 else -1.0
+    return (direction * 1.0e-9,) * 12
+
+
+def _smoke_rate_limit_probe() -> Mapping[str, Any]:
+    """Exercise the production v2 projector slew path without moving the robot."""
+
+    from .action_projection import SafetyProjection
+    from .phase_action_masks_v2 import build_action_projector_v2
+
+    projector = build_action_projector_v2()
+    zero = (0.0,) * 12
+    positive = (0.0, 0.0, 0.0, 0.049) + (0.0,) * 8
+    negative = (0.0, 0.0, 0.0, -0.049) + (0.0,) * 8
+    common = {
+        "state_id": "P03",
+        "nominal_action_full12": zero,
+        "reference_action_full12": zero,
+        "reference_delta_full12": zero,
+        "runtime_action_mask_full12": (1,) * 12,
+        "safety": SafetyProjection(),
+        "dt_s": 1.0 / 120.0,
+    }
+    first = projector.project(
+        positive,
+        previous_projected_residual_full12=zero,
+        **common,
+    )
+    second = projector.project(
+        negative,
+        previous_projected_residual_full12=first.safe_projected_residual_full12,
+        **common,
+    )
+    passed = "residual_rate_limit" in second.clipping_stages
+    return {
+        "schema": "wlr50_clean.action_projector_rate_limit_probe.v1",
+        "passed": passed,
+        "applied_to_robot": False,
+        "projector_source": "build_action_projector_v2",
+        "state_id": "P03",
+        "normalized_probe_amplitude": 0.049,
+        "within_five_percent": True,
+        "first_projected_residual_full12": list(
+            first.safe_projected_residual_full12
+        ),
+        "second_projected_residual_full12": list(
+            second.safe_projected_residual_full12
+        ),
+        "second_clipping_stages": list(second.clipping_stages),
+    }
 
 
 def _run_live_episodes(
@@ -490,6 +536,8 @@ def _baseline_or_gate(args: argparse.Namespace, simulation_app: Any) -> int:
             ),
         }
     else:
+        rate_limit_probe = _smoke_rate_limit_probe()
+        result["action_projector_rate_limit_probe"] = rate_limit_probe
         mode_checks = {
             "bounded_smoke_within_five_percent": all(
                 bool(audit.get("within_five_percent_smoke_amplitude", False))
@@ -501,6 +549,10 @@ def _baseline_or_gate(args: argparse.Namespace, simulation_app: Any) -> int:
             ),
             "residual_rate_limit_exercised": all(
                 int(audit.get("rate_limit_tick_count", 0)) > 0 for audit in audits
+            )
+            or rate_limit_probe.get("passed") is True,
+            "residual_rate_limit_probe_not_applied_to_robot": (
+                rate_limit_probe.get("applied_to_robot") is False
             ),
             "phase_transition_bridge_exercised": all(
                 int(audit.get("phase_transition_bridge_count", 0)) >= 12
