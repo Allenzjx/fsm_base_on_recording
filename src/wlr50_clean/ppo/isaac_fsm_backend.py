@@ -204,6 +204,9 @@ class BackendDependencies:
     reset_scene: Callable[
         [Any, CanonicalArticulationResetState], Mapping[str, Any]
     ]
+    restore_settled_state: Callable[
+        [Any, CanonicalArticulationResetState], Mapping[str, Any]
+    ]
     locked_scene_snapshot: Callable[[], Mapping[str, Any]]
     expected_contact_bodies: tuple[str, ...]
     robot_asset_hash: str
@@ -241,6 +244,7 @@ def _load_live_dependencies() -> BackendDependencies:
             scene.robot
         ),
         reset_scene=_restore_default_articulation_state,
+        restore_settled_state=_restore_canonical_settled_articulation_state,
         locked_scene_snapshot=locked_scene_snapshot,
         expected_contact_bodies=tuple(SENSED_BODIES),
         robot_asset_hash=str(ROBOT_USD_SHA256),
@@ -299,6 +303,10 @@ class IsaacFSMBackend:
         self._fall_seen = False
         self._physics_explosion_seen = False
         self._canonical_reset_state: CanonicalArticulationResetState | None = None
+        self._canonical_settled_state: CanonicalArticulationResetState | None = None
+        self._canonical_level_reference_orientation: (
+            tuple[float, float, float, float] | None
+        ) = None
 
     @property
     def raw_observation(self) -> Any | None:
@@ -445,6 +453,35 @@ class IsaacFSMBackend:
             )
         verify_limits()
         self._level_reference_orientation = _mean_quaternion(calibration_samples)
+
+        normal_p01_reset = loaded_snapshot is None or snapshot_phase == "P01"
+        if self._canonical_settled_state is None:
+            self._canonical_settled_state = dependencies.capture_reset_state(scene)
+            self._canonical_level_reference_orientation = (
+                self._level_reference_orientation
+            )
+        elif normal_p01_reset:
+            settled_proof = dict(
+                dependencies.restore_settled_state(
+                    scene, self._canonical_settled_state
+                )
+            )
+            reset_writes = _merge_reset_writes(reset_writes, settled_proof)
+            reset_writes.update(
+                {
+                    "canonical_settled_restore_applied": True,
+                    "canonical_settled_applied_sha256": (
+                        self._canonical_settled_state.state_sha256
+                    ),
+                }
+            )
+            if self._canonical_level_reference_orientation is None:
+                raise IsaacFSMBackendError(
+                    "canonical post-settle level reference is unavailable"
+                )
+            self._level_reference_orientation = (
+                self._canonical_level_reference_orientation
+            )
 
         self._snapshot_restoration = {
             "requested_phase": snapshot_phase,
@@ -1331,6 +1368,18 @@ class IsaacFSMBackend:
             "canonical_reset_applied_sha256": reset_writes.get(
                 "canonical_reset_applied_sha256"
             ),
+            "canonical_settled_state_sha256": (
+                None
+                if self._canonical_settled_state is None
+                else self._canonical_settled_state.state_sha256
+            ),
+            "canonical_settled_state_source": "fresh_scene_post_settle",
+            "canonical_settled_restore_applied": bool(
+                reset_writes.get("canonical_settled_restore_applied", False)
+            ),
+            "canonical_settled_applied_sha256": reset_writes.get(
+                "canonical_settled_applied_sha256"
+            ),
             "adapter_standing_pose_deg": [
                 float(standing_pose[name]) for name in SERVO_ORDER
             ],
@@ -1950,8 +1999,20 @@ def _verify_phase_snapshot_observation(
 
 def _merge_reset_writes(
     first: Mapping[str, Any], second: Mapping[str, Any]
-) -> dict[str, int]:
-    result: dict[str, int] = {}
+) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        name: value
+        for source in (first, second)
+        for name, value in source.items()
+        if name
+        not in {
+            "root_pose_writes",
+            "root_velocity_writes",
+            "joint_state_writes",
+            "global_simulation_resets",
+            "simulation_forward_syncs",
+        }
+    }
     for name in (
         "root_pose_writes",
         "root_velocity_writes",
@@ -2114,6 +2175,46 @@ def restore_canonical_articulation_reset_state(
         raise IsaacFSMBackendError(
             f"canonical articulation restore failed: {type(exc).__name__}: {exc}"
         ) from exc
+
+
+def _restore_canonical_settled_articulation_state(
+    scene: Any, canonical_state: CanonicalArticulationResetState
+) -> Mapping[str, Any]:
+    """Restore the fresh post-settle visible state without a physics step.
+
+    The ordinary pre-settle reset and all 180 settle ticks have already run,
+    so contact/solver history was rebuilt naturally.  This final reset-boundary
+    write removes the remaining visible GPU-PhysX drift while retaining that
+    rebuilt history.  It deliberately does not reset contact sensors again.
+    """
+
+    robot = scene.robot
+    try:
+        restore_canonical_articulation_reset_state(
+            robot, canonical_state, expected_instance_count=1
+        )
+        forward = getattr(scene.sim, "forward", None)
+        if not callable(forward):
+            raise IsaacFSMBackendError(
+                "SimulationContext.forward is required for post-settle restore"
+            )
+        forward()
+        robot.update(0.0)
+    except IsaacFSMBackendError:
+        raise
+    except Exception as exc:
+        raise IsaacFSMBackendError(
+            f"post-settle articulation restore failed: {type(exc).__name__}: {exc}"
+        ) from exc
+    return {
+        "root_pose_writes": 1,
+        "root_velocity_writes": 1,
+        "joint_state_writes": 1,
+        "global_simulation_resets": 0,
+        "simulation_forward_syncs": 1,
+        "canonical_settled_restore_applied": True,
+        "canonical_settled_applied_sha256": canonical_state.state_sha256,
+    }
 
 
 def _restore_default_articulation_state(

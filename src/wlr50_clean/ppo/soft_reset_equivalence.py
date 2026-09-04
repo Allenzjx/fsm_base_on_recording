@@ -56,6 +56,10 @@ RESET_METADATA_FIELDS = (
     "canonical_reset_restore_applied",
     "canonical_reset_applied_sha256",
     "adapter_standing_pose_deg",
+    "canonical_settled_state_source",
+    "canonical_settled_state_sha256",
+    "canonical_settled_restore_applied",
+    "canonical_settled_applied_sha256",
     "controller_hash",
     "motion_contract_hash",
     "seed",
@@ -292,6 +296,8 @@ def compare_reset_metadata(
         "canonical_reset_state_sha256",
         "canonical_reset_state_instance_count",
         "adapter_standing_pose_deg",
+        "canonical_settled_state_source",
+        "canonical_settled_state_sha256",
         "controller_hash",
         "motion_contract_hash",
         "seed",
@@ -336,24 +342,33 @@ def compare_reset_metadata(
             reused.get("reset_global_simulation_resets", -1)
         )
         == 0,
-        "reused_used_exactly_one_forward_sync": int(
+        "reused_used_exactly_two_forward_syncs": int(
             reused.get("reset_simulation_forward_syncs", -1)
         )
-        == 1,
-        "reused_wrote_root_pose_once": int(reused.get("reset_root_pose_writes", -1)) == 1,
-        "reused_wrote_root_velocity_once": int(
+        == 2,
+        "reused_wrote_root_pose_twice": int(reused.get("reset_root_pose_writes", -1)) == 2,
+        "reused_wrote_root_velocity_twice": int(
             reused.get("reset_root_velocity_writes", -1)
         )
-        == 1,
-        "reused_wrote_joint_state_once": int(
+        == 2,
+        "reused_wrote_joint_state_twice": int(
             reused.get("reset_joint_state_writes", -1)
         )
-        == 1,
+        == 2,
         "reused_restored_canonical_state": bool(
             reused.get("canonical_reset_restore_applied", False)
         )
         and reused.get("canonical_reset_applied_sha256")
         == reused.get("canonical_reset_state_sha256"),
+        "fresh_did_not_restore_canonical_settled_state": not bool(
+            fresh.get("canonical_settled_restore_applied", True)
+        )
+        and fresh.get("canonical_settled_applied_sha256") is None,
+        "reused_restored_canonical_settled_state": bool(
+            reused.get("canonical_settled_restore_applied", False)
+        )
+        and reused.get("canonical_settled_applied_sha256")
+        == reused.get("canonical_settled_state_sha256"),
         **{
             f"same_{name}": fresh.get(name) == reused.get(name)
             for name in same_fields

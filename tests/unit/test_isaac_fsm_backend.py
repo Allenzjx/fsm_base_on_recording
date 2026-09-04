@@ -468,6 +468,20 @@ class FakeRuntime:
                 "simulation_forward_syncs": 1,
             }
 
+        def restore_settled_state(scene, reset_state):
+            assert scene is self.scene
+            assert reset_state is canonical_reset_state
+            self.events.append(("restore_settled_state", reset_state))
+            return {
+                "root_pose_writes": 1,
+                "root_velocity_writes": 1,
+                "joint_state_writes": 1,
+                "global_simulation_resets": 0,
+                "simulation_forward_syncs": 1,
+                "canonical_settled_restore_applied": True,
+                "canonical_settled_applied_sha256": reset_state.state_sha256,
+            }
+
         def load_phase_snapshot(phase):
             payload = _snapshot_payload(phase)
             self.events.append(("load_phase_snapshot", phase))
@@ -517,6 +531,7 @@ class FakeRuntime:
             controller_from_paths=controller_from_paths,
             capture_reset_state=capture_reset_state,
             reset_scene=reset_scene,
+            restore_settled_state=restore_settled_state,
             locked_scene_snapshot=lambda: {
                 "schema": "fake.locked_scene.v1",
                 "physics": {"dt_s": 1.0 / 120.0},
@@ -670,10 +685,14 @@ def test_subsequent_reset_uses_reset_boundary_state_restore_only() -> None:
     assert runtime.reset_scene_count == 1
     assert runtime.sim.step_count == 2 * SETTLE_TICKS
     assert first.info["reset_root_pose_writes"] == 0
-    assert second.info["reset_root_pose_writes"] == 1
-    assert second.info["reset_root_velocity_writes"] == 1
-    assert second.info["reset_joint_state_writes"] == 1
+    assert second.info["reset_root_pose_writes"] == 2
+    assert second.info["reset_root_velocity_writes"] == 2
+    assert second.info["reset_joint_state_writes"] == 2
+    assert second.info["reset_simulation_forward_syncs"] == 2
+    assert second.info["canonical_settled_restore_applied"] is True
     assert second.info["in_episode_root_pose_writes"] == 0
+    assert sum(event[0] == "capture_reset_state" for event in runtime.events) == 2
+    assert sum(event[0] == "restore_settled_state" for event in runtime.events) == 1
 
 
 def test_canonical_reset_uses_usd_authored_live_pose_not_zero_default_cache() -> None:
@@ -730,6 +749,12 @@ def test_canonical_reset_uses_usd_authored_live_pose_not_zero_default_cache() ->
     assert torch.equal(robot.writes["root_pose"], authored_root[:, :7])
     assert torch.equal(robot.writes["root_velocity"], authored_root[:, 7:])
     assert robot.reset_count == 1
+
+    canonical.joint_position[0, 0] += 1.0
+    with pytest.raises(IsaacFSMBackendError, match="changed after capture"):
+        restore_canonical_articulation_reset_state(
+            robot, canonical, expected_instance_count=1
+        )
 
 
 def test_phase_snapshot_reset_restores_independent_phase_state_and_proves_live_state() -> None:
