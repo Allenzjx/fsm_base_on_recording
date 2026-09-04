@@ -743,8 +743,10 @@ def test_each_episode_recreates_the_baseline_reset_before_limit_order() -> None:
     assert sum(event[0] == "restore_settled_state" for event in runtime.events) == 0
 
 
+@pytest.mark.parametrize("prior_guard", [False, True])
 def test_reused_lifecycle_orders_stop_remove_reset_and_native_capture(
     monkeypatch: pytest.MonkeyPatch,
+    prior_guard: bool,
 ) -> None:
     events: list[str] = []
     authored = {
@@ -766,6 +768,7 @@ def test_reused_lifecycle_orders_stop_remove_reset_and_native_capture(
 
     def remove(scene, before):
         assert before is authored
+        assert scene.sim._disable_app_control_on_stop_handle is True
         events.append("remove")
         return cleared
 
@@ -781,12 +784,23 @@ def test_reused_lifecycle_orders_stop_remove_reset_and_native_capture(
         lambda robot: events.append("capture_native")
         or SimpleNamespace(instance_count=1, state_sha256="b" * 64),
     )
-    sim = SimpleNamespace(
-        stop=lambda: events.append("stop"),
-        is_stopped=lambda: events.append("is_stopped") or True,
-        reset=lambda *, soft: events.append(f"reset:{soft}"),
-        is_playing=lambda: events.append("is_playing") or True,
-    )
+    sim = SimpleNamespace(_disable_app_control_on_stop_handle=prior_guard)
+
+    def stop() -> None:
+        assert sim._disable_app_control_on_stop_handle is True
+        events.append("stop")
+
+    def reset(*, soft: bool) -> None:
+        assert sim._disable_app_control_on_stop_handle is True
+        events.append(f"reset:{soft}")
+        # IsaacLab's reset currently writes False before returning.  The outer
+        # transaction must still restore the value observed before STOP.
+        sim._disable_app_control_on_stop_handle = False
+
+    sim.stop = stop
+    sim.is_stopped = lambda: events.append("is_stopped") or True
+    sim.reset = reset
+    sim.is_playing = lambda: events.append("is_playing") or True
     robot = SimpleNamespace(update=lambda dt: events.append(f"robot.update:{dt}"))
     contacts = SimpleNamespace(
         initialized=True,
@@ -821,6 +835,149 @@ def test_reused_lifecycle_orders_stop_remove_reset_and_native_capture(
     assert evidence["pre_physics_composed_limit_state_sha256"] == (
         "source-composed"
     )
+    assert sim._disable_app_control_on_stop_handle is prior_guard
+
+
+def test_reused_lifecycle_requires_stop_guard_before_any_mutation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[str] = []
+    sim = SimpleNamespace(
+        stop=lambda: events.append("stop"),
+        is_stopped=lambda: events.append("is_stopped") or True,
+        reset=lambda *, soft: events.append(f"reset:{soft}"),
+        is_playing=lambda: events.append("is_playing") or True,
+    )
+    scene = SimpleNamespace(sim=sim)
+    monkeypatch.setattr(
+        backend_module,
+        "_session_servo_limit_state",
+        lambda scene: events.append("inspect") or {},
+    )
+    monkeypatch.setattr(
+        backend_module,
+        "_remove_session_servo_limit_specs",
+        lambda scene, before: events.append("remove") or {},
+    )
+
+    with pytest.raises(
+        IsaacFSMBackendError,
+        match="app-control STOP guard is unavailable",
+    ):
+        _reset_physics_lifecycle(
+            scene,
+            SimpleNamespace(instance_count=1, state_sha256="canonical"),
+        )
+
+    assert events == []
+
+
+@pytest.mark.parametrize("invalid_guard", [None, 0, "false"])
+def test_reused_lifecycle_rejects_non_boolean_stop_guard_before_any_mutation(
+    monkeypatch: pytest.MonkeyPatch,
+    invalid_guard: object,
+) -> None:
+    events: list[str] = []
+    sim = SimpleNamespace(
+        _disable_app_control_on_stop_handle=invalid_guard,
+        stop=lambda: events.append("stop"),
+        is_stopped=lambda: events.append("is_stopped") or True,
+        reset=lambda *, soft: events.append(f"reset:{soft}"),
+        is_playing=lambda: events.append("is_playing") or True,
+    )
+    scene = SimpleNamespace(sim=sim)
+    monkeypatch.setattr(
+        backend_module,
+        "_session_servo_limit_state",
+        lambda scene: events.append("inspect") or {},
+    )
+    monkeypatch.setattr(
+        backend_module,
+        "_remove_session_servo_limit_specs",
+        lambda scene, before: events.append("remove") or {},
+    )
+
+    with pytest.raises(
+        IsaacFSMBackendError,
+        match="app-control STOP guard is not boolean",
+    ):
+        _reset_physics_lifecycle(
+            scene,
+            SimpleNamespace(instance_count=1, state_sha256="canonical"),
+        )
+
+    assert events == []
+    assert sim._disable_app_control_on_stop_handle is invalid_guard
+
+
+@pytest.mark.parametrize("failing_operation", ["stop", "remove", "reset"])
+@pytest.mark.parametrize("prior_guard", [False, True])
+def test_reused_lifecycle_restores_stop_guard_on_transaction_exception(
+    monkeypatch: pytest.MonkeyPatch,
+    failing_operation: str,
+    prior_guard: bool,
+) -> None:
+    events: list[str] = []
+    authored = {
+        "property_count": 16,
+        "state_sha256": "a" * 64,
+        "composed_state_sha256": "runtime-composed",
+    }
+    cleared = {
+        "property_count": 0,
+        "state_sha256": "e" * 64,
+        "composed_property_count": 16,
+        "composed_state_sha256": "source-composed",
+    }
+    sim = SimpleNamespace(_disable_app_control_on_stop_handle=prior_guard)
+
+    def fail_if_selected(operation: str) -> None:
+        assert sim._disable_app_control_on_stop_handle is True
+        events.append(operation)
+        if operation == failing_operation:
+            raise RuntimeError(f"injected {operation} failure")
+
+    def stop() -> None:
+        fail_if_selected("stop")
+
+    def remove(scene, before):
+        assert before is authored
+        fail_if_selected("remove")
+        return cleared
+
+    def reset(*, soft: bool) -> None:
+        assert soft is False
+        fail_if_selected("reset")
+
+    sim.stop = stop
+    sim.is_stopped = lambda: True
+    sim.reset = reset
+    sim.is_playing = lambda: True
+    scene = SimpleNamespace(sim=sim)
+    monkeypatch.setattr(
+        backend_module,
+        "_session_servo_limit_state",
+        lambda scene: authored,
+    )
+    monkeypatch.setattr(
+        backend_module,
+        "_remove_session_servo_limit_specs",
+        remove,
+    )
+
+    with pytest.raises(
+        IsaacFSMBackendError,
+        match=rf"physics lifecycle reset failed: RuntimeError: injected {failing_operation} failure",
+    ):
+        _reset_physics_lifecycle(
+            scene,
+            SimpleNamespace(instance_count=1, state_sha256="canonical"),
+        )
+
+    assert sim._disable_app_control_on_stop_handle is prior_guard
+    assert events.count(failing_operation) == 1
+    expected_prefix = ["stop", "remove", "reset"]
+    assert events == expected_prefix[: expected_prefix.index(failing_operation) + 1]
 
 
 def test_reused_pre_limit_native_mismatch_fails_before_adapter_or_settle() -> None:

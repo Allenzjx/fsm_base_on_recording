@@ -2640,39 +2640,65 @@ def _reset_physics_lifecycle(
 
     try:
         if canonical_state is not None:
-            stop = getattr(scene.sim, "stop", None)
+            simulation = scene.sim
+            stop = getattr(simulation, "stop", None)
             if not callable(stop):
                 raise IsaacFSMBackendError(
                     "SimulationContext.stop is required before session limit removal"
                 )
-            stop()
-            is_stopped = getattr(scene.sim, "is_stopped", None)
-            if not callable(is_stopped) or not bool(is_stopped()):
+            is_stopped = getattr(simulation, "is_stopped", None)
+            if not callable(is_stopped):
                 raise IsaacFSMBackendError(
-                    "physics timeline did not stop before session limit removal"
+                    "SimulationContext.is_stopped is required before session limit removal"
                 )
-        before = _session_servo_limit_state(scene)
-        removed_count = 0
-        removed_sha256: str | None = None
-        if canonical_state is None:
-            if int(before.get("property_count", -1)) != 0:
-                raise IsaacFSMBackendError(
-                    "fresh SceneFactory reset unexpectedly contains session limit specs"
-                )
-            cleared = before
-            lifecycle = "scene_factory_reset_before_limit_authoring"
-            sensor_count = _contact_reset_evidence(scene, reset_history=False)
-        else:
-            removed_count = int(before.get("property_count", -1))
-            removed_sha256 = str(before.get("state_sha256", ""))
-            cleared = _remove_session_servo_limit_specs(scene, before)
-            reset = getattr(scene.sim, "reset", None)
+            reset = getattr(simulation, "reset", None)
             if not callable(reset):
                 raise IsaacFSMBackendError(
                     "SimulationContext.reset is required for an episode lifecycle reset"
                 )
-            reset(soft=False)
-            is_playing = getattr(scene.sim, "is_playing", None)
+
+            # IsaacLab's standalone STOP callback renders until the timeline
+            # resumes unless this private guard is armed.  A naked stop can
+            # therefore turn the reused reset into an unbounded app-update
+            # loop.  Treat the known guard as a required lifecycle contract:
+            # its absence/type mismatch fails before STOP or USD mutation, and
+            # its exact prior value is restored on every transaction exit.
+            guard_name = "_disable_app_control_on_stop_handle"
+            guard_missing = object()
+            prior_guard = getattr(simulation, guard_name, guard_missing)
+            if prior_guard is guard_missing:
+                raise IsaacFSMBackendError(
+                    "SimulationContext app-control STOP guard is unavailable"
+                )
+            if type(prior_guard) is not bool:
+                raise IsaacFSMBackendError(
+                    "SimulationContext app-control STOP guard is not boolean"
+                )
+
+            try:
+                setattr(simulation, guard_name, True)
+                if getattr(simulation, guard_name, guard_missing) is not True:
+                    raise IsaacFSMBackendError(
+                        "could not arm SimulationContext app-control STOP guard"
+                    )
+                stop()
+                if not bool(is_stopped()):
+                    raise IsaacFSMBackendError(
+                        "physics timeline did not stop before session limit removal"
+                    )
+                before = _session_servo_limit_state(scene)
+                removed_count = int(before.get("property_count", -1))
+                removed_sha256 = str(before.get("state_sha256", ""))
+                cleared = _remove_session_servo_limit_specs(scene, before)
+                reset(soft=False)
+            finally:
+                setattr(simulation, guard_name, prior_guard)
+                if getattr(simulation, guard_name, guard_missing) is not prior_guard:
+                    raise IsaacFSMBackendError(
+                        "could not restore SimulationContext app-control STOP guard"
+                    )
+
+            is_playing = getattr(simulation, "is_playing", None)
             if not callable(is_playing) or not bool(is_playing()):
                 raise IsaacFSMBackendError(
                     "physics timeline did not play after the no-limit reset"
@@ -2682,6 +2708,17 @@ def _reset_physics_lifecycle(
             scene.robot.update(0.0)
             lifecycle = "session_limits_removed_then_hard_reset"
             sensor_count = _contact_reset_evidence(scene, reset_history=True)
+        else:
+            before = _session_servo_limit_state(scene)
+            removed_count = 0
+            removed_sha256: str | None = None
+            if int(before.get("property_count", -1)) != 0:
+                raise IsaacFSMBackendError(
+                    "fresh SceneFactory reset unexpectedly contains session limit specs"
+                )
+            cleared = before
+            lifecycle = "scene_factory_reset_before_limit_authoring"
+            sensor_count = _contact_reset_evidence(scene, reset_history=False)
 
         pre_physics_state = _session_servo_limit_state(scene)
         if (
