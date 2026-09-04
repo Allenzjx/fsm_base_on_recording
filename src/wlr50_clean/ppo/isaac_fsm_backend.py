@@ -1144,7 +1144,23 @@ class IsaacFSMBackend:
                 )
             except SensorContractFailure as exc:
                 self._phase_snapshot_integrity_failed = True
-                failed_entry = {"verified": False, "error": str(exc)}
+                pending = getattr(controller, "_pending_blocker", None)
+                pending_record = (
+                    None
+                    if pending is None
+                    else {
+                        "name": _member(pending, "name"),
+                        "passed": _member(pending, "passed"),
+                        "value": _member(pending, "value"),
+                        "source": _member(pending, "source"),
+                        "reason": _member(pending, "reason"),
+                    }
+                )
+                failed_entry = {
+                    "verified": False,
+                    "error": str(exc),
+                    "pending_entry_blocker": pending_record,
+                }
                 physical_proof["entry_guard_contract"] = failed_entry
                 self._snapshot_restoration["entry_guards"] = failed_entry
                 raise

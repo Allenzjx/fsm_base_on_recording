@@ -423,6 +423,7 @@ class FakeController:
         self.lifecycle = _value("EXECUTE_MOTION")
         self.termination = None
         self.abort_calls = []
+        self._pending_blocker = None
 
     def step(self, observation, *, sim_time_s):
         tick = self.physics_tick
@@ -456,6 +457,14 @@ class FakeController:
                         "reason": "passed",
                     }
                 )
+                if not passed:
+                    self._pending_blocker = SimpleNamespace(
+                        name=guard.name,
+                        passed=False,
+                        value=value,
+                        source="fake.live.entry_guard",
+                        reason="failed",
+                    )
             events = (
                 SimpleNamespace(
                     state_id=self.phase.state_id,
@@ -2309,6 +2318,10 @@ def test_effective_controller_entry_failure_does_not_commit_reset(runtime) -> No
     assert backend._reset_count == 0
     assert backend._authoritative_frame is None
     assert backend._snapshot_restoration["entry_guards"]["verified"] is False
+    if runtime.entry_guard_failure:
+        assert backend._snapshot_restoration["entry_guards"][
+            "pending_entry_blocker"
+        ]["name"] == "previous_state_done"
 
 
 def test_p10_effective_entry_proves_signed_positive_velocity_guard() -> None:
