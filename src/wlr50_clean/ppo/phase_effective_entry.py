@@ -22,6 +22,8 @@ from types import MappingProxyType
 from typing import Any, Mapping, Sequence
 
 from .phase_snapshots import (
+    SOURCE_ACK_FEEDBACK_DIAGNOSTIC_FIELDS,
+    SOURCE_ACK_REPLAY_INVARIANT_FIELDS,
     ValidatedPhaseSnapshotBundle,
     load_validated_phase_snapshot_payload,
 )
@@ -39,13 +41,13 @@ DEFAULT_FROZEN_LEDGER_PATH = (
     PROJECT_ROOT / "artifacts" / "ppo_phase_v1_start" / "frozen_fsm_hashes.json"
 )
 
-CONTRACT_SCHEMA = "wlr50_clean.ppo_phase_effective_entry_contract.v1"
-ENTRY_SCHEMA = "wlr50_clean.ppo_phase_effective_entry.v1"
-DERIVATION_SCHEMA = "wlr50_clean.ppo_phase_effective_entry_derivation.v1"
-CALIBRATION_SCHEMA = "wlr50_clean.ppo_phase_effective_entry_calibration.v1"
-RECORD_SCHEMA = "wlr50_clean.ppo_phase_effective_entry_contract_record.v1"
-CONTRACT_HASH_SCHEMA = "wlr50_clean.ppo_phase_effective_entry_contract_hash.v1"
-PROBE_SCHEMA = "wlr50_clean.phase_snapshot_live_probe.v2"
+CONTRACT_SCHEMA = "wlr50_clean.ppo_phase_effective_entry_contract.v2"
+ENTRY_SCHEMA = "wlr50_clean.ppo_phase_effective_entry.v2"
+DERIVATION_SCHEMA = "wlr50_clean.ppo_phase_effective_entry_derivation.v2"
+CALIBRATION_SCHEMA = "wlr50_clean.ppo_phase_effective_entry_calibration.v2"
+RECORD_SCHEMA = "wlr50_clean.ppo_phase_effective_entry_contract_record.v2"
+CONTRACT_HASH_SCHEMA = "wlr50_clean.ppo_phase_effective_entry_contract_hash.v2"
+PROBE_SCHEMA = "wlr50_clean.phase_snapshot_live_probe.v3"
 # ``artifacts.reserve_run`` canonicalizes run-kind tokens with ``_safe_token``.
 # Keep this consumer bound to the value actually written into the immutable
 # run directory and both lifecycle manifests, rather than the wrapper's raw
@@ -54,9 +56,19 @@ CALIBRATION_RUN_KIND = "phase-effective-entry-calibration"
 CALIBRATION_TRAINING_STAGE = "phase-effective-entry-calibration"
 CALIBRATION_ARTIFACT_ROLE = "CALIBRATION_ONLY_NOT_TRAINING_ACCEPTANCE"
 CALIBRATION_LIVE_PROOF_SCHEMA = (
-    "wlr50_clean.ppo_phase_effective_entry_calibration_live_proof.v1"
+    "wlr50_clean.ppo_phase_effective_entry_calibration_live_proof.v2"
 )
 PHASE_IDS = tuple(f"P{index:02d}" for index in range(2, 14))
+SERVO_ORDER = (
+    "front_left_hip",
+    "front_left_knee",
+    "front_right_hip",
+    "front_right_knee",
+    "rear_left_hip",
+    "rear_left_knee",
+    "rear_right_hip",
+    "rear_right_knee",
+)
 WHEEL_ORDER = (
     "front_left_ankle",
     "front_right_ankle",
@@ -76,6 +88,29 @@ FINGERPRINT_FIELDS = (
     "wheel_bottom_m",
 )
 FINGERPRINT_MAX_ULP_DISTANCE = 1
+COMPONENT_STATE_SCHEMA = "wlr50_clean.phase_effective_entry_component_state.v1"
+COMPONENT_STATE_MAX_ULP_DISTANCE = 1
+COMPONENT_VECTOR_SIZES = {
+    "root_position_w_m": 3,
+    "root_orientation_wxyz": 4,
+    "root_linear_velocity_w_m_s": 3,
+    "root_angular_velocity_w_rad_s": 3,
+    "servo_logical_position_deg": 8,
+    "servo_logical_velocity_deg_s": 8,
+    "wheel_logical_velocity_rad_s": 4,
+}
+COMPONENT_GEOMETRY_FIELDS = ("wheel_centers_w_m", "wheel_bottoms_w_m")
+COMPONENT_UNITS = {
+    "root_position_w_m": "m",
+    "root_orientation_wxyz": "unit_quaternion",
+    "root_linear_velocity_w_m_s": "m/s",
+    "root_angular_velocity_w_rad_s": "rad/s",
+    "servo_logical_position_deg": "deg",
+    "servo_logical_velocity_deg_s": "deg/s",
+    "wheel_logical_velocity_rad_s": "rad/s",
+    "wheel_centers_w_m": "m",
+    "wheel_bottoms_w_m": "m",
+}
 CONTACT_FORCE_ON_N = 0.25
 CONTACT_FORCE_OFF_N = 0.12
 CONTACT_SOURCE = "isaaclab.ContactSensor.force_matrix_w"
@@ -1120,6 +1155,134 @@ def _fingerprint(value: Any) -> tuple[dict[str, float], dict[str, str]]:
     return values, binary
 
 
+def _component_vector(value: Any, *, size: int, label: str) -> list[float]:
+    if not isinstance(value, (list, tuple)) or len(value) != size:
+        raise EffectivePhaseEntryError(f"{label} must be an exact Full{size} vector")
+    if any(type(item) is bool for item in value):
+        raise EffectivePhaseEntryError(f"{label} must not contain booleans")
+    try:
+        result = [float(item) for item in value]
+    except (TypeError, ValueError) as exc:
+        raise EffectivePhaseEntryError(f"{label} contains an invalid binary64 value") from exc
+    if any(not math.isfinite(item) for item in result):
+        raise EffectivePhaseEntryError(f"{label} must contain only finite values")
+    return result
+
+
+def _component_state(
+    value: Any,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Validate and canonicalize the complete post-replay physical state."""
+
+    expected_fields = {
+        "schema",
+        "units",
+        *COMPONENT_VECTOR_SIZES,
+        "servo_order",
+        "wheel_order",
+        *COMPONENT_GEOMETRY_FIELDS,
+        "sha256",
+    }
+    if not isinstance(value, Mapping) or set(value) != expected_fields:
+        raise EffectivePhaseEntryError(
+            "effective component state fields are incomplete or unexpected"
+        )
+    if (
+        value.get("schema") != COMPONENT_STATE_SCHEMA
+        or value.get("units") != COMPONENT_UNITS
+        or tuple(value.get("servo_order", ())) != SERVO_ORDER
+        or tuple(value.get("wheel_order", ())) != WHEEL_ORDER
+    ):
+        raise EffectivePhaseEntryError(
+            "effective component state schema/order/units are invalid"
+        )
+    declared_sha = _require_sha256(
+        value.get("sha256"), "effective component state SHA"
+    )
+    unhashed = _thaw_json_value(value)
+    unhashed.pop("sha256", None)
+    if _sha256_bytes(_canonical_bytes(unhashed)) != declared_sha:
+        raise EffectivePhaseEntryError("effective component state SHA mismatch")
+
+    normalized: dict[str, Any] = {
+        "schema": COMPONENT_STATE_SCHEMA,
+        "units": dict(COMPONENT_UNITS),
+    }
+    binary: dict[str, Any] = {}
+    for field, size in COMPONENT_VECTOR_SIZES.items():
+        vector = _component_vector(value.get(field), size=size, label=field)
+        normalized[field] = vector
+        binary[field] = [_binary64_hex(item) for item in vector]
+    orientation = normalized["root_orientation_wxyz"]
+    norm = math.sqrt(sum(item * item for item in orientation))
+    first_nonzero = next((item for item in orientation if item != 0.0), None)
+    if abs(norm - 1.0) > 2.0e-15 or (
+        first_nonzero is not None and first_nonzero < 0.0
+    ):
+        raise EffectivePhaseEntryError(
+            "effective component orientation is not normalized/canonical-sign"
+        )
+    normalized["servo_order"] = list(value["servo_order"])
+    normalized["wheel_order"] = list(value["wheel_order"])
+    for field in COMPONENT_GEOMETRY_FIELDS:
+        rows = value.get(field)
+        if not isinstance(rows, Mapping) or set(rows) != set(WHEEL_ORDER):
+            raise EffectivePhaseEntryError(
+                f"effective component geometry is invalid: {field}"
+            )
+        normalized[field] = {}
+        binary[field] = {}
+        for wheel in WHEEL_ORDER:
+            vector = _component_vector(
+                rows[wheel], size=3, label=f"{field}.{wheel}"
+            )
+            normalized[field][wheel] = vector
+            binary[field][wheel] = [_binary64_hex(item) for item in vector]
+    if _sha256_bytes(_canonical_bytes(normalized)) != declared_sha:
+        raise EffectivePhaseEntryError(
+            "effective component state is not canonical binary64 JSON"
+        )
+    normalized["sha256"] = declared_sha
+    return normalized, binary
+
+
+def _component_state_scalar_items(
+    state: Mapping[str, Any],
+) -> tuple[tuple[str, float], ...]:
+    rows: list[tuple[str, float]] = []
+    for field in COMPONENT_VECTOR_SIZES:
+        rows.extend(
+            (f"{field}[{index}]", float(item))
+            for index, item in enumerate(state[field])
+        )
+    for field in COMPONENT_GEOMETRY_FIELDS:
+        for wheel in WHEEL_ORDER:
+            rows.extend(
+                (f"{field}.{wheel}[{index}]", float(item))
+                for index, item in enumerate(state[field][wheel])
+            )
+    return tuple(rows)
+
+
+def _component_binary64_ulp_distance(left: float, right: float) -> int:
+    """Return an ordered IEEE-754 distance that also supports negative values."""
+
+    first = float(left)
+    second = float(right)
+    if not math.isfinite(first) or not math.isfinite(second):
+        raise EffectivePhaseEntryError(
+            "component-state ULP comparison requires finite values"
+        )
+
+    def ordered(value: float) -> int:
+        bits = struct.unpack(">Q", struct.pack(">d", value))[0]
+        if bits & (1 << 63):
+            return (~bits) & ((1 << 64) - 1)
+        return bits | (1 << 63)
+
+    return abs(ordered(first) - ordered(second))
+
+
 def _validate_bound_artifact(
     record: Any, payload: bytes, *, expected_path: str, label: str
 ) -> None:
@@ -1259,6 +1422,7 @@ def _replay_evidence_failures(
     assert isinstance(mapper_states, list)
     assert isinstance(atomic_writes, list)
     assert isinstance(safety_checks, list)
+    previous_live_mapper_post_sha256: str | None = None
     expected_anchor_contract = _expected_replay_anchor_contract(
         snapshot_payload,
         str(snapshot_payload["fsm_state"]),
@@ -1282,14 +1446,36 @@ def _replay_evidence_failures(
         if not isinstance(actuation, Mapping):
             failures.append(f"source_actuation_matches[{index}]")
             continue
-        field_matches = actuation.get("field_matches")
+        invariant_matches = actuation.get("replay_invariant_field_matches")
+        diagnostic_matches = actuation.get("historical_feedback_field_matches")
+        output_contract = actuation.get("live_output_contract")
+        feedback_input = actuation.get("live_feedback_input")
+        feedback_unhashed = (
+            dict(feedback_input) if isinstance(feedback_input, Mapping) else {}
+        )
+        feedback_sha256 = feedback_unhashed.pop("sha256", None)
+        source_target_matches = (
+            actuation.get("source_drive_target_full12_sha256")
+            == actuation.get("replayed_drive_target_full12_sha256")
+        )
+        source_actuation_matches = (
+            actuation.get("source_actuation_contract_sha256")
+            == actuation.get("replayed_actuation_contract_sha256")
+        )
         if (
-            actuation.get("source_control_physics_tick") != expected_tick
-            or actuation.get("all_fields_match") is not True
-            or not isinstance(field_matches, Mapping)
-            or set(field_matches) != set(command.get("expected_atomic_ack", {}))
-            or any(value is not True for value in field_matches.values())
-            or actuation.get("source_target_hash_matches") is not True
+            actuation.get("schema")
+            != "wlr50_clean.phase_snapshot_source_input_live_output.v2"
+            or actuation.get("source_control_physics_tick") != expected_tick
+            or actuation.get("all_replay_invariant_fields_match") is not True
+            or not isinstance(invariant_matches, Mapping)
+            or set(invariant_matches) != set(SOURCE_ACK_REPLAY_INVARIANT_FIELDS)
+            or any(value is not True for value in invariant_matches.values())
+            or not isinstance(diagnostic_matches, Mapping)
+            or set(diagnostic_matches)
+            != set(SOURCE_ACK_FEEDBACK_DIAGNOSTIC_FIELDS)
+            or any(type(value) is not bool for value in diagnostic_matches.values())
+            or actuation.get("historical_feedback_equivalence_claimed") is not False
+            or actuation.get("live_feedback_adaptive_output_valid") is not True
             or actuation.get("logical_target_fallback_used") is not False
             or actuation.get("source_command_file_sha256")
             != snapshot_payload.get("source_artifacts", {}).get("command", {}).get(
@@ -1303,14 +1489,129 @@ def _replay_evidence_failures(
             != command.get("source_command_row_canonical_sha256")
             or actuation.get("source_observation_row_canonical_sha256")
             != command.get("source_observation_row_canonical_sha256")
+            or actuation.get("source_adapter_input_sha256")
+            != command.get("source_adapter_input_sha256")
+            or actuation.get("replayed_adapter_input_sha256")
+            != command.get("source_adapter_input_sha256")
+            or actuation.get("adapter_input_hash_matches") is not True
             or actuation.get("source_drive_target_full12_sha256")
-            != command.get("drive_target_full12_sha256")
-            or actuation.get("replayed_drive_target_full12_sha256")
             != command.get("drive_target_full12_sha256")
             or actuation.get("source_actuation_contract_sha256")
             != command.get("actuation_contract_sha256")
-            or actuation.get("replayed_actuation_contract_sha256")
-            != command.get("actuation_contract_sha256")
+            or actuation.get("source_target_hash_matches")
+            is not source_target_matches
+            or actuation.get("source_actuation_hash_matches")
+            is not source_actuation_matches
+            or not isinstance(output_contract, Mapping)
+            or set(output_contract)
+            != {
+                "schema",
+                "all_values_finite",
+                "logical_clamp_verified",
+                "servo_aliases_verified",
+                "realized_bias_verified",
+                "servo_hard_limits_verified",
+                "wheel_hard_limits_verified",
+                "final_drive_slew_verified",
+                "maximum_final_drive_slew_deg",
+                "maximum_allowed_final_drive_slew_deg",
+                "physical_sign_order_unit_conversion_verified",
+                "mapper_output_state_verified",
+                "live_feedback_mapper_replay_verified",
+                "live_feedback_input_sha256",
+                "predicted_mapper_post_state_sha256",
+                "feedback_conditioned_output",
+                "feedback_conditioned_output_sha256",
+                "verified",
+            }
+            or output_contract.get("schema")
+            != "wlr50_clean.phase_snapshot_live_output_contract.v2"
+            or output_contract.get("verified") is not True
+            or any(
+                output_contract.get(name) is not True
+                for name in (
+                    "all_values_finite",
+                    "logical_clamp_verified",
+                    "servo_aliases_verified",
+                    "realized_bias_verified",
+                    "servo_hard_limits_verified",
+                    "wheel_hard_limits_verified",
+                    "final_drive_slew_verified",
+                    "physical_sign_order_unit_conversion_verified",
+                    "mapper_output_state_verified",
+                    "live_feedback_mapper_replay_verified",
+                )
+            )
+            or output_contract.get("live_feedback_input_sha256")
+            != feedback_sha256
+            or _SHA256.fullmatch(
+                str(output_contract.get("predicted_mapper_post_state_sha256", ""))
+            )
+            is None
+            or _SHA256.fullmatch(
+                str(output_contract.get("feedback_conditioned_output_sha256", ""))
+            )
+            is None
+            or not isinstance(
+                output_contract.get("feedback_conditioned_output"), Mapping
+            )
+            or set(output_contract.get("feedback_conditioned_output", {}))
+            != set(SOURCE_ACK_FEEDBACK_DIAGNOSTIC_FIELDS)
+            or output_contract.get("feedback_conditioned_output_sha256")
+            != _sha256_bytes(
+                _canonical_bytes(output_contract.get("feedback_conditioned_output", {}))
+            )
+            or type(output_contract.get("maximum_final_drive_slew_deg")) is bool
+            or not isinstance(
+                output_contract.get("maximum_final_drive_slew_deg"), (int, float)
+            )
+            or not math.isfinite(
+                float(output_contract.get("maximum_final_drive_slew_deg", math.nan))
+            )
+            or float(output_contract.get("maximum_final_drive_slew_deg", -1.0)) < 0.0
+            or output_contract.get("maximum_allowed_final_drive_slew_deg")
+            != command.get("mapper_configuration", {}).get("maximum_delta_deg")
+            or float(output_contract.get("maximum_final_drive_slew_deg", math.inf))
+            > float(output_contract.get("maximum_allowed_final_drive_slew_deg", -1.0))
+            + 1.0e-12
+            or not isinstance(feedback_input, Mapping)
+            or set(feedback_input)
+            != {
+                "schema",
+                "canonical_servo_order",
+                "unit",
+                "physical_position_rad",
+                "tensor_dtype",
+                "tensor_device",
+                "sha256",
+            }
+            or feedback_input.get("schema")
+            != "wlr50_clean.phase_snapshot_live_servo_feedback.v1"
+            or feedback_input.get("canonical_servo_order")
+            != [
+                "front_left_hip",
+                "front_left_knee",
+                "front_right_hip",
+                "front_right_knee",
+                "rear_left_hip",
+                "rear_left_knee",
+                "rear_right_hip",
+                "rear_right_knee",
+            ]
+            or feedback_input.get("unit") != "rad"
+            or not isinstance(feedback_input.get("tensor_dtype"), str)
+            or not feedback_input.get("tensor_dtype")
+            or not isinstance(feedback_input.get("tensor_device"), str)
+            or not feedback_input.get("tensor_device")
+            or not isinstance(feedback_input.get("physical_position_rad"), list)
+            or len(feedback_input.get("physical_position_rad", ())) != len(SERVO_ORDER)
+            or any(
+                not isinstance(value, (int, float))
+                or type(value) is bool
+                or not math.isfinite(float(value))
+                for value in feedback_input.get("physical_position_rad", ())
+            )
+            or feedback_sha256 != _sha256_bytes(_canonical_bytes(feedback_unhashed))
             or actuation.get("source_atomic_physics_tick")
             != command.get("source_atomic_physics_tick")
             or actuation.get("source_atomic_write_count")
@@ -1326,17 +1627,92 @@ def _replay_evidence_failures(
         if not isinstance(mapper, Mapping):
             failures.append(f"source_mapper_post_states[{index}]")
         else:
-            mapper_matches = mapper.get("field_matches")
+            mapper_matches = mapper.get("historical_post_field_matches")
+            mapper_errors = mapper.get(
+                "historical_post_field_maximum_numeric_error"
+            )
             if (
-                mapper.get("source_control_physics_tick") != expected_tick
-                or mapper.get("all_fields_match") is not True
+                set(mapper)
+                != {
+                    "schema",
+                    "source_transition",
+                    "source_control_physics_tick",
+                    "first_replay_tick",
+                    "first_pre_state_matches_source",
+                    "historical_post_field_matches",
+                    "historical_post_field_maximum_numeric_error",
+                    "all_historical_post_fields_match",
+                    "historical_feedback_equivalence_claimed",
+                    "source_pre_state_sha256",
+                    "source_post_state_sha256",
+                    "live_pre_state_sha256",
+                    "live_post_state_sha256",
+                    "feedback_tick_increment",
+                    "feedback_schedule_verified",
+                    "ack_cross_bindings_verified",
+                    "natural_live_state_continuity_verified",
+                    "per_tick_mapper_restore_count",
+                    "restored_after_prime",
+                    "reached_naturally_by_single_atomic_apply",
+                }
+                or mapper.get("source_transition")
+                != "source_tick_t_minus_1_to_t"
+                or mapper.get("schema")
+                != "wlr50_clean.phase_snapshot_live_mapper_transition.v2"
+                or mapper.get("source_control_physics_tick") != expected_tick
                 or not isinstance(mapper_matches, Mapping)
                 or set(mapper_matches) != set(command.get("mapper_post_state", {}))
-                or any(value is not True for value in mapper_matches.values())
+                or any(type(value) is not bool for value in mapper_matches.values())
+                or mapper.get("all_historical_post_fields_match")
+                is not all(mapper_matches.values())
+                or not isinstance(mapper_errors, Mapping)
+                or set(mapper_errors) != set(command.get("mapper_post_state", {}))
+                or any(
+                    type(value) is bool
+                    or not isinstance(value, (int, float))
+                    or not math.isfinite(float(value))
+                    or float(value) < 0.0
+                    for value in mapper_errors.values()
+                )
+                or mapper.get("historical_feedback_equivalence_claimed") is not False
+                or mapper.get("first_replay_tick") is not (index == 0)
+                or mapper.get("first_pre_state_matches_source")
+                is not (True if index == 0 else None)
+                or mapper.get("source_pre_state_sha256")
+                != _sha256_bytes(_canonical_bytes(command.get("mapper_pre_state", {})))
+                or mapper.get("source_post_state_sha256")
+                != _sha256_bytes(_canonical_bytes(command.get("mapper_post_state", {})))
+                or (
+                    index == 0
+                    and mapper.get("live_pre_state_sha256")
+                    != mapper.get("source_pre_state_sha256")
+                )
+                or _SHA256.fullmatch(str(mapper.get("live_pre_state_sha256", "")))
+                is None
+                or _SHA256.fullmatch(str(mapper.get("live_post_state_sha256", "")))
+                is None
+                or (
+                    previous_live_mapper_post_sha256 is not None
+                    and mapper.get("live_pre_state_sha256")
+                    != previous_live_mapper_post_sha256
+                )
+                or mapper.get("feedback_tick_increment") != 1
+                or mapper.get("feedback_schedule_verified") is not True
+                or mapper.get("ack_cross_bindings_verified") is not True
+                or not isinstance(output_contract, Mapping)
+                or output_contract.get("predicted_mapper_post_state_sha256")
+                != mapper.get("live_post_state_sha256")
+                or mapper.get("natural_live_state_continuity_verified") is not True
+                or mapper.get("per_tick_mapper_restore_count") != 0
                 or mapper.get("reached_naturally_by_single_atomic_apply") is not True
                 or mapper.get("restored_after_prime") is not False
             ):
                 failures.append(f"source_mapper_post_states[{index}] contract")
+            previous_live_mapper_post_sha256 = (
+                str(mapper.get("live_post_state_sha256"))
+                if _SHA256.fullmatch(str(mapper.get("live_post_state_sha256", "")))
+                else None
+            )
         if not isinstance(atomic, Mapping):
             failures.append(f"prime_atomic_writes[{index}]")
         elif (
@@ -1379,6 +1755,21 @@ def _replay_evidence_failures(
         failures.append("final source_actuation_match alias")
     if state.get("source_mapper_post_state") != mapper_states[-1]:
         failures.append("final source_mapper_post_state alias")
+    if state.get("source_adapter_input_sha256s") != [
+        command.get("source_adapter_input_sha256") for command in commands
+    ]:
+        failures.append("source_adapter_input_sha256s")
+    for field, expected in (
+        ("all_source_adapter_inputs_hash_matched", True),
+        ("all_live_output_contracts_verified", True),
+        ("all_live_mapper_transitions_verified", True),
+        ("live_feedback_adaptive_replay", True),
+        ("historical_feedback_equivalence_claimed", False),
+        ("initial_mapper_restore_count", 1),
+        ("per_tick_mapper_restore_count", 0),
+    ):
+        if state.get(field) != expected:
+            failures.append(field)
     if state.get("source_replay_steps") != replay_steps:
         failures.append("source_replay_steps")
     anchor_bindings = {
@@ -1526,21 +1917,28 @@ def _validated_probe_attempt(
         and root.get("physics_steps_before_readback") == 0
         and root.get("contact_sensor_reads_before_readback") == 0
         and isinstance(actuation, Mapping)
-        and actuation.get("all_fields_match") is True
-        and isinstance(actuation.get("field_matches"), Mapping)
-        and bool(actuation["field_matches"])
-        and all(value is True for value in actuation["field_matches"].values())
-        and actuation.get("source_target_hash_matches") is True
+        and actuation.get("schema")
+        == "wlr50_clean.phase_snapshot_source_input_live_output.v2"
+        and actuation.get("all_replay_invariant_fields_match") is True
+        and isinstance(actuation.get("replay_invariant_field_matches"), Mapping)
+        and set(actuation["replay_invariant_field_matches"])
+        == set(SOURCE_ACK_REPLAY_INVARIANT_FIELDS)
+        and all(
+            value is True
+            for value in actuation["replay_invariant_field_matches"].values()
+        )
+        and actuation.get("adapter_input_hash_matches") is True
+        and actuation.get("live_feedback_adaptive_output_valid") is True
+        and actuation.get("historical_feedback_equivalence_claimed") is False
         and actuation.get("logical_target_fallback_used") is False
-        and actuation.get("source_drive_target_full12_sha256")
-        == actuation.get("replayed_drive_target_full12_sha256")
-        and actuation.get("source_actuation_contract_sha256")
-        == actuation.get("replayed_actuation_contract_sha256")
         and isinstance(mapper, Mapping)
-        and mapper.get("all_fields_match") is True
-        and isinstance(mapper.get("field_matches"), Mapping)
-        and bool(mapper["field_matches"])
-        and all(value is True for value in mapper["field_matches"].values())
+        and mapper.get("schema")
+        == "wlr50_clean.phase_snapshot_live_mapper_transition.v2"
+        and mapper.get("historical_feedback_equivalence_claimed") is False
+        and mapper.get("natural_live_state_continuity_verified") is True
+        and mapper.get("ack_cross_bindings_verified") is True
+        and mapper.get("feedback_schedule_verified") is True
+        and mapper.get("per_tick_mapper_restore_count") == 0
         and mapper.get("reached_naturally_by_single_atomic_apply") is True
         and mapper.get("restored_after_prime") is False
         and attempt.get("phase") == phase
@@ -1569,6 +1967,8 @@ def _validated_probe_attempt(
         == [row["source_command_row_canonical_sha256"] for row in source_commands]
         and attempt.get("source_observation_row_canonical_sha256s")
         == [row["source_observation_row_canonical_sha256"] for row in source_commands]
+        and attempt.get("source_adapter_input_sha256s")
+        == [row["source_adapter_input_sha256"] for row in source_commands]
         and attempt.get("source_drive_target_full12_sha256s")
         == [row["drive_target_full12_sha256"] for row in source_commands]
         and attempt.get("source_actuation_contract_sha256s")
@@ -1603,6 +2003,13 @@ def _validated_probe_attempt(
         and state.get("classifier_source_history_restored") is False
         and state.get("classifier_source_state_restored") is False
         and state.get("classifier_history_equivalence_claimed") is False
+        and state.get("all_source_adapter_inputs_hash_matched") is True
+        and state.get("all_live_output_contracts_verified") is True
+        and state.get("all_live_mapper_transitions_verified") is True
+        and state.get("live_feedback_adaptive_replay") is True
+        and state.get("historical_feedback_equivalence_claimed") is False
+        and state.get("initial_mapper_restore_count") == 1
+        and state.get("per_tick_mapper_restore_count") == 0
         and state.get("raw_sensor_history_rewarmed_from_prime") is True
         and state.get("contact_backend_reset") is True
         and state.get("contact_backend_reset_after_prime") is False
@@ -1706,7 +2113,7 @@ def _validated_probe_attempt(
     if (
         not isinstance(comparison, Mapping)
         or comparison.get("schema")
-        != "wlr50_clean.phase_snapshot_live_comparison.v1"
+        != "wlr50_clean.phase_snapshot_live_comparison.v2"
     ):
         raise EffectivePhaseEntryError("calibration lacks post-prime comparison")
     _validate_controller_entry_guard(state.get("entry_guard_contract"), phase=phase)
@@ -1723,6 +2130,7 @@ def _validated_probe_attempt(
     if _sha256_bytes(_canonical_bytes(unhashed)) != declared:
         raise EffectivePhaseEntryError("annotated raw-contact SHA is invalid")
     _fingerprint(comparison.get("maximum_errors"))
+    _component_state(comparison.get("effective_component_state"))
     _calibrated_contacts(comparison)
     return comparison
 
@@ -1735,6 +2143,19 @@ def _assert_attempts_bit_identical(
     if fresh_values != reused_values or fresh_binary != reused_binary:
         raise EffectivePhaseEntryError(
             "fresh/reused post-prime fingerprints are not binary64-identical"
+        )
+    fresh_state, fresh_state_binary = _component_state(
+        fresh.get("effective_component_state")
+    )
+    reused_state, reused_state_binary = _component_state(
+        reused.get("effective_component_state")
+    )
+    if (
+        fresh_state != reused_state
+        or fresh_state_binary != reused_state_binary
+    ):
+        raise EffectivePhaseEntryError(
+            "fresh/reused complete component states are not binary64-identical"
         )
     fresh_raw = fresh["raw_physx_contacts"]
     reused_raw = reused["raw_physx_contacts"]
@@ -1777,6 +2198,7 @@ def _assert_replay_attempts_bit_identical(
         "source_control_physics_ticks",
         "source_command_row_canonical_sha256s",
         "source_observation_row_canonical_sha256s",
+        "source_adapter_input_sha256s",
         "source_drive_target_full12_sha256s",
         "source_actuation_contract_sha256s",
         "physics_steps_during_reset",
@@ -1808,6 +2230,14 @@ def _assert_replay_attempts_bit_identical(
         "prime_atomic_writes",
         "source_actuation_matches",
         "source_mapper_post_states",
+        "source_adapter_input_sha256s",
+        "all_source_adapter_inputs_hash_matched",
+        "all_live_output_contracts_verified",
+        "all_live_mapper_transitions_verified",
+        "live_feedback_adaptive_replay",
+        "historical_feedback_equivalence_claimed",
+        "initial_mapper_restore_count",
+        "per_tick_mapper_restore_count",
         "source_actuation_match",
         "source_mapper_post_state",
         "source_replay_observation_ticks",
@@ -2060,6 +2490,9 @@ def _capture_calibration_run(
     _assert_attempts_bit_identical(comparison, reused_comparison)
     _assert_replay_attempts_bit_identical(fresh, reused)
     fingerprint, fingerprint_binary = _fingerprint(comparison.get("maximum_errors"))
+    component_state, component_state_binary = _component_state(
+        comparison.get("effective_component_state")
+    )
     contacts = _calibrated_contacts(comparison)
     entry_payload: dict[str, Any] = {
         "schema": ENTRY_SCHEMA,
@@ -2075,6 +2508,8 @@ def _capture_calibration_run(
         "calibration_probe_file_sha256": _sha256_bytes(captured["probe"]),
         "post_prime_fingerprint": fingerprint,
         "post_prime_fingerprint_binary64_hex": fingerprint_binary,
+        "effective_component_state": component_state,
+        "effective_component_state_binary64_hex": component_state_binary,
         "raw_contacts": contacts,
     }
     entry_payload["entry_sha256"] = _sha256_bytes(_canonical_bytes(entry_payload))
@@ -2189,6 +2624,8 @@ def build_effective_phase_entry_contract(
         "physics_dt_s": phase_entry_time_s(1),
         "fingerprint_fields": list(FINGERPRINT_FIELDS),
         "fingerprint_max_ulp_distance": FINGERPRINT_MAX_ULP_DISTANCE,
+        "component_state_schema": COMPONENT_STATE_SCHEMA,
+        "component_state_max_ulp_distance": COMPONENT_STATE_MAX_ULP_DISTANCE,
         "contact_contract": {
             "force_on_n": CONTACT_FORCE_ON_N,
             "force_off_n": CONTACT_FORCE_OFF_N,
@@ -2262,6 +2699,8 @@ def _validate_contract_payload(
         "physics_dt_s",
         "fingerprint_fields",
         "fingerprint_max_ulp_distance",
+        "component_state_schema",
+        "component_state_max_ulp_distance",
         "contact_contract",
         "phase_count",
         "phases",
@@ -2286,6 +2725,9 @@ def _validate_contract_payload(
         or payload.get("physics_dt_s") != phase_entry_time_s(1)
         or payload.get("fingerprint_fields") != list(FINGERPRINT_FIELDS)
         or payload.get("fingerprint_max_ulp_distance") != 1
+        or payload.get("component_state_schema") != COMPONENT_STATE_SCHEMA
+        or payload.get("component_state_max_ulp_distance")
+        != COMPONENT_STATE_MAX_ULP_DISTANCE
         or payload.get("phase_count") != len(PHASE_IDS)
     ):
         raise EffectivePhaseEntryError("effective-entry top-level contract is invalid")
@@ -2474,6 +2916,8 @@ def _validate_contract_payload(
             "calibration_probe_file_sha256",
             "post_prime_fingerprint",
             "post_prime_fingerprint_binary64_hex",
+            "effective_component_state",
+            "effective_component_state_binary64_hex",
             "raw_contacts",
             "entry_sha256",
         }:
@@ -2524,6 +2968,22 @@ def _validate_contract_payload(
         for field in FINGERPRINT_FIELDS:
             if _binary64_from_hex(binary[field], f"{phase}.{field}") != values[field]:
                 raise EffectivePhaseEntryError(f"effective fingerprint value mismatch for {phase}")
+        component_state, component_binary = _component_state(
+            row.get("effective_component_state")
+        )
+        if row.get("effective_component_state_binary64_hex") != component_binary:
+            raise EffectivePhaseEntryError(
+                f"effective component-state binary64 mismatch for {phase}"
+            )
+        for label, number in _component_state_scalar_items(component_state):
+            parts = label.replace("]", "").replace("[", ".").split(".")
+            encoded: Any = component_binary
+            for part in parts:
+                encoded = encoded[int(part)] if part.isdigit() else encoded[part]
+            if _binary64_from_hex(encoded, f"{phase}.{label}") != number:
+                raise EffectivePhaseEntryError(
+                    f"effective component-state value mismatch for {phase}.{label}"
+                )
         contacts = row.get("raw_contacts")
         if not isinstance(contacts, Mapping) or set(contacts) != {*WHEEL_ORDER, "signature_sha256"}:
             raise EffectivePhaseEntryError(f"effective contacts are incomplete for {phase}")
@@ -2715,6 +3175,31 @@ def validate_effective_phase_entry_comparison(
         for field, row in fingerprint_rows.items()
         if row["passed"] is not True
     ]
+    actual_component, actual_component_binary = _component_state(
+        comparison.get("effective_component_state")
+    )
+    reference_component, _reference_component_binary = _component_state(
+        entry.get("effective_component_state")
+    )
+    actual_component_items = dict(_component_state_scalar_items(actual_component))
+    reference_component_items = dict(
+        _component_state_scalar_items(reference_component)
+    )
+    if set(actual_component_items) != set(reference_component_items):
+        raise EffectivePhaseEntryError(
+            "live/calibrated component-state layouts differ"
+        )
+    component_ulp_distance: dict[str, int] = {}
+    for label, actual_number in actual_component_items.items():
+        distance = _component_binary64_ulp_distance(
+            actual_number, reference_component_items[label]
+        )
+        component_ulp_distance[label] = distance
+        if distance > COMPONENT_STATE_MAX_ULP_DISTANCE:
+            failures.append(
+                f"{label} component state is {distance} ULP from calibration"
+            )
+    component_state_max_ulp_distance = max(component_ulp_distance.values())
     raw = comparison.get("raw_physx_contacts")
     pairs = raw.get("pairs") if isinstance(raw, Mapping) else None
     classified = comparison.get("exact_contacts")
@@ -2816,7 +3301,7 @@ def validate_effective_phase_entry_comparison(
     if signature_sha != expected_signature_sha:
         failures.append("raw contact signature SHA differs from calibration")
     proof = {
-        "schema": "wlr50_clean.ppo_phase_effective_entry_live_proof.v1",
+        "schema": "wlr50_clean.ppo_phase_effective_entry_live_proof.v2",
         "phase": phase,
         "effective_entry_semantics": (
             "source_snapshot_plus_validated_replay_steps_no_rewind"
@@ -2833,6 +3318,15 @@ def validate_effective_phase_entry_comparison(
         "entry_sha256": entry["entry_sha256"],
         "fingerprint_max_ulp_distance": FINGERPRINT_MAX_ULP_DISTANCE,
         "fingerprint": fingerprint_rows,
+        "component_state_allowed_max_ulp_distance": (
+            COMPONENT_STATE_MAX_ULP_DISTANCE
+        ),
+        "component_state_max_ulp_distance": component_state_max_ulp_distance,
+        "component_state_ulp_distance": component_ulp_distance,
+        "component_state": actual_component,
+        "component_state_binary64_hex": actual_component_binary,
+        "component_state_sha256": actual_component["sha256"],
+        "expected_component_state_sha256": reference_component["sha256"],
         "raw_contacts": contacts_proof,
         "raw_contact_signature_sha256": signature_sha,
         "expected_raw_contact_signature_sha256": expected_signature_sha,
@@ -2848,6 +3342,8 @@ def validate_effective_phase_entry_comparison(
 
 
 __all__ = [
+    "COMPONENT_STATE_MAX_ULP_DISTANCE",
+    "COMPONENT_STATE_SCHEMA",
     "CONTACT_FORCE_OFF_N",
     "CONTACT_FORCE_ON_N",
     "CONTACT_SOURCE",

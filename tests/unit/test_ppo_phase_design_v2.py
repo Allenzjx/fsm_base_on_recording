@@ -230,7 +230,7 @@ def test_transfer_attitude_envelopes_are_bound_to_frozen_trial043_evidence() -> 
         "bd6f1c43322fcd428475d4377c7c7737a21b01699bb105b6ec4b38a8bd3f60aa"
     )
     assert evidence.source["level_reference_snapshot_sha256"] == (
-        "0a3e7073c20866e2b446529ee443d980964038e9ced7bcb24a99fa5616e84784"
+        "4e5d0ef67984de1f4ee3cef533fb6a19f3f11723789f582f9e8273c8f53c6395"
     )
     for state_id in STATE_IDS:
         objective = objectives.phase(state_id)

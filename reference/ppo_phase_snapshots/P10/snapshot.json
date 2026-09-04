@@ -1,5 +1,5 @@
 {
-  "schema": "wlr50_clean.ppo_phase_entry_snapshot.v2",
+  "schema": "wlr50_clean.ppo_phase_entry_snapshot.v3",
   "reset_use": "TRAINING_RESET_STATE_WRITE",
   "in_episode_root_write": "FORBIDDEN_IN_EPISODE_ROOT_WRITE",
   "source_trial": "trial_043_20260902_clean_v010",
@@ -34,7 +34,7 @@
     }
   },
   "source_command": {
-    "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+    "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
     "control_physics_tick": 7577,
     "source_atomic_physics_tick": 7757,
     "source_atomic_write_count": 7758,
@@ -78,6 +78,7 @@
         0.0
       ]
     },
+    "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
     "mapper_configuration": {
       "physics_dt_s": 0.008333333333333333,
       "servo_rate_deg_s": 150.0,
@@ -456,7 +457,7 @@
   },
   "source_commands": [
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7577,
       "source_atomic_physics_tick": 7757,
       "source_atomic_write_count": 7758,
@@ -500,6 +501,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -877,7 +879,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7578,
       "source_atomic_physics_tick": 7758,
       "source_atomic_write_count": 7759,
@@ -921,6 +923,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -1298,7 +1301,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7579,
       "source_atomic_physics_tick": 7759,
       "source_atomic_write_count": 7760,
@@ -1342,6 +1345,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -1719,7 +1723,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7580,
       "source_atomic_physics_tick": 7760,
       "source_atomic_write_count": 7761,
@@ -1763,6 +1767,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -2140,7 +2145,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7581,
       "source_atomic_physics_tick": 7761,
       "source_atomic_write_count": 7762,
@@ -2184,6 +2189,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -2561,7 +2567,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7582,
       "source_atomic_physics_tick": 7762,
       "source_atomic_write_count": 7763,
@@ -2605,6 +2611,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -2982,7 +2989,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7583,
       "source_atomic_physics_tick": 7763,
       "source_atomic_write_count": 7764,
@@ -3026,6 +3033,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -3403,7 +3411,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7584,
       "source_atomic_physics_tick": 7764,
       "source_atomic_write_count": 7765,
@@ -3447,6 +3455,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -3824,7 +3833,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7585,
       "source_atomic_physics_tick": 7765,
       "source_atomic_write_count": 7766,
@@ -3868,6 +3877,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -4245,7 +4255,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7586,
       "source_atomic_physics_tick": 7766,
       "source_atomic_write_count": 7767,
@@ -4289,6 +4299,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -4666,7 +4677,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7587,
       "source_atomic_physics_tick": 7767,
       "source_atomic_write_count": 7768,
@@ -4710,6 +4721,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -5087,7 +5099,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7588,
       "source_atomic_physics_tick": 7768,
       "source_atomic_write_count": 7769,
@@ -5131,6 +5143,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -5508,7 +5521,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7589,
       "source_atomic_physics_tick": 7769,
       "source_atomic_write_count": 7770,
@@ -5552,6 +5565,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -5929,7 +5943,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7590,
       "source_atomic_physics_tick": 7770,
       "source_atomic_write_count": 7771,
@@ -5973,6 +5987,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -6350,7 +6365,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7591,
       "source_atomic_physics_tick": 7771,
       "source_atomic_write_count": 7772,
@@ -6394,6 +6409,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -6771,7 +6787,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7592,
       "source_atomic_physics_tick": 7772,
       "source_atomic_write_count": 7773,
@@ -6815,6 +6831,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -7192,7 +7209,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7593,
       "source_atomic_physics_tick": 7773,
       "source_atomic_write_count": 7774,
@@ -7236,6 +7253,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -7613,7 +7631,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7594,
       "source_atomic_physics_tick": 7774,
       "source_atomic_write_count": 7775,
@@ -7657,6 +7675,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -8034,7 +8053,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7595,
       "source_atomic_physics_tick": 7775,
       "source_atomic_write_count": 7776,
@@ -8078,6 +8097,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -8455,7 +8475,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7596,
       "source_atomic_physics_tick": 7776,
       "source_atomic_write_count": 7777,
@@ -8499,6 +8519,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -8876,7 +8897,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7597,
       "source_atomic_physics_tick": 7777,
       "source_atomic_write_count": 7778,
@@ -8920,6 +8941,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -9297,7 +9319,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7598,
       "source_atomic_physics_tick": 7778,
       "source_atomic_write_count": 7779,
@@ -9341,6 +9363,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -9718,7 +9741,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7599,
       "source_atomic_physics_tick": 7779,
       "source_atomic_write_count": 7780,
@@ -9762,6 +9785,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -10139,7 +10163,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7600,
       "source_atomic_physics_tick": 7780,
       "source_atomic_write_count": 7781,
@@ -10183,6 +10207,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -10560,7 +10585,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7601,
       "source_atomic_physics_tick": 7781,
       "source_atomic_write_count": 7782,
@@ -10604,6 +10629,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -10981,7 +11007,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7602,
       "source_atomic_physics_tick": 7782,
       "source_atomic_write_count": 7783,
@@ -11025,6 +11051,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -11402,7 +11429,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7603,
       "source_atomic_physics_tick": 7783,
       "source_atomic_write_count": 7784,
@@ -11446,6 +11473,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -11823,7 +11851,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7604,
       "source_atomic_physics_tick": 7784,
       "source_atomic_write_count": 7785,
@@ -11867,6 +11895,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -12244,7 +12273,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7605,
       "source_atomic_physics_tick": 7785,
       "source_atomic_write_count": 7786,
@@ -12288,6 +12317,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -12665,7 +12695,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7606,
       "source_atomic_physics_tick": 7786,
       "source_atomic_write_count": 7787,
@@ -12709,6 +12739,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -13086,7 +13117,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7607,
       "source_atomic_physics_tick": 7787,
       "source_atomic_write_count": 7788,
@@ -13130,6 +13161,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -13507,7 +13539,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7608,
       "source_atomic_physics_tick": 7788,
       "source_atomic_write_count": 7789,
@@ -13551,6 +13583,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -13928,7 +13961,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7609,
       "source_atomic_physics_tick": 7789,
       "source_atomic_write_count": 7790,
@@ -13972,6 +14005,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -14349,7 +14383,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7610,
       "source_atomic_physics_tick": 7790,
       "source_atomic_write_count": 7791,
@@ -14393,6 +14427,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -14770,7 +14805,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7611,
       "source_atomic_physics_tick": 7791,
       "source_atomic_write_count": 7792,
@@ -14814,6 +14849,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -15191,7 +15227,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7612,
       "source_atomic_physics_tick": 7792,
       "source_atomic_write_count": 7793,
@@ -15235,6 +15271,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -15612,7 +15649,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7613,
       "source_atomic_physics_tick": 7793,
       "source_atomic_write_count": 7794,
@@ -15656,6 +15693,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -16033,7 +16071,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7614,
       "source_atomic_physics_tick": 7794,
       "source_atomic_write_count": 7795,
@@ -16077,6 +16115,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -16454,7 +16493,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7615,
       "source_atomic_physics_tick": 7795,
       "source_atomic_write_count": 7796,
@@ -16498,6 +16537,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -16875,7 +16915,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7616,
       "source_atomic_physics_tick": 7796,
       "source_atomic_write_count": 7797,
@@ -16919,6 +16959,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -17296,7 +17337,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7617,
       "source_atomic_physics_tick": 7797,
       "source_atomic_write_count": 7798,
@@ -17340,6 +17381,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -17717,7 +17759,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7618,
       "source_atomic_physics_tick": 7798,
       "source_atomic_write_count": 7799,
@@ -17761,6 +17803,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -18138,7 +18181,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7619,
       "source_atomic_physics_tick": 7799,
       "source_atomic_write_count": 7800,
@@ -18182,6 +18225,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -18559,7 +18603,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7620,
       "source_atomic_physics_tick": 7800,
       "source_atomic_write_count": 7801,
@@ -18603,6 +18647,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -18980,7 +19025,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7621,
       "source_atomic_physics_tick": 7801,
       "source_atomic_write_count": 7802,
@@ -19024,6 +19069,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -19401,7 +19447,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7622,
       "source_atomic_physics_tick": 7802,
       "source_atomic_write_count": 7803,
@@ -19445,6 +19491,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -19822,7 +19869,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7623,
       "source_atomic_physics_tick": 7803,
       "source_atomic_write_count": 7804,
@@ -19866,6 +19913,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -20243,7 +20291,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7624,
       "source_atomic_physics_tick": 7804,
       "source_atomic_write_count": 7805,
@@ -20287,6 +20335,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -20664,7 +20713,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7625,
       "source_atomic_physics_tick": 7805,
       "source_atomic_write_count": 7806,
@@ -20708,6 +20757,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -21085,7 +21135,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7626,
       "source_atomic_physics_tick": 7806,
       "source_atomic_write_count": 7807,
@@ -21129,6 +21179,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -21506,7 +21557,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7627,
       "source_atomic_physics_tick": 7807,
       "source_atomic_write_count": 7808,
@@ -21550,6 +21601,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -21927,7 +21979,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7628,
       "source_atomic_physics_tick": 7808,
       "source_atomic_write_count": 7809,
@@ -21971,6 +22023,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -22348,7 +22401,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7629,
       "source_atomic_physics_tick": 7809,
       "source_atomic_write_count": 7810,
@@ -22392,6 +22445,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -22769,7 +22823,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7630,
       "source_atomic_physics_tick": 7810,
       "source_atomic_write_count": 7811,
@@ -22813,6 +22867,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -23190,7 +23245,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7631,
       "source_atomic_physics_tick": 7811,
       "source_atomic_write_count": 7812,
@@ -23234,6 +23289,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -23611,7 +23667,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7632,
       "source_atomic_physics_tick": 7812,
       "source_atomic_write_count": 7813,
@@ -23655,6 +23711,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -24032,7 +24089,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7633,
       "source_atomic_physics_tick": 7813,
       "source_atomic_write_count": 7814,
@@ -24076,6 +24133,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -24453,7 +24511,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7634,
       "source_atomic_physics_tick": 7814,
       "source_atomic_write_count": 7815,
@@ -24497,6 +24555,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -24874,7 +24933,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7635,
       "source_atomic_physics_tick": 7815,
       "source_atomic_write_count": 7816,
@@ -24918,6 +24977,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -25295,7 +25355,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7636,
       "source_atomic_physics_tick": 7816,
       "source_atomic_write_count": 7817,
@@ -25339,6 +25399,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -25716,7 +25777,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7637,
       "source_atomic_physics_tick": 7817,
       "source_atomic_write_count": 7818,
@@ -25760,6 +25821,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -26137,7 +26199,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7638,
       "source_atomic_physics_tick": 7818,
       "source_atomic_write_count": 7819,
@@ -26181,6 +26243,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -26558,7 +26621,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7639,
       "source_atomic_physics_tick": 7819,
       "source_atomic_write_count": 7820,
@@ -26602,6 +26665,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -26979,7 +27043,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7640,
       "source_atomic_physics_tick": 7820,
       "source_atomic_write_count": 7821,
@@ -27023,6 +27087,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -27400,7 +27465,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7641,
       "source_atomic_physics_tick": 7821,
       "source_atomic_write_count": 7822,
@@ -27444,6 +27509,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -27821,7 +27887,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7642,
       "source_atomic_physics_tick": 7822,
       "source_atomic_write_count": 7823,
@@ -27865,6 +27931,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -28242,7 +28309,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7643,
       "source_atomic_physics_tick": 7823,
       "source_atomic_write_count": 7824,
@@ -28286,6 +28353,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -28663,7 +28731,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7644,
       "source_atomic_physics_tick": 7824,
       "source_atomic_write_count": 7825,
@@ -28707,6 +28775,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -29084,7 +29153,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7645,
       "source_atomic_physics_tick": 7825,
       "source_atomic_write_count": 7826,
@@ -29128,6 +29197,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -29505,7 +29575,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7646,
       "source_atomic_physics_tick": 7826,
       "source_atomic_write_count": 7827,
@@ -29549,6 +29619,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -29926,7 +29997,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7647,
       "source_atomic_physics_tick": 7827,
       "source_atomic_write_count": 7828,
@@ -29970,6 +30041,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -30347,7 +30419,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7648,
       "source_atomic_physics_tick": 7828,
       "source_atomic_write_count": 7829,
@@ -30391,6 +30463,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -30768,7 +30841,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7649,
       "source_atomic_physics_tick": 7829,
       "source_atomic_write_count": 7830,
@@ -30812,6 +30885,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -31189,7 +31263,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7650,
       "source_atomic_physics_tick": 7830,
       "source_atomic_write_count": 7831,
@@ -31233,6 +31307,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -31610,7 +31685,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7651,
       "source_atomic_physics_tick": 7831,
       "source_atomic_write_count": 7832,
@@ -31654,6 +31729,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -32031,7 +32107,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7652,
       "source_atomic_physics_tick": 7832,
       "source_atomic_write_count": 7833,
@@ -32075,6 +32151,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -32452,7 +32529,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7653,
       "source_atomic_physics_tick": 7833,
       "source_atomic_write_count": 7834,
@@ -32496,6 +32573,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -32873,7 +32951,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7654,
       "source_atomic_physics_tick": 7834,
       "source_atomic_write_count": 7835,
@@ -32917,6 +32995,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -33294,7 +33373,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7655,
       "source_atomic_physics_tick": 7835,
       "source_atomic_write_count": 7836,
@@ -33338,6 +33417,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -33715,7 +33795,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7656,
       "source_atomic_physics_tick": 7836,
       "source_atomic_write_count": 7837,
@@ -33759,6 +33839,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -34136,7 +34217,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7657,
       "source_atomic_physics_tick": 7837,
       "source_atomic_write_count": 7838,
@@ -34180,6 +34261,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -34557,7 +34639,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7658,
       "source_atomic_physics_tick": 7838,
       "source_atomic_write_count": 7839,
@@ -34601,6 +34683,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -34978,7 +35061,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7659,
       "source_atomic_physics_tick": 7839,
       "source_atomic_write_count": 7840,
@@ -35022,6 +35105,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -35399,7 +35483,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7660,
       "source_atomic_physics_tick": 7840,
       "source_atomic_write_count": 7841,
@@ -35443,6 +35527,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -35820,7 +35905,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7661,
       "source_atomic_physics_tick": 7841,
       "source_atomic_write_count": 7842,
@@ -35864,6 +35949,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -36241,7 +36327,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7662,
       "source_atomic_physics_tick": 7842,
       "source_atomic_write_count": 7843,
@@ -36285,6 +36371,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -36662,7 +36749,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7663,
       "source_atomic_physics_tick": 7843,
       "source_atomic_write_count": 7844,
@@ -36706,6 +36793,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -37083,7 +37171,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7664,
       "source_atomic_physics_tick": 7844,
       "source_atomic_write_count": 7845,
@@ -37127,6 +37215,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -37504,7 +37593,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7665,
       "source_atomic_physics_tick": 7845,
       "source_atomic_write_count": 7846,
@@ -37548,6 +37637,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -37925,7 +38015,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7666,
       "source_atomic_physics_tick": 7846,
       "source_atomic_write_count": 7847,
@@ -37969,6 +38059,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -38346,7 +38437,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7667,
       "source_atomic_physics_tick": 7847,
       "source_atomic_write_count": 7848,
@@ -38390,6 +38481,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -38767,7 +38859,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7668,
       "source_atomic_physics_tick": 7848,
       "source_atomic_write_count": 7849,
@@ -38811,6 +38903,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -39188,7 +39281,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7669,
       "source_atomic_physics_tick": 7849,
       "source_atomic_write_count": 7850,
@@ -39232,6 +39325,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -39609,7 +39703,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7670,
       "source_atomic_physics_tick": 7850,
       "source_atomic_write_count": 7851,
@@ -39653,6 +39747,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -40030,7 +40125,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7671,
       "source_atomic_physics_tick": 7851,
       "source_atomic_write_count": 7852,
@@ -40074,6 +40169,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -40451,7 +40547,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7672,
       "source_atomic_physics_tick": 7852,
       "source_atomic_write_count": 7853,
@@ -40495,6 +40591,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -40872,7 +40969,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7673,
       "source_atomic_physics_tick": 7853,
       "source_atomic_write_count": 7854,
@@ -40916,6 +41013,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -41293,7 +41391,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7674,
       "source_atomic_physics_tick": 7854,
       "source_atomic_write_count": 7855,
@@ -41337,6 +41435,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -41714,7 +41813,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7675,
       "source_atomic_physics_tick": 7855,
       "source_atomic_write_count": 7856,
@@ -41758,6 +41857,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -42135,7 +42235,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7676,
       "source_atomic_physics_tick": 7856,
       "source_atomic_write_count": 7857,
@@ -42179,6 +42279,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -42556,7 +42657,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7677,
       "source_atomic_physics_tick": 7857,
       "source_atomic_write_count": 7858,
@@ -42600,6 +42701,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -42977,7 +43079,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7678,
       "source_atomic_physics_tick": 7858,
       "source_atomic_write_count": 7859,
@@ -43021,6 +43123,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -43398,7 +43501,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7679,
       "source_atomic_physics_tick": 7859,
       "source_atomic_write_count": 7860,
@@ -43442,6 +43545,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -43819,7 +43923,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7680,
       "source_atomic_physics_tick": 7860,
       "source_atomic_write_count": 7861,
@@ -43863,6 +43967,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -44240,7 +44345,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7681,
       "source_atomic_physics_tick": 7861,
       "source_atomic_write_count": 7862,
@@ -44284,6 +44389,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -44661,7 +44767,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7682,
       "source_atomic_physics_tick": 7862,
       "source_atomic_write_count": 7863,
@@ -44705,6 +44811,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -45082,7 +45189,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7683,
       "source_atomic_physics_tick": 7863,
       "source_atomic_write_count": 7864,
@@ -45126,6 +45233,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -45503,7 +45611,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7684,
       "source_atomic_physics_tick": 7864,
       "source_atomic_write_count": 7865,
@@ -45547,6 +45655,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -45924,7 +46033,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7685,
       "source_atomic_physics_tick": 7865,
       "source_atomic_write_count": 7866,
@@ -45968,6 +46077,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -46345,7 +46455,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7686,
       "source_atomic_physics_tick": 7866,
       "source_atomic_write_count": 7867,
@@ -46389,6 +46499,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -46766,7 +46877,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7687,
       "source_atomic_physics_tick": 7867,
       "source_atomic_write_count": 7868,
@@ -46810,6 +46921,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -47187,7 +47299,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7688,
       "source_atomic_physics_tick": 7868,
       "source_atomic_write_count": 7869,
@@ -47231,6 +47343,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -47608,7 +47721,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7689,
       "source_atomic_physics_tick": 7869,
       "source_atomic_write_count": 7870,
@@ -47652,6 +47765,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -48029,7 +48143,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7690,
       "source_atomic_physics_tick": 7870,
       "source_atomic_write_count": 7871,
@@ -48073,6 +48187,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -48450,7 +48565,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7691,
       "source_atomic_physics_tick": 7871,
       "source_atomic_write_count": 7872,
@@ -48494,6 +48609,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -48871,7 +48987,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7692,
       "source_atomic_physics_tick": 7872,
       "source_atomic_write_count": 7873,
@@ -48915,6 +49031,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -49292,7 +49409,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7693,
       "source_atomic_physics_tick": 7873,
       "source_atomic_write_count": 7874,
@@ -49336,6 +49453,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -49713,7 +49831,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7694,
       "source_atomic_physics_tick": 7874,
       "source_atomic_write_count": 7875,
@@ -49757,6 +49875,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -50134,7 +50253,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7695,
       "source_atomic_physics_tick": 7875,
       "source_atomic_write_count": 7876,
@@ -50178,6 +50297,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -50555,7 +50675,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7696,
       "source_atomic_physics_tick": 7876,
       "source_atomic_write_count": 7877,
@@ -50599,6 +50719,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -50976,7 +51097,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7697,
       "source_atomic_physics_tick": 7877,
       "source_atomic_write_count": 7878,
@@ -51020,6 +51141,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -51397,7 +51519,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7698,
       "source_atomic_physics_tick": 7878,
       "source_atomic_write_count": 7879,
@@ -51441,6 +51563,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -51818,7 +51941,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7699,
       "source_atomic_physics_tick": 7879,
       "source_atomic_write_count": 7880,
@@ -51862,6 +51985,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -52239,7 +52363,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7700,
       "source_atomic_physics_tick": 7880,
       "source_atomic_write_count": 7881,
@@ -52283,6 +52407,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -52660,7 +52785,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7701,
       "source_atomic_physics_tick": 7881,
       "source_atomic_write_count": 7882,
@@ -52704,6 +52829,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -53081,7 +53207,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7702,
       "source_atomic_physics_tick": 7882,
       "source_atomic_write_count": 7883,
@@ -53125,6 +53251,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -53502,7 +53629,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7703,
       "source_atomic_physics_tick": 7883,
       "source_atomic_write_count": 7884,
@@ -53546,6 +53673,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -53923,7 +54051,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7704,
       "source_atomic_physics_tick": 7884,
       "source_atomic_write_count": 7885,
@@ -53967,6 +54095,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -54344,7 +54473,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7705,
       "source_atomic_physics_tick": 7885,
       "source_atomic_write_count": 7886,
@@ -54388,6 +54517,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -54765,7 +54895,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7706,
       "source_atomic_physics_tick": 7886,
       "source_atomic_write_count": 7887,
@@ -54809,6 +54939,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -55186,7 +55317,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7707,
       "source_atomic_physics_tick": 7887,
       "source_atomic_write_count": 7888,
@@ -55230,6 +55361,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -55607,7 +55739,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7708,
       "source_atomic_physics_tick": 7888,
       "source_atomic_write_count": 7889,
@@ -55651,6 +55783,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -56028,7 +56161,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7709,
       "source_atomic_physics_tick": 7889,
       "source_atomic_write_count": 7890,
@@ -56072,6 +56205,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -56449,7 +56583,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7710,
       "source_atomic_physics_tick": 7890,
       "source_atomic_write_count": 7891,
@@ -56493,6 +56627,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -56870,7 +57005,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7711,
       "source_atomic_physics_tick": 7891,
       "source_atomic_write_count": 7892,
@@ -56914,6 +57049,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -57291,7 +57427,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7712,
       "source_atomic_physics_tick": 7892,
       "source_atomic_write_count": 7893,
@@ -57335,6 +57471,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -57712,7 +57849,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7713,
       "source_atomic_physics_tick": 7893,
       "source_atomic_write_count": 7894,
@@ -57756,6 +57893,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -58133,7 +58271,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7714,
       "source_atomic_physics_tick": 7894,
       "source_atomic_write_count": 7895,
@@ -58177,6 +58315,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -58554,7 +58693,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7715,
       "source_atomic_physics_tick": 7895,
       "source_atomic_write_count": 7896,
@@ -58598,6 +58737,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -58975,7 +59115,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7716,
       "source_atomic_physics_tick": 7896,
       "source_atomic_write_count": 7897,
@@ -59019,6 +59159,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -59396,7 +59537,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7717,
       "source_atomic_physics_tick": 7897,
       "source_atomic_write_count": 7898,
@@ -59440,6 +59581,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -59817,7 +59959,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7718,
       "source_atomic_physics_tick": 7898,
       "source_atomic_write_count": 7899,
@@ -59861,6 +60003,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -60238,7 +60381,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7719,
       "source_atomic_physics_tick": 7899,
       "source_atomic_write_count": 7900,
@@ -60282,6 +60425,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -60659,7 +60803,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7720,
       "source_atomic_physics_tick": 7900,
       "source_atomic_write_count": 7901,
@@ -60703,6 +60847,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -61080,7 +61225,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7721,
       "source_atomic_physics_tick": 7901,
       "source_atomic_write_count": 7902,
@@ -61124,6 +61269,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -61501,7 +61647,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7722,
       "source_atomic_physics_tick": 7902,
       "source_atomic_write_count": 7903,
@@ -61545,6 +61691,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -61922,7 +62069,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7723,
       "source_atomic_physics_tick": 7903,
       "source_atomic_write_count": 7904,
@@ -61966,6 +62113,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -62343,7 +62491,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7724,
       "source_atomic_physics_tick": 7904,
       "source_atomic_write_count": 7905,
@@ -62387,6 +62535,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -62764,7 +62913,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7725,
       "source_atomic_physics_tick": 7905,
       "source_atomic_write_count": 7906,
@@ -62808,6 +62957,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -63185,7 +63335,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7726,
       "source_atomic_physics_tick": 7906,
       "source_atomic_write_count": 7907,
@@ -63229,6 +63379,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -63606,7 +63757,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7727,
       "source_atomic_physics_tick": 7907,
       "source_atomic_write_count": 7908,
@@ -63650,6 +63801,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -64027,7 +64179,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7728,
       "source_atomic_physics_tick": 7908,
       "source_atomic_write_count": 7909,
@@ -64071,6 +64223,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -64448,7 +64601,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7729,
       "source_atomic_physics_tick": 7909,
       "source_atomic_write_count": 7910,
@@ -64492,6 +64645,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -64869,7 +65023,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7730,
       "source_atomic_physics_tick": 7910,
       "source_atomic_write_count": 7911,
@@ -64913,6 +65067,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -65290,7 +65445,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7731,
       "source_atomic_physics_tick": 7911,
       "source_atomic_write_count": 7912,
@@ -65334,6 +65489,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -65711,7 +65867,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7732,
       "source_atomic_physics_tick": 7912,
       "source_atomic_write_count": 7913,
@@ -65755,6 +65911,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -66132,7 +66289,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7733,
       "source_atomic_physics_tick": 7913,
       "source_atomic_write_count": 7914,
@@ -66176,6 +66333,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -66553,7 +66711,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7734,
       "source_atomic_physics_tick": 7914,
       "source_atomic_write_count": 7915,
@@ -66597,6 +66755,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -66974,7 +67133,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7735,
       "source_atomic_physics_tick": 7915,
       "source_atomic_write_count": 7916,
@@ -67018,6 +67177,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -67395,7 +67555,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7736,
       "source_atomic_physics_tick": 7916,
       "source_atomic_write_count": 7917,
@@ -67439,6 +67599,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -67816,7 +67977,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7737,
       "source_atomic_physics_tick": 7917,
       "source_atomic_write_count": 7918,
@@ -67860,6 +68021,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -68237,7 +68399,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7738,
       "source_atomic_physics_tick": 7918,
       "source_atomic_write_count": 7919,
@@ -68281,6 +68443,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -68658,7 +68821,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7739,
       "source_atomic_physics_tick": 7919,
       "source_atomic_write_count": 7920,
@@ -68702,6 +68865,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -69079,7 +69243,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7740,
       "source_atomic_physics_tick": 7920,
       "source_atomic_write_count": 7921,
@@ -69123,6 +69287,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -69500,7 +69665,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7741,
       "source_atomic_physics_tick": 7921,
       "source_atomic_write_count": 7922,
@@ -69544,6 +69709,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -69921,7 +70087,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7742,
       "source_atomic_physics_tick": 7922,
       "source_atomic_write_count": 7923,
@@ -69965,6 +70131,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -70342,7 +70509,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7743,
       "source_atomic_physics_tick": 7923,
       "source_atomic_write_count": 7924,
@@ -70386,6 +70553,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -70763,7 +70931,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7744,
       "source_atomic_physics_tick": 7924,
       "source_atomic_write_count": 7925,
@@ -70807,6 +70975,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -71184,7 +71353,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7745,
       "source_atomic_physics_tick": 7925,
       "source_atomic_write_count": 7926,
@@ -71228,6 +71397,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -71605,7 +71775,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7746,
       "source_atomic_physics_tick": 7926,
       "source_atomic_write_count": 7927,
@@ -71649,6 +71819,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -72026,7 +72197,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7747,
       "source_atomic_physics_tick": 7927,
       "source_atomic_write_count": 7928,
@@ -72070,6 +72241,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -72447,7 +72619,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7748,
       "source_atomic_physics_tick": 7928,
       "source_atomic_write_count": 7929,
@@ -72491,6 +72663,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -72868,7 +73041,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7749,
       "source_atomic_physics_tick": 7929,
       "source_atomic_write_count": 7930,
@@ -72912,6 +73085,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -73289,7 +73463,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7750,
       "source_atomic_physics_tick": 7930,
       "source_atomic_write_count": 7931,
@@ -73333,6 +73507,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -73710,7 +73885,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7751,
       "source_atomic_physics_tick": 7931,
       "source_atomic_write_count": 7932,
@@ -73754,6 +73929,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -74131,7 +74307,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7752,
       "source_atomic_physics_tick": 7932,
       "source_atomic_write_count": 7933,
@@ -74175,6 +74351,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -74552,7 +74729,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7753,
       "source_atomic_physics_tick": 7933,
       "source_atomic_write_count": 7934,
@@ -74596,6 +74773,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -74973,7 +75151,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7754,
       "source_atomic_physics_tick": 7934,
       "source_atomic_write_count": 7935,
@@ -75017,6 +75195,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -75394,7 +75573,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7755,
       "source_atomic_physics_tick": 7935,
       "source_atomic_write_count": 7936,
@@ -75438,6 +75617,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -75815,7 +75995,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7756,
       "source_atomic_physics_tick": 7936,
       "source_atomic_write_count": 7937,
@@ -75859,6 +76039,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -76236,7 +76417,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7757,
       "source_atomic_physics_tick": 7937,
       "source_atomic_write_count": 7938,
@@ -76280,6 +76461,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -76657,7 +76839,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7758,
       "source_atomic_physics_tick": 7938,
       "source_atomic_write_count": 7939,
@@ -76701,6 +76883,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -77078,7 +77261,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7759,
       "source_atomic_physics_tick": 7939,
       "source_atomic_write_count": 7940,
@@ -77122,6 +77305,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -77499,7 +77683,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7760,
       "source_atomic_physics_tick": 7940,
       "source_atomic_write_count": 7941,
@@ -77543,6 +77727,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -77920,7 +78105,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7761,
       "source_atomic_physics_tick": 7941,
       "source_atomic_write_count": 7942,
@@ -77964,6 +78149,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -78341,7 +78527,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7762,
       "source_atomic_physics_tick": 7942,
       "source_atomic_write_count": 7943,
@@ -78385,6 +78571,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -78762,7 +78949,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7763,
       "source_atomic_physics_tick": 7943,
       "source_atomic_write_count": 7944,
@@ -78806,6 +78993,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -79183,7 +79371,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7764,
       "source_atomic_physics_tick": 7944,
       "source_atomic_write_count": 7945,
@@ -79227,6 +79415,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -79604,7 +79793,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7765,
       "source_atomic_physics_tick": 7945,
       "source_atomic_write_count": 7946,
@@ -79648,6 +79837,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -80025,7 +80215,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7766,
       "source_atomic_physics_tick": 7946,
       "source_atomic_write_count": 7947,
@@ -80069,6 +80259,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -80446,7 +80637,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7767,
       "source_atomic_physics_tick": 7947,
       "source_atomic_write_count": 7948,
@@ -80490,6 +80681,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -80867,7 +81059,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7768,
       "source_atomic_physics_tick": 7948,
       "source_atomic_write_count": 7949,
@@ -80911,6 +81103,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -81288,7 +81481,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7769,
       "source_atomic_physics_tick": 7949,
       "source_atomic_write_count": 7950,
@@ -81332,6 +81525,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -81709,7 +81903,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7770,
       "source_atomic_physics_tick": 7950,
       "source_atomic_write_count": 7951,
@@ -81753,6 +81947,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -82130,7 +82325,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7771,
       "source_atomic_physics_tick": 7951,
       "source_atomic_write_count": 7952,
@@ -82174,6 +82369,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -82551,7 +82747,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7772,
       "source_atomic_physics_tick": 7952,
       "source_atomic_write_count": 7953,
@@ -82595,6 +82791,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -82972,7 +83169,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7773,
       "source_atomic_physics_tick": 7953,
       "source_atomic_write_count": 7954,
@@ -83016,6 +83213,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -83393,7 +83591,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7774,
       "source_atomic_physics_tick": 7954,
       "source_atomic_write_count": 7955,
@@ -83437,6 +83635,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -83814,7 +84013,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7775,
       "source_atomic_physics_tick": 7955,
       "source_atomic_write_count": 7956,
@@ -83858,6 +84057,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -84235,7 +84435,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7776,
       "source_atomic_physics_tick": 7956,
       "source_atomic_write_count": 7957,
@@ -84270,6 +84470,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "ef79c98b0d73cec6b495fe6482a541cbdc82131f336e138ace94ac8ffa346110",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -84638,7 +84839,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7777,
       "source_atomic_physics_tick": 7957,
       "source_atomic_write_count": 7958,
@@ -84673,6 +84874,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "ef79c98b0d73cec6b495fe6482a541cbdc82131f336e138ace94ac8ffa346110",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -85041,7 +85243,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7778,
       "source_atomic_physics_tick": 7958,
       "source_atomic_write_count": 7959,
@@ -85076,6 +85278,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "ef79c98b0d73cec6b495fe6482a541cbdc82131f336e138ace94ac8ffa346110",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -85444,7 +85647,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7779,
       "source_atomic_physics_tick": 7959,
       "source_atomic_write_count": 7960,
@@ -85479,6 +85682,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "ef79c98b0d73cec6b495fe6482a541cbdc82131f336e138ace94ac8ffa346110",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -85847,7 +86051,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7780,
       "source_atomic_physics_tick": 7960,
       "source_atomic_write_count": 7961,
@@ -85882,6 +86086,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "ef79c98b0d73cec6b495fe6482a541cbdc82131f336e138ace94ac8ffa346110",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -86250,7 +86455,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7781,
       "source_atomic_physics_tick": 7961,
       "source_atomic_write_count": 7962,
@@ -86285,6 +86490,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "ef79c98b0d73cec6b495fe6482a541cbdc82131f336e138ace94ac8ffa346110",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -86653,7 +86859,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7782,
       "source_atomic_physics_tick": 7962,
       "source_atomic_write_count": 7963,
@@ -86688,6 +86894,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "ef79c98b0d73cec6b495fe6482a541cbdc82131f336e138ace94ac8ffa346110",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -87056,7 +87263,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7783,
       "source_atomic_physics_tick": 7963,
       "source_atomic_write_count": 7964,
@@ -87091,6 +87298,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "ef79c98b0d73cec6b495fe6482a541cbdc82131f336e138ace94ac8ffa346110",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -87459,7 +87667,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7784,
       "source_atomic_physics_tick": 7964,
       "source_atomic_write_count": 7965,
@@ -87494,6 +87702,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "ef79c98b0d73cec6b495fe6482a541cbdc82131f336e138ace94ac8ffa346110",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -87862,7 +88071,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7785,
       "source_atomic_physics_tick": 7965,
       "source_atomic_write_count": 7966,
@@ -87897,6 +88106,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "ef79c98b0d73cec6b495fe6482a541cbdc82131f336e138ace94ac8ffa346110",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -88265,7 +88475,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7786,
       "source_atomic_physics_tick": 7966,
       "source_atomic_write_count": 7967,
@@ -88300,6 +88510,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "ef79c98b0d73cec6b495fe6482a541cbdc82131f336e138ace94ac8ffa346110",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -88668,7 +88879,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7787,
       "source_atomic_physics_tick": 7967,
       "source_atomic_write_count": 7968,
@@ -88703,6 +88914,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "ef79c98b0d73cec6b495fe6482a541cbdc82131f336e138ace94ac8ffa346110",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -89071,7 +89283,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7788,
       "source_atomic_physics_tick": 7968,
       "source_atomic_write_count": 7969,
@@ -89106,6 +89318,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "ef79c98b0d73cec6b495fe6482a541cbdc82131f336e138ace94ac8ffa346110",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -89474,7 +89687,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7789,
       "source_atomic_physics_tick": 7969,
       "source_atomic_write_count": 7970,
@@ -89509,6 +89722,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "ef79c98b0d73cec6b495fe6482a541cbdc82131f336e138ace94ac8ffa346110",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -89877,7 +90091,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7790,
       "source_atomic_physics_tick": 7970,
       "source_atomic_write_count": 7971,
@@ -89912,6 +90126,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "ef79c98b0d73cec6b495fe6482a541cbdc82131f336e138ace94ac8ffa346110",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -90280,7 +90495,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7791,
       "source_atomic_physics_tick": 7971,
       "source_atomic_write_count": 7972,
@@ -90315,6 +90530,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "ef79c98b0d73cec6b495fe6482a541cbdc82131f336e138ace94ac8ffa346110",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -90683,7 +90899,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7792,
       "source_atomic_physics_tick": 7972,
       "source_atomic_write_count": 7973,
@@ -90718,6 +90934,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "ef79c98b0d73cec6b495fe6482a541cbdc82131f336e138ace94ac8ffa346110",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -91086,7 +91303,7 @@
       "target_entry_tick": 7794
     },
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7793,
       "source_atomic_physics_tick": 7973,
       "source_atomic_write_count": 7974,
@@ -91121,6 +91338,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "ef79c98b0d73cec6b495fe6482a541cbdc82131f336e138ace94ac8ffa346110",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -91736,5 +91954,5 @@
   "controller_anchor_tick": 7784,
   "controller_anchor_time_s": 64.86666666666666,
   "target_entry_tick": 7794,
-  "state_sha256": "9edf9e001c13a6f58f23303367cc5ae6d41793d4ae686f44f5646c4ad2d00508"
+  "state_sha256": "baeb283463a5b876af9b5c5e0a3e9c825fedc5b4964182360883ea2741510b90"
 }

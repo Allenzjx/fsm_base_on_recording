@@ -36,9 +36,18 @@ from wlr50_clean.ppo.phase_snapshots import (
     SOURCE_COMMAND_SCHEMA,
     SOURCE_MAPPER_STATE_SCHEMA,
     phase_snapshot_actuation_contract_sha256,
+    phase_snapshot_adapter_input_sha256,
     phase_snapshot_drive_target_sha256,
 )
 from wlr50_clean.ppo.phase_effective_entry import EffectivePhaseEntryError
+from wlr50_clean.infrastructure.command_batch import (
+    Full12Command,
+    WHEEL_VELOCITY_LIMIT_RAD_S,
+    build_physical_batch,
+    servo_limits_deg,
+)
+from wlr50_clean.infrastructure.robot_adapter import bounded_drive_feedback_step
+from wlr50_clean.infrastructure.servo_target_mapper import ServoTargetMapper
 
 
 SERVO_NAMES = (
@@ -265,16 +274,17 @@ def _snapshot_payload(phase="P09"):
         "source_control_physics_tick": 100,
         "feedback_tick": 281,
     }
+    adapter_input = {
+        "requested_full12": [0.0] * 12,
+        "tracking_servo_names": [],
+        "drive_feedback_bias_requested_full12": [0.0] * 12,
+    }
     source_command = {
         "schema": SOURCE_COMMAND_SCHEMA,
         "control_physics_tick": 100,
         "source_atomic_physics_tick": 280,
         "source_atomic_write_count": 281,
-        "adapter_input": {
-            "requested_full12": [0.0] * 12,
-            "tracking_servo_names": [],
-            "drive_feedback_bias_requested_full12": [0.0] * 12,
-        },
+        "adapter_input": adapter_input,
         "mapper_configuration": {
             "physics_dt_s": 1.0 / 120.0,
             "servo_rate_deg_s": 150.0,
@@ -287,6 +297,9 @@ def _snapshot_payload(phase="P09"):
         "mapper_pre_state": pre_state,
         "mapper_post_state": post_state,
         "expected_atomic_ack": expected_ack,
+        "source_adapter_input_sha256": phase_snapshot_adapter_input_sha256(
+            adapter_input
+        ),
         "source_command_row_canonical_sha256": "c" * 64,
         "source_observation_row_canonical_sha256": "d" * 64,
         "drive_target_full12_sha256": phase_snapshot_drive_target_sha256(
@@ -651,23 +664,17 @@ class FakeAdapter:
         self.write_count = 0
         self.last_physics_tick = None
         self.standing_pose_deg = {name: 0.0 for name in SERVO_NAMES}
-        self.servo_target_mapper = SimpleNamespace(
-            physics_dt_s=1.0 / 120.0,
-            servo_rate_deg_s=150.0,
-            maximum_delta_deg=1.25,
-            tracking_gain=8.0,
-            tracking_limit_deg=10.0,
-            feedback_interval_ticks=4,
-            standing_pose_deg=dict(self.standing_pose_deg),
-            _requested={name: 0.0 for name in SERVO_NAMES},
-            _applied={name: 0.0 for name in SERVO_NAMES},
-            _nominal_reached={name: True for name in SERVO_NAMES},
-            _compensation={name: 0.0 for name in SERVO_NAMES},
-            _tracking_active={name: False for name in SERVO_NAMES},
-            _retiring_stale_bias={name: False for name in SERVO_NAMES},
-            _feedback_tick=0,
+        self.servo_target_mapper = ServoTargetMapper(
+            self.standing_pose_deg,
+            physics_dt_s=self.physics_dt_s,
         )
         self._final_drive_servo_deg = {name: 0.0 for name in SERVO_NAMES}
+        self._live_servo_position_rad = (0.0,) * len(SERVO_NAMES)
+        self.robot = SimpleNamespace(
+            data=SimpleNamespace(
+                joint_pos=SimpleNamespace(dtype="float64", device="cpu")
+            )
+        )
 
     def apply_full12(
         self,
@@ -677,27 +684,57 @@ class FakeAdapter:
         tracking_servo_names,
         drive_feedback_bias_full12,
     ):
-        action = tuple(float(value) for value in command)
+        requested = Full12Command.from_full12(command)
+        action = requested.clamped().to_full12()
         bias = tuple(float(value) for value in drive_feedback_bias_full12)
         if self.last_physics_tick is not None:
             assert physics_tick > self.last_physics_tick
         self.last_physics_tick = physics_tick
-        sample_tick = self.servo_target_mapper._feedback_tick
         tracking = tuple(tracking_servo_names)
-        for name, value in zip(SERVO_NAMES, action[:8], strict=True):
-            self.servo_target_mapper._requested[name] = value
-            self.servo_target_mapper._applied[name] = value
-            self.servo_target_mapper._nominal_reached[name] = True
-            self.servo_target_mapper._compensation[name] = 0.0
-            self.servo_target_mapper._tracking_active[name] = name in tracking
-            self.servo_target_mapper._retiring_stale_bias[name] = False
-        self.servo_target_mapper._feedback_tick += 1
-        self.write_count += 1
-        drive_target = tuple(
-            value + offset for value, offset in zip(action, bias, strict=True)
+        mapping = self.servo_target_mapper.advance(
+            action[:8],
+            self._live_servo_position_rad,
+            tracking_servo_names=tracking,
         )
-        for name, value in zip(SERVO_NAMES, drive_target[:8], strict=True):
+        native_drive = tuple(mapping.applied_drive_command_deg) + tuple(
+            action[8:]
+        )
+        final_servo = []
+        for name, native, offset in zip(
+            SERVO_NAMES,
+            native_drive[:8],
+            bias[:8],
+            strict=True,
+        ):
+            lower, upper = servo_limits_deg(name)
+            value = bounded_drive_feedback_step(
+                previous_deg=self._final_drive_servo_deg[name],
+                native_deg=native,
+                bias_deg=offset,
+                maximum_delta_deg=self.servo_target_mapper.maximum_delta_deg,
+                lower_deg=lower,
+                upper_deg=upper,
+            )
             self._final_drive_servo_deg[name] = value
+            final_servo.append(value)
+        final_wheels = tuple(
+            max(
+                -WHEEL_VELOCITY_LIMIT_RAD_S,
+                min(WHEEL_VELOCITY_LIMIT_RAD_S, native + offset),
+            )
+            for native, offset in zip(
+                native_drive[8:], bias[8:], strict=True
+            )
+        )
+        drive_target = tuple(final_servo) + final_wheels
+        realized_bias = tuple(
+            target - native
+            for target, native in zip(drive_target, native_drive, strict=True)
+        )
+        physical = build_physical_batch(
+            Full12Command.from_full12(drive_target), self.standing_pose_deg
+        )
+        self.write_count += 1
         self.runtime.events.append(
             (
                 "adapter.apply",
@@ -715,32 +752,32 @@ class FakeAdapter:
             "articulation_writes_this_call": 1,
             "motion_start_skew_s": 0.0,
             "canonical_order": list(SERVO_NAMES + WHEEL_NAMES),
-            "requested_full12": action,
+            "requested_full12": requested.to_full12(),
             "applied_full12": action,
             "drive_target_full12": drive_target,
-            "native_drive_target_full12": action,
+            "native_drive_target_full12": native_drive,
             "drive_feedback_bias_requested_full12": bias,
-            "drive_feedback_bias_realized_full12": bias,
-            "drive_feedback_final_slew_limit_deg_per_tick": 1.25,
-            "command_was_clamped": False,
+            "drive_feedback_bias_realized_full12": realized_bias,
+            "drive_feedback_final_slew_limit_deg_per_tick": (
+                self.servo_target_mapper.maximum_delta_deg
+            ),
+            "command_was_clamped": requested != requested.clamped(),
             "servo_applied_drive_command_deg": drive_target[:8],
-            "servo_native_drive_command_deg": action[:8],
-            "servo_tracking_compensation_deg": (0.0,) * 8,
-            "servo_nominal_target_reached": (True,) * 8,
-            "servo_tracking_active": tuple(name in tracking for name in SERVO_NAMES),
+            "servo_native_drive_command_deg": native_drive[:8],
+            "servo_tracking_compensation_deg": mapping.tracking_compensation_deg,
+            "servo_nominal_target_reached": mapping.nominal_target_reached,
+            "servo_tracking_active": mapping.tracking_active,
             "tracking_servo_names": tracking,
-            "servo_tracking_feedback_sample_tick": sample_tick,
-            "servo_tracking_feedback_sampled": bool(tracking and sample_tick % 4 == 0),
+            "servo_tracking_feedback_sample_tick": mapping.feedback_sample_tick,
+            "servo_tracking_feedback_sampled": mapping.feedback_sampled,
             "servo_joint_ids": tuple(range(8)),
             "wheel_joint_ids": tuple(range(8, 12)),
-            "servo_target_physical_rad": tuple(math.radians(value) for value in drive_target[:8]),
-            "wheel_target_physical_rad_s": (
-                -drive_target[8],
-                drive_target[9],
-                -drive_target[10],
-                drive_target[11],
-            ),
+            "servo_target_physical_rad": physical.servo_target_rad,
+            "wheel_target_physical_rad_s": physical.wheel_target_rad_s,
         }
+
+    def get_actual_state(self):
+        return SimpleNamespace(servo_position_rad=self._live_servo_position_rad)
 
     def update_readback(self):
         self.runtime.events.append(("adapter.update",))
@@ -1730,7 +1767,7 @@ def test_phase_snapshot_reset_restores_independent_phase_state_and_proves_live_s
     assert restoration["controller_state"]["history_is_independent"] is True
     assert restoration["guard_state"]["history_is_independent"] is True
     physical = restoration["physical_state"]
-    assert physical["schema"] == "wlr50_clean.phase_snapshot_prime_without_rewind.v1"
+    assert physical["schema"] == "wlr50_clean.phase_snapshot_prime_without_rewind.v2"
     assert physical["reset_use"] == "TRAINING_RESET_STATE_WRITE"
     assert physical["state_write_count"] == 1
     assert physical["post_prime_state_rewrite_performed"] is False
@@ -1741,12 +1778,33 @@ def test_phase_snapshot_reset_restores_independent_phase_state_and_proves_live_s
     )
     assert physical["prime_atomic_full12_writes"] == 1
     assert physical["logical_target_fallback_used"] is False
-    assert physical["source_actuation_match"]["all_fields_match"] is True
-    assert physical["source_actuation_match"]["source_target_hash_matches"] is True
-    assert physical["source_mapper_post_state"]["all_fields_match"] is True
+    source_actuation = physical["source_actuation_match"]
+    assert source_actuation["schema"] == (
+        "wlr50_clean.phase_snapshot_source_input_live_output.v2"
+    )
+    assert source_actuation["adapter_input_hash_matches"] is True
+    assert source_actuation["all_replay_invariant_fields_match"] is True
+    assert source_actuation["live_feedback_adaptive_output_valid"] is True
+    assert source_actuation["live_output_contract"]["verified"] is True
+    assert source_actuation["historical_feedback_equivalence_claimed"] is False
+    source_mapper = physical["source_mapper_post_state"]
+    assert source_mapper["schema"] == (
+        "wlr50_clean.phase_snapshot_live_mapper_transition.v2"
+    )
+    assert source_mapper["feedback_schedule_verified"] is True
+    assert source_mapper["ack_cross_bindings_verified"] is True
+    assert source_mapper["natural_live_state_continuity_verified"] is True
+    assert source_mapper["per_tick_mapper_restore_count"] == 0
     assert physical["source_mapper_post_state"][
         "reached_naturally_by_single_atomic_apply"
     ] is True
+    assert physical["all_source_adapter_inputs_hash_matched"] is True
+    assert physical["all_live_output_contracts_verified"] is True
+    assert physical["all_live_mapper_transitions_verified"] is True
+    assert physical["live_feedback_adaptive_replay"] is True
+    assert physical["historical_feedback_equivalence_claimed"] is False
+    assert physical["initial_mapper_restore_count"] == 1
+    assert physical["per_tick_mapper_restore_count"] == 0
     assert physical["fsm_clock_steps_during_priming"] == 0
     assert physical["episode_clock_steps_during_priming"] == 0
     assert physical["contact_sensor_reads_after_prime"] == 1
@@ -1962,6 +2020,27 @@ def test_phase_snapshot_reset_replays_every_authored_source_tick_before_one_fsm_
     assert physical["source_mapper_post_state"] == physical[
         "source_mapper_post_states"
     ][-1]
+    assert len(physical["source_adapter_input_sha256s"]) == 217
+    assert physical["all_source_adapter_inputs_hash_matched"] is True
+    assert physical["all_live_output_contracts_verified"] is True
+    assert physical["all_live_mapper_transitions_verified"] is True
+    assert physical["live_feedback_adaptive_replay"] is True
+    assert physical["historical_feedback_equivalence_claimed"] is False
+    assert physical["initial_mapper_restore_count"] == 1
+    assert physical["per_tick_mapper_restore_count"] == 0
+    assert all(
+        row["adapter_input_hash_matches"] is True
+        and row["live_feedback_adaptive_output_valid"] is True
+        and row["live_output_contract"]["verified"] is True
+        and row["historical_feedback_equivalence_claimed"] is False
+        for row in physical["source_actuation_matches"]
+    )
+    assert all(
+        row["first_replay_tick"] is (index == 0)
+        and row["natural_live_state_continuity_verified"] is True
+        and row["per_tick_mapper_restore_count"] == 0
+        for index, row in enumerate(physical["source_mapper_post_states"])
+    )
     assert len(physical["source_replay_safety_checks"]) == 217
     assert all(
         row["verified"] is True
@@ -2116,7 +2195,7 @@ def test_effective_entry_calibration_skips_only_the_prior_contract() -> None:
     restoration = frame.info["phase_snapshot_restoration"]
     proof = restoration["physical_state"]["effective_entry_contract"]
     assert proof["schema"] == (
-        "wlr50_clean.ppo_phase_effective_entry_calibration_live_proof.v1"
+        "wlr50_clean.ppo_phase_effective_entry_calibration_live_proof.v2"
     )
     assert proof["artifact_role"] == "CALIBRATION_ONLY_NOT_TRAINING_ACCEPTANCE"
     assert proof["calibration_only"] is True
@@ -2559,7 +2638,7 @@ def test_all_checked_in_phase_snapshots_pass_backend_proof_validation() -> None:
     assert all("reference/ppo_phase_snapshots" in row.snapshot_path.as_posix() for row in loaded)
 
 
-def test_all_checked_snapshots_replay_every_source_drive_with_real_adapter_writes() -> None:
+def test_all_checked_non_p01_snapshots_replay_with_live_feedback_adaptation() -> None:
     numpy = pytest.importorskip("numpy")
     from wlr50_clean.infrastructure.command_batch import (
         SERVO_COMMAND_SIGN,
@@ -2589,7 +2668,9 @@ def test_all_checked_snapshots_replay_every_source_drive_with_real_adapter_write
 
     snapshots = tuple(
         _load_validated_phase_snapshot(f"P{index:02d}").payload
-        for index in range(1, 14)
+        # P01 starts naturally after the canonical settle and therefore never
+        # enters the phase-snapshot replay path exercised by these verifiers.
+        for index in range(2, 14)
     )
     observation_bindings = {
         (
@@ -2695,6 +2776,13 @@ def test_all_checked_snapshots_replay_every_source_drive_with_real_adapter_write
                     )
                 )
                 robot.data.joint_pos[0, servo_ids[index]] = physical_position_rad
+            live_pre_state = backend_module._live_source_mapper_state(
+                adapter,
+                source_control_physics_tick=source_tick - 1,
+            )
+            live_feedback_input = backend_module._live_servo_feedback_input(
+                adapter
+            )
             ack = adapter.apply_full12(
                 replay_source["adapter_input"]["requested_full12"],
                 physics_tick=SETTLE_TICKS + offset,
@@ -2705,18 +2793,35 @@ def test_all_checked_snapshots_replay_every_source_drive_with_real_adapter_write
                     "drive_feedback_bias_requested_full12"
                 ],
             )
+            live_post_state = backend_module._live_source_mapper_state(
+                adapter,
+                source_control_physics_tick=source_tick,
+            )
+            post_match = backend_module._verify_source_mapper_post_state(
+                replay_source,
+                ack=ack,
+                live_pre_state=live_pre_state,
+                live_post_state=live_post_state,
+                first_replay_tick=offset == 0,
+            )
             ack_match = backend_module._verify_source_replay_ack(
                 replay_source,
                 source_artifacts=snapshot["source_artifacts"],
                 ack=ack,
-            )
-            post_match = backend_module._verify_source_mapper_post_state(
-                adapter, replay_source
+                live_mapper_pre_state=live_pre_state,
+                live_mapper_post_state=live_post_state,
+                live_feedback_input=live_feedback_input,
             )
 
-            assert ack_match["all_fields_match"] is True
-            assert ack_match["source_target_hash_matches"] is True
-            assert post_match["all_fields_match"] is True
+            assert ack_match["adapter_input_hash_matches"] is True
+            assert ack_match["all_replay_invariant_fields_match"] is True
+            assert ack_match["live_feedback_adaptive_output_valid"] is True
+            assert ack_match["live_output_contract"]["verified"] is True
+            assert ack_match["historical_feedback_equivalence_claimed"] is False
+            assert post_match["feedback_schedule_verified"] is True
+            assert post_match["ack_cross_bindings_verified"] is True
+            assert post_match["natural_live_state_continuity_verified"] is True
+            assert post_match["per_tick_mapper_restore_count"] == 0
         assert robot.articulation_write_count == snapshot["source_replay_steps"]
 
     p03 = _load_validated_phase_snapshot("P03").payload["source_command"]

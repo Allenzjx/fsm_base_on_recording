@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -16,6 +17,10 @@ from wlr50_clean.ppo.phase_snapshot_live_probe import (
     PhaseSnapshotLiveProbeError,
     _attempt_passed,
     observation_diagnostics,
+)
+from wlr50_clean.ppo.phase_snapshots import (
+    SOURCE_ACK_FEEDBACK_DIAGNOSTIC_FIELDS,
+    SOURCE_ACK_REPLAY_INVARIANT_FIELDS,
 )
 
 
@@ -108,6 +113,182 @@ def _replay_window(snapshot: dict[str, object]):
     )
 
 
+def _synthetic_component_state(phase: str) -> tuple[dict, dict]:
+    phase_number = int(phase[1:])
+    offset = phase_number / 100.0
+    state = {
+        "schema": effective_entry_subject.COMPONENT_STATE_SCHEMA,
+        "units": dict(effective_entry_subject.COMPONENT_UNITS),
+        "root_position_w_m": [offset, -offset, 0.25 + offset],
+        "root_orientation_wxyz": [1.0, 0.0, 0.0, 0.0],
+        "root_linear_velocity_w_m_s": [offset / 10.0, 0.0, -offset / 20.0],
+        "root_angular_velocity_w_rad_s": [0.0, -offset / 5.0, offset / 4.0],
+        "servo_logical_position_deg": [
+            offset + index * 0.125 for index in range(8)
+        ],
+        "servo_logical_velocity_deg_s": [
+            -offset - index * 0.25 for index in range(8)
+        ],
+        "wheel_logical_velocity_rad_s": [
+            offset + index * 0.5 for index in range(4)
+        ],
+        "servo_order": list(effective_entry_subject.SERVO_ORDER),
+        "wheel_order": list(effective_entry_subject.WHEEL_ORDER),
+        "wheel_centers_w_m": {
+            wheel: [offset + index, -offset, 0.1 + index / 100.0]
+            for index, wheel in enumerate(effective_entry_subject.WHEEL_ORDER)
+        },
+        "wheel_bottoms_w_m": {
+            wheel: [offset + index, -offset, 0.05 + index / 100.0]
+            for index, wheel in enumerate(effective_entry_subject.WHEEL_ORDER)
+        },
+    }
+    state["sha256"] = hashlib.sha256(
+        effective_entry_subject._canonical_bytes(state)
+    ).hexdigest()
+    return effective_entry_subject._component_state(state)
+
+
+def _adaptive_source_replay_evidence(
+    snapshot: dict[str, object],
+    command: dict[str, object],
+    index: int,
+    previous_post: str | None,
+) -> tuple[dict, dict, str]:
+    tick = command["control_physics_tick"]
+    feedback = {
+        "schema": "wlr50_clean.phase_snapshot_live_servo_feedback.v1",
+        "canonical_servo_order": list(effective_entry_subject.SERVO_ORDER),
+        "unit": "rad",
+        "physical_position_rad": [tick / 10000.0 + i / 1000.0 for i in range(8)],
+        "tensor_dtype": "torch.float64",
+        "tensor_device": "cpu",
+    }
+    feedback["sha256"] = hashlib.sha256(
+        effective_entry_subject._canonical_bytes(feedback)
+    ).hexdigest()
+    source_pre_sha = hashlib.sha256(
+        effective_entry_subject._canonical_bytes(command["mapper_pre_state"])
+    ).hexdigest()
+    source_post_sha = hashlib.sha256(
+        effective_entry_subject._canonical_bytes(command["mapper_post_state"])
+    ).hexdigest()
+    live_pre_sha = source_pre_sha if previous_post is None else previous_post
+    live_post_sha = hashlib.sha256(
+        effective_entry_subject._canonical_bytes(
+            {
+                "schema": "test.live_mapper_post.v1",
+                "source_control_physics_tick": tick,
+                "live_pre_state_sha256": live_pre_sha,
+                "feedback_input_sha256": feedback["sha256"],
+            }
+        )
+    ).hexdigest()
+    feedback_output = {
+        name: copy.deepcopy(command["expected_atomic_ack"][name])
+        for name in SOURCE_ACK_FEEDBACK_DIAGNOSTIC_FIELDS
+    }
+    feedback_output_sha = hashlib.sha256(
+        effective_entry_subject._canonical_bytes(feedback_output)
+    ).hexdigest()
+    replayed_actuation_sha = hashlib.sha256(
+        f"adaptive-actuation-{tick}".encode("ascii")
+    ).hexdigest()
+    output_contract = {
+        "schema": "wlr50_clean.phase_snapshot_live_output_contract.v2",
+        "all_values_finite": True,
+        "logical_clamp_verified": True,
+        "servo_aliases_verified": True,
+        "realized_bias_verified": True,
+        "servo_hard_limits_verified": True,
+        "wheel_hard_limits_verified": True,
+        "final_drive_slew_verified": True,
+        "maximum_final_drive_slew_deg": 0.0,
+        "maximum_allowed_final_drive_slew_deg": command["mapper_configuration"][
+            "maximum_delta_deg"
+        ],
+        "physical_sign_order_unit_conversion_verified": True,
+        "mapper_output_state_verified": True,
+        "live_feedback_mapper_replay_verified": True,
+        "live_feedback_input_sha256": feedback["sha256"],
+        "predicted_mapper_post_state_sha256": live_post_sha,
+        "feedback_conditioned_output": feedback_output,
+        "feedback_conditioned_output_sha256": feedback_output_sha,
+        "verified": True,
+    }
+    actuation = {
+        "schema": "wlr50_clean.phase_snapshot_source_input_live_output.v2",
+        "source_control_physics_tick": tick,
+        "all_replay_invariant_fields_match": True,
+        "replay_invariant_field_matches": {
+            name: True for name in SOURCE_ACK_REPLAY_INVARIANT_FIELDS
+        },
+        "historical_feedback_field_matches": {
+            name: False for name in SOURCE_ACK_FEEDBACK_DIAGNOSTIC_FIELDS
+        },
+        "historical_feedback_equivalence_claimed": False,
+        "live_feedback_adaptive_output_valid": True,
+        "logical_target_fallback_used": False,
+        "source_command_file_sha256": snapshot["source_artifacts"]["command"][
+            "sha256"
+        ],
+        "source_observation_file_sha256": snapshot["source_artifacts"][
+            "observation"
+        ]["sha256"],
+        "source_command_row_canonical_sha256": command[
+            "source_command_row_canonical_sha256"
+        ],
+        "source_observation_row_canonical_sha256": command[
+            "source_observation_row_canonical_sha256"
+        ],
+        "source_adapter_input_sha256": command["source_adapter_input_sha256"],
+        "replayed_adapter_input_sha256": command["source_adapter_input_sha256"],
+        "adapter_input_hash_matches": True,
+        "source_drive_target_full12_sha256": command[
+            "drive_target_full12_sha256"
+        ],
+        "replayed_drive_target_full12_sha256": feedback_output_sha,
+        "source_target_hash_matches": False,
+        "source_actuation_contract_sha256": command["actuation_contract_sha256"],
+        "replayed_actuation_contract_sha256": replayed_actuation_sha,
+        "source_actuation_hash_matches": False,
+        "live_feedback_input": feedback,
+        "live_output_contract": output_contract,
+        "source_atomic_physics_tick": command["source_atomic_physics_tick"],
+        "reset_prime_physics_tick": 180 + index,
+        "source_atomic_write_count": command["source_atomic_write_count"],
+        "reset_prime_write_count": 181 + index,
+        "clock_and_write_count_fields_intentionally_remapped": True,
+    }
+    mapper = {
+        "schema": "wlr50_clean.phase_snapshot_live_mapper_transition.v2",
+        "source_transition": "source_tick_t_minus_1_to_t",
+        "source_control_physics_tick": tick,
+        "historical_post_field_matches": {
+            name: False for name in command["mapper_post_state"]
+        },
+        "historical_post_field_maximum_numeric_error": {
+            name: 1.0 for name in command["mapper_post_state"]
+        },
+        "all_historical_post_fields_match": False,
+        "historical_feedback_equivalence_claimed": False,
+        "first_replay_tick": index == 0,
+        "first_pre_state_matches_source": True if index == 0 else None,
+        "source_pre_state_sha256": source_pre_sha,
+        "source_post_state_sha256": source_post_sha,
+        "live_pre_state_sha256": live_pre_sha,
+        "live_post_state_sha256": live_post_sha,
+        "feedback_tick_increment": 1,
+        "feedback_schedule_verified": True,
+        "ack_cross_bindings_verified": True,
+        "natural_live_state_continuity_verified": True,
+        "per_tick_mapper_restore_count": 0,
+        "reached_naturally_by_single_atomic_apply": True,
+        "restored_after_prime": False,
+    }
+    return actuation, mapper, live_post_sha
+
+
 def _replay_proof(snapshot: dict[str, object]) -> dict[str, object]:
     commands = snapshot["source_commands"]
     steps = snapshot["source_replay_steps"]
@@ -125,57 +306,15 @@ def _replay_proof(snapshot: dict[str, object]) -> dict[str, object]:
         controller_anchor_tick=snapshot.get("controller_anchor_tick"),
         controller_anchor_time_s=snapshot.get("controller_anchor_time_s"),
     )
-    matches = [
-        {
-            "source_control_physics_tick": command["control_physics_tick"],
-            "all_fields_match": True,
-            "field_matches": {
-                name: True for name in command["expected_atomic_ack"]
-            },
-            "source_target_hash_matches": True,
-            "logical_target_fallback_used": False,
-            "source_command_file_sha256": snapshot["source_artifacts"]["command"][
-                "sha256"
-            ],
-            "source_observation_file_sha256": snapshot["source_artifacts"][
-                "observation"
-            ]["sha256"],
-            "source_command_row_canonical_sha256": command[
-                "source_command_row_canonical_sha256"
-            ],
-            "source_observation_row_canonical_sha256": command[
-                "source_observation_row_canonical_sha256"
-            ],
-            "source_drive_target_full12_sha256": command[
-                "drive_target_full12_sha256"
-            ],
-            "replayed_drive_target_full12_sha256": command[
-                "drive_target_full12_sha256"
-            ],
-            "source_actuation_contract_sha256": command[
-                "actuation_contract_sha256"
-            ],
-            "replayed_actuation_contract_sha256": command[
-                "actuation_contract_sha256"
-            ],
-            "source_atomic_physics_tick": command["source_atomic_physics_tick"],
-            "reset_prime_physics_tick": 180 + index,
-            "source_atomic_write_count": command["source_atomic_write_count"],
-            "reset_prime_write_count": 181 + index,
-            "clock_and_write_count_fields_intentionally_remapped": True,
-        }
-        for index, command in enumerate(commands)
-    ]
-    mapper_states = [
-        {
-            "source_control_physics_tick": command["control_physics_tick"],
-            "all_fields_match": True,
-            "field_matches": {name: True for name in command["mapper_post_state"]},
-            "reached_naturally_by_single_atomic_apply": True,
-            "restored_after_prime": False,
-        }
-        for command in commands
-    ]
+    matches = []
+    mapper_states = []
+    previous_live_post = None
+    for index, command in enumerate(commands):
+        actuation, mapper, previous_live_post = _adaptive_source_replay_evidence(
+            snapshot, command, index, previous_live_post
+        )
+        matches.append(actuation)
+        mapper_states.append(mapper)
     return {
         "source_replay_steps": steps,
         "physical_anchor_tick": anchor_contract["physical_anchor_tick"],
@@ -224,6 +363,16 @@ def _replay_proof(snapshot: dict[str, object]) -> dict[str, object]:
         "source_actuation_match": matches[-1],
         "source_mapper_post_states": mapper_states,
         "source_mapper_post_state": mapper_states[-1],
+        "source_adapter_input_sha256s": [
+            command["source_adapter_input_sha256"] for command in commands
+        ],
+        "all_source_adapter_inputs_hash_matched": True,
+        "all_live_output_contracts_verified": True,
+        "all_live_mapper_transitions_verified": True,
+        "live_feedback_adaptive_replay": True,
+        "historical_feedback_equivalence_claimed": False,
+        "initial_mapper_restore_count": 1,
+        "per_tick_mapper_restore_count": 0,
         "source_replay_observation_ticks": list(
             range(snapshot["source_tick"] + 1, target + 1)
         ),
@@ -422,6 +571,13 @@ def test_attempt_gate_fails_closed_on_exception_contact_or_extra_step() -> None:
         ),
         snapshot,
     )
+    component_state, component_binary = _synthetic_component_state("P10")
+    component_ulp = {
+        label: 0
+        for label, _ in effective_entry_subject._component_state_scalar_items(
+            component_state
+        )
+    }
     row = {
         "phase": "P10",
         "source_tick": snapshot["source_tick"],
@@ -440,6 +596,9 @@ def test_attempt_gate_fails_closed_on_exception_contact_or_extra_step() -> None:
         "source_observation_row_canonical_sha256s": [
             command["source_observation_row_canonical_sha256"]
             for command in commands
+        ],
+        "source_adapter_input_sha256s": [
+            command["source_adapter_input_sha256"] for command in commands
         ],
         "source_drive_target_full12_sha256s": [
             command["drive_target_full12_sha256"] for command in commands
@@ -485,7 +644,7 @@ def test_attempt_gate_fails_closed_on_exception_contact_or_extra_step() -> None:
             "fsm_clock_steps_during_priming": 0,
             "episode_clock_steps_during_priming": 0,
             "effective_entry_contract": {
-                "schema": "wlr50_clean.ppo_phase_effective_entry_live_proof.v1",
+                "schema": "wlr50_clean.ppo_phase_effective_entry_live_proof.v2",
                 "phase": "P10",
                 "effective_entry_semantics": (
                     "source_snapshot_plus_validated_replay_steps_no_rewind"
@@ -527,8 +686,15 @@ def test_attempt_gate_fails_closed_on_exception_contact_or_extra_step() -> None:
                 "effective_entry_offset_s": replay_steps / 120.0,
                 "contract_sha256": "1" * 64,
                 "entry_sha256": "2" * 64,
-                "fingerprint_max_ulp_distance": 4,
+                "fingerprint_max_ulp_distance": 1,
                 "fingerprint": {},
+                "component_state_allowed_max_ulp_distance": 1,
+                "component_state_max_ulp_distance": 0,
+                "component_state_ulp_distance": component_ulp,
+                "component_state": component_state,
+                "component_state_binary64_hex": component_binary,
+                "component_state_sha256": component_state["sha256"],
+                "expected_component_state_sha256": component_state["sha256"],
                 "raw_contacts": {},
                 "raw_contact_signature_sha256": "3" * 64,
                 "expected_raw_contact_signature_sha256": "3" * 64,
@@ -572,12 +738,13 @@ def test_attempt_gate_fails_closed_on_exception_contact_or_extra_step() -> None:
     assert _attempt_passed(row, replay_window=replay_window) is True
     calibration = copy.deepcopy(row)
     comparison = {
-        "schema": "wlr50_clean.phase_snapshot_live_comparison.v1",
+        "schema": "wlr50_clean.phase_snapshot_live_comparison.v2",
         "maximum_errors": {"root_position_m": 0.001},
+        "effective_component_state": component_state,
     }
     calibration["snapshot_state_write"]["effective_entry_contract"] = {
         "schema": (
-            "wlr50_clean.ppo_phase_effective_entry_calibration_live_proof.v1"
+            "wlr50_clean.ppo_phase_effective_entry_calibration_live_proof.v2"
         ),
         "artifact_role": "CALIBRATION_ONLY_NOT_TRAINING_ACCEPTANCE",
         "verified": True,
@@ -707,7 +874,7 @@ def test_attempt_gate_fails_closed_on_exception_contact_or_extra_step() -> None:
     # step fails even when the final effective-entry proof otherwise passes.
     mismatched_replay = copy.deepcopy(row)
     mismatched_replay["snapshot_state_write"]["source_actuation_matches"][3][
-        "all_fields_match"
+        "all_replay_invariant_fields_match"
     ] = False
     assert _attempt_passed(
         mismatched_replay, replay_window=replay_window
@@ -994,7 +1161,7 @@ class _ContactRejectingBackend:
         }
         self._snapshot_restoration = {
             "physical_state": {
-                "schema": "wlr50_clean.phase_snapshot_prime_without_rewind.v1",
+                "schema": "wlr50_clean.phase_snapshot_prime_without_rewind.v2",
                 "reset_use": "TRAINING_RESET_STATE_WRITE",
                 "root_pose_writes": 1,
                 "root_velocity_writes": 1,

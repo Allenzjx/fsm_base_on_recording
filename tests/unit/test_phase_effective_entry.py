@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import math
@@ -24,6 +25,8 @@ from wlr50_clean.ppo.phase_effective_entry import (
 )
 from wlr50_clean.ppo.phase_snapshots import (
     DEFAULT_PHASE_SNAPSHOT_ROOT,
+    SOURCE_ACK_FEEDBACK_DIAGNOSTIC_FIELDS,
+    SOURCE_ACK_REPLAY_INVARIANT_FIELDS,
     capture_validated_phase_snapshot_bundle,
     load_validated_phase_snapshot_payload,
 )
@@ -43,6 +46,19 @@ def contract():
     sidecar = DEFAULT_EFFECTIVE_ENTRY_CONTRACT_PATH.with_suffix(".sha256")
     environment = effective_entry_module.DEFAULT_ENVIRONMENT_LOCK_PATH
     frozen = effective_entry_module.DEFAULT_FROZEN_LEDGER_PATH
+    entries = []
+    for phase in PHASE_IDS:
+        entry = copy.deepcopy(payload["phases"][phase])
+        component_state, component_binary = _synthetic_component_state(phase)
+        entry["schema"] = effective_entry_module.ENTRY_SCHEMA
+        entry["effective_component_state"] = component_state
+        entry["effective_component_state_binary64_hex"] = component_binary
+        unhashed_entry = dict(entry)
+        unhashed_entry.pop("entry_sha256", None)
+        entry["entry_sha256"] = hashlib.sha256(
+            effective_entry_module._canonical_bytes(unhashed_entry)
+        ).hexdigest()
+        entries.append((phase, entry))
     return ValidatedEffectivePhaseEntryContract(
         contract_path=DEFAULT_EFFECTIVE_ENTRY_CONTRACT_PATH,
         sidecar_path=sidecar,
@@ -58,9 +74,48 @@ def contract():
         phase_snapshot_bundle_sha256=payload["derivation"][
             "phase_snapshot_bundle"
         ]["bundle_sha256"],
-        entries=tuple((phase, payload["phases"][phase]) for phase in PHASE_IDS),
+        entries=tuple(entries),
         filesystem_identity=(),
     )
+
+
+def _synthetic_component_state(phase: str) -> tuple[dict, dict]:
+    """Return a deterministic, hash-bound complete physical state for tests."""
+
+    phase_number = int(phase[1:])
+    offset = phase_number / 100.0
+    state = {
+        "schema": effective_entry_module.COMPONENT_STATE_SCHEMA,
+        "units": dict(effective_entry_module.COMPONENT_UNITS),
+        "root_position_w_m": [offset, -offset, 0.25 + offset],
+        "root_orientation_wxyz": [1.0, 0.0, 0.0, 0.0],
+        "root_linear_velocity_w_m_s": [offset / 10.0, 0.0, -offset / 20.0],
+        "root_angular_velocity_w_rad_s": [0.0, -offset / 5.0, offset / 4.0],
+        "servo_logical_position_deg": [
+            offset + index * 0.125 for index in range(8)
+        ],
+        "servo_logical_velocity_deg_s": [
+            -offset - index * 0.25 for index in range(8)
+        ],
+        "wheel_logical_velocity_rad_s": [
+            offset + index * 0.5 for index in range(4)
+        ],
+        "servo_order": list(effective_entry_module.SERVO_ORDER),
+        "wheel_order": list(effective_entry_module.WHEEL_ORDER),
+        "wheel_centers_w_m": {
+            wheel: [offset + index, -offset, 0.1 + index / 100.0]
+            for index, wheel in enumerate(effective_entry_module.WHEEL_ORDER)
+        },
+        "wheel_bottoms_w_m": {
+            wheel: [offset + index, -offset, 0.05 + index / 100.0]
+            for index, wheel in enumerate(effective_entry_module.WHEEL_ORDER)
+        },
+    }
+    state["sha256"] = hashlib.sha256(
+        effective_entry_module._canonical_bytes(state)
+    ).hexdigest()
+    normalized, binary = effective_entry_module._component_state(state)
+    return normalized, binary
 
 
 def _comparison(entry):
@@ -89,6 +144,9 @@ def _comparison(entry):
         }
     return {
         "maximum_errors": dict(entry["post_prime_fingerprint"]),
+        "effective_component_state": copy.deepcopy(
+            entry["effective_component_state"]
+        ),
         "raw_physx_contacts": {"pairs": pairs},
         "exact_contacts": exact,
     }
@@ -96,7 +154,7 @@ def _comparison(entry):
 
 def _calibration_comparison(entry):
     comparison = _comparison(entry)
-    comparison["schema"] = "wlr50_clean.phase_snapshot_live_comparison.v1"
+    comparison["schema"] = "wlr50_clean.phase_snapshot_live_comparison.v2"
     raw = comparison["raw_physx_contacts"]
     raw["schema"] = "wlr50_clean.phase_snapshot_raw_physx_contact.v1"
     raw["sha256"] = hashlib.sha256(
@@ -145,6 +203,147 @@ def _entry_guard(phase: str):
         ],
         "p10_signed_velocity_alignment": alignment,
     }
+
+
+def _adaptive_source_replay_evidence(command, index: int, previous_post: str | None):
+    """Build one self-consistent live-feedback-adaptive replay proof row."""
+
+    tick = command["control_physics_tick"]
+    feedback = {
+        "schema": "wlr50_clean.phase_snapshot_live_servo_feedback.v1",
+        "canonical_servo_order": list(effective_entry_module.SERVO_ORDER),
+        "unit": "rad",
+        "physical_position_rad": [tick / 10000.0 + i / 1000.0 for i in range(8)],
+        "tensor_dtype": "torch.float64",
+        "tensor_device": "cpu",
+    }
+    feedback["sha256"] = hashlib.sha256(
+        effective_entry_module._canonical_bytes(feedback)
+    ).hexdigest()
+    source_pre_sha = hashlib.sha256(
+        effective_entry_module._canonical_bytes(command["mapper_pre_state"])
+    ).hexdigest()
+    source_post_sha = hashlib.sha256(
+        effective_entry_module._canonical_bytes(command["mapper_post_state"])
+    ).hexdigest()
+    live_pre_sha = source_pre_sha if previous_post is None else previous_post
+    live_post_sha = hashlib.sha256(
+        effective_entry_module._canonical_bytes(
+            {
+                "schema": "test.live_mapper_post.v1",
+                "source_control_physics_tick": tick,
+                "live_pre_state_sha256": live_pre_sha,
+                "feedback_input_sha256": feedback["sha256"],
+            }
+        )
+    ).hexdigest()
+    feedback_output_sha = hashlib.sha256(
+        effective_entry_module._canonical_bytes(
+            {
+                name: copy.deepcopy(command["expected_atomic_ack"][name])
+                for name in SOURCE_ACK_FEEDBACK_DIAGNOSTIC_FIELDS
+            }
+        )
+    ).hexdigest()
+    feedback_output = {
+        name: copy.deepcopy(command["expected_atomic_ack"][name])
+        for name in SOURCE_ACK_FEEDBACK_DIAGNOSTIC_FIELDS
+    }
+    replayed_drive_sha = feedback_output_sha
+    replayed_actuation_sha = hashlib.sha256(
+        f"adaptive-actuation-{tick}".encode("ascii")
+    ).hexdigest()
+    output_contract = {
+        "schema": "wlr50_clean.phase_snapshot_live_output_contract.v2",
+        "all_values_finite": True,
+        "logical_clamp_verified": True,
+        "servo_aliases_verified": True,
+        "realized_bias_verified": True,
+        "servo_hard_limits_verified": True,
+        "wheel_hard_limits_verified": True,
+        "final_drive_slew_verified": True,
+        "maximum_final_drive_slew_deg": 0.0,
+        "maximum_allowed_final_drive_slew_deg": command["mapper_configuration"][
+            "maximum_delta_deg"
+        ],
+        "physical_sign_order_unit_conversion_verified": True,
+        "mapper_output_state_verified": True,
+        "live_feedback_mapper_replay_verified": True,
+        "live_feedback_input_sha256": feedback["sha256"],
+        "predicted_mapper_post_state_sha256": live_post_sha,
+        "feedback_conditioned_output": feedback_output,
+        "feedback_conditioned_output_sha256": feedback_output_sha,
+        "verified": True,
+    }
+    actuation = {
+        "schema": "wlr50_clean.phase_snapshot_source_input_live_output.v2",
+        "source_control_physics_tick": tick,
+        "all_replay_invariant_fields_match": True,
+        "replay_invariant_field_matches": {
+            name: True for name in SOURCE_ACK_REPLAY_INVARIANT_FIELDS
+        },
+        "historical_feedback_field_matches": {
+            name: False for name in SOURCE_ACK_FEEDBACK_DIAGNOSTIC_FIELDS
+        },
+        "historical_feedback_equivalence_claimed": False,
+        "live_feedback_adaptive_output_valid": True,
+        "logical_target_fallback_used": False,
+        "source_command_file_sha256": command["source_command_file_sha256"],
+        "source_observation_file_sha256": command[
+            "source_observation_file_sha256"
+        ],
+        "source_command_row_canonical_sha256": command[
+            "source_command_row_canonical_sha256"
+        ],
+        "source_observation_row_canonical_sha256": command[
+            "source_observation_row_canonical_sha256"
+        ],
+        "source_adapter_input_sha256": command["source_adapter_input_sha256"],
+        "replayed_adapter_input_sha256": command["source_adapter_input_sha256"],
+        "adapter_input_hash_matches": True,
+        "source_drive_target_full12_sha256": command[
+            "drive_target_full12_sha256"
+        ],
+        "replayed_drive_target_full12_sha256": replayed_drive_sha,
+        "source_target_hash_matches": False,
+        "source_actuation_contract_sha256": command["actuation_contract_sha256"],
+        "replayed_actuation_contract_sha256": replayed_actuation_sha,
+        "source_actuation_hash_matches": False,
+        "live_feedback_input": feedback,
+        "live_output_contract": output_contract,
+        "source_atomic_physics_tick": command["source_atomic_physics_tick"],
+        "reset_prime_physics_tick": 180 + index,
+        "source_atomic_write_count": command["source_atomic_write_count"],
+        "reset_prime_write_count": 181 + index,
+        "clock_and_write_count_fields_intentionally_remapped": True,
+    }
+    mapper = {
+        "schema": "wlr50_clean.phase_snapshot_live_mapper_transition.v2",
+        "source_transition": "source_tick_t_minus_1_to_t",
+        "source_control_physics_tick": tick,
+        "historical_post_field_matches": {
+            name: False for name in command["mapper_post_state"]
+        },
+        "historical_post_field_maximum_numeric_error": {
+            name: 1.0 for name in command["mapper_post_state"]
+        },
+        "all_historical_post_fields_match": False,
+        "historical_feedback_equivalence_claimed": False,
+        "first_replay_tick": index == 0,
+        "first_pre_state_matches_source": True if index == 0 else None,
+        "source_pre_state_sha256": source_pre_sha,
+        "source_post_state_sha256": source_post_sha,
+        "live_pre_state_sha256": live_pre_sha,
+        "live_post_state_sha256": live_post_sha,
+        "feedback_tick_increment": 1,
+        "feedback_schedule_verified": True,
+        "ack_cross_bindings_verified": True,
+        "natural_live_state_continuity_verified": True,
+        "per_tick_mapper_restore_count": 0,
+        "reached_naturally_by_single_atomic_apply": True,
+        "restored_after_prime": False,
+    }
+    return actuation, mapper, live_post_sha
 
 
 def _calibration_attempt(contract, snapshot_bundle, phase: str, lifecycle: str):
@@ -208,57 +407,24 @@ def _calibration_attempt(contract, snapshot_bundle, phase: str, lifecycle: str):
         "source_snapshot_post_prime_diagnostic": comparison,
         "failures": [],
     }
-    source_actuation_matches = [
-        {
-            "source_control_physics_tick": command["control_physics_tick"],
-            "all_fields_match": True,
-            "field_matches": {
-                name: True for name in command["expected_atomic_ack"]
-            },
-            "source_target_hash_matches": True,
-            "logical_target_fallback_used": False,
+    source_actuation_matches = []
+    source_mapper_post_states = []
+    previous_live_post = None
+    for index, command in enumerate(source_commands):
+        enriched_command = {
+            **command,
             "source_command_file_sha256": snapshot_payload["source_artifacts"][
                 "command"
             ]["sha256"],
             "source_observation_file_sha256": snapshot_payload["source_artifacts"][
                 "observation"
             ]["sha256"],
-            "source_command_row_canonical_sha256": command[
-                "source_command_row_canonical_sha256"
-            ],
-            "source_observation_row_canonical_sha256": command[
-                "source_observation_row_canonical_sha256"
-            ],
-            "source_drive_target_full12_sha256": command[
-                "drive_target_full12_sha256"
-            ],
-            "replayed_drive_target_full12_sha256": command[
-                "drive_target_full12_sha256"
-            ],
-            "source_actuation_contract_sha256": command[
-                "actuation_contract_sha256"
-            ],
-            "replayed_actuation_contract_sha256": command[
-                "actuation_contract_sha256"
-            ],
-            "source_atomic_physics_tick": command["source_atomic_physics_tick"],
-            "reset_prime_physics_tick": 180 + index,
-            "source_atomic_write_count": command["source_atomic_write_count"],
-            "reset_prime_write_count": 181 + index,
-            "clock_and_write_count_fields_intentionally_remapped": True,
         }
-        for index, command in enumerate(source_commands)
-    ]
-    source_mapper_post_states = [
-        {
-            "source_control_physics_tick": command["control_physics_tick"],
-            "all_fields_match": True,
-            "field_matches": {name: True for name in command["mapper_post_state"]},
-            "reached_naturally_by_single_atomic_apply": True,
-            "restored_after_prime": False,
-        }
-        for command in source_commands
-    ]
+        actuation, mapper, previous_live_post = _adaptive_source_replay_evidence(
+            enriched_command, index, previous_live_post
+        )
+        source_actuation_matches.append(actuation)
+        source_mapper_post_states.append(mapper)
     prime_atomic_writes = [
         {
             "physics_tick": 180 + index,
@@ -334,6 +500,16 @@ def _calibration_attempt(contract, snapshot_bundle, phase: str, lifecycle: str):
         "source_actuation_match": source_actuation_matches[-1],
         "source_mapper_post_states": source_mapper_post_states,
         "source_mapper_post_state": source_mapper_post_states[-1],
+        "source_adapter_input_sha256s": [
+            row["source_adapter_input_sha256"] for row in source_commands
+        ],
+        "all_source_adapter_inputs_hash_matched": True,
+        "all_live_output_contracts_verified": True,
+        "all_live_mapper_transitions_verified": True,
+        "live_feedback_adaptive_replay": True,
+        "historical_feedback_equivalence_claimed": False,
+        "initial_mapper_restore_count": 1,
+        "per_tick_mapper_restore_count": 0,
         "source_replay_observation_ticks": list(
             range(snapshot.source_tick + 1, target_entry_tick + 1)
         ),
@@ -406,6 +582,9 @@ def _calibration_attempt(contract, snapshot_bundle, phase: str, lifecycle: str):
         "source_observation_row_canonical_sha256s": [
             row["source_observation_row_canonical_sha256"] for row in source_commands
         ],
+        "source_adapter_input_sha256s": [
+            row["source_adapter_input_sha256"] for row in source_commands
+        ],
         "source_drive_target_full12_sha256s": [
             row["drive_target_full12_sha256"] for row in source_commands
         ],
@@ -449,6 +628,13 @@ def _nextafter(value: float, count: int) -> float:
     for _ in range(count):
         result = math.nextafter(result, math.inf)
     return result
+
+
+def _rehash_component_state(state: dict) -> None:
+    state.pop("sha256", None)
+    state["sha256"] = hashlib.sha256(
+        effective_entry_module._canonical_bytes(state)
+    ).hexdigest()
 
 
 def _write_contract_copy(path: Path, payload: bytes) -> None:
@@ -745,7 +931,7 @@ def test_calibration_attempt_rejects_failed_or_unproven_evidence(
         ] += 1
     elif tamper == "replay_match":
         attempt["snapshot_state_write"]["source_actuation_matches"][0][
-            "all_fields_match"
+            "all_replay_invariant_fields_match"
         ] = False
     elif tamper == "contact_reads":
         attempt["snapshot_state_write"]["contact_sensor_reads_after_prime"] += 1
@@ -795,8 +981,8 @@ def test_fresh_reused_replay_proofs_must_be_identical(
 
     reused = _calibration_attempt(contract, snapshot_bundle, "P10", "reused_scene")
     reused["snapshot_state_write"]["source_mapper_post_states"][3][
-        "field_matches"
-    ]["feedback_tick"] = False
+        "historical_post_field_matches"
+    ]["feedback_tick"] = True
     with pytest.raises(EffectivePhaseEntryError, match="replay proof differs"):
         effective_entry_module._assert_replay_attempts_bit_identical(fresh, reused)
 
@@ -1161,6 +1347,58 @@ def test_fingerprint_nan_is_rejected(contract) -> None:
     comparison = _comparison(contract.entry("P03"))
     comparison["maximum_errors"][FINGERPRINT_FIELDS[2]] = math.nan
     with pytest.raises(EffectivePhaseEntryError, match="finite"):
+        validate_effective_phase_entry_comparison(contract, "P03", comparison)
+
+
+def test_component_state_exact_and_one_ulp_pass_but_two_ulp_fails(contract) -> None:
+    phase = "P02"
+    entry = contract.entry(phase)
+    exact = _comparison(entry)
+    proof = validate_effective_phase_entry_comparison(contract, phase, exact)
+    assert proof["schema"] == "wlr50_clean.ppo_phase_effective_entry_live_proof.v2"
+    assert proof["component_state_max_ulp_distance"] == 0
+    assert len(proof["component_state_ulp_distance"]) == 57
+    assert proof["component_state_sha256"] == proof[
+        "expected_component_state_sha256"
+    ]
+
+    field = "root_position_w_m"
+    one_ulp = _comparison(entry)
+    one_ulp["effective_component_state"][field][0] = _nextafter(
+        entry["effective_component_state"][field][0], 1
+    )
+    _rehash_component_state(one_ulp["effective_component_state"])
+    one_ulp_proof = validate_effective_phase_entry_comparison(
+        contract, phase, one_ulp
+    )
+    assert one_ulp_proof["component_state_max_ulp_distance"] == 1
+    assert one_ulp_proof["component_state_ulp_distance"][f"{field}[0]"] == 1
+
+    two_ulp = _comparison(entry)
+    two_ulp["effective_component_state"][field][0] = _nextafter(
+        entry["effective_component_state"][field][0], 2
+    )
+    _rehash_component_state(two_ulp["effective_component_state"])
+    with pytest.raises(EffectivePhaseEntryError, match="component state is 2 ULP"):
+        validate_effective_phase_entry_comparison(contract, phase, two_ulp)
+
+
+@pytest.mark.parametrize("tamper", ("sha256", "layout", "orientation", "nan"))
+def test_component_state_tamper_fails_closed(contract, tamper: str) -> None:
+    comparison = _comparison(contract.entry("P03"))
+    state = comparison["effective_component_state"]
+    if tamper == "sha256":
+        state["sha256"] = "0" * 64
+    elif tamper == "layout":
+        state.pop("wheel_bottoms_w_m")
+        _rehash_component_state(state)
+    elif tamper == "orientation":
+        state["root_orientation_wxyz"] = [-1.0, 0.0, 0.0, 0.0]
+        _rehash_component_state(state)
+    else:
+        state["servo_logical_velocity_deg_s"][3] = "nan"
+        _rehash_component_state(state)
+    with pytest.raises(EffectivePhaseEntryError):
         validate_effective_phase_entry_comparison(contract, "P03", comparison)
 
 

@@ -42,7 +42,7 @@ TRAINING_EVIDENCE_SCHEMA = (
 )
 OUTPUT_FILENAME = "phase_effective_entry_holdout_acceptance.json"
 PROBE_FILENAME = "phase_snapshot_live_probe.json"
-PROBE_SCHEMA = "wlr50_clean.phase_snapshot_live_probe.v2"
+PROBE_SCHEMA = "wlr50_clean.phase_snapshot_live_probe.v3"
 RUN_MANIFEST_SCHEMA = "wlr50_clean.ppo_run_manifest.v1"
 PROBE_RUN_KIND = "phase-snapshot-live-probe"
 HOLDOUT_RUN_KIND = "phase-effective-entry-holdout"

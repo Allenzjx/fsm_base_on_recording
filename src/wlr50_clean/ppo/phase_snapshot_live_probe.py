@@ -24,7 +24,7 @@ from .phase_effective_entry import (
 )
 
 
-PROBE_SCHEMA = "wlr50_clean.phase_snapshot_live_probe.v2"
+PROBE_SCHEMA = "wlr50_clean.phase_snapshot_live_probe.v3"
 PROBE_FILENAME = "phase_snapshot_live_probe.json"
 PROBE_PHASES = tuple(f"P{index:02d}" for index in range(2, 14))
 ATTEMPTS_PER_PHASE = 2
@@ -87,6 +87,13 @@ _ACCEPTANCE_EFFECTIVE_ENTRY_FIELDS = frozenset(
         "entry_sha256",
         "fingerprint_max_ulp_distance",
         "fingerprint",
+        "component_state_allowed_max_ulp_distance",
+        "component_state_max_ulp_distance",
+        "component_state_ulp_distance",
+        "component_state",
+        "component_state_binary64_hex",
+        "component_state_sha256",
+        "expected_component_state_sha256",
         "raw_contacts",
         "raw_contact_signature_sha256",
         "expected_raw_contact_signature_sha256",
@@ -756,6 +763,8 @@ def _attempt_passed(
             command["source_observation_row_canonical_sha256"]
             for command in source_commands
         ]
+        or row.get("source_adapter_input_sha256s")
+        != [command["source_adapter_input_sha256"] for command in source_commands]
         or row.get("source_drive_target_full12_sha256s")
         != [command["drive_target_full12_sha256"] for command in source_commands]
         or row.get("source_actuation_contract_sha256s")
@@ -863,7 +872,7 @@ def _attempt_passed(
         )
         effective_entry_ok = bool(
             effective_entry.get("schema")
-            == "wlr50_clean.ppo_phase_effective_entry_calibration_live_proof.v1"
+            == "wlr50_clean.ppo_phase_effective_entry_calibration_live_proof.v2"
             and effective_entry.get("artifact_role")
             == "CALIBRATION_ONLY_NOT_TRAINING_ACCEPTANCE"
             and effective_entry.get("verified") is True
@@ -875,13 +884,13 @@ def _attempt_passed(
             == phase_entry_time_s(prime_steps)
             and isinstance(diagnostic_proof, Mapping)
             and diagnostic_proof.get("schema")
-            == "wlr50_clean.phase_snapshot_live_comparison.v1"
+            == "wlr50_clean.phase_snapshot_live_comparison.v2"
             and not effective_entry.get("failures")
         )
     else:
         effective_entry_ok = bool(
             effective_entry.get("schema")
-            == "wlr50_clean.ppo_phase_effective_entry_live_proof.v1"
+            == "wlr50_clean.ppo_phase_effective_entry_live_proof.v2"
             and effective_entry.get("phase") == row.get("phase")
             and effective_entry.get("effective_entry_semantics")
             == "source_snapshot_plus_validated_replay_steps_no_rewind"
@@ -1346,6 +1355,10 @@ def run_phase_snapshot_live_probe(
                     ],
                     "source_observation_row_canonical_sha256s": [
                         command["source_observation_row_canonical_sha256"]
+                        for command in source_commands
+                    ],
+                    "source_adapter_input_sha256s": [
+                        command["source_adapter_input_sha256"]
                         for command in source_commands
                     ],
                     "source_drive_target_full12_sha256s": [

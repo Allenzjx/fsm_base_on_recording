@@ -1,5 +1,5 @@
 {
-  "schema": "wlr50_clean.ppo_phase_entry_snapshot.v2",
+  "schema": "wlr50_clean.ppo_phase_entry_snapshot.v3",
   "reset_use": "TRAINING_RESET_STATE_WRITE",
   "in_episode_root_write": "FORBIDDEN_IN_EPISODE_ROOT_WRITE",
   "source_trial": "trial_043_20260902_clean_v010",
@@ -34,7 +34,7 @@
     }
   },
   "source_command": {
-    "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+    "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
     "control_physics_tick": 7810,
     "source_atomic_physics_tick": 7990,
     "source_atomic_write_count": 7991,
@@ -71,6 +71,7 @@
         0.0
       ]
     },
+    "source_adapter_input_sha256": "7029d48e4c2a64fc2fce0404a99b1d1134e12bb509cc685dc4707e94da731f82",
     "mapper_configuration": {
       "physics_dt_s": 0.008333333333333333,
       "servo_rate_deg_s": 150.0,
@@ -439,7 +440,7 @@
   },
   "source_commands": [
     {
-      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v2",
       "control_physics_tick": 7810,
       "source_atomic_physics_tick": 7990,
       "source_atomic_write_count": 7991,
@@ -476,6 +477,7 @@
           0.0
         ]
       },
+      "source_adapter_input_sha256": "7029d48e4c2a64fc2fce0404a99b1d1134e12bb509cc685dc4707e94da731f82",
       "mapper_configuration": {
         "physics_dt_s": 0.008333333333333333,
         "servo_rate_deg_s": 150.0,
@@ -1087,5 +1089,5 @@
     0.0015246823895722628
   ],
   "snapshot_semantics": "state is written only before the first episode physics tick; live physics and frozen FSM own all subsequent state",
-  "state_sha256": "4c2cf60a8a58692952988c5931980da55c43490b3190d57501bee90e85fac6a3"
+  "state_sha256": "da01da7ce395ced939c63cd2f6a7cea89bc29c927ec60067538561fb36c14a6f"
 }

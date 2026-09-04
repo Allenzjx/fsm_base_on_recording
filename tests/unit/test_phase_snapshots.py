@@ -24,6 +24,17 @@ from wlr50_clean.ppo.phase_snapshots import (
 )
 
 
+def test_source_ack_replay_fields_form_an_exact_partition() -> None:
+    all_fields = set(phase_snapshots_subject.SOURCE_ACK_MATCH_FIELDS)
+    invariant = set(phase_snapshots_subject.SOURCE_ACK_REPLAY_INVARIANT_FIELDS)
+    diagnostic = set(phase_snapshots_subject.SOURCE_ACK_FEEDBACK_DIAGNOSTIC_FIELDS)
+
+    assert invariant.isdisjoint(diagnostic)
+    assert invariant | diagnostic == all_fields
+    assert "servo_tracking_feedback_sampled" in diagnostic
+    assert "servo_tracking_feedback_sampled" not in invariant
+
+
 def test_directory_identity_ignores_child_churn_but_rejects_replacement(
     tmp_path: Path,
 ) -> None:

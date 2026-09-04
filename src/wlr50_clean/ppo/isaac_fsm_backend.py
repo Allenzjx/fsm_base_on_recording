@@ -38,10 +38,13 @@ from .observation_schema import NonFiniteObservationError, PPOObservationFrame
 from .ppo_env_adapter import AuthoritativeFrame
 from .phase_snapshots import (
     SNAPSHOT_SCHEMA,
+    SOURCE_ACK_FEEDBACK_DIAGNOSTIC_FIELDS,
     SOURCE_ACK_MATCH_FIELDS,
+    SOURCE_ACK_REPLAY_INVARIANT_FIELDS,
     SOURCE_MAPPER_STATE_SCHEMA,
     PhaseSnapshotError,
     ValidatedPhaseSnapshotBundle,
+    phase_snapshot_adapter_input_sha256,
     phase_snapshot_actuation_contract_sha256,
     phase_snapshot_drive_target_sha256,
     validate_phase_snapshot_payload_contract,
@@ -970,6 +973,7 @@ class IsaacFSMBackend:
             source_replay_fsm_contexts: list[dict[str, Any]] = []
             prime_ack: dict[str, Any] | None = None
             prime_drive_target = ZERO_FULL12
+            previous_live_mapper_post_state: Mapping[str, Any] | None = None
             for replay_index, source_command_value in enumerate(source_commands):
                 source_command = dict(source_command_value)
                 expected_source_tick = source_tick + replay_index
@@ -980,6 +984,19 @@ class IsaacFSMBackend:
                 adapter_input = source_command["adapter_input"]
                 _require_running(scene, "phase snapshot source-bound contact replay")
                 physical_tick = SETTLE_TICKS + self._reset_prime_tick_count
+                live_mapper_pre_state = _live_source_mapper_state(
+                    adapter,
+                    source_control_physics_tick=expected_source_tick - 1,
+                )
+                live_feedback_input = _live_servo_feedback_input(adapter)
+                if (
+                    previous_live_mapper_post_state is not None
+                    and _canonical_hash(previous_live_mapper_post_state)
+                    != _canonical_hash(live_mapper_pre_state)
+                ):
+                    raise IsaacFSMBackendError(
+                        "live mapper state changed between source replay ticks"
+                    )
                 prime_ack = dict(
                     self._atomic_apply(
                         adapter,
@@ -991,16 +1008,30 @@ class IsaacFSMBackend:
                         ],
                     )
                 )
+                live_mapper_post_state = _live_source_mapper_state(
+                    adapter,
+                    source_control_physics_tick=expected_source_tick,
+                )
+                source_mapper_post_state = dict(
+                    _verify_source_mapper_post_state(
+                        source_command,
+                        ack=prime_ack,
+                        live_pre_state=live_mapper_pre_state,
+                        live_post_state=live_mapper_post_state,
+                        first_replay_tick=replay_index == 0,
+                    )
+                )
                 source_actuation_match = dict(
                     _verify_source_replay_ack(
                         source_command,
                         source_artifacts=loaded_snapshot.payload["source_artifacts"],
                         ack=prime_ack,
+                        live_mapper_pre_state=live_mapper_pre_state,
+                        live_mapper_post_state=live_mapper_post_state,
+                        live_feedback_input=live_feedback_input,
                     )
                 )
-                source_mapper_post_state = dict(
-                    _verify_source_mapper_post_state(adapter, source_command)
-                )
+                previous_live_mapper_post_state = live_mapper_post_state
                 scene.sim.step(render=False)
                 adapter.update_readback()
                 self._reset_prime_tick_count += 1
@@ -1165,7 +1196,7 @@ class IsaacFSMBackend:
             physical_proof = dict(initial_state_write)
             physical_proof.update(
                 {
-                    "schema": "wlr50_clean.phase_snapshot_prime_without_rewind.v1",
+                    "schema": "wlr50_clean.phase_snapshot_prime_without_rewind.v2",
                     "reset_use": "TRAINING_RESET_STATE_WRITE",
                     "state_write_count": 1,
                     "initial_state_write": initial_state_write,
@@ -1183,6 +1214,17 @@ class IsaacFSMBackend:
                     "source_mapper_post_state": source_mapper_post_state,
                     "source_actuation_matches": source_actuation_matches,
                     "source_mapper_post_states": source_mapper_post_states,
+                    "source_adapter_input_sha256s": [
+                        row["source_adapter_input_sha256"]
+                        for row in source_commands
+                    ],
+                    "all_source_adapter_inputs_hash_matched": True,
+                    "all_live_output_contracts_verified": True,
+                    "all_live_mapper_transitions_verified": True,
+                    "live_feedback_adaptive_replay": True,
+                    "historical_feedback_equivalence_claimed": False,
+                    "initial_mapper_restore_count": 1,
+                    "per_tick_mapper_restore_count": 0,
                     "source_replay_steps": source_replay_steps,
                     "target_entry_tick": target_entry_tick,
                     "target_entry_time_s": replay_anchor_contract[
@@ -1378,7 +1420,7 @@ class IsaacFSMBackend:
                 effective_proof = {
                     "schema": (
                         "wlr50_clean.ppo_phase_effective_entry_"
-                        "calibration_live_proof.v1"
+                        "calibration_live_proof.v2"
                     ),
                     "artifact_role": (
                         "CALIBRATION_ONLY_NOT_TRAINING_ACCEPTANCE"
@@ -3260,56 +3302,428 @@ def _install_source_mapper_pre_state(
     }
 
 
+def _live_servo_feedback_input(adapter: Any) -> dict[str, Any]:
+    """Capture the exact joint tensor consumed by the frozen mapper."""
+
+    try:
+        actual = adapter.get_actual_state()
+        values = tuple(float(value) for value in actual.servo_position_rad)
+        joint_tensor = adapter.robot.data.joint_pos
+        tensor_dtype = str(joint_tensor.dtype)
+        tensor_device = str(getattr(joint_tensor, "device", "cpu"))
+    except Exception as exc:
+        raise IsaacFSMBackendError(
+            "cannot capture live servo feedback consumed by RobotAdapter"
+        ) from exc
+    if (
+        len(values) != len(SERVO_ORDER)
+        or any(not math.isfinite(value) for value in values)
+        or not tensor_dtype
+        or not tensor_device
+    ):
+        raise IsaacFSMBackendError("live servo feedback input is incomplete")
+    unhashed = {
+        "schema": "wlr50_clean.phase_snapshot_live_servo_feedback.v1",
+        "canonical_servo_order": list(SERVO_ORDER),
+        "unit": "rad",
+        "physical_position_rad": list(values),
+        "tensor_dtype": tensor_dtype,
+        "tensor_device": tensor_device,
+    }
+    return {**unhashed, "sha256": _canonical_hash(unhashed)}
+
+
 def _verify_source_mapper_post_state(
-    adapter: Any,
-    snapshot_or_command: Mapping[str, Any],
+    source: Mapping[str, Any],
+    *,
+    ack: Mapping[str, Any],
+    live_pre_state: Mapping[str, Any],
+    live_post_state: Mapping[str, Any],
+    first_replay_tick: bool,
 ) -> Mapping[str, Any]:
-    source = (
-        snapshot_or_command["source_command"]
-        if "source_command" in snapshot_or_command
-        else snapshot_or_command
+    """Prove one natural live mapper transition without restoring Trial output."""
+
+    expected_pre = source["mapper_pre_state"]
+    expected_post = source["mapper_post_state"]
+    expected_keys = set(expected_post)
+    if set(live_pre_state) != expected_keys or set(live_post_state) != expected_keys:
+        raise IsaacFSMBackendError("live mapper state fields are incomplete")
+    source_tick = int(source["control_physics_tick"])
+    if (
+        live_pre_state.get("schema") != SOURCE_MAPPER_STATE_SCHEMA
+        or live_post_state.get("schema") != SOURCE_MAPPER_STATE_SCHEMA
+        or live_pre_state.get("source_control_physics_tick") != source_tick - 1
+        or live_post_state.get("source_control_physics_tick") != source_tick
+        or type(live_pre_state.get("feedback_tick")) is not int
+        or live_post_state.get("feedback_tick")
+        != live_pre_state["feedback_tick"] + 1
+    ):
+        raise IsaacFSMBackendError("live mapper transition clock is invalid")
+    if first_replay_tick and not _source_replay_values_match(
+        expected_pre, live_pre_state
+    ):
+        raise IsaacFSMBackendError(
+            "first replay tick did not begin from the source mapper pre-state"
+        )
+    for field in (
+        "requested_servo_deg",
+        "applied_drive_command_deg",
+        "tracking_compensation_deg",
+        "final_drive_servo_deg",
+    ):
+        values = live_post_state.get(field)
+        if (
+            not isinstance(values, (list, tuple))
+            or len(values) != len(SERVO_ORDER)
+            or any(not math.isfinite(float(value)) for value in values)
+        ):
+            raise IsaacFSMBackendError(f"live mapper post-state {field} is invalid")
+    for field in (
+        "nominal_target_reached",
+        "tracking_active",
+        "retiring_stale_bias",
+    ):
+        values = live_post_state.get(field)
+        if (
+            not isinstance(values, (list, tuple))
+            or len(values) != len(SERVO_ORDER)
+            or any(type(value) is not bool for value in values)
+        ):
+            raise IsaacFSMBackendError(f"live mapper post-state {field} is invalid")
+    cross_bindings = {
+        "requested_servo_deg": ack["applied_full12"][: len(SERVO_ORDER)],
+        "applied_drive_command_deg": ack["native_drive_target_full12"][: len(SERVO_ORDER)],
+        "nominal_target_reached": ack["servo_nominal_target_reached"],
+        "tracking_compensation_deg": ack["servo_tracking_compensation_deg"],
+        "tracking_active": ack["servo_tracking_active"],
+        "final_drive_servo_deg": ack["drive_target_full12"][: len(SERVO_ORDER)],
+    }
+    if any(
+        not _source_replay_values_match(live_post_state[field], expected)
+        for field, expected in cross_bindings.items()
+    ):
+        raise IsaacFSMBackendError("live mapper post-state differs from its own ack")
+    interval = int(source["mapper_configuration"]["feedback_interval_ticks"])
+    scheduled_tracking = set(str(name) for name in ack["tracking_servo_names"])
+    current_requested = tuple(float(value) for value in ack["applied_full12"][:8])
+    feedback_names_exist = any(
+        name in scheduled_tracking
+        and bool(live_pre_state["nominal_target_reached"][index])
+        and math.isclose(
+            current_requested[index],
+            float(live_pre_state["requested_servo_deg"][index]),
+            rel_tol=0.0,
+            abs_tol=1.0e-9,
+        )
+        for index, name in enumerate(SERVO_ORDER)
     )
-    expected = source["mapper_post_state"]
-    observed = _live_source_mapper_state(
-        adapter,
-        source_control_physics_tick=int(source["control_physics_tick"]),
+    expected_sampled = (
+        live_pre_state["feedback_tick"] % interval == 0
+        and feedback_names_exist
     )
+    if (
+        ack.get("servo_tracking_feedback_sample_tick")
+        != live_pre_state["feedback_tick"]
+        or type(ack.get("servo_tracking_feedback_sampled")) is not bool
+        or ack.get("servo_tracking_feedback_sampled") is not expected_sampled
+    ):
+        raise IsaacFSMBackendError("live mapper feedback sampling contract failed")
     matches = {
-        field: _source_replay_values_match(expected[field], observed[field])
-        for field in expected
+        field: _source_replay_values_match(expected_post[field], live_post_state[field])
+        for field in expected_post
     }
     errors = {
-        field: _source_replay_numeric_error(expected[field], observed[field])
-        for field in expected
+        field: _source_replay_numeric_error(expected_post[field], live_post_state[field])
+        for field in expected_post
     }
-    if not all(matches.values()):
-        mismatched = [name for name, match in matches.items() if not match]
-        raise IsaacFSMBackendError(
-            "source mapper post-state replay mismatch: " + ", ".join(mismatched)
-        )
     return {
-        "schema": "wlr50_clean.phase_snapshot_source_mapper_post_state.v1",
+        "schema": "wlr50_clean.phase_snapshot_live_mapper_transition.v2",
         "source_transition": "source_tick_t_minus_1_to_t",
-        "source_control_physics_tick": source["control_physics_tick"],
-        "field_matches": matches,
-        "field_maximum_numeric_error": errors,
-        "all_fields_match": True,
-        "post_state_sha256": _canonical_hash(expected),
+        "source_control_physics_tick": source_tick,
+        "first_replay_tick": first_replay_tick,
+        "first_pre_state_matches_source": (
+            _source_replay_values_match(expected_pre, live_pre_state)
+            if first_replay_tick
+            else None
+        ),
+        "historical_post_field_matches": matches,
+        "historical_post_field_maximum_numeric_error": errors,
+        "all_historical_post_fields_match": all(matches.values()),
+        "historical_feedback_equivalence_claimed": False,
+        "source_pre_state_sha256": _canonical_hash(expected_pre),
+        "source_post_state_sha256": _canonical_hash(expected_post),
+        "live_pre_state_sha256": _canonical_hash(live_pre_state),
+        "live_post_state_sha256": _canonical_hash(live_post_state),
+        "feedback_tick_increment": 1,
+        "feedback_schedule_verified": True,
+        "ack_cross_bindings_verified": True,
+        "natural_live_state_continuity_verified": True,
+        "per_tick_mapper_restore_count": 0,
         "restored_after_prime": False,
         "reached_naturally_by_single_atomic_apply": True,
     }
 
 
-def _verify_source_prime_ack(
-    snapshot: Mapping[str, Any],
+def _verify_live_feedback_adaptive_ack(
+    source: Mapping[str, Any],
     ack: Mapping[str, Any],
-) -> Mapping[str, Any]:
-    source = snapshot["source_command"]
-    return _verify_source_replay_ack(
-        source,
-        source_artifacts=snapshot["source_artifacts"],
-        ack=ack,
+    *,
+    live_mapper_pre_state: Mapping[str, Any],
+    live_mapper_post_state: Mapping[str, Any],
+    live_feedback_input: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Cross-check every live output against the frozen adapter equations."""
+
+    from wlr50_clean.infrastructure.command_batch import (
+        SERVO_ORDER as COMMAND_SERVO_ORDER,
+        WHEEL_VELOCITY_LIMIT_RAD_S,
+        Full12Command,
+        build_physical_batch,
+        servo_limits_deg,
     )
+    from wlr50_clean.infrastructure.robot_adapter import (
+        bounded_drive_feedback_step,
+    )
+    from wlr50_clean.infrastructure.servo_target_mapper import ServoTargetMapper
+
+    if tuple(COMMAND_SERVO_ORDER) != SERVO_ORDER:
+        raise IsaacFSMBackendError("frozen servo order differs from PPO backend")
+    requested = _full12(ack["requested_full12"], "live replay requested_full12")
+    applied = _full12(ack["applied_full12"], "live replay applied_full12")
+    native = _full12(
+        ack["native_drive_target_full12"],
+        "live replay native_drive_target_full12",
+    )
+    drive = _full12(ack["drive_target_full12"], "live replay drive_target_full12")
+    requested_bias = _full12(
+        ack["drive_feedback_bias_requested_full12"],
+        "live replay requested drive-feedback bias",
+    )
+    realized_bias = _full12(
+        ack["drive_feedback_bias_realized_full12"],
+        "live replay realized drive-feedback bias",
+    )
+    try:
+        expected_applied = Full12Command.from_full12(requested).clamped().to_full12()
+    except Exception as exc:
+        raise IsaacFSMBackendError("live replay logical clamp failed") from exc
+    if not _source_replay_values_match(expected_applied, applied):
+        raise IsaacFSMBackendError("live replay applied command is not its hard clamp")
+    maximum_delta = float(ack["drive_feedback_final_slew_limit_deg_per_tick"])
+    expected_maximum_delta = float(
+        source["mapper_configuration"]["maximum_delta_deg"]
+    )
+    if (
+        not math.isfinite(maximum_delta)
+        or maximum_delta <= 0.0
+        or not _source_replay_values_match(maximum_delta, expected_maximum_delta)
+    ):
+        raise IsaacFSMBackendError("live replay final-drive slew limit is invalid")
+    previous_final = tuple(live_mapper_pre_state["final_drive_servo_deg"])
+    if len(previous_final) != len(SERVO_ORDER):
+        raise IsaacFSMBackendError("live replay prior final-drive state is incomplete")
+    expected_final: list[float] = []
+    for index, name in enumerate(SERVO_ORDER):
+        lower, upper = servo_limits_deg(name)
+        value = bounded_drive_feedback_step(
+            previous_deg=float(previous_final[index]),
+            native_deg=native[index],
+            bias_deg=requested_bias[index],
+            maximum_delta_deg=maximum_delta,
+            lower_deg=lower,
+            upper_deg=upper,
+        )
+        expected_final.append(value)
+        if not lower - 1.0e-12 <= drive[index] <= upper + 1.0e-12:
+            raise IsaacFSMBackendError(
+                f"live replay servo target exceeds hard limits: {name}"
+            )
+    if not _source_replay_values_match(tuple(expected_final), drive[:8]):
+        raise IsaacFSMBackendError("live replay final servo drive violates bounded slew")
+
+    configuration = source["mapper_configuration"]
+    standing_pose = dict(
+        zip(
+            SERVO_ORDER,
+            tuple(float(value) for value in configuration["standing_pose_deg"]),
+            strict=True,
+        )
+    )
+    try:
+        replay_mapper = ServoTargetMapper(
+            standing_pose,
+            physics_dt_s=float(configuration["physics_dt_s"]),
+            servo_rate_deg_s=float(configuration["servo_rate_deg_s"]),
+            tracking_gain=float(configuration["tracking_gain"]),
+            tracking_limit_deg=float(configuration["tracking_limit_deg"]),
+            feedback_interval_ticks=int(configuration["feedback_interval_ticks"]),
+        )
+        if not _source_replay_values_match(
+            replay_mapper.maximum_delta_deg, configuration["maximum_delta_deg"]
+        ):
+            raise IsaacFSMBackendError(
+                "reconstructed mapper maximum delta differs from source configuration"
+            )
+        for index, name in enumerate(SERVO_ORDER):
+            replay_mapper._requested[name] = float(
+                live_mapper_pre_state["requested_servo_deg"][index]
+            )
+            replay_mapper._applied[name] = float(
+                live_mapper_pre_state["applied_drive_command_deg"][index]
+            )
+            replay_mapper._nominal_reached[name] = bool(
+                live_mapper_pre_state["nominal_target_reached"][index]
+            )
+            replay_mapper._compensation[name] = float(
+                live_mapper_pre_state["tracking_compensation_deg"][index]
+            )
+            replay_mapper._tracking_active[name] = bool(
+                live_mapper_pre_state["tracking_active"][index]
+            )
+            replay_mapper._retiring_stale_bias[name] = bool(
+                live_mapper_pre_state["retiring_stale_bias"][index]
+            )
+        replay_mapper._feedback_tick = int(live_mapper_pre_state["feedback_tick"])
+        predicted_mapping = replay_mapper.advance(
+            applied[:8],
+            tuple(float(value) for value in live_feedback_input["physical_position_rad"]),
+            tracking_servo_names=tuple(str(value) for value in ack["tracking_servo_names"]),
+        )
+    except IsaacFSMBackendError:
+        raise
+    except Exception as exc:
+        raise IsaacFSMBackendError(
+            "cannot independently replay the live-feedback mapper transition"
+        ) from exc
+    predicted_mapper_post_state = {
+        "schema": SOURCE_MAPPER_STATE_SCHEMA,
+        "source_control_physics_tick": int(source["control_physics_tick"]),
+        "requested_servo_deg": list(predicted_mapping.requested_command_deg),
+        "applied_drive_command_deg": list(predicted_mapping.applied_drive_command_deg),
+        "nominal_target_reached": list(predicted_mapping.nominal_target_reached),
+        "tracking_compensation_deg": list(predicted_mapping.tracking_compensation_deg),
+        "tracking_active": list(predicted_mapping.tracking_active),
+        "retiring_stale_bias": [
+            replay_mapper._retiring_stale_bias[name] for name in SERVO_ORDER
+        ],
+        "feedback_tick": int(replay_mapper._feedback_tick),
+        "final_drive_servo_deg": list(expected_final),
+    }
+    mapping_ack_bindings = {
+        "requested_command_deg": ack["applied_full12"][:8],
+        "applied_drive_command_deg": ack["native_drive_target_full12"][:8],
+        "tracking_compensation_deg": ack["servo_tracking_compensation_deg"],
+        "nominal_target_reached": ack["servo_nominal_target_reached"],
+        "tracking_active": ack["servo_tracking_active"],
+        "feedback_sample_tick": ack["servo_tracking_feedback_sample_tick"],
+        "feedback_sampled": ack["servo_tracking_feedback_sampled"],
+    }
+    if any(
+        not _source_replay_values_match(
+            getattr(predicted_mapping, field), expected
+        )
+        for field, expected in mapping_ack_bindings.items()
+    ):
+        raise IsaacFSMBackendError(
+            "live mapper ACK is not reproduced from source pre-state and live feedback"
+        )
+    if not _source_replay_values_match(
+        predicted_mapper_post_state, live_mapper_post_state
+    ):
+        raise IsaacFSMBackendError(
+            "live mapper post-state is not reproduced from its captured feedback input"
+        )
+    expected_wheels = tuple(
+        max(
+            -WHEEL_VELOCITY_LIMIT_RAD_S,
+            min(WHEEL_VELOCITY_LIMIT_RAD_S, native_value + bias_value),
+        )
+        for native_value, bias_value in zip(
+            native[8:], requested_bias[8:], strict=True
+        )
+    )
+    if (
+        not _source_replay_values_match(native[8:], applied[8:])
+        or not _source_replay_values_match(expected_wheels, drive[8:])
+        or any(
+            abs(value) > WHEEL_VELOCITY_LIMIT_RAD_S + 1.0e-12
+            for value in drive[8:]
+        )
+    ):
+        raise IsaacFSMBackendError("live replay wheel conversion or limit is invalid")
+    expected_realized = tuple(
+        target - base for target, base in zip(drive, native, strict=True)
+    )
+    if not _source_replay_values_match(expected_realized, realized_bias):
+        raise IsaacFSMBackendError("live replay realized bias is inconsistent")
+    if (
+        not _source_replay_values_match(
+            ack["servo_applied_drive_command_deg"], drive[:8]
+        )
+        or not _source_replay_values_match(
+            ack["servo_native_drive_command_deg"], native[:8]
+        )
+    ):
+        raise IsaacFSMBackendError("live replay servo ack aliases are inconsistent")
+    try:
+        physical = build_physical_batch(
+            Full12Command.from_full12(drive), standing_pose
+        )
+    except Exception as exc:
+        raise IsaacFSMBackendError("live replay physical target conversion failed") from exc
+    if (
+        not _source_replay_values_match(
+            ack["servo_target_physical_rad"], physical.servo_target_rad
+        )
+        or not _source_replay_values_match(
+            ack["wheel_target_physical_rad_s"], physical.wheel_target_rad_s
+        )
+    ):
+        raise IsaacFSMBackendError(
+            "live replay physical target sign/order/unit conversion is invalid"
+        )
+    if (
+        live_mapper_post_state.get("feedback_tick")
+        != live_mapper_pre_state.get("feedback_tick", -1) + 1
+        or not _source_replay_values_match(
+            live_mapper_post_state.get("final_drive_servo_deg"), drive[:8]
+        )
+    ):
+        raise IsaacFSMBackendError("live replay mapper output state is inconsistent")
+    maximum_final_slew = max(
+        (
+            abs(current - previous)
+            for current, previous in zip(drive[:8], previous_final, strict=True)
+        ),
+        default=0.0,
+    )
+    feedback_conditioned_output = {
+        field: ack[field] for field in SOURCE_ACK_FEEDBACK_DIAGNOSTIC_FIELDS
+    }
+    return {
+        "schema": "wlr50_clean.phase_snapshot_live_output_contract.v2",
+        "all_values_finite": True,
+        "logical_clamp_verified": True,
+        "servo_aliases_verified": True,
+        "realized_bias_verified": True,
+        "servo_hard_limits_verified": True,
+        "wheel_hard_limits_verified": True,
+        "final_drive_slew_verified": True,
+        "maximum_final_drive_slew_deg": maximum_final_slew,
+        "maximum_allowed_final_drive_slew_deg": maximum_delta,
+        "physical_sign_order_unit_conversion_verified": True,
+        "mapper_output_state_verified": True,
+        "live_feedback_mapper_replay_verified": True,
+        "live_feedback_input_sha256": live_feedback_input["sha256"],
+        "predicted_mapper_post_state_sha256": _canonical_hash(
+            predicted_mapper_post_state
+        ),
+        "feedback_conditioned_output": feedback_conditioned_output,
+        "feedback_conditioned_output_sha256": _canonical_hash(
+            feedback_conditioned_output
+        ),
+        "verified": True,
+    }
 
 
 def _verify_source_replay_ack(
@@ -3317,8 +3731,11 @@ def _verify_source_replay_ack(
     *,
     source_artifacts: Mapping[str, Any],
     ack: Mapping[str, Any],
+    live_mapper_pre_state: Mapping[str, Any],
+    live_mapper_post_state: Mapping[str, Any],
+    live_feedback_input: Mapping[str, Any],
 ) -> Mapping[str, Any]:
-    """Prove one reset-only replay write equals its authored Trial row."""
+    """Prove exact source input and safe live-feedback-adaptive output."""
 
     expected = source["expected_atomic_ack"]
     missing = [field for field in SOURCE_ACK_MATCH_FIELDS if field not in ack]
@@ -3326,35 +3743,69 @@ def _verify_source_replay_ack(
         raise IsaacFSMBackendError(
             f"phase snapshot prime ack lacks source fields: {missing}"
         )
-    matches = {
+    invariant_matches = {
         field: _source_replay_values_match(expected[field], ack[field])
-        for field in SOURCE_ACK_MATCH_FIELDS
+        for field in SOURCE_ACK_REPLAY_INVARIANT_FIELDS
     }
-    errors = {
+    invariant_errors = {
         field: _source_replay_numeric_error(expected[field], ack[field])
-        for field in SOURCE_ACK_MATCH_FIELDS
+        for field in SOURCE_ACK_REPLAY_INVARIANT_FIELDS
     }
-    if not all(matches.values()):
-        mismatched = [name for name, match in matches.items() if not match]
+    if not all(invariant_matches.values()):
+        mismatched = [
+            name for name, match in invariant_matches.items() if not match
+        ]
         raise IsaacFSMBackendError(
-            "phase snapshot prime differs from authoritative source ack: "
+            "phase snapshot replay invariant differs from authoritative source: "
             + ", ".join(mismatched)
         )
+    adapter_input = source["adapter_input"]
+    source_input_sha256 = phase_snapshot_adapter_input_sha256(adapter_input)
+    replayed_input = {
+        "requested_full12": list(ack["requested_full12"]),
+        "tracking_servo_names": list(ack["tracking_servo_names"]),
+        "drive_feedback_bias_requested_full12": list(
+            ack["drive_feedback_bias_requested_full12"]
+        ),
+    }
+    replayed_input_sha256 = phase_snapshot_adapter_input_sha256(replayed_input)
+    if (
+        source.get("source_adapter_input_sha256") != source_input_sha256
+        or replayed_input_sha256 != source_input_sha256
+    ):
+        raise IsaacFSMBackendError(
+            "phase snapshot replay adapter input hash differs from source"
+        )
+    feedback_unhashed = dict(live_feedback_input)
+    feedback_sha256 = feedback_unhashed.pop("sha256", None)
+    if (
+        not isinstance(feedback_sha256, str)
+        or feedback_sha256 != _canonical_hash(feedback_unhashed)
+    ):
+        raise IsaacFSMBackendError("live servo feedback input hash is invalid")
+    live_output_contract = _verify_live_feedback_adaptive_ack(
+        source,
+        ack,
+        live_mapper_pre_state=live_mapper_pre_state,
+        live_mapper_post_state=live_mapper_post_state,
+        live_feedback_input=live_feedback_input,
+    )
+    diagnostic_matches = {
+        field: _source_replay_values_match(expected[field], ack[field])
+        for field in SOURCE_ACK_FEEDBACK_DIAGNOSTIC_FIELDS
+    }
+    diagnostic_errors = {
+        field: _source_replay_numeric_error(expected[field], ack[field])
+        for field in SOURCE_ACK_FEEDBACK_DIAGNOSTIC_FIELDS
+    }
     source_target_sha256 = str(source["drive_target_full12_sha256"])
     replayed_target_sha256 = phase_snapshot_drive_target_sha256(
         ack["drive_target_full12"]
     )
     source_actuation_sha256 = str(source["actuation_contract_sha256"])
     replayed_actuation_sha256 = phase_snapshot_actuation_contract_sha256(ack)
-    if (
-        replayed_target_sha256 != source_target_sha256
-        or replayed_actuation_sha256 != source_actuation_sha256
-    ):
-        raise IsaacFSMBackendError(
-            "phase snapshot prime hashes differ from authoritative source actuation"
-        )
     return {
-        "schema": "wlr50_clean.phase_snapshot_source_actuation_match.v1",
+        "schema": "wlr50_clean.phase_snapshot_source_input_live_output.v2",
         "source_transition": "source_tick_t_minus_1_to_t",
         "source_command_file_sha256": source_artifacts["command"]["sha256"],
         "source_observation_file_sha256": source_artifacts["observation"]["sha256"],
@@ -3365,14 +3816,29 @@ def _verify_source_replay_ack(
         "source_observation_row_canonical_sha256": source[
             "source_observation_row_canonical_sha256"
         ],
+        "source_adapter_input_sha256": source_input_sha256,
+        "replayed_adapter_input_sha256": replayed_input_sha256,
+        "adapter_input_hash_matches": True,
         "source_drive_target_full12_sha256": source_target_sha256,
         "replayed_drive_target_full12_sha256": replayed_target_sha256,
         "source_actuation_contract_sha256": source_actuation_sha256,
         "replayed_actuation_contract_sha256": replayed_actuation_sha256,
-        "field_matches": matches,
-        "field_maximum_numeric_error": errors,
-        "all_fields_match": True,
-        "source_target_hash_matches": True,
+        "replay_invariant_field_matches": invariant_matches,
+        "replay_invariant_field_maximum_numeric_error": invariant_errors,
+        "all_replay_invariant_fields_match": True,
+        "historical_feedback_field_matches": diagnostic_matches,
+        "historical_feedback_field_maximum_numeric_error": diagnostic_errors,
+        "all_historical_feedback_fields_match": all(diagnostic_matches.values()),
+        "historical_feedback_equivalence_claimed": False,
+        "source_target_hash_matches": (
+            replayed_target_sha256 == source_target_sha256
+        ),
+        "source_actuation_hash_matches": (
+            replayed_actuation_sha256 == source_actuation_sha256
+        ),
+        "live_feedback_input": dict(live_feedback_input),
+        "live_output_contract": live_output_contract,
+        "live_feedback_adaptive_output_valid": True,
         "logical_target_fallback_used": False,
         "source_atomic_physics_tick": source["source_atomic_physics_tick"],
         "reset_prime_physics_tick": int(ack["physics_tick"]),
@@ -3909,19 +4375,44 @@ def _compare_phase_snapshot_observation(
     failures: list[str] = []
     root = snapshot["root_state"]
     base = _member(observation, "base")
+    root_position = _finite_vector(_member(base, "position_w_m", ()), 3)
+    root_orientation_raw = _finite_vector(
+        _member(base, "orientation_wxyz", ()), 4
+    )
+    root_linear_velocity = _finite_vector(
+        _member(base, "linear_velocity_w_m_s", ()), 3
+    )
+    root_angular_velocity = _finite_vector(
+        _member(base, "angular_velocity_w_rad_s", ()), 3
+    )
+    if (
+        root_position is None
+        or root_orientation_raw is None
+        or root_linear_velocity is None
+        or root_angular_velocity is None
+    ):
+        raise SensorContractFailure(
+            "post-prime component state contains an invalid root-state vector"
+        )
+    root_orientation = _normalized_quaternion(root_orientation_raw)
+    for component in root_orientation:
+        if component != 0.0:
+            if component < 0.0:
+                root_orientation = tuple(-value for value in root_orientation)
+            break
     errors = {
         "root_position_m": _maximum_absolute_error(
-            _member(base, "position_w_m", ()), root["position_w_m"]
+            root_position, root["position_w_m"]
         ),
         "root_orientation": _quaternion_distance(
-            _member(base, "orientation_wxyz", ()), root["orientation_wxyz"]
+            root_orientation, root["orientation_wxyz"]
         ),
         "root_linear_velocity_m_s": _maximum_absolute_error(
-            _member(base, "linear_velocity_w_m_s", ()),
+            root_linear_velocity,
             root["linear_velocity_w_m_s"],
         ),
         "root_angular_velocity_rad_s": _maximum_absolute_error(
-            _member(base, "angular_velocity_w_rad_s", ()),
+            root_angular_velocity,
             root["angular_velocity_w_rad_s"],
         ),
     }
@@ -3934,12 +4425,18 @@ def _compare_phase_snapshot_observation(
 
     joints = _member(observation, "joints", {})
     joint_snapshot = snapshot["joint_state"]
+    servo_positions = tuple(
+        float(_member(joints[name], "position_deg")) for name in SERVO_ORDER
+    )
+    servo_velocities = tuple(
+        float(_member(joints[name], "velocity_deg_s")) for name in SERVO_ORDER
+    )
     position_error = _maximum_absolute_error(
-        tuple(float(_member(joints[name], "position_deg")) for name in SERVO_ORDER),
+        servo_positions,
         joint_snapshot["logical_position_deg"],
     )
     velocity_error = _maximum_absolute_error(
-        tuple(float(_member(joints[name], "velocity_deg_s")) for name in SERVO_ORDER),
+        servo_velocities,
         joint_snapshot["logical_velocity_deg_s"],
     )
     errors["servo_position_deg"] = position_error
@@ -3950,8 +4447,11 @@ def _compare_phase_snapshot_observation(
         failures.append("servo velocity")
 
     wheels = _member(observation, "wheels", {})
+    wheel_velocities = tuple(
+        float(_member(wheels[name], "velocity_rad_s")) for name in WHEEL_ORDER
+    )
     wheel_error = _maximum_absolute_error(
-        tuple(float(_member(wheels[name], "velocity_rad_s")) for name in WHEEL_ORDER),
+        wheel_velocities,
         snapshot["wheel_state"]["logical_velocity_rad_s"],
     )
     errors["wheel_velocity_rad_s"] = wheel_error
@@ -3959,16 +4459,28 @@ def _compare_phase_snapshot_observation(
         failures.append("wheel velocity")
 
     geometry = snapshot["obstacle_relative_geometry"]
+    wheel_centers = {
+        name: _finite_vector(_member(wheels[name], "center_w_m", ()), 3)
+        for name in WHEEL_ORDER
+    }
+    wheel_bottoms = {
+        name: _finite_vector(_member(wheels[name], "bottom_w_m", ()), 3)
+        for name in WHEEL_ORDER
+    }
+    if any(value is None for value in (*wheel_centers.values(), *wheel_bottoms.values())):
+        raise SensorContractFailure(
+            "post-prime component state contains invalid wheel geometry"
+        )
     center_error = max(
         _maximum_absolute_error(
-            _member(wheels[name], "center_w_m", ()),
+            wheel_centers[name],
             geometry["wheel_centers_w_m"][name],
         )
         for name in WHEEL_ORDER
     )
     bottom_error = max(
         _maximum_absolute_error(
-            _member(wheels[name], "bottom_w_m", ()),
+            wheel_bottoms[name],
             geometry["wheel_bottoms_w_m"][name],
         )
         for name in WHEEL_ORDER
@@ -4091,8 +4603,38 @@ def _compare_phase_snapshot_observation(
         "pairs": raw_contacts,
     }
     raw_contact_record["sha256"] = _canonical_hash(raw_contact_record)
+    component_state: dict[str, Any] = {
+        "schema": "wlr50_clean.phase_effective_entry_component_state.v1",
+        "units": {
+            "root_position_w_m": "m",
+            "root_orientation_wxyz": "unit_quaternion",
+            "root_linear_velocity_w_m_s": "m/s",
+            "root_angular_velocity_w_rad_s": "rad/s",
+            "servo_logical_position_deg": "deg",
+            "servo_logical_velocity_deg_s": "deg/s",
+            "wheel_logical_velocity_rad_s": "rad/s",
+            "wheel_centers_w_m": "m",
+            "wheel_bottoms_w_m": "m",
+        },
+        "root_position_w_m": list(root_position),
+        "root_orientation_wxyz": list(root_orientation),
+        "root_linear_velocity_w_m_s": list(root_linear_velocity),
+        "root_angular_velocity_w_rad_s": list(root_angular_velocity),
+        "servo_order": list(SERVO_ORDER),
+        "servo_logical_position_deg": list(servo_positions),
+        "servo_logical_velocity_deg_s": list(servo_velocities),
+        "wheel_order": list(WHEEL_ORDER),
+        "wheel_logical_velocity_rad_s": list(wheel_velocities),
+        "wheel_centers_w_m": {
+            name: list(wheel_centers[name]) for name in WHEEL_ORDER
+        },
+        "wheel_bottoms_w_m": {
+            name: list(wheel_bottoms[name]) for name in WHEEL_ORDER
+        },
+    }
+    component_state["sha256"] = _canonical_hash(component_state)
     return {
-        "schema": "wlr50_clean.phase_snapshot_live_comparison.v1",
+        "schema": "wlr50_clean.phase_snapshot_live_comparison.v2",
         "verified": not failures,
         "failures": list(dict.fromkeys(failures)),
         "tolerances": tolerances,
@@ -4103,6 +4645,7 @@ def _compare_phase_snapshot_observation(
             row["matches"] for row in exact_contacts.values()
         ),
         "raw_physx_contacts": raw_contact_record,
+        "effective_component_state": component_state,
         "raw_physx_contact_sources_verified": all(
             row[pair]["pair_verified"]
             and row[pair]["source"]
@@ -4147,7 +4690,7 @@ def _verify_phase_snapshot_observation(
         )
     return {
         **comparison,
-        "schema": "wlr50_clean.phase_snapshot_live_proof.v1",
+        "schema": "wlr50_clean.phase_snapshot_live_proof.v2",
         "verified": True,
     }
 

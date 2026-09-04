@@ -25,12 +25,15 @@ from wlr50_clean.infrastructure.command_batch import (
 from wlr50_clean.infrastructure.robot_adapter import bounded_drive_feedback_step
 from wlr50_clean.infrastructure.servo_target_mapper import ServoTargetMapper
 
-SNAPSHOT_SCHEMA = "wlr50_clean.ppo_phase_entry_snapshot.v2"
-MANIFEST_SCHEMA = "wlr50_clean.ppo_phase_snapshot_manifest.v2"
+SNAPSHOT_SCHEMA = "wlr50_clean.ppo_phase_entry_snapshot.v3"
+MANIFEST_SCHEMA = "wlr50_clean.ppo_phase_snapshot_manifest.v3"
 BUNDLE_RECORD_SCHEMA = "wlr50_clean.ppo_phase_snapshot_bundle_record.v1"
 BUNDLE_HASH_SCHEMA = "wlr50_clean.ppo_phase_snapshot_bundle_hash.v1"
-SOURCE_COMMAND_SCHEMA = "wlr50_clean.ppo_phase_snapshot_source_command.v1"
+SOURCE_COMMAND_SCHEMA = "wlr50_clean.ppo_phase_snapshot_source_command.v2"
 SOURCE_MAPPER_STATE_SCHEMA = "wlr50_clean.ppo_phase_snapshot_mapper_state.v1"
+SOURCE_ADAPTER_INPUT_HASH_SCHEMA = (
+    "wlr50_clean.ppo_phase_snapshot_adapter_input_hash.v1"
+)
 PHASE_IDS = tuple(f"P{i:02d}" for i in range(1, 14))
 PHYSICS_HZ = 120.0
 SOURCE_SETTLE_TICKS = 180
@@ -69,6 +72,31 @@ SOURCE_ACK_MATCH_FIELDS = (
     "servo_target_physical_rad",
     "wheel_target_physical_rad_s",
     "motion_start_skew_s",
+)
+# Reset replay owns the immutable logical input, clock, atomic-write shape, and
+# wheel conversion. Servo mapper outputs are deliberately absent: they are a
+# function of live post-reset joint feedback, not a state-injection invariant.
+SOURCE_ACK_REPLAY_INVARIANT_FIELDS = (
+    "schema",
+    "physics_dt_s",
+    "articulation_writes_this_call",
+    "canonical_order",
+    "requested_full12",
+    "applied_full12",
+    "drive_feedback_bias_requested_full12",
+    "drive_feedback_final_slew_limit_deg_per_tick",
+    "command_was_clamped",
+    "tracking_servo_names",
+    "servo_tracking_feedback_sample_tick",
+    "servo_joint_ids",
+    "wheel_joint_ids",
+    "wheel_target_physical_rad_s",
+    "motion_start_skew_s",
+)
+SOURCE_ACK_FEEDBACK_DIAGNOSTIC_FIELDS = tuple(
+    field
+    for field in SOURCE_ACK_MATCH_FIELDS
+    if field not in SOURCE_ACK_REPLAY_INVARIANT_FIELDS
 )
 
 
@@ -529,6 +557,49 @@ def phase_snapshot_drive_target_sha256(values: Iterable[Any]) -> str:
     )
 
 
+def phase_snapshot_adapter_input_sha256(adapter_input: Mapping[str, Any]) -> str:
+    """Hash the only Trial-authored input accepted by reset replay.
+
+    Historical mapper outputs remain extraction provenance. They are excluded
+    because live joint feedback legitimately changes them after state injection.
+    """
+
+    expected_keys = {
+        "requested_full12",
+        "tracking_servo_names",
+        "drive_feedback_bias_requested_full12",
+    }
+    if not isinstance(adapter_input, Mapping) or set(adapter_input) != expected_keys:
+        raise PhaseSnapshotError("source adapter input fields are incomplete")
+    requested = _finite_values(
+        adapter_input["requested_full12"],
+        len(FULL12_ORDER),
+        "source adapter input requested_full12",
+    )
+    bias = _finite_values(
+        adapter_input["drive_feedback_bias_requested_full12"],
+        len(FULL12_ORDER),
+        "source adapter input drive_feedback_bias_requested_full12",
+    )
+    tracking = adapter_input["tracking_servo_names"]
+    if (
+        not isinstance(tracking, (list, tuple))
+        or len(set(tracking)) != len(tracking)
+        or any(not isinstance(name, str) or name not in SERVO_ORDER for name in tracking)
+    ):
+        raise PhaseSnapshotError("source adapter input tracking set is invalid")
+    return _sha256_bytes(
+        _canonical_bytes(
+            {
+                "schema": SOURCE_ADAPTER_INPUT_HASH_SCHEMA,
+                "requested_full12": list(requested),
+                "tracking_servo_names": list(tracking),
+                "drive_feedback_bias_requested_full12": list(bias),
+            }
+        )
+    )
+
+
 def phase_snapshot_actuation_contract_sha256(
     expected_atomic_ack: Mapping[str, Any],
 ) -> str:
@@ -876,16 +947,20 @@ def _source_replay_at_phase_ticks(
             }
             command_row_hash = _sha256_bytes(_canonical_bytes(command))
             observation_row_hash = _sha256_bytes(_canonical_bytes(observation))
+            adapter_input = {
+                "requested_full12": list(requested.to_full12()),
+                "tracking_servo_names": list(tracking_names),
+                "drive_feedback_bias_requested_full12": list(requested_bias),
+            }
             source_command = {
                 "schema": SOURCE_COMMAND_SCHEMA,
                 "control_physics_tick": tick,
                 "source_atomic_physics_tick": int(source_ack["physics_tick"]),
                 "source_atomic_write_count": int(source_ack["write_count"]),
-                "adapter_input": {
-                    "requested_full12": list(requested.to_full12()),
-                    "tracking_servo_names": list(tracking_names),
-                    "drive_feedback_bias_requested_full12": list(requested_bias),
-                },
+                "adapter_input": adapter_input,
+                "source_adapter_input_sha256": (
+                    phase_snapshot_adapter_input_sha256(adapter_input)
+                ),
                 "mapper_configuration": _mapper_configuration(mapper),
                 "mapper_pre_state": pre_state,
                 "mapper_post_state": post_state,
@@ -1571,6 +1646,9 @@ def build_phase_snapshots(
             "source_observation_row_canonical_sha256": replay_rows[tick][
                 "source_command"
             ]["source_observation_row_canonical_sha256"],
+            "source_adapter_input_sha256": replay_rows[tick]["source_command"][
+                "source_adapter_input_sha256"
+            ],
             "drive_target_full12_sha256": replay_rows[tick]["source_command"][
                 "drive_target_full12_sha256"
             ],
@@ -1711,6 +1789,7 @@ def _validate_additional_source_replay_row(
     for name in (
         "source_command_row_canonical_sha256",
         "source_observation_row_canonical_sha256",
+        "source_adapter_input_sha256",
         "drive_target_full12_sha256",
         "actuation_contract_sha256",
     ):
@@ -1854,6 +1933,12 @@ def _validate_additional_source_replay_row(
             raise PhaseSnapshotError(
                 f"snapshot replay adapter input differs from source ack: {field}"
             )
+    if source.get("source_adapter_input_sha256") != (
+        phase_snapshot_adapter_input_sha256(adapter_input)
+    ):
+        raise PhaseSnapshotError(
+            f"snapshot replay adapter-input hash mismatch for {phase}"
+        )
     post_field_bindings = {
         "requested_servo_deg": expected_ack["applied_full12"][: len(SERVO_ORDER)],
         "applied_drive_command_deg": expected_ack["native_drive_target_full12"][: len(SERVO_ORDER)],
@@ -2048,6 +2133,7 @@ def validate_phase_snapshot_payload_contract(
         "expected_atomic_ack",
         "source_command_row_canonical_sha256",
         "source_observation_row_canonical_sha256",
+        "source_adapter_input_sha256",
         "drive_target_full12_sha256",
         "actuation_contract_sha256",
     }
@@ -2092,6 +2178,7 @@ def validate_phase_snapshot_payload_contract(
     for name in (
         "source_command_row_canonical_sha256",
         "source_observation_row_canonical_sha256",
+        "source_adapter_input_sha256",
         "drive_target_full12_sha256",
         "actuation_contract_sha256",
     ):
@@ -2240,6 +2327,12 @@ def validate_phase_snapshot_payload_contract(
     for field in adapter_input:
         if not _equivalent(adapter_input[field], expected_ack[field]):
             raise PhaseSnapshotError(f"snapshot adapter input differs from source ack: {field}")
+    if source.get("source_adapter_input_sha256") != (
+        phase_snapshot_adapter_input_sha256(adapter_input)
+    ):
+        raise PhaseSnapshotError(
+            f"snapshot adapter-input hash mismatch for {phase}"
+        )
     post_field_bindings = {
         "requested_servo_deg": expected_ack["applied_full12"][: len(SERVO_ORDER)],
         "applied_drive_command_deg": expected_ack["native_drive_target_full12"][: len(SERVO_ORDER)],
@@ -2329,6 +2422,9 @@ def validate_phase_snapshot_payload_contract(
             ],
             "source_observation_row_canonical_sha256": source[
                 "source_observation_row_canonical_sha256"
+            ],
+            "source_adapter_input_sha256": source[
+                "source_adapter_input_sha256"
             ],
             "drive_target_full12_sha256": target_hash,
             "actuation_contract_sha256": actuation_hash,
@@ -2435,6 +2531,7 @@ def capture_validated_phase_snapshot_bundle(
         "path",
         "source_command_row_canonical_sha256",
         "source_observation_row_canonical_sha256",
+        "source_adapter_input_sha256",
         "drive_target_full12_sha256",
         "actuation_contract_sha256",
     }
