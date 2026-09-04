@@ -124,7 +124,15 @@ _AUTHORED_ENTRY_GUARDS = (
     "reference_entry_compatible",
     "critical_actuators_available",
 )
+_P10_COMPLETION_GUARDS = (
+    "motion_endpoint_issued",
+    "rl_workspace_geometry",
+)
 _RESET_SETTLE_TICKS = 180
+SOURCE_PROVEN_EXECUTE_RESTORE_MODE = "source_proven_execute_after_prime"
+SOURCE_PROVEN_EXECUTE_RESTORE_SCHEMA = (
+    "wlr50_clean.phase_snapshot_source_proven_execute_restore.v1"
+)
 
 
 class EffectivePhaseEntryError(ValueError):
@@ -272,6 +280,189 @@ def _require_git_commit(value: Any, label: str) -> str:
     return value
 
 
+def _validated_source_proven_execute_restore(
+    snapshot_payload: Mapping[str, Any], phase: str
+) -> Mapping[str, Any] | None:
+    """Validate P10's source-authenticated post-entry controller restore.
+
+    The special P10 reset does not ask a freshly constructed controller to
+    reproduce the very short WAIT_ENTRY velocity window after a PhysX state
+    write.  Instead, the immutable successful-trial WAIT_ENTRY->EXECUTE row
+    proves that the authored guards passed, one source P10 EXECUTE command is
+    applied to obtain a current solver/contact sample, and the episode starts
+    at motion tick one.  This helper deliberately validates the complete
+    nested contract at every consumer boundary.
+    """
+
+    mode_present = "controller_restore_mode" in snapshot_payload
+    contract_present = "controller_restore_contract" in snapshot_payload
+    mode = snapshot_payload.get("controller_restore_mode")
+    contract = snapshot_payload.get("controller_restore_contract")
+    if not mode_present and not contract_present:
+        if phase == "P10":
+            raise EffectivePhaseEntryError(
+                "P10 requires the source-proven EXECUTE controller restore"
+            )
+        return None
+    if mode != SOURCE_PROVEN_EXECUTE_RESTORE_MODE or not contract_present:
+        raise EffectivePhaseEntryError(
+            f"validated controller-restore mode/contract is incomplete for {phase}"
+        )
+    if phase != "P10" or snapshot_payload.get("fsm_state") != "P10":
+        raise EffectivePhaseEntryError(
+            "source-proven EXECUTE restore is permitted only for P10"
+        )
+    expected_fields = {
+        "schema",
+        "source_transition_tick",
+        "source_transition_time_s",
+        "source_transition_row",
+        "source_transition_row_canonical_sha256",
+        "authored_entry_guard_order",
+        "authored_entry_guard_evidence",
+        "prime_command_tick",
+        "effective_observation_tick",
+        "consumed_motion_tick",
+        "first_episode_motion_tick",
+    }
+    if not isinstance(contract, Mapping) or set(contract) != expected_fields:
+        raise EffectivePhaseEntryError(
+            "validated P10 source-proven EXECUTE restore contract is malformed"
+        )
+    source_tick = snapshot_payload.get("source_tick")
+    replay_steps = snapshot_payload.get("source_replay_steps")
+    transition_tick = contract.get("source_transition_tick")
+    transition_time = contract.get("source_transition_time_s")
+    effective_tick = contract.get("effective_observation_tick")
+    if (
+        contract.get("schema") != SOURCE_PROVEN_EXECUTE_RESTORE_SCHEMA
+        or type(source_tick) is not int
+        or type(replay_steps) is not int
+        or replay_steps != 1
+        or type(transition_tick) is not int
+        or transition_tick != source_tick
+        or isinstance(transition_time, bool)
+        or not isinstance(transition_time, (int, float))
+        or not math.isfinite(float(transition_time))
+        or float(transition_time) != phase_entry_time_s(transition_tick)
+        or contract.get("prime_command_tick") != source_tick
+        or type(effective_tick) is not int
+        or effective_tick != source_tick + replay_steps
+        or contract.get("consumed_motion_tick") != 0
+        or contract.get("first_episode_motion_tick") != 1
+    ):
+        raise EffectivePhaseEntryError(
+            "validated P10 source-proven EXECUTE restore timing is invalid"
+        )
+    if any(
+        name in snapshot_payload
+        for name in (
+            "target_entry_tick",
+            "predecessor_verify_tick",
+            "predecessor_verify_time_s",
+            "controller_anchor_tick",
+            "controller_anchor_time_s",
+        )
+    ):
+        raise EffectivePhaseEntryError(
+            "source-proven P10 restore must not declare legacy hybrid anchors"
+        )
+    commands = snapshot_payload.get("source_commands")
+    if (
+        not isinstance(commands, list)
+        or len(commands) != 1
+        or not isinstance(commands[0], Mapping)
+        or commands[0].get("control_physics_tick") != source_tick
+        or commands[0].get("source_fsm_state") != "P10"
+        or commands[0].get("source_fsm_lifecycle") != "EXECUTE_MOTION"
+        or snapshot_payload.get("fsm_lifecycle") != "EXECUTE_MOTION"
+    ):
+        raise EffectivePhaseEntryError(
+            "source-proven P10 restore must prime one P10 EXECUTE command"
+        )
+    transition = contract.get("source_transition_row")
+    if (
+        not isinstance(transition, Mapping)
+        or set(transition)
+        != {
+            "sim_time_s",
+            "state_id",
+            "from_lifecycle",
+            "to_lifecycle",
+            "reason",
+            "details",
+        }
+        or transition.get("state_id") != "P10"
+        or transition.get("from_lifecycle") != "WAIT_ENTRY"
+        or transition.get("to_lifecycle") != "EXECUTE_MOTION"
+        or transition.get("sim_time_s") != float(transition_time)
+        or transition.get("reason") != "all live entry guards passed"
+    ):
+        raise EffectivePhaseEntryError(
+            "validated P10 source transition is not the exact WAIT_ENTRY-to-EXECUTE row"
+        )
+    transition_hash = _require_sha256(
+        contract.get("source_transition_row_canonical_sha256"),
+        "P10 source transition row SHA",
+    )
+    if transition_hash != _sha256_bytes(_canonical_bytes(transition)):
+        raise EffectivePhaseEntryError(
+            "validated P10 source transition row hash is invalid"
+        )
+    order = contract.get("authored_entry_guard_order")
+    evidence = contract.get("authored_entry_guard_evidence")
+    details = transition.get("details")
+    if (
+        order != list(_AUTHORED_ENTRY_GUARDS)
+        or not isinstance(evidence, list)
+        or len(evidence) != len(_AUTHORED_ENTRY_GUARDS)
+        or not isinstance(details, Mapping)
+        or details.get("guards") != evidence
+        or tuple(
+            row.get("name") for row in evidence if isinstance(row, Mapping)
+        )
+        != _AUTHORED_ENTRY_GUARDS
+    ):
+        raise EffectivePhaseEntryError(
+            "validated P10 source transition does not bind the authored guard order"
+        )
+    for row in evidence:
+        if (
+            not isinstance(row, Mapping)
+            or set(row) != {"name", "passed", "value", "source", "reason"}
+            or row.get("passed") is not True
+            or not isinstance(row.get("source"), str)
+            or not row["source"]
+            or not isinstance(row.get("reason"), str)
+        ):
+            raise EffectivePhaseEntryError(
+                "validated P10 source transition guard evidence is invalid"
+            )
+    return contract
+
+
+def _source_proven_execute_bindings(
+    snapshot_payload: Mapping[str, Any], phase: str
+) -> dict[str, Any]:
+    """Return the canonical outer-proof fields for the special P10 restore."""
+
+    contract = _validated_source_proven_execute_restore(snapshot_payload, phase)
+    if contract is None:
+        return {}
+    return {
+        "controller_restore_mode": SOURCE_PROVEN_EXECUTE_RESTORE_MODE,
+        "source_transition_verified": True,
+        "source_transition_tick": contract["source_transition_tick"],
+        "source_transition_time_s": contract["source_transition_time_s"],
+        "source_transition_row_canonical_sha256": contract[
+            "source_transition_row_canonical_sha256"
+        ],
+        "consumed_motion_tick": contract["consumed_motion_tick"],
+        "first_episode_motion_tick": contract["first_episode_motion_tick"],
+        "entry_guards_from_source_not_replayed": True,
+    }
+
+
 def _snapshot_replay_contract(
     phase_snapshot_bundle: ValidatedPhaseSnapshotBundle,
     phase: str,
@@ -311,6 +502,26 @@ def _snapshot_replay_contract(
     ):
         raise EffectivePhaseEntryError(
             f"validated phase snapshot replay window is invalid for {phase}"
+        )
+    restore_contract = _validated_source_proven_execute_restore(payload, phase)
+    source_proven_execute = restore_contract is not None
+    snapshot_restore_mode = getattr(snapshot, "controller_restore_mode", None)
+    snapshot_transition_hash = getattr(
+        snapshot, "source_transition_row_canonical_sha256", None
+    )
+    if source_proven_execute:
+        assert restore_contract is not None
+        if (
+            snapshot_restore_mode != SOURCE_PROVEN_EXECUTE_RESTORE_MODE
+            or snapshot_transition_hash
+            != restore_contract["source_transition_row_canonical_sha256"]
+        ):
+            raise EffectivePhaseEntryError(
+                "validated P10 manifest does not bind its source-proven restore"
+            )
+    elif snapshot_restore_mode is not None or snapshot_transition_hash is not None:
+        raise EffectivePhaseEntryError(
+            f"validated manifest declares an unpaired controller restore for {phase}"
         )
     target_entry_tick = source_tick + replay_steps
     hybrid = "target_entry_tick" in payload
@@ -452,6 +663,15 @@ def _snapshot_replay_contract(
                 "P09 VERIFY_RESULT to the P10 WAIT_ENTRY controller anchor from "
                 "its physical history anchor"
             )
+    elif source_proven_execute:
+        command = commands[0]
+        if (
+            command.get("source_fsm_state") != "P10"
+            or command.get("source_fsm_lifecycle") != "EXECUTE_MOTION"
+        ):
+            raise EffectivePhaseEntryError(
+                "validated source-proven P10 replay context is not EXECUTE_MOTION"
+            )
     return (
         payload,
         snapshot,
@@ -480,6 +700,10 @@ def _expected_replay_anchor_contract(
     """Recompute the backend replay-anchor proof from pinned snapshot bytes."""
 
     source_tick = int(snapshot_payload["source_tick"])
+    restore_contract = _validated_source_proven_execute_restore(
+        snapshot_payload, phase
+    )
+    source_proven_execute = restore_contract is not None
     hybrid = "target_entry_tick" in snapshot_payload
     if hybrid:
         if phase != "P10":
@@ -537,6 +761,25 @@ def _expected_replay_anchor_contract(
                 "anchor_segment": "controller_anchor_to_target_entry",
             },
         ]
+    elif source_proven_execute:
+        contexts = [
+            {
+                "source_control_physics_tick": source_tick,
+                "source_fsm_state": phase,
+                "source_fsm_lifecycle": "EXECUTE_MOTION",
+                "anchor_segment": "source_proven_execute_prime",
+            }
+        ]
+        segments = [
+            {
+                "first_source_tick": source_tick,
+                "last_source_tick": source_tick,
+                "source_replay_steps": 1,
+                "source_fsm_state": phase,
+                "source_fsm_lifecycle": "EXECUTE_MOTION",
+                "anchor_segment": "source_proven_execute_prime",
+            }
+        ]
     else:
         contexts = [
             {
@@ -576,13 +819,19 @@ def _expected_replay_anchor_contract(
         if controller_anchor_tick is None
         else target_entry_tick - controller_anchor_tick
     )
-    return {
-        "schema": "wlr50_clean.phase_snapshot_replay_anchor_contract.v2",
+    result = {
+        "schema": (
+            "wlr50_clean.phase_snapshot_replay_anchor_contract.v3"
+            if source_proven_execute
+            else "wlr50_clean.phase_snapshot_replay_anchor_contract.v2"
+        ),
         "verified": True,
         "phase": phase,
         "mode": (
             "hybrid_physical_predecessor_verify_and_controller_anchors"
             if hybrid
+            else SOURCE_PROVEN_EXECUTE_RESTORE_MODE
+            if source_proven_execute
             else "single_physical_anchor"
         ),
         "physical_anchor_tick": source_tick,
@@ -593,15 +842,29 @@ def _expected_replay_anchor_contract(
         "predecessor_verify_time_s": predecessor_verify_time_s,
         "controller_anchor_tick": controller_anchor_tick,
         "controller_anchor_time_s": controller_anchor_time_s,
-        "controller_state_anchor_tick": controller_anchor_tick,
-        "controller_state_anchor_role": "controller_anchor" if hybrid else None,
+        "controller_state_anchor_tick": (
+            source_tick if source_proven_execute else controller_anchor_tick
+        ),
+        "controller_state_anchor_role": (
+            "source_proven_transition"
+            if source_proven_execute
+            else "controller_anchor"
+            if hybrid
+            else None
+        ),
         "latch_snapshot_anchor_tick": (
-            controller_anchor_tick
+            source_tick
+            if source_proven_execute
+            else controller_anchor_tick
             if controller_anchor_tick is not None
             else source_tick
         ),
         "latch_snapshot_anchor_role": (
-            "controller_anchor" if hybrid else "physical_anchor"
+            "source_proven_transition"
+            if source_proven_execute
+            else "controller_anchor"
+            if hybrid
+            else "physical_anchor"
         ),
         "target_entry_tick": target_entry_tick,
         "target_entry_time_s": phase_entry_time_s(target_entry_tick),
@@ -628,6 +891,30 @@ def _expected_replay_anchor_contract(
         "source_replay_context_segments": segments,
         "all_source_replay_contexts_verified": True,
     }
+    if source_proven_execute:
+        assert restore_contract is not None
+        result.update(
+            {
+                "controller_restore_mode": SOURCE_PROVEN_EXECUTE_RESTORE_MODE,
+                "controller_restore_contract": dict(restore_contract),
+                "source_transition_verified": True,
+                "source_transition_tick": restore_contract[
+                    "source_transition_tick"
+                ],
+                "source_transition_time_s": restore_contract[
+                    "source_transition_time_s"
+                ],
+                "source_transition_row_canonical_sha256": restore_contract[
+                    "source_transition_row_canonical_sha256"
+                ],
+                "consumed_motion_tick": restore_contract["consumed_motion_tick"],
+                "first_episode_motion_tick": restore_contract[
+                    "first_episode_motion_tick"
+                ],
+                "entry_guards_from_source_not_replayed": True,
+            }
+        )
+    return result
 
 
 def _binary64_hex(value: float) -> str:
@@ -1296,8 +1583,13 @@ def _validate_bound_artifact(
         raise EffectivePhaseEntryError(f"run manifest binding differs for {label}")
 
 
-def _validate_controller_entry_guard(value: Any, *, phase: str) -> None:
-    if not isinstance(value, Mapping) or set(value) != {
+def _validate_controller_entry_guard(
+    value: Any, *, phase: str, snapshot_payload: Mapping[str, Any]
+) -> None:
+    restore_contract = _validated_source_proven_execute_restore(
+        snapshot_payload, phase
+    )
+    expected_fields = {
         "schema",
         "verified",
         "phase",
@@ -1307,11 +1599,41 @@ def _validate_controller_entry_guard(value: Any, *, phase: str) -> None:
         "authored_entry_guard_names",
         "entry_guard_evidence",
         "p10_signed_velocity_alignment",
-    }:
+    }
+    if restore_contract is not None:
+        expected_fields = {
+            "schema",
+            "verified",
+            "phase",
+            "lifecycle",
+            "nonterminal",
+            "unblocked",
+            "mode",
+            "source_transition_verified",
+            "source_transition_tick",
+            "source_transition_time_s",
+            "source_transition_row_canonical_sha256",
+            "authored_entry_guard_names",
+            "entry_guard_evidence",
+            "p10_signed_velocity_alignment",
+            "entry_guards_from_source_not_replayed",
+            "new_entry_event_count",
+            "consumed_motion_tick",
+            "first_episode_motion_tick",
+            "motion_tick_after_first_episode_frame",
+            "completion_guards_remain_pending",
+            "completion_guard_names",
+        }
+    if not isinstance(value, Mapping) or set(value) != expected_fields:
         raise EffectivePhaseEntryError("calibration controller entry proof is malformed")
     evidence = value.get("entry_guard_evidence")
     if (
-        value.get("schema") != "wlr50_clean.phase_effective_entry_controller.v1"
+        value.get("schema")
+        != (
+            "wlr50_clean.phase_effective_entry_controller.v2"
+            if restore_contract is not None
+            else "wlr50_clean.phase_effective_entry_controller.v1"
+        )
         or value.get("verified") is not True
         or value.get("phase") != phase
         or value.get("lifecycle") != "EXECUTE_MOTION"
@@ -1322,6 +1644,34 @@ def _validate_controller_entry_guard(value: Any, *, phase: str) -> None:
         or len(evidence) != len(_AUTHORED_ENTRY_GUARDS)
     ):
         raise EffectivePhaseEntryError("calibration controller entry guard did not pass")
+    if restore_contract is not None and (
+        value.get("mode")
+        != SOURCE_PROVEN_EXECUTE_RESTORE_MODE
+        or value.get("source_transition_verified") is not True
+        or value.get("source_transition_tick")
+        != restore_contract["source_transition_tick"]
+        or value.get("source_transition_time_s")
+        != restore_contract["source_transition_time_s"]
+        or value.get("source_transition_row_canonical_sha256")
+        != restore_contract["source_transition_row_canonical_sha256"]
+        or value.get("consumed_motion_tick")
+        != restore_contract["consumed_motion_tick"]
+        or value.get("first_episode_motion_tick")
+        != restore_contract["first_episode_motion_tick"]
+        or value.get("motion_tick_after_first_episode_frame")
+        != restore_contract["first_episode_motion_tick"] + 1
+        or value.get("entry_guards_from_source_not_replayed") is not True
+        or value.get("new_entry_event_count") != 0
+        or value.get("completion_guards_remain_pending") is not True
+        or value.get("completion_guard_names")
+        != list(_P10_COMPLETION_GUARDS)
+        or value.get("authored_entry_guard_names")
+        != restore_contract["authored_entry_guard_order"]
+        or evidence != restore_contract["authored_entry_guard_evidence"]
+    ):
+        raise EffectivePhaseEntryError(
+            "P10 controller proof is not bound to the source-proven EXECUTE transition"
+        )
     if tuple(
         row.get("name") for row in evidence if isinstance(row, Mapping)
     ) != _AUTHORED_ENTRY_GUARDS:
@@ -1852,6 +2202,45 @@ def _validated_probe_attempt(
         controller_anchor_tick,
         controller_anchor_time_s,
     ) = _snapshot_replay_contract(phase_snapshot_bundle, phase)
+    restore_bindings = _source_proven_execute_bindings(snapshot_payload, phase)
+    calibration_proof_fields = {
+        "schema",
+        "artifact_role",
+        "verified",
+        "calibration_only",
+        "phase",
+        "source_tick",
+        "physical_anchor_tick",
+        "physical_anchor_time_s",
+        "predecessor_verify_tick",
+        "predecessor_verify_time_s",
+        "controller_anchor_tick",
+        "controller_anchor_time_s",
+        "target_entry_tick",
+        "target_entry_time_s",
+        "source_replay_steps",
+        "physical_to_predecessor_verify_replay_steps",
+        "predecessor_verify_to_controller_replay_steps",
+        "physical_to_controller_replay_steps",
+        "controller_to_target_replay_steps",
+        "hybrid_physical_controller_anchor",
+        "replay_anchor_contract",
+        "effective_entry_offset_s",
+        "phase_snapshot_bundle_sha256",
+        "source_snapshot_post_prime_diagnostic",
+        "failures",
+        *restore_bindings,
+    }
+    try:
+        _validate_controller_entry_guard(
+            state.get("entry_guard_contract"),
+            phase=phase,
+            snapshot_payload=snapshot_payload,
+        )
+    except EffectivePhaseEntryError:
+        controller_entry_proof_valid = False
+    else:
+        controller_entry_proof_valid = True
     replay_failures = _replay_evidence_failures(
         state,
         snapshot_payload,
@@ -1962,6 +2351,7 @@ def _validated_probe_attempt(
         and attempt.get("episode_sensor_tick_offset") == target_entry_tick
         and attempt.get("effective_entry_offset_s")
         == phase_entry_time_s(replay_steps)
+        and all(attempt.get(name) == expected for name, expected in restore_bindings.items())
         and attempt.get("source_control_physics_ticks") == list(control_ticks)
         and attempt.get("source_command_row_canonical_sha256s")
         == [row["source_command_row_canonical_sha256"] for row in source_commands]
@@ -1993,7 +2383,8 @@ def _validated_probe_attempt(
         and clocks.get("controller_frame_committed") is True
         and clocks.get("controller_frame_physics_tick") == 0
         and clocks.get("controller_frame_state_id") == phase
-        and clocks.get("controller_history_length") == 1
+        and clocks.get("controller_history_length")
+        == (0 if restore_bindings else 1)
         and clocks.get("controller_internal_physics_tick") == 1
         and clocks.get("controller_last_simulation_time_s") == 0.0
         and clocks.get("controller_state_id") == phase
@@ -2032,34 +2423,7 @@ def _validated_probe_attempt(
         }
         and all(type(value) is bool and value is False for value in safety_flags.values())
         and isinstance(effective_proof, Mapping)
-        and set(effective_proof)
-        == {
-            "schema",
-            "artifact_role",
-            "verified",
-            "calibration_only",
-            "phase",
-            "source_tick",
-            "physical_anchor_tick",
-            "physical_anchor_time_s",
-            "predecessor_verify_tick",
-            "predecessor_verify_time_s",
-            "controller_anchor_tick",
-            "controller_anchor_time_s",
-            "target_entry_tick",
-            "target_entry_time_s",
-            "source_replay_steps",
-            "physical_to_predecessor_verify_replay_steps",
-            "predecessor_verify_to_controller_replay_steps",
-            "physical_to_controller_replay_steps",
-            "controller_to_target_replay_steps",
-            "hybrid_physical_controller_anchor",
-            "replay_anchor_contract",
-            "effective_entry_offset_s",
-            "phase_snapshot_bundle_sha256",
-            "source_snapshot_post_prime_diagnostic",
-            "failures",
-        }
+        and set(effective_proof) == calibration_proof_fields
         and effective_proof.get("schema") == CALIBRATION_LIVE_PROOF_SCHEMA
         and effective_proof.get("artifact_role") == CALIBRATION_ARTIFACT_ROLE
         and effective_proof.get("verified") is True
@@ -2102,8 +2466,13 @@ def _validated_probe_attempt(
         == phase_entry_time_s(replay_steps)
         and effective_proof.get("phase_snapshot_bundle_sha256")
         == phase_snapshot_bundle.bundle_sha256
+        and all(
+            effective_proof.get(name) == expected
+            for name, expected in restore_bindings.items()
+        )
         and effective_proof.get("source_snapshot_post_prime_diagnostic") == comparison
         and effective_proof.get("failures") == []
+        and controller_entry_proof_valid
     )
     if scalar_failures or replay_failures or not boolean_contract:
         raise EffectivePhaseEntryError(
@@ -2116,7 +2485,11 @@ def _validated_probe_attempt(
         != "wlr50_clean.phase_snapshot_live_comparison.v2"
     ):
         raise EffectivePhaseEntryError("calibration lacks post-prime comparison")
-    _validate_controller_entry_guard(state.get("entry_guard_contract"), phase=phase)
+    _validate_controller_entry_guard(
+        state.get("entry_guard_contract"),
+        phase=phase,
+        snapshot_payload=snapshot_payload,
+    )
     raw = comparison.get("raw_physx_contacts")
     if (
         not isinstance(raw, Mapping)
@@ -2185,6 +2558,20 @@ def _assert_replay_attempts_bit_identical(
 ) -> None:
     """Require the fresh/reused reset to execute the same replay recipe."""
 
+    special_restore = bool(
+        fresh.get("controller_restore_mode") is not None
+        or reused.get("controller_restore_mode") is not None
+    )
+    source_restore_fields = (
+        "controller_restore_mode",
+        "source_transition_verified",
+        "source_transition_tick",
+        "source_transition_time_s",
+        "source_transition_row_canonical_sha256",
+        "consumed_motion_tick",
+        "first_episode_motion_tick",
+        "entry_guards_from_source_not_replayed",
+    )
     attempt_fields = (
         "source_tick",
         "predecessor_verify_tick",
@@ -2204,6 +2591,7 @@ def _assert_replay_attempts_bit_identical(
         "physics_steps_during_reset",
         "post_prime_contact_sensor_read_count",
         "extra_physics_priming_steps",
+        *(source_restore_fields if special_restore else ()),
     )
     state_fields = (
         "source_replay_steps",
@@ -2246,6 +2634,7 @@ def _assert_replay_attempts_bit_identical(
         "source_replay_guard_updates_applied",
         "source_replay_safety_checks",
         "all_source_replay_steps_safe",
+        *(("entry_guard_contract",) if special_restore else ()),
     )
     if any(fresh.get(name) != reused.get(name) for name in attempt_fields):
         raise EffectivePhaseEntryError(
@@ -2366,7 +2755,7 @@ def _capture_calibration_run(
     attempts = probe.get("attempts")
     if phase in PHASE_IDS:
         (
-            _snapshot_payload,
+            expected_snapshot_payload,
             _snapshot_file,
             expected_replay_steps,
             expected_target_entry_tick,
@@ -2376,6 +2765,9 @@ def _capture_calibration_run(
             expected_controller_anchor_tick,
             expected_controller_anchor_time_s,
         ) = _snapshot_replay_contract(phase_snapshot_bundle, str(phase))
+        expected_restore_bindings = _source_proven_execute_bindings(
+            expected_snapshot_payload, str(phase)
+        )
     else:
         expected_replay_steps = None
         expected_target_entry_tick = None
@@ -2384,6 +2776,7 @@ def _capture_calibration_run(
         expected_predecessor_verify_time_s = None
         expected_controller_anchor_tick = None
         expected_controller_anchor_time_s = None
+        expected_restore_bindings = {}
     if (
         probe.get("schema") != PROBE_SCHEMA
         or probe.get("artifact_role") != CALIBRATION_ARTIFACT_ROLE
@@ -2412,6 +2805,14 @@ def _capture_calibration_run(
         != "derived_only_from_validated_phase_snapshot"
         or probe.get("source_replay_steps_by_phase")
         != {phase: expected_replay_steps}
+        or probe.get("controller_restore_modes_by_phase")
+        != {phase: expected_restore_bindings.get("controller_restore_mode")}
+        or probe.get("source_transition_hashes_by_phase")
+        != {
+            phase: expected_restore_bindings.get(
+                "source_transition_row_canonical_sha256"
+            )
+        }
         or probe.get("predecessor_verify_anchors_by_phase")
         != {
             phase: (
@@ -2511,6 +2912,7 @@ def _capture_calibration_run(
         "effective_component_state": component_state,
         "effective_component_state_binary64_hex": component_state_binary,
         "raw_contacts": contacts,
+        **expected_restore_bindings,
     }
     entry_payload["entry_sha256"] = _sha256_bytes(_canonical_bytes(entry_payload))
     calibration_record = {
@@ -2902,7 +3304,21 @@ def _validate_contract_payload(
         row = phases[phase]
         if not isinstance(row, Mapping):
             raise EffectivePhaseEntryError(f"effective entry {phase} is invalid")
-        if set(row) != {
+        (
+            expected_snapshot_payload,
+            snapshot_file,
+            expected_replay_steps,
+            expected_target_entry_tick,
+            _control_ticks,
+            expected_predecessor_verify_tick,
+            expected_predecessor_verify_time_s,
+            expected_controller_anchor_tick,
+            expected_controller_anchor_time_s,
+        ) = _snapshot_replay_contract(expected_snapshot_bundle, phase)
+        expected_restore_bindings = _source_proven_execute_bindings(
+            expected_snapshot_payload, phase
+        )
+        expected_entry_fields = {
             "schema",
             "phase",
             "source_tick",
@@ -2920,7 +3336,9 @@ def _validate_contract_payload(
             "effective_component_state_binary64_hex",
             "raw_contacts",
             "entry_sha256",
-        }:
+            *expected_restore_bindings,
+        }
+        if set(row) != expected_entry_fields:
             raise EffectivePhaseEntryError(
                 f"effective entry fields are incomplete or unexpected for {phase}"
             )
@@ -2928,17 +3346,6 @@ def _validate_contract_payload(
         entry_hash = _require_sha256(unhashed.pop("entry_sha256", None), f"{phase}.entry_sha256")
         if _sha256_bytes(_canonical_bytes(unhashed)) != entry_hash:
             raise EffectivePhaseEntryError(f"effective entry hash mismatch for {phase}")
-        (
-            _snapshot_payload,
-            snapshot_file,
-            expected_replay_steps,
-            expected_target_entry_tick,
-            _control_ticks,
-            expected_predecessor_verify_tick,
-            expected_predecessor_verify_time_s,
-            expected_controller_anchor_tick,
-            expected_controller_anchor_time_s,
-        ) = _snapshot_replay_contract(expected_snapshot_bundle, phase)
         if (
             row.get("schema") != ENTRY_SCHEMA
             or row.get("phase") != phase
@@ -2960,6 +3367,10 @@ def _validate_contract_payload(
             != phase_entry_time_s(expected_replay_steps)
             or row.get("calibration_probe_file_sha256")
             != calibration_probe_hashes[phase]
+            or any(
+                row.get(name) != expected
+                for name, expected in expected_restore_bindings.items()
+            )
         ):
             raise EffectivePhaseEntryError(f"effective entry identity is invalid for {phase}")
         values, binary = _fingerprint(row.get("post_prime_fingerprint"))
@@ -3333,6 +3744,18 @@ def validate_effective_phase_entry_comparison(
         "failures": list(dict.fromkeys(failures)),
         "verified": not failures,
     }
+    if entry.get("controller_restore_mode") is not None:
+        for name in (
+            "controller_restore_mode",
+            "source_transition_verified",
+            "source_transition_tick",
+            "source_transition_time_s",
+            "source_transition_row_canonical_sha256",
+            "consumed_motion_tick",
+            "first_episode_motion_tick",
+            "entry_guards_from_source_not_replayed",
+        ):
+            proof[name] = entry.get(name)
     if failures:
         raise EffectivePhaseEntryError(
             "effective phase entry does not match calibrated contract: "
@@ -3352,6 +3775,8 @@ __all__ = [
     "EffectivePhaseEntryError",
     "FINGERPRINT_FIELDS",
     "PHASE_IDS",
+    "SOURCE_PROVEN_EXECUTE_RESTORE_MODE",
+    "SOURCE_PROVEN_EXECUTE_RESTORE_SCHEMA",
     "ValidatedEffectivePhaseEntryContract",
     "assert_effective_phase_entry_contract_unchanged",
     "binary64_ulp_distance",

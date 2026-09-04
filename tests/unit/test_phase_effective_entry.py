@@ -205,6 +205,81 @@ def _entry_guard(phase: str):
     }
 
 
+def _source_proven_p10_payload(snapshot_bundle):
+    """Build a minimal source-authenticated P10 payload at ticks 7794->7795."""
+
+    payload, source_entry = load_validated_phase_snapshot_payload(
+        snapshot_bundle, "P02"
+    )
+    payload = copy.deepcopy(payload)
+    source_tick = 7794
+    command = copy.deepcopy(payload["source_commands"][0])
+    command["control_physics_tick"] = source_tick
+    command["source_fsm_state"] = "P10"
+    command["source_fsm_lifecycle"] = "EXECUTE_MOTION"
+    payload.update(
+        {
+            "fsm_state": "P10",
+            "fsm_lifecycle": "EXECUTE_MOTION",
+            "source_tick": source_tick,
+            "source_time_s": source_tick / 120.0,
+            "source_replay_steps": 1,
+            "source_commands": [command],
+            "source_command": command,
+            "controller_restore_mode": (
+                effective_entry_module.SOURCE_PROVEN_EXECUTE_RESTORE_MODE
+            ),
+        }
+    )
+    guard = _entry_guard("P10")
+    transition = {
+        "sim_time_s": source_tick / 120.0,
+        "state_id": "P10",
+        "from_lifecycle": "WAIT_ENTRY",
+        "to_lifecycle": "EXECUTE_MOTION",
+        "reason": "all live entry guards passed",
+        "details": {"guards": copy.deepcopy(guard["entry_guard_evidence"])},
+    }
+    transition_sha = hashlib.sha256(
+        effective_entry_module._canonical_bytes(transition)
+    ).hexdigest()
+    restore = {
+        "schema": effective_entry_module.SOURCE_PROVEN_EXECUTE_RESTORE_SCHEMA,
+        "source_transition_tick": source_tick,
+        "source_transition_time_s": source_tick / 120.0,
+        "source_transition_row": transition,
+        "source_transition_row_canonical_sha256": transition_sha,
+        "authored_entry_guard_order": list(
+            effective_entry_module._AUTHORED_ENTRY_GUARDS
+        ),
+        "authored_entry_guard_evidence": copy.deepcopy(
+            guard["entry_guard_evidence"]
+        ),
+        "prime_command_tick": source_tick,
+        "effective_observation_tick": source_tick + 1,
+        "consumed_motion_tick": 0,
+        "first_episode_motion_tick": 1,
+    }
+    payload["controller_restore_contract"] = restore
+    entry = SimpleNamespace(
+        source_tick=source_tick,
+        source_replay_steps=1,
+        target_entry_tick=None,
+        predecessor_verify_tick=None,
+        predecessor_verify_time_s=None,
+        controller_anchor_tick=None,
+        controller_anchor_time_s=None,
+        controller_restore_mode=(
+            effective_entry_module.SOURCE_PROVEN_EXECUTE_RESTORE_MODE
+        ),
+        source_transition_row_canonical_sha256=transition_sha,
+        snapshot_path=source_entry.snapshot_path,
+        file_sha256=source_entry.file_sha256,
+        state_sha256=source_entry.state_sha256,
+    )
+    return payload, entry, guard
+
+
 def _adaptive_source_replay_evidence(command, index: int, previous_post: str | None):
     """Build one self-consistent live-feedback-adaptive replay proof row."""
 
@@ -356,6 +431,9 @@ def _calibration_attempt(contract, snapshot_bundle, phase: str, lifecycle: str):
     predecessor_verify_time_s = snapshot_payload.get("predecessor_verify_time_s")
     controller_anchor_tick = snapshot_payload.get("controller_anchor_tick")
     controller_anchor_time_s = snapshot_payload.get("controller_anchor_time_s")
+    restore_bindings = effective_entry_module._source_proven_execute_bindings(
+        snapshot_payload, phase
+    )
     source_commands = snapshot_payload["source_commands"]
     control_ticks = [row["control_physics_tick"] for row in source_commands]
     replay_anchor_contract = effective_entry_module._expected_replay_anchor_contract(
@@ -406,6 +484,7 @@ def _calibration_attempt(contract, snapshot_bundle, phase: str, lifecycle: str):
         "phase_snapshot_bundle_sha256": snapshot_bundle.bundle_sha256,
         "source_snapshot_post_prime_diagnostic": comparison,
         "failures": [],
+        **restore_bindings,
     }
     source_actuation_matches = []
     source_mapper_post_states = []
@@ -437,6 +516,43 @@ def _calibration_attempt(contract, snapshot_bundle, phase: str, lifecycle: str):
         }
         for index, command in enumerate(source_commands)
     ]
+    entry_guard = _entry_guard(phase)
+    if restore_bindings:
+        restore = snapshot_payload["controller_restore_contract"]
+        evidence = copy.deepcopy(restore["authored_entry_guard_evidence"])
+        alignment = next(
+            row["value"]["rear_right_knee_velocity"]
+            for row in evidence
+            if row["name"] == "reference_entry_compatible"
+        )
+        entry_guard = {
+            "schema": "wlr50_clean.phase_effective_entry_controller.v2",
+            "verified": True,
+            "phase": phase,
+            "lifecycle": "EXECUTE_MOTION",
+            "nonterminal": True,
+            "unblocked": True,
+            "mode": "source_proven_execute_after_prime",
+            "source_transition_verified": True,
+            "source_transition_tick": restore["source_transition_tick"],
+            "source_transition_time_s": restore["source_transition_time_s"],
+            "source_transition_row_canonical_sha256": restore[
+                "source_transition_row_canonical_sha256"
+            ],
+            "authored_entry_guard_names": restore["authored_entry_guard_order"],
+            "entry_guard_evidence": evidence,
+            "p10_signed_velocity_alignment": alignment,
+            "entry_guards_from_source_not_replayed": True,
+            "new_entry_event_count": 0,
+            "consumed_motion_tick": 0,
+            "first_episode_motion_tick": 1,
+            "motion_tick_after_first_episode_frame": 2,
+            "completion_guards_remain_pending": True,
+            "completion_guard_names": [
+                "motion_endpoint_issued",
+                "rl_workspace_geometry",
+            ],
+        }
     state = {
         "state_write_count": 1,
         "root_pose_writes": 1,
@@ -556,7 +672,7 @@ def _calibration_attempt(contract, snapshot_bundle, phase: str, lifecycle: str):
                 "wheel_only_climb": False,
             },
         },
-        "entry_guard_contract": _entry_guard(phase),
+        "entry_guard_contract": entry_guard,
         "source_snapshot_post_prime_diagnostic": comparison,
         "effective_entry_contract": proof,
     }
@@ -575,6 +691,7 @@ def _calibration_attempt(contract, snapshot_bundle, phase: str, lifecycle: str):
         "episode_sensor_tick_offset": target_entry_tick,
         "source_replay_steps": replay_steps,
         "effective_entry_offset_s": replay_steps / 120.0,
+        **restore_bindings,
         "source_control_physics_ticks": control_ticks,
         "source_command_row_canonical_sha256s": [
             row["source_command_row_canonical_sha256"] for row in source_commands
@@ -614,7 +731,7 @@ def _calibration_attempt(contract, snapshot_bundle, phase: str, lifecycle: str):
             "controller_frame_committed": True,
             "controller_frame_physics_tick": 0,
             "controller_frame_state_id": phase,
-            "controller_history_length": 1,
+            "controller_history_length": 0 if restore_bindings else 1,
             "controller_internal_physics_tick": 1,
             "controller_last_simulation_time_s": 0.0,
             "controller_state_id": phase,
@@ -650,7 +767,7 @@ def test_legacy_contract_is_only_a_comparison_fixture(contract) -> None:
     assert contract.contract_bytes.endswith(b"\n")
 
 
-def test_snapshot_replay_contract_binds_p10_physical_predecessor_and_controller_anchors(
+def test_snapshot_replay_contract_binds_p10_source_proven_execute_restore(
     snapshot_bundle,
 ) -> None:
     (
@@ -665,22 +782,18 @@ def test_snapshot_replay_contract_binds_p10_physical_predecessor_and_controller_
         controller_anchor_time_s,
     ) = effective_entry_module._snapshot_replay_contract(snapshot_bundle, "P10")
 
-    assert snapshot.source_tick == 7560
-    assert predecessor_verify_tick == 7776
-    assert predecessor_verify_time_s == 7776 / 120.0
-    assert controller_anchor_tick == 7784
-    assert controller_anchor_time_s == 7784 / 120.0
-    assert target_entry_tick == 7794
-    assert replay_steps == 234
-    assert control_ticks == tuple(range(7560, 7794))
+    assert snapshot.source_tick == 7794
+    assert predecessor_verify_tick is None
+    assert predecessor_verify_time_s is None
+    assert controller_anchor_tick is None
+    assert controller_anchor_time_s is None
+    assert target_entry_tick == 7795
+    assert replay_steps == 1
+    assert control_ticks == (7794,)
     assert [
         (row["source_fsm_state"], row["source_fsm_lifecycle"])
         for row in payload["source_commands"]
-    ] == [
-        *(("P09", "EXECUTE_MOTION") for _ in range(216)),
-        *(("P09", "VERIFY_RESULT") for _ in range(8)),
-        *(("P10", "WAIT_ENTRY") for _ in range(10)),
-    ]
+    ] == [("P10", "EXECUTE_MOTION")]
     anchor_contract = effective_entry_module._expected_replay_anchor_contract(
         payload,
         "P10",
@@ -692,16 +805,18 @@ def test_snapshot_replay_contract_binds_p10_physical_predecessor_and_controller_
         controller_anchor_tick=controller_anchor_tick,
         controller_anchor_time_s=controller_anchor_time_s,
     )
-    assert anchor_contract["schema"].endswith(".v2")
-    assert anchor_contract["source_replay_context_transition_ticks"] == [7776, 7784]
+    assert anchor_contract["schema"].endswith(".v3")
+    assert anchor_contract["mode"] == "source_proven_execute_after_prime"
+    assert anchor_contract["source_replay_context_transition_ticks"] == []
     assert [
         (row["anchor_segment"], row["source_replay_steps"])
         for row in anchor_contract["source_replay_context_segments"]
     ] == [
-            ("physical_anchor_to_predecessor_verify", 216),
-        ("predecessor_verify_to_controller_anchor", 8),
-        ("controller_anchor_to_target_entry", 10),
+        ("source_proven_execute_prime", 1),
     ]
+    assert anchor_contract["source_transition_tick"] == 7794
+    assert anchor_contract["consumed_motion_tick"] == 0
+    assert anchor_contract["first_episode_motion_tick"] == 1
 
     (
         _payload,
@@ -722,7 +837,7 @@ def test_snapshot_replay_contract_binds_p10_physical_predecessor_and_controller_
     assert ordinary_controller_time is None
 
 
-def test_nonhybrid_p10_reuses_the_single_anchor_contract(
+def test_p10_without_explicit_source_proven_restore_is_rejected(
     monkeypatch, snapshot_bundle
 ) -> None:
     payload, entry = load_validated_phase_snapshot_payload(snapshot_bundle, "P02")
@@ -743,35 +858,166 @@ def test_nonhybrid_p10_reuses_the_single_anchor_contract(
         lambda _bundle, _phase: (payload, single_entry),
     )
 
+    with pytest.raises(EffectivePhaseEntryError, match="requires the source-proven"):
+        effective_entry_module._snapshot_replay_contract(snapshot_bundle, "P10")
+
+
+def test_p10_source_proven_execute_restore_binds_transition_and_motion_handoff(
+    monkeypatch, snapshot_bundle
+) -> None:
+    payload, entry, source_guard = _source_proven_p10_payload(snapshot_bundle)
+    monkeypatch.setattr(
+        effective_entry_module,
+        "load_validated_phase_snapshot_payload",
+        lambda _bundle, _phase: (payload, entry),
+    )
+
     (
-        snapshot_payload,
-        _snapshot_entry,
+        loaded,
+        _entry,
         replay_steps,
-        target_entry_tick,
+        effective_tick,
         control_ticks,
-        predecessor_verify_tick,
-        predecessor_verify_time_s,
-        controller_anchor_tick,
-        controller_anchor_time_s,
+        predecessor_tick,
+        predecessor_time,
+        controller_tick,
+        controller_time,
     ) = effective_entry_module._snapshot_replay_contract(snapshot_bundle, "P10")
     proof = effective_entry_module._expected_replay_anchor_contract(
-        snapshot_payload,
+        loaded,
         "P10",
         replay_steps=replay_steps,
-        target_entry_tick=target_entry_tick,
+        target_entry_tick=effective_tick,
         control_ticks=control_ticks,
-        predecessor_verify_tick=predecessor_verify_tick,
-        predecessor_verify_time_s=predecessor_verify_time_s,
-        controller_anchor_tick=controller_anchor_tick,
-        controller_anchor_time_s=controller_anchor_time_s,
+        predecessor_verify_tick=predecessor_tick,
+        predecessor_verify_time_s=predecessor_time,
+        controller_anchor_tick=controller_tick,
+        controller_anchor_time_s=controller_time,
     )
 
     assert replay_steps == 1
-    assert predecessor_verify_tick is None
-    assert controller_anchor_tick is None
-    assert proof["mode"] == "single_physical_anchor"
+    assert control_ticks == (7794,)
+    assert effective_tick == 7795
+    assert predecessor_tick is predecessor_time is None
+    assert controller_tick is controller_time is None
+    assert proof["schema"].endswith(".v3")
+    assert proof["mode"] == "source_proven_execute_after_prime"
     assert proof["hybrid_physical_controller_anchor"] is False
-    assert proof["target_entry_tick_authored"] is False
+    assert proof["controller_state_anchor_tick"] == 7794
+    assert proof["controller_state_anchor_role"] == "source_proven_transition"
+    assert proof["source_replay_fsm_contexts"] == [
+        {
+            "source_control_physics_tick": 7794,
+            "source_fsm_state": "P10",
+            "source_fsm_lifecycle": "EXECUTE_MOTION",
+            "anchor_segment": "source_proven_execute_prime",
+        }
+    ]
+    assert proof["controller_restore_contract"] == payload[
+        "controller_restore_contract"
+    ]
+    assert proof["source_transition_verified"] is True
+    assert proof["consumed_motion_tick"] == 0
+    assert proof["first_episode_motion_tick"] == 1
+    assert proof["entry_guards_from_source_not_replayed"] is True
+
+    controller_proof = {
+        **source_guard,
+        "schema": "wlr50_clean.phase_effective_entry_controller.v2",
+        "mode": "source_proven_execute_after_prime",
+        "source_transition_verified": True,
+        "source_transition_tick": 7794,
+        "source_transition_time_s": 7794 / 120.0,
+        "source_transition_row_canonical_sha256": payload[
+            "controller_restore_contract"
+        ]["source_transition_row_canonical_sha256"],
+        "consumed_motion_tick": 0,
+        "first_episode_motion_tick": 1,
+        "entry_guards_from_source_not_replayed": True,
+        "new_entry_event_count": 0,
+        "motion_tick_after_first_episode_frame": 2,
+        "completion_guards_remain_pending": True,
+        "completion_guard_names": [
+            "motion_endpoint_issued",
+            "rl_workspace_geometry",
+        ],
+    }
+    # There is intentionally no locally emitted WAIT_ENTRY->EXECUTE event in
+    # this proof.  The exact immutable source row is the guard authority.
+    effective_entry_module._validate_controller_entry_guard(
+        controller_proof,
+        phase="P10",
+        snapshot_payload=payload,
+    )
+
+
+@pytest.mark.parametrize(
+    "tamper",
+    (
+        "transition_hash",
+        "transition_lifecycle",
+        "transition_reason",
+        "guard_order",
+        "guard_evidence",
+        "prime_tick",
+        "effective_tick",
+        "consumed_tick",
+        "next_tick",
+        "command_lifecycle",
+        "legacy_anchor",
+        "manifest_mode",
+        "manifest_hash",
+    ),
+)
+def test_p10_source_proven_execute_restore_tamper_fails_closed(
+    monkeypatch, snapshot_bundle, tamper: str
+) -> None:
+    payload, entry, _guard = _source_proven_p10_payload(snapshot_bundle)
+    restore = payload["controller_restore_contract"]
+    if tamper == "transition_hash":
+        restore["source_transition_row_canonical_sha256"] = "0" * 64
+    elif tamper == "transition_lifecycle":
+        restore["source_transition_row"]["to_lifecycle"] = "WAIT_ENTRY"
+    elif tamper == "transition_reason":
+        restore["source_transition_row"]["reason"] = "some guards passed"
+        transition_sha = hashlib.sha256(
+            effective_entry_module._canonical_bytes(
+                restore["source_transition_row"]
+            )
+        ).hexdigest()
+        restore["source_transition_row_canonical_sha256"] = transition_sha
+        entry.source_transition_row_canonical_sha256 = transition_sha
+    elif tamper == "guard_order":
+        restore["authored_entry_guard_order"] = list(reversed(
+            restore["authored_entry_guard_order"]
+        ))
+    elif tamper == "guard_evidence":
+        restore["authored_entry_guard_evidence"][0]["passed"] = False
+    elif tamper == "prime_tick":
+        restore["prime_command_tick"] += 1
+    elif tamper == "effective_tick":
+        restore["effective_observation_tick"] += 1
+    elif tamper == "consumed_tick":
+        restore["consumed_motion_tick"] = 1
+    elif tamper == "next_tick":
+        restore["first_episode_motion_tick"] = 0
+    elif tamper == "command_lifecycle":
+        payload["source_commands"][0]["source_fsm_lifecycle"] = "WAIT_ENTRY"
+        payload["source_command"] = payload["source_commands"][0]
+    elif tamper == "legacy_anchor":
+        payload["target_entry_tick"] = 7795
+    elif tamper == "manifest_mode":
+        entry.controller_restore_mode = None
+    else:
+        entry.source_transition_row_canonical_sha256 = "0" * 64
+    monkeypatch.setattr(
+        effective_entry_module,
+        "load_validated_phase_snapshot_payload",
+        lambda _bundle, _phase: (payload, entry),
+    )
+
+    with pytest.raises(EffectivePhaseEntryError):
+        effective_entry_module._snapshot_replay_contract(snapshot_bundle, "P10")
 
 
 def test_calibration_attempt_uses_passed_controller_entry_and_post_prime_diagnostic(
@@ -795,15 +1041,18 @@ def test_calibration_attempt_uses_passed_controller_entry_and_post_prime_diagnos
     assert comparison["maximum_errors"] != attempt["snapshot_state_write"][
         "priming_observation"
     ]["maximum_errors"]
-    assert attempt["source_tick"] == 7560
-    assert attempt["predecessor_verify_tick"] == 7776
-    assert attempt["predecessor_verify_time_s"] == 7776 / 120.0
-    assert attempt["controller_anchor_tick"] == 7784
-    assert attempt["controller_anchor_time_s"] == 7784 / 120.0
-    assert attempt["source_replay_steps"] == 234
-    assert attempt["target_entry_tick"] - attempt["source_tick"] == 234
-    assert len(attempt["snapshot_state_write"]["prime_atomic_writes"]) == 234
-    assert attempt["clocks"]["controller_history_length"] == 1
+    assert attempt["source_tick"] == 7794
+    assert attempt["predecessor_verify_tick"] is None
+    assert attempt["predecessor_verify_time_s"] is None
+    assert attempt["controller_anchor_tick"] is None
+    assert attempt["controller_anchor_time_s"] is None
+    assert attempt["source_replay_steps"] == 1
+    assert attempt["target_entry_tick"] - attempt["source_tick"] == 1
+    assert len(attempt["snapshot_state_write"]["prime_atomic_writes"]) == 1
+    assert attempt["clocks"]["controller_history_length"] == 0
+    assert attempt["controller_restore_mode"] == (
+        "source_proven_execute_after_prime"
+    )
 
 
 @pytest.mark.parametrize(
@@ -968,19 +1217,19 @@ def test_fresh_reused_replay_proofs_must_be_identical(
     reused = _calibration_attempt(contract, snapshot_bundle, "P10", "reused_scene")
     effective_entry_module._assert_replay_attempts_bit_identical(fresh, reused)
 
-    reused["predecessor_verify_tick"] += 1
+    reused["source_transition_tick"] += 1
     with pytest.raises(EffectivePhaseEntryError, match="attempt metadata differs"):
         effective_entry_module._assert_replay_attempts_bit_identical(fresh, reused)
 
     reused = _calibration_attempt(contract, snapshot_bundle, "P10", "reused_scene")
-    reused["snapshot_state_write"][
-        "predecessor_verify_to_controller_replay_steps"
-    ] += 1
+    reused["snapshot_state_write"]["replay_anchor_contract"][
+        "source_transition_verified"
+    ] = False
     with pytest.raises(EffectivePhaseEntryError, match="replay proof differs"):
         effective_entry_module._assert_replay_attempts_bit_identical(fresh, reused)
 
     reused = _calibration_attempt(contract, snapshot_bundle, "P10", "reused_scene")
-    reused["snapshot_state_write"]["source_mapper_post_states"][3][
+    reused["snapshot_state_write"]["source_mapper_post_states"][0][
         "historical_post_field_matches"
     ]["feedback_tick"] = True
     with pytest.raises(EffectivePhaseEntryError, match="replay proof differs"):
@@ -990,42 +1239,47 @@ def test_fresh_reused_replay_proofs_must_be_identical(
 @pytest.mark.parametrize(
     "tamper",
     (
-        "attempt_predecessor_tick",
-        "attempt_predecessor_time",
-        "state_predecessor_tick",
-        "state_predecessor_time",
-        "proof_predecessor_tick",
-        "proof_predecessor_time",
-        "state_predecessor_split",
-        "proof_predecessor_split",
-        "anchor_transition_ticks",
+        "attempt_transition_tick",
+        "attempt_transition_hash",
+        "proof_transition_tick",
+        "proof_transition_hash",
+        "anchor_mode",
+        "anchor_restore_contract",
+        "controller_source_event",
+        "controller_motion_handoff",
+        "controller_completion_guards",
         "anchor_context_segment",
     ),
 )
-def test_p10_predecessor_verify_anchor_tamper_fails_closed(
+def test_p10_source_proven_restore_tamper_fails_closed(
     contract, snapshot_bundle, tamper: str
 ) -> None:
     attempt = _calibration_attempt(contract, snapshot_bundle, "P10", "fresh_scene")
     state = attempt["snapshot_state_write"]
     proof = state["effective_entry_contract"]
-    if tamper == "attempt_predecessor_tick":
-        attempt["predecessor_verify_tick"] += 1
-    elif tamper == "attempt_predecessor_time":
-        attempt["predecessor_verify_time_s"] += 1.0 / 120.0
-    elif tamper == "state_predecessor_tick":
-        state["predecessor_verify_tick"] += 1
-    elif tamper == "state_predecessor_time":
-        state["predecessor_verify_time_s"] += 1.0 / 120.0
-    elif tamper == "proof_predecessor_tick":
-        proof["predecessor_verify_tick"] += 1
-    elif tamper == "proof_predecessor_time":
-        proof["predecessor_verify_time_s"] += 1.0 / 120.0
-    elif tamper == "state_predecessor_split":
-        state["physical_to_predecessor_verify_replay_steps"] += 1
-    elif tamper == "proof_predecessor_split":
-        proof["predecessor_verify_to_controller_replay_steps"] += 1
-    elif tamper == "anchor_transition_ticks":
-        state["replay_anchor_contract"]["source_replay_context_transition_ticks"][0] += 1
+    if tamper == "attempt_transition_tick":
+        attempt["source_transition_tick"] += 1
+    elif tamper == "attempt_transition_hash":
+        attempt["source_transition_row_canonical_sha256"] = "0" * 64
+    elif tamper == "proof_transition_tick":
+        proof["source_transition_tick"] += 1
+    elif tamper == "proof_transition_hash":
+        proof["source_transition_row_canonical_sha256"] = "0" * 64
+    elif tamper == "anchor_mode":
+        state["replay_anchor_contract"]["mode"] = "single_physical_anchor"
+    elif tamper == "anchor_restore_contract":
+        state["replay_anchor_contract"]["controller_restore_contract"][
+            "consumed_motion_tick"
+        ] = 1
+    elif tamper == "controller_source_event":
+        state["entry_guard_contract"]["new_entry_event_count"] = 1
+    elif tamper == "controller_motion_handoff":
+        state["entry_guard_contract"]["first_episode_motion_tick"] = 0
+    elif tamper == "controller_completion_guards":
+        state["entry_guard_contract"]["completion_guard_names"] = [
+            "rl_workspace_geometry",
+            "motion_endpoint_issued",
+        ]
     else:
         state["source_replay_fsm_contexts"][0]["anchor_segment"] = "tampered"
 

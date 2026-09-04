@@ -70,3 +70,46 @@ the final authored P09 tracked-servo command segment.  Its source root speed is
 11.59935 deg/s, and the support margin is 0.035237 m.  This is the final
 single-factor natural-entry experiment before replacing open-loop solver-state
 reconstruction with a versioned, source-proven post-entry curriculum reset.
+
+### Result
+
+Calibration run
+`20260904T224818647154Z_g269c991569ae_c6fe99457bbaa_s1002_n1_phase-effective-entry-calibration`
+remained fail-closed.  The final live P10 decision sample had rear-right-knee
+position -43.617215 deg and velocity +0.550467 deg/s, outside both authored
+entry bounds.  All 234 replay samples passed the live safety gate and retained
+real PhysX contact provenance.  The failure isolates the missing state to
+unserialized solver/constraint history rather than a disabled sensor or a
+relaxed verifier, so no additional numeric pre-roll anchors will be promoted.
+
+## P10 source-proven EXECUTE training reset
+
+The replacement reset initializes Trial043 observation tick 7794, whose exact
+WAIT_ENTRY-to-EXECUTE transition records all five authored entry guards passing.
+The nested `wlr50_clean.phase_snapshot_source_proven_execute_restore.v1` contract
+binds that complete transition row and its canonical SHA-256
+`904c604cb85107f92dbcb75519cd7229ad7b3307c994fa20b7cdb27e8147278e`.
+It applies source command 7794 once, including the source post-mapper RR-knee
+bias, and advances one real PhysX tick before restoring the already-entered
+EXECUTE controller. The first episode frame emits motion tick 1 at the live
+post-prime observation. No local entry event is manufactured. The frozen
+`motion_endpoint_issued` and `rl_workspace_geometry` completion guards remain
+pending and authoritative. Full-sequence evaluations and videos still start P01.
+
+All three consumers reject legacy P10 hybrid replay metadata. Fresh/reused
+physical state, contact, mapper, safety, and runtime provenance checks remain
+required. The canonical snapshot manifest is
+`0fda5fb29e73315c2b751ee865d138566522bd40e8c3a94bb4daf34acee0557d`;
+the bundle is
+`39e61971ed7a8a76548f6af2e1af50ecf0248781740df9aa59751565ca3cc98e`.
+The other twelve snapshot files remain byte-identical. The previous canonical
+bundle is recoverable at
+`C:\robotics_sim\wlr_robot\ppo_phase_snapshots_pre_source_proven_20260904`.
+
+The five targeted test files passed in the locked Isaac Python 3.11 environment,
+including its Torch tests; three platform-specific tests were skipped. The
+frozen ledger remained 29/29 with zero mismatches. The broader unit suite is
+currently blocked by tests loading the obsolete effective-entry contract;
+that contract must be mechanically replaced from twelve real calibration runs
+before checkpoint-dependent tests and training can qualify. No new physical
+calibration or PPO training success is claimed by these software checks.

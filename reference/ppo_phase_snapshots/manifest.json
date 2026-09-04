@@ -31,9 +31,7 @@
   },
   "physics_hz": 120.0,
   "phase_count": 13,
-  "causal_predecessor_phases": [
-    "P10"
-  ],
+  "causal_predecessor_phases": [],
   "snapshots": [
     {
       "phase": "P01",
@@ -154,21 +152,18 @@
     },
     {
       "phase": "P10",
-      "source_tick": 7560,
-      "source_replay_steps": 234,
-      "state_sha256": "934c8efe186ed1490d12600ddfd0a5e0b2d1e63bb405f752330f2499848b9d7b",
-      "file_sha256": "196a9b3db5b226ecb37526c3db9dc1d384ebc7bb89843816791f58dfd3424f3c",
+      "source_tick": 7794,
+      "source_replay_steps": 1,
+      "state_sha256": "2967e27215b91989349b2ef8b9298507f1ae6bd6845146b7bf7d4a078f37dc6d",
+      "file_sha256": "132784b9409fb4b8d939b0b8cdb5e6b36d38d3301fea7a021a9c9d5bd959d89b",
       "path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P10\\snapshot.json",
-      "source_command_row_canonical_sha256": "9b1189c9c9d6e6928cedcb4e95744518586c08a41a8b64bda20090582f1779aa",
-      "source_observation_row_canonical_sha256": "87d3b4a1b48e9aa710c6cc785216734bbea9587beb8beb534e65e6efbe6fc793",
-      "source_adapter_input_sha256": "1a2bc8345b07804222268f2f82afa3058092f935ac2efa4d17399e9ebb2f8725",
-      "drive_target_full12_sha256": "dcfe415ade76c8e0ba5814919569fb20a8c47af8dc581afe57ec04163cc11acd",
-      "actuation_contract_sha256": "fd48d506cd642f5dda0e8e7dcceede30261a38cfca7127737181d78ec04ef8ca",
-      "predecessor_verify_tick": 7776,
-      "predecessor_verify_time_s": 64.8,
-      "controller_anchor_tick": 7784,
-      "controller_anchor_time_s": 64.86666666666666,
-      "target_entry_tick": 7794
+      "source_command_row_canonical_sha256": "b36583e8622e9a882d2371f21fc200ed7813b40e249623f7705ed86513dad711",
+      "source_observation_row_canonical_sha256": "e6af88a281f784d9a609704628ea569b4dd94429a52ce8402041d95c3d445220",
+      "source_adapter_input_sha256": "14676d5218bf20961c10ff6c7f483159a9531bdad230120a2653ecf58d95e7c8",
+      "drive_target_full12_sha256": "6e17d0bcac0bf4d96d821b7654e3c3666e5493720dde7a079f33812e90f7c1ef",
+      "actuation_contract_sha256": "a492968cf9947fb8fa311bdca3a9678e0b810eda669f3ef8c34a9d44f808d4e5",
+      "controller_restore_mode": "source_proven_execute_after_prime",
+      "source_transition_row_canonical_sha256": "904c604cb85107f92dbcb75519cd7229ad7b3307c994fa20b7cdb27e8147278e"
     },
     {
       "phase": "P11",

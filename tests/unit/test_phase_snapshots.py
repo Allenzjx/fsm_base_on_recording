@@ -168,6 +168,27 @@ def _write_source_trial(
         if phase == "P10":
             guards = [
                 {
+                    "name": "previous_state_done",
+                    "passed": True,
+                    "value": True,
+                    "source": "controller",
+                    "reason": "",
+                },
+                {
+                    "name": "no_body_obstacle_collision",
+                    "passed": True,
+                    "value": "no exact base_link/obstacle contact",
+                    "source": "exact contact pairs",
+                    "reason": "",
+                },
+                {
+                    "name": "joint_hard_limits_valid",
+                    "passed": True,
+                    "value": {},
+                    "source": "live logical servo readback",
+                    "reason": "",
+                },
+                {
                     "name": "reference_entry_compatible",
                     "passed": True,
                     "value": {
@@ -178,6 +199,15 @@ def _write_source_trial(
                             ),
                         }
                     },
+                    "source": "controller.phase_context",
+                    "reason": "",
+                },
+                {
+                    "name": "critical_actuators_available",
+                    "passed": True,
+                    "value": {"joint_count": 8, "wheel_count": 4},
+                    "source": "complete finite articulation readback",
+                    "reason": "",
                 }
             ]
         if phase == "P10":
@@ -196,6 +226,7 @@ def _write_source_trial(
                 "from_lifecycle": "WAIT_ENTRY",
                 "to_lifecycle": "EXECUTE_MOTION",
                 "sim_time_s": entry_ticks[phase] / 120,
+                "reason": "all live entry guards passed",
                 "details": {"guards": guards},
             }
         )
@@ -328,61 +359,94 @@ def test_build_and_validate_all_phase_snapshots(tmp_path):
         "leg_crossing",
     }
     assert manifest["schema"] == MANIFEST_SCHEMA
-    assert manifest["causal_predecessor_phases"] == ["P10"]
+    assert manifest["causal_predecessor_phases"] == []
 
     p10 = json.loads((out / "P10" / "snapshot.json").read_text(encoding="utf-8"))
     p10_manifest = next(
         row for row in manifest["snapshots"] if row["phase"] == "P10"
     )
-    assert p10["source_tick"] == 16
-    assert p10["predecessor_verify_tick"] == 39
-    assert p10["predecessor_verify_time_s"] == 39 / 120
-    assert p10["controller_anchor_tick"] == 41
-    assert p10["controller_anchor_time_s"] == 41 / 120
-    assert p10["target_entry_tick"] == 51
-    assert p10["source_replay_steps"] == 35
-    assert len(p10["source_commands"]) == 35
+    assert p10["source_tick"] == 51
+    assert p10["source_replay_steps"] == 1
+    assert len(p10["source_commands"]) == 1
     assert [
         row["control_physics_tick"] for row in p10["source_commands"]
-    ] == list(range(16, 51))
+    ] == [51]
     assert p10["source_command"] == p10["source_commands"][0]
-    assert p10["fsm_state"] == "P10"
-    assert p10["fsm_lifecycle"] == "WAIT_ENTRY"
-    assert p10["source_command"]["source_fsm_state"] == "P09"
+    assert p10["source_command"]["source_fsm_state"] == "P10"
     assert p10["source_command"]["source_fsm_lifecycle"] == "EXECUTE_MOTION"
-    assert p10["source_command"]["target_entry_tick"] == 51
-    assert all(
-        row["source_fsm_state"] == "P09"
-        and row["source_fsm_lifecycle"] == "EXECUTE_MOTION"
-        and row["target_entry_tick"] == 51
-        for row in p10["source_commands"][:23]
+    assert p10["fsm_state"] == "P10"
+    assert p10["fsm_lifecycle"] == "EXECUTE_MOTION"
+    assert p10["controller_restore_mode"] == (
+        "source_proven_execute_after_prime"
     )
-    assert all(
-        row["source_fsm_state"] == "P09"
-        and row["source_fsm_lifecycle"] == "VERIFY_RESULT"
-        and row["target_entry_tick"] == 51
-        for row in p10["source_commands"][23:25]
+    contract = p10["controller_restore_contract"]
+    assert contract["schema"] == (
+        "wlr50_clean.phase_snapshot_source_proven_execute_restore.v1"
     )
-    assert all(
-        row["source_fsm_state"] == "P10"
-        and row["source_fsm_lifecycle"] == "WAIT_ENTRY"
-        and row["target_entry_tick"] == 51
-        for row in p10["source_commands"][25:]
-    )
-    assert p10["root_state"]["position_w_m"][0] == 16.0
-    assert p10["wheel_state"]["logical_velocity_rad_s"] == [16.0] * 4
-    assert all(row["class"] == "AIR" for row in p10["contact_state"].values())
+    assert set(contract) == {
+        "schema",
+        "source_transition_tick",
+        "source_transition_time_s",
+        "source_transition_row",
+        "source_transition_row_canonical_sha256",
+        "authored_entry_guard_order",
+        "authored_entry_guard_evidence",
+        "prime_command_tick",
+        "effective_observation_tick",
+        "consumed_motion_tick",
+        "first_episode_motion_tick",
+    }
+    assert contract["source_transition_tick"] == 51
+    assert contract["source_transition_time_s"] == 51 / 120
+    assert contract["prime_command_tick"] == 51
+    assert contract["effective_observation_tick"] == 52
+    assert contract["consumed_motion_tick"] == 0
+    assert contract["first_episode_motion_tick"] == 1
+    assert contract["source_transition_row"]["state_id"] == "P10"
+    assert contract["source_transition_row"]["from_lifecycle"] == "WAIT_ENTRY"
+    assert contract["source_transition_row"]["to_lifecycle"] == "EXECUTE_MOTION"
+    assert contract["authored_entry_guard_order"] == [
+        "previous_state_done",
+        "no_body_obstacle_collision",
+        "joint_hard_limits_valid",
+        "reference_entry_compatible",
+        "critical_actuators_available",
+    ]
+    assert contract["authored_entry_guard_evidence"] == contract[
+        "source_transition_row"
+    ]["details"]["guards"]
+    assert contract["source_transition_row_canonical_sha256"] == hashlib.sha256(
+        json.dumps(
+            contract["source_transition_row"],
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=True,
+        ).encode("utf-8")
+    ).hexdigest()
+    assert p10["root_state"]["position_w_m"][0] == 51.0
+    assert p10["wheel_state"]["logical_velocity_rad_s"] == [51.0] * 4
+    assert all(row["class"] == "GROUND" for row in p10["contact_state"].values())
     assert p10["contact_event_latches"]["RR"]["active_lift"] is True
     assert p10["contact_event_latches"]["RR"]["active_lift_tick"] == 11
     assert p10["contact_event_latches"]["RR"]["top_loaded"] is True
     assert p10["contact_event_latches"]["RR"]["top_loaded_tick"] == 35
-    assert p10_manifest["source_tick"] == 16
-    assert p10_manifest["predecessor_verify_tick"] == 39
-    assert p10_manifest["predecessor_verify_time_s"] == 39 / 120
-    assert p10_manifest["controller_anchor_tick"] == 41
-    assert p10_manifest["controller_anchor_time_s"] == 41 / 120
-    assert p10_manifest["source_replay_steps"] == 35
-    assert p10_manifest["target_entry_tick"] == 51
+    assert p10_manifest["source_tick"] == 51
+    assert p10_manifest["source_replay_steps"] == 1
+    assert p10_manifest["controller_restore_mode"] == (
+        "source_proven_execute_after_prime"
+    )
+    assert p10_manifest["source_transition_row_canonical_sha256"] == contract[
+        "source_transition_row_canonical_sha256"
+    ]
+    for legacy_field in (
+        "target_entry_tick",
+        "predecessor_verify_tick",
+        "predecessor_verify_time_s",
+        "controller_anchor_tick",
+        "controller_anchor_time_s",
+    ):
+        assert legacy_field not in p10
+        assert legacy_field not in p10_manifest
 
     p11 = json.loads((out / "P11" / "snapshot.json").read_text(encoding="utf-8"))
     p11_manifest = next(
@@ -405,7 +469,7 @@ def test_build_and_validate_all_phase_snapshots(tmp_path):
     assert "controller_anchor_time_s" not in p11_manifest
 
 
-def test_signed_positive_entry_detection_is_transition_evidence_driven(tmp_path):
+def test_p10_builder_rejects_missing_signed_positive_transition_evidence(tmp_path):
     trial = _write_source_trial(
         tmp_path,
         signed_positive_rebound_required=False,
@@ -413,22 +477,12 @@ def test_signed_positive_entry_detection_is_transition_evidence_driven(tmp_path)
     )
     out = tmp_path / "snapshots"
 
-    manifest = build_phase_snapshots(trial, out)
-    p10 = json.loads((out / "P10" / "snapshot.json").read_text(encoding="utf-8"))
-
-    assert manifest["causal_predecessor_phases"] == []
-    assert p10["source_tick"] == 51
-    assert p10["source_replay_steps"] == 1
-    assert p10["source_commands"] == [p10["source_command"]]
-    assert p10["fsm_lifecycle"] == "EXECUTE_MOTION"
-    assert "target_entry_tick" not in p10
-    assert "predecessor_verify_tick" not in p10
-    assert "predecessor_verify_time_s" not in p10
-    assert "controller_anchor_tick" not in p10
-    assert "controller_anchor_time_s" not in p10
+    with pytest.raises(PhaseSnapshotError, match="signed-positive rebound evidence"):
+        build_phase_snapshots(trial, out)
+    assert not out.exists()
 
 
-def test_trial043_hybrid_boundary_is_exactly_7560_7776_7784_7794() -> None:
+def test_trial043_source_proven_execute_boundary_is_exactly_tick_7794() -> None:
     rows = []
     for index, phase in enumerate(PHASE_IDS[1:], 1):
         if phase == "P09":
@@ -482,11 +536,13 @@ def test_trial043_hybrid_boundary_is_exactly_7560_7776_7784_7794() -> None:
         rows, leg_crossing_rows=leg_crossing_rows
     )["P10"]
 
-    assert boundary.source_tick == 7560
-    assert boundary.predecessor_verify_tick == 7776
-    assert boundary.controller_anchor_tick == 7784
+    assert boundary.source_tick == 7794
+    assert boundary.predecessor_verify_tick is None
+    assert boundary.controller_anchor_tick is None
     assert boundary.target_entry_tick == 7794
-    assert boundary.source_replay_steps == 234
+    assert boundary.source_replay_steps == 1
+    assert boundary.uses_causal_predecessor is False
+    assert boundary.controller_restore_mode == "source_proven_execute_after_prime"
 
 
 def test_later_recovery_verify_transition_does_not_ambiguate_p10_predecessor() -> None:
@@ -559,88 +615,61 @@ def test_later_recovery_verify_transition_does_not_ambiguate_p10_predecessor() -
         ],
     )["P10"]
 
-    assert boundary.source_tick == 7560
-    assert boundary.predecessor_verify_tick == 7776
-    assert boundary.controller_anchor_tick == 7784
+    assert boundary.source_tick == 7794
+    assert boundary.predecessor_verify_tick is None
+    assert boundary.controller_anchor_tick is None
     assert boundary.target_entry_tick == 7794
+    assert boundary.source_replay_steps == 1
+    assert boundary.controller_restore_mode == "source_proven_execute_after_prime"
 
 
-def test_causal_predecessor_requires_wait_entry_source_command(tmp_path):
-    trial = _write_source_trial(
-        tmp_path, p10_predecessor_lifecycle="EXECUTE_MOTION"
-    )
-    out = tmp_path / "snapshots"
-
-    with pytest.raises(PhaseSnapshotError, match="source command state/lifecycle"):
-        build_phase_snapshots(trial, out)
-    assert not out.exists()
-
-
-@pytest.mark.parametrize(
-    "source_kwargs",
-    (
-        {"p09_predecessor_state": "P10"},
-        {"p09_predecessor_lifecycle": "EXECUTE_MOTION"},
-    ),
-)
-def test_hybrid_causal_source_requires_real_p09_verify_context(
-    tmp_path, source_kwargs
-):
-    trial = _write_source_trial(tmp_path, **source_kwargs)
-
-    with pytest.raises(PhaseSnapshotError, match="source command state/lifecycle"):
-        build_phase_snapshots(trial, tmp_path / "snapshots")
-
-
-def test_signed_positive_entry_requires_semantic_wait_entry_anchor(tmp_path):
+def test_source_proven_restore_rejects_non_execute_prime_command(tmp_path):
     trial = _write_source_trial(tmp_path)
-    transition_path = trial / "state_transitions.jsonl"
+    command_path = trial / "full12_commands_120hz.jsonl"
     rows = [
         json.loads(line)
-        for line in transition_path.read_text(encoding="utf-8").splitlines()
+        for line in command_path.read_text(encoding="utf-8").splitlines()
     ]
-    _write_jsonl(
-        transition_path,
-        [
-            row
-            for row in rows
-            if not (
-                row["state_id"] == "P10"
-                and row["from_lifecycle"] == "DONE"
-                and row["to_lifecycle"] == "WAIT_ENTRY"
-            )
-        ],
-    )
+    rows[51]["lifecycle"] = "WAIT_ENTRY"
+    _write_jsonl(command_path, rows)
     manifest_path = trial / "trial_manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    manifest["artifact_files"]["transition"].update(
+    manifest["artifact_files"]["command"].update(
         {
-            "bytes": transition_path.stat().st_size,
-            "sha256": _sha(transition_path),
+            "bytes": command_path.stat().st_size,
+            "sha256": _sha(command_path),
         }
     )
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
 
-    with pytest.raises(PhaseSnapshotError, match="prior WAIT_ENTRY start"):
+    with pytest.raises(PhaseSnapshotError, match="source command state/lifecycle"):
         build_phase_snapshots(trial, tmp_path / "snapshots")
 
 
 @pytest.mark.parametrize(
-    ("surface", "expected_error"),
+    "surface",
     (
-        ("payload_target", "causal target-entry tick"),
-        ("manifest_target", "hybrid replay boundary"),
-        ("predecessor_equals_source", "predecessor verify tick"),
-        ("predecessor_verify_tick", "predecessor verify tick"),
-        ("predecessor_verify_time", "predecessor verify time"),
-        ("controller_anchor_tick", "controller anchor tick"),
-        ("controller_anchor_time", "controller anchor time"),
-        ("source_lifecycle", "causal source-command context"),
-        ("snapshot_lifecycle", "FSM lifecycle"),
+        "mode",
+        "missing_contract_key",
+        "schema",
+        "transition_tick",
+        "transition_time",
+        "transition_identity",
+        "transition_reason",
+        "transition_hash",
+        "guard_order",
+        "guard_evidence",
+        "prime_tick",
+        "effective_tick",
+        "consumed_motion_tick",
+        "first_episode_motion_tick",
+        "snapshot_lifecycle",
+        "manifest_mode",
+        "manifest_transition_hash",
     ),
 )
-def test_causal_predecessor_audit_fields_fail_closed(
-    tmp_path: Path, surface: str, expected_error: str
+def test_source_proven_execute_restore_contract_fails_closed(
+    tmp_path: Path, surface: str
 ) -> None:
     out = _build_snapshot_set(tmp_path)
     payload = json.loads(
@@ -651,28 +680,76 @@ def test_causal_predecessor_audit_fields_fail_closed(
         row for row in manifest["snapshots"] if row["phase"] == "P10"
     )
 
-    if surface == "payload_target":
-        payload["target_entry_tick"] += 1
-    elif surface == "manifest_target":
-        manifest_row["target_entry_tick"] += 1
-    elif surface == "predecessor_equals_source":
-        payload["predecessor_verify_tick"] = payload["source_tick"]
-        payload["predecessor_verify_time_s"] = payload["source_time_s"]
-    elif surface == "predecessor_verify_tick":
-        payload["predecessor_verify_tick"] = payload["target_entry_tick"]
-    elif surface == "predecessor_verify_time":
-        payload["predecessor_verify_time_s"] += 1.0 / 120.0
-    elif surface == "controller_anchor_tick":
-        payload["controller_anchor_tick"] = payload["source_tick"]
-    elif surface == "controller_anchor_time":
-        payload["controller_anchor_time_s"] += 1.0 / 120.0
-    elif surface == "source_lifecycle":
-        payload["source_command"]["source_fsm_lifecycle"] = "VERIFY_RESULT"
-        payload["source_commands"][0]["source_fsm_lifecycle"] = "VERIFY_RESULT"
+    contract = payload["controller_restore_contract"]
+    if surface == "mode":
+        payload["controller_restore_mode"] = "wait_entry_after_prime"
+    elif surface == "missing_contract_key":
+        contract.pop("effective_observation_tick")
+    elif surface == "schema":
+        contract["schema"] = "invalid"
+    elif surface == "transition_tick":
+        contract["source_transition_tick"] += 1
+    elif surface == "transition_time":
+        contract["source_transition_time_s"] += 1.0 / 120.0
+    elif surface == "transition_identity":
+        contract["source_transition_row"]["from_lifecycle"] = "DONE"
+    elif surface == "transition_reason":
+        contract["source_transition_row"]["reason"] = "fabricated"
+    elif surface == "transition_hash":
+        contract["source_transition_row_canonical_sha256"] = "0" * 64
+    elif surface == "guard_order":
+        contract["authored_entry_guard_order"][0] = "critical_actuators_available"
+    elif surface == "guard_evidence":
+        contract["authored_entry_guard_evidence"][0]["passed"] = False
+    elif surface == "prime_tick":
+        contract["prime_command_tick"] += 1
+    elif surface == "effective_tick":
+        contract["effective_observation_tick"] += 1
+    elif surface == "consumed_motion_tick":
+        contract["consumed_motion_tick"] = 1
+    elif surface == "first_episode_motion_tick":
+        contract["first_episode_motion_tick"] = 0
+    elif surface == "snapshot_lifecycle":
+        payload["fsm_lifecycle"] = "WAIT_ENTRY"
+    elif surface == "manifest_mode":
+        manifest_row["controller_restore_mode"] = "wait_entry_after_prime"
     else:
-        payload["fsm_lifecycle"] = "EXECUTE_MOTION"
+        manifest_row["source_transition_row_canonical_sha256"] = "0" * 64
 
-    with pytest.raises(PhaseSnapshotError, match=expected_error):
+    with pytest.raises(PhaseSnapshotError):
+        validate_phase_snapshot_payload_contract(
+            payload,
+            "P10",
+            manifest_row=manifest_row,
+            manifest_source_artifacts=manifest["source_artifacts"],
+            causal_predecessor_required=False,
+        )
+
+
+def test_legacy_p10_payload_downgrade_is_rejected(tmp_path: Path) -> None:
+    out = _build_snapshot_set(tmp_path)
+    payload = json.loads(
+        (out / "P10" / "snapshot.json").read_text(encoding="utf-8")
+    )
+    manifest = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
+    manifest_row = next(
+        row for row in manifest["snapshots"] if row["phase"] == "P10"
+    )
+    payload.pop("controller_restore_mode")
+    payload.pop("controller_restore_contract")
+    payload.update(
+        {
+            "target_entry_tick": payload["source_tick"] + 4,
+            "predecessor_verify_tick": payload["source_tick"] + 1,
+            "predecessor_verify_time_s": (payload["source_tick"] + 1) / 120.0,
+            "controller_anchor_tick": payload["source_tick"] + 2,
+            "controller_anchor_time_s": (payload["source_tick"] + 2) / 120.0,
+        }
+    )
+
+    with pytest.raises(
+        PhaseSnapshotError, match="P10 must use source_proven_execute_after_prime"
+    ):
         validate_phase_snapshot_payload_contract(
             payload,
             "P10",
@@ -682,19 +759,113 @@ def test_causal_predecessor_audit_fields_fail_closed(
         )
 
 
+def test_legacy_p10_manifest_downgrade_is_rejected(tmp_path: Path) -> None:
+    out = _build_snapshot_set(tmp_path)
+    manifest_path = out / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["causal_predecessor_phases"] = ["P10"]
+    row = next(item for item in manifest["snapshots"] if item["phase"] == "P10")
+    row.pop("controller_restore_mode")
+    row.pop("source_transition_row_canonical_sha256")
+    row.update(
+        {
+            "target_entry_tick": row["source_tick"] + 4,
+            "predecessor_verify_tick": row["source_tick"] + 1,
+            "predecessor_verify_time_s": (row["source_tick"] + 1) / 120.0,
+            "controller_anchor_tick": row["source_tick"] + 2,
+            "controller_anchor_time_s": (row["source_tick"] + 2) / 120.0,
+        }
+    )
+    manifest_path.write_text(json.dumps(manifest) + "\n", encoding="utf-8")
+
+    with pytest.raises(PhaseSnapshotError, match="must be exactly empty"):
+        capture_validated_phase_snapshot_bundle(out, canonical_root=out)
+
+
+def test_manifest_rejects_p10_missing_source_proven_binding(
+    tmp_path: Path,
+) -> None:
+    out = _build_snapshot_set(tmp_path)
+    manifest_path = out / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    row = next(item for item in manifest["snapshots"] if item["phase"] == "P10")
+    row.pop("controller_restore_mode")
+    row.pop("source_transition_row_canonical_sha256")
+    manifest_path.write_text(json.dumps(manifest) + "\n", encoding="utf-8")
+
+    with pytest.raises(PhaseSnapshotError, match="fields are incomplete"):
+        capture_validated_phase_snapshot_bundle(out, canonical_root=out)
+
+
+def test_manifest_rejects_source_proven_binding_on_non_p10(
+    tmp_path: Path,
+) -> None:
+    out = _build_snapshot_set(tmp_path)
+    manifest_path = out / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    p10 = next(item for item in manifest["snapshots"] if item["phase"] == "P10")
+    p09 = next(item for item in manifest["snapshots"] if item["phase"] == "P09")
+    p09["controller_restore_mode"] = p10["controller_restore_mode"]
+    p09["source_transition_row_canonical_sha256"] = p10[
+        "source_transition_row_canonical_sha256"
+    ]
+    manifest_path.write_text(json.dumps(manifest) + "\n", encoding="utf-8")
+
+    with pytest.raises(PhaseSnapshotError, match="fields are incomplete"):
+        capture_validated_phase_snapshot_bundle(out, canonical_root=out)
+
+
+def test_bundle_record_rejects_p10_restore_downgrade(tmp_path: Path) -> None:
+    out = _build_snapshot_set(tmp_path)
+    record = validated_phase_snapshot_bundle_record(out, canonical_root=out)
+    p10 = next(row for row in record["snapshots"] if row["phase"] == "P10")
+    p10["controller_restore_mode"] = None
+    p10["source_transition_row_canonical_sha256"] = None
+
+    with pytest.raises(
+        PhaseSnapshotError, match="P10 must use source_proven_execute_after_prime"
+    ):
+        phase_snapshot_bundle_file_hashes(record)
+
+
+def test_bundle_record_rejects_source_proven_metadata_on_non_p10(
+    tmp_path: Path,
+) -> None:
+    out = _build_snapshot_set(tmp_path)
+    record = validated_phase_snapshot_bundle_record(out, canonical_root=out)
+    p10 = next(row for row in record["snapshots"] if row["phase"] == "P10")
+    p09 = next(row for row in record["snapshots"] if row["phase"] == "P09")
+    p09["controller_restore_mode"] = p10["controller_restore_mode"]
+    p09["source_transition_row_canonical_sha256"] = p10[
+        "source_transition_row_canonical_sha256"
+    ]
+
+    with pytest.raises(PhaseSnapshotError, match="forbidden for P09"):
+        phase_snapshot_bundle_file_hashes(record)
+
+
+def test_non_p10_payload_rejects_source_proven_restore_metadata(
+    tmp_path: Path,
+) -> None:
+    out = _build_snapshot_set(tmp_path)
+    p09 = json.loads((out / "P09" / "snapshot.json").read_text(encoding="utf-8"))
+    p10 = json.loads((out / "P10" / "snapshot.json").read_text(encoding="utf-8"))
+    p09["controller_restore_mode"] = p10["controller_restore_mode"]
+    p09["controller_restore_contract"] = p10["controller_restore_contract"]
+
+    with pytest.raises(PhaseSnapshotError, match="forbidden for P09"):
+        validate_phase_snapshot_payload_contract(p09, "P09")
+
+
 @pytest.mark.parametrize(
     "surface",
     (
         "step_count",
         "missing_row",
-        "discontinuous_tick",
-        "tail_lifecycle",
-        "controller_row_context",
-        "target_command_included",
-        "tail_atomic_tick",
-        "tail_mapper_continuity",
-        "tail_actuation_hash",
-        "tail_source_row_hash",
+        "extra_row",
+        "source_tick",
+        "source_fsm_state",
+        "source_fsm_lifecycle",
         "first_alias",
         "manifest_step_count",
     ),
@@ -714,36 +885,23 @@ def test_source_command_replay_sequence_fails_closed(
     changed_manifest = copy.deepcopy(manifest_row)
 
     if surface == "step_count":
-        changed["source_replay_steps"] -= 1
+        changed["source_replay_steps"] += 1
     elif surface == "missing_row":
         changed["source_commands"].pop()
-    elif surface == "discontinuous_tick":
-        changed["source_commands"][4]["control_physics_tick"] += 1
-    elif surface == "tail_lifecycle":
-        changed["source_commands"][4]["source_fsm_lifecycle"] = "VERIFY_RESULT"
-    elif surface == "controller_row_context":
-        changed["source_commands"][8]["source_fsm_state"] = "P09"
-        changed["source_commands"][8]["source_fsm_lifecycle"] = "VERIFY_RESULT"
-    elif surface == "target_command_included":
-        changed["source_commands"][-1]["control_physics_tick"] = changed[
-            "target_entry_tick"
-        ]
-    elif surface == "tail_atomic_tick":
-        changed["source_commands"][4]["source_atomic_physics_tick"] += 1
-    elif surface == "tail_mapper_continuity":
-        changed["source_commands"][4]["mapper_pre_state"][
-            "requested_servo_deg"
-        ][0] += 1.0
-    elif surface == "tail_actuation_hash":
-        changed["source_commands"][4]["actuation_contract_sha256"] = "0" * 64
-    elif surface == "tail_source_row_hash":
-        changed["source_commands"][4][
-            "source_command_row_canonical_sha256"
-        ] = "invalid"
+    elif surface == "extra_row":
+        changed["source_commands"].append(copy.deepcopy(changed["source_command"]))
+    elif surface == "source_tick":
+        changed["source_commands"][0]["control_physics_tick"] += 1
+    elif surface == "source_fsm_state":
+        changed["source_command"]["source_fsm_state"] = "P09"
+        changed["source_commands"][0]["source_fsm_state"] = "P09"
+    elif surface == "source_fsm_lifecycle":
+        changed["source_command"]["source_fsm_lifecycle"] = "WAIT_ENTRY"
+        changed["source_commands"][0]["source_fsm_lifecycle"] = "WAIT_ENTRY"
     elif surface == "first_alias":
         changed["source_command"]["control_physics_tick"] += 1
     else:
-        changed_manifest["source_replay_steps"] -= 1
+        changed_manifest["source_replay_steps"] += 1
 
     with pytest.raises(PhaseSnapshotError):
         validate_phase_snapshot_payload_contract(
@@ -751,7 +909,7 @@ def test_source_command_replay_sequence_fails_closed(
             "P10",
             manifest_row=changed_manifest,
             manifest_source_artifacts=manifest["source_artifacts"],
-            causal_predecessor_required=True,
+            causal_predecessor_required=False,
         )
 
 
@@ -915,6 +1073,8 @@ def test_validated_bundle_record_binds_manifest_and_exact_p01_p13_bytes(tmp_path
             "predecessor_verify_time_s",
             "controller_anchor_tick",
             "controller_anchor_time_s",
+            "controller_restore_mode",
+            "source_transition_row_canonical_sha256",
             "snapshot_path",
             "checksum_path",
             "file_sha256",
@@ -930,28 +1090,33 @@ def test_validated_bundle_record_binds_manifest_and_exact_p01_p13_bytes(tmp_path
     assert p08_record["predecessor_verify_time_s"] is None
     assert p08_record["controller_anchor_tick"] is None
     assert p08_record["controller_anchor_time_s"] is None
+    assert p08_record["controller_restore_mode"] is None
+    assert p08_record["source_transition_row_canonical_sha256"] is None
     p10_record = next(row for row in record["snapshots"] if row["phase"] == "P10")
-    assert p10_record["source_tick"] == 16
-    assert p10_record["source_replay_steps"] == 35
-    assert p10_record["target_entry_tick"] == 51
-    assert p10_record["predecessor_verify_tick"] == 39
-    assert p10_record["predecessor_verify_time_s"] == 39 / 120
-    assert p10_record["controller_anchor_tick"] == 41
-    assert p10_record["controller_anchor_time_s"] == 41 / 120
+    assert p10_record["source_tick"] == 51
+    assert p10_record["source_replay_steps"] == 1
+    assert p10_record["target_entry_tick"] is None
+    assert p10_record["predecessor_verify_tick"] is None
+    assert p10_record["predecessor_verify_time_s"] is None
+    assert p10_record["controller_anchor_tick"] is None
+    assert p10_record["controller_anchor_time_s"] is None
+    assert p10_record["controller_restore_mode"] == (
+        "source_proven_execute_after_prime"
+    )
+    assert len(p10_record["source_transition_row_canonical_sha256"]) == 64
     assert len(record["bundle_sha256"]) == 64
     assert validated_phase_snapshot_bundle_record(out, canonical_root=out) == record
 
 
-def test_zero_length_physical_replay_segment_fails_closed_everywhere(tmp_path):
+def test_source_proven_restore_rejects_multi_step_replay_everywhere(tmp_path):
     out = _build_snapshot_set(tmp_path)
     bundle_record = validated_phase_snapshot_bundle_record(out, canonical_root=out)
     changed_record = copy.deepcopy(bundle_record)
     record_row = next(
         row for row in changed_record["snapshots"] if row["phase"] == "P10"
     )
-    record_row["predecessor_verify_tick"] = record_row["source_tick"]
-    record_row["predecessor_verify_time_s"] = record_row["source_tick"] / 120.0
-    with pytest.raises(PhaseSnapshotError, match="predecessor verify tick"):
+    record_row["source_replay_steps"] = 2
+    with pytest.raises(PhaseSnapshotError, match="forbids legacy hybrid"):
         phase_snapshot_bundle_file_hashes(changed_record)
 
     manifest_path = out / "manifest.json"
@@ -959,10 +1124,9 @@ def test_zero_length_physical_replay_segment_fails_closed_everywhere(tmp_path):
     manifest_row = next(
         row for row in manifest["snapshots"] if row["phase"] == "P10"
     )
-    manifest_row["predecessor_verify_tick"] = manifest_row["source_tick"]
-    manifest_row["predecessor_verify_time_s"] = manifest_row["source_tick"] / 120.0
+    manifest_row["source_replay_steps"] = 2
     manifest_path.write_text(json.dumps(manifest) + "\n", encoding="utf-8")
-    with pytest.raises(PhaseSnapshotError, match="predecessor verify tick"):
+    with pytest.raises(PhaseSnapshotError, match="source-proven controller restore mode"):
         capture_validated_phase_snapshot_bundle(out, canonical_root=out)
 
 
@@ -1031,24 +1195,30 @@ def test_pinned_loader_parses_and_hashes_only_immutable_captured_bytes(
     assert payload["state_sha256"] == entry.state_sha256
 
 
-def test_pinned_loader_exposes_exact_hybrid_controller_anchor(tmp_path):
+def test_pinned_loader_exposes_exact_source_proven_execute_contract(tmp_path):
     out = _build_snapshot_set(tmp_path)
     bundle = capture_validated_phase_snapshot_bundle(out, canonical_root=out)
 
     payload, entry = load_validated_phase_snapshot_payload(bundle, "P10")
 
-    assert payload["source_tick"] == 16
-    assert entry.source_tick == 16
-    assert payload["predecessor_verify_tick"] == 39
-    assert entry.predecessor_verify_tick == 39
-    assert payload["predecessor_verify_time_s"] == 39 / 120
-    assert entry.predecessor_verify_time_s == 39 / 120
-    assert payload["controller_anchor_tick"] == 41
-    assert entry.controller_anchor_tick == 41
-    assert payload["controller_anchor_time_s"] == 41 / 120
-    assert entry.controller_anchor_time_s == 41 / 120
-    assert payload["target_entry_tick"] == 51
-    assert entry.target_entry_tick == 51
+    assert payload["source_tick"] == 51
+    assert entry.source_tick == 51
+    assert payload["source_replay_steps"] == 1
+    assert entry.source_replay_steps == 1
+    assert entry.predecessor_verify_tick is None
+    assert entry.predecessor_verify_time_s is None
+    assert entry.controller_anchor_tick is None
+    assert entry.controller_anchor_time_s is None
+    assert entry.target_entry_tick is None
+    assert payload["controller_restore_mode"] == (
+        "source_proven_execute_after_prime"
+    )
+    assert entry.controller_restore_mode == "source_proven_execute_after_prime"
+    assert payload["controller_restore_contract"]["source_transition_tick"] == 51
+    assert payload["controller_restore_contract"]["effective_observation_tick"] == 52
+    assert entry.source_transition_row_canonical_sha256 == payload[
+        "controller_restore_contract"
+    ]["source_transition_row_canonical_sha256"]
 
 
 @pytest.mark.parametrize(

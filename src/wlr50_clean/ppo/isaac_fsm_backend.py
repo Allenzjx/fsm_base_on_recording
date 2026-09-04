@@ -68,6 +68,25 @@ SETTLE_TICKS = round(SETTLE_SECONDS * PHYSICS_HZ)
 LEVEL_CALIBRATION_SECONDS = 0.25
 LEVEL_CALIBRATION_TICKS = round(LEVEL_CALIBRATION_SECONDS * PHYSICS_HZ)
 PHASE_SNAPSHOT_PRIME_PHYSICS_STEPS = 1
+SOURCE_PROVEN_EXECUTE_RESTORE_MODE = "source_proven_execute_after_prime"
+SOURCE_PROVEN_EXECUTE_RESTORE_SCHEMA = (
+    "wlr50_clean.phase_snapshot_source_proven_execute_restore.v1"
+)
+P10_SOURCE_TRANSITION_TICK = 7794
+P10_EFFECTIVE_OBSERVATION_TICK = 7795
+P10_CONSUMED_MOTION_TICK = 0
+P10_FIRST_EPISODE_MOTION_TICK = 1
+P10_ENTRY_GUARD_ORDER = (
+    "previous_state_done",
+    "no_body_obstacle_collision",
+    "joint_hard_limits_valid",
+    "reference_entry_compatible",
+    "critical_actuators_available",
+)
+P10_COMPLETION_GUARD_ORDER = (
+    "motion_endpoint_issued",
+    "rl_workspace_geometry",
+)
 FULL12_SIZE = 12
 ZERO_FULL12 = (0.0,) * FULL12_SIZE
 PHASE_IDS = tuple(f"P{index:02d}" for index in range(1, 14))
@@ -1133,7 +1152,12 @@ class IsaacFSMBackend:
                 controller_anchor_tick = replay_anchor_contract[
                     "controller_anchor_tick"
                 ]
-                if predecessor_verify_tick is None or controller_anchor_tick is None:
+                if (
+                    replay_anchor_contract["mode"]
+                    == SOURCE_PROVEN_EXECUTE_RESTORE_MODE
+                ):
+                    replay_segment = "source_proven_execute_prime"
+                elif predecessor_verify_tick is None or controller_anchor_tick is None:
                     replay_segment = "single_source_command"
                 elif expected_source_tick < predecessor_verify_tick:
                     replay_segment = "physical_anchor_to_predecessor_verify"
@@ -1315,15 +1339,29 @@ class IsaacFSMBackend:
         if loaded_snapshot is not None and snapshot_phase != "P01":
             # The reader began cold at the one authored source state write and
             # consumed every real PhysX sample in the source-bound replay.  The
-            # final sample is rebased to effective tick zero; the controller has
-            # not advanced and evaluates its authored entry guards exactly once.
+            # final sample is rebased to effective tick zero.  Ordinary phases
+            # then evaluate their live entry guards once.  P10 is different:
+            # its immutable tick-7794 transition already proves the transient
+            # signed-velocity guard, so controller restoration is deferred until
+            # after the tick-7795 live sensor and safety gates.
             assert reader is not None
             assert guard_proof is not None
             assert replay_observation is not None
             assert dependencies.restore_controller_snapshot is not None
-            controller_proof = dict(
-                dependencies.restore_controller_snapshot(
-                    controller, loaded_snapshot.payload
+            source_proven_execute = (
+                loaded_snapshot.payload.get("controller_restore_mode")
+                == SOURCE_PROVEN_EXECUTE_RESTORE_MODE
+            )
+            controller_proof = (
+                {
+                    "mode": SOURCE_PROVEN_EXECUTE_RESTORE_MODE,
+                    "restoration_deferred_until_live_safety_gate": True,
+                }
+                if source_proven_execute
+                else dict(
+                    dependencies.restore_controller_snapshot(
+                        controller, loaded_snapshot.payload
+                    )
                 )
             )
             controller_proof.update(
@@ -1479,6 +1517,22 @@ class IsaacFSMBackend:
                     "source_snapshot_post_prime_diagnostic": priming_comparison,
                     "failures": [],
                 }
+                if source_proven_execute:
+                    effective_proof.update(
+                        {
+                            name: replay_anchor_contract[name]
+                            for name in (
+                                "controller_restore_mode",
+                                "source_transition_verified",
+                                "source_transition_tick",
+                                "source_transition_time_s",
+                                "source_transition_row_canonical_sha256",
+                                "consumed_motion_tick",
+                                "first_episode_motion_tick",
+                                "entry_guards_from_source_not_replayed",
+                            )
+                        }
+                    )
             else:
                 assert effective_entry is not None
                 assert self._expected_effective_entry_contract is not None
@@ -1609,6 +1663,60 @@ class IsaacFSMBackend:
                     }
                 )
                 raise
+            if source_proven_execute:
+                controller_proof = dict(
+                    dependencies.restore_controller_snapshot(
+                        controller, loaded_snapshot.payload
+                    )
+                )
+                controller_proof.update(
+                    {
+                        "physical_anchor_tick": replay_anchor_contract[
+                            "physical_anchor_tick"
+                        ],
+                        "predecessor_verify_tick": replay_anchor_contract[
+                            "predecessor_verify_tick"
+                        ],
+                        "predecessor_verify_time_s": replay_anchor_contract[
+                            "predecessor_verify_time_s"
+                        ],
+                        "controller_anchor_tick": replay_anchor_contract[
+                            "controller_anchor_tick"
+                        ],
+                        "controller_anchor_time_s": replay_anchor_contract[
+                            "controller_anchor_time_s"
+                        ],
+                        "controller_state_anchor_tick": replay_anchor_contract[
+                            "controller_state_anchor_tick"
+                        ],
+                        "controller_state_anchor_role": replay_anchor_contract[
+                            "controller_state_anchor_role"
+                        ],
+                        "hybrid_physical_controller_anchor": replay_anchor_contract[
+                            "hybrid_physical_controller_anchor"
+                        ],
+                        "restoration_deferred_until_live_safety_gate": True,
+                    }
+                )
+                required_restore_proof = {
+                    "mode": SOURCE_PROVEN_EXECUTE_RESTORE_MODE,
+                    "source_transition_verified": True,
+                    "lifecycle": "EXECUTE_MOTION",
+                    "consumed_motion_tick": P10_CONSUMED_MOTION_TICK,
+                    "first_episode_motion_tick": P10_FIRST_EPISODE_MOTION_TICK,
+                    "entry_guards_from_source_not_replayed": True,
+                }
+                restore_failures = [
+                    name
+                    for name, expected in required_restore_proof.items()
+                    if controller_proof.get(name) != expected
+                ]
+                if restore_failures:
+                    self._phase_snapshot_integrity_failed = True
+                    raise IsaacFSMBackendError(
+                        "P10 controller restore callback omitted authenticated "
+                        "EXECUTE evidence: " + ", ".join(restore_failures)
+                    )
             physical_proof.update(
                 {
                     "effective_entry_contract": effective_proof,
@@ -1653,7 +1761,10 @@ class IsaacFSMBackend:
         if loaded_snapshot is not None and snapshot_phase != "P01":
             try:
                 controller_entry_proof = _verify_effective_controller_entry(
-                    controller, controller_frame, snapshot_phase
+                    controller,
+                    controller_frame,
+                    snapshot_phase,
+                    snapshot=loaded_snapshot.payload,
                 )
             except SensorContractFailure as exc:
                 self._phase_snapshot_integrity_failed = True
@@ -2832,6 +2943,26 @@ def _phase_snapshot_replay_anchor_contract(
     has_predecessor_verify_time = "predecessor_verify_time_s" in payload
     if has_predecessor_verify_tick != has_predecessor_verify_time:
         fail("predecessor VERIFY anchor tick/time fields are not an atomic pair")
+    restore_mode_present = "controller_restore_mode" in payload
+    restore_contract_present = "controller_restore_contract" in payload
+    if restore_mode_present != restore_contract_present:
+        fail("controller restore mode/contract fields are not an atomic pair")
+    source_proven_execute = bool(
+        restore_mode_present
+        and phase_id == "P10"
+        and payload.get("controller_restore_mode")
+        == SOURCE_PROVEN_EXECUTE_RESTORE_MODE
+        and isinstance(payload.get("controller_restore_contract"), Mapping)
+    )
+    if restore_mode_present and not source_proven_execute:
+        fail("controller restore mode is not the P10 source-proven contract")
+    if source_proven_execute and target_is_authored:
+        fail("source-proven P10 restore also declares legacy hybrid anchors")
+    source_proven_restore_proof = (
+        _source_proven_execute_restore_contract(payload, phase_id)
+        if source_proven_execute
+        else None
+    )
 
     predecessor_verify_tick: int | None = None
     predecessor_verify_time_s: float | None = None
@@ -2965,35 +3096,62 @@ def _phase_snapshot_replay_anchor_contract(
         only_row = source_commands[0]
         if only_row.get("control_physics_tick") != source_tick:
             fail("single source command does not start at the physical anchor")
+        if source_proven_execute and (
+            only_row.get("source_fsm_state") != "P10"
+            or only_row.get("source_fsm_lifecycle") != "EXECUTE_MOTION"
+        ):
+            fail("source-proven prime is not a P10 EXECUTE_MOTION command")
         replay_contexts.append(
             {
                 "source_control_physics_tick": source_tick,
-                "source_fsm_state": None,
-                "source_fsm_lifecycle": None,
-                "anchor_segment": "single_source_command",
+                "source_fsm_state": "P10" if source_proven_execute else None,
+                "source_fsm_lifecycle": (
+                    "EXECUTE_MOTION" if source_proven_execute else None
+                ),
+                "anchor_segment": (
+                    "source_proven_execute_prime"
+                    if source_proven_execute
+                    else "single_source_command"
+                ),
             }
         )
         context_segments = [
             {
-                "anchor_segment": "single_source_command",
+                "anchor_segment": (
+                    "source_proven_execute_prime"
+                    if source_proven_execute
+                    else "single_source_command"
+                ),
                 "first_source_tick": source_tick,
                 "last_source_tick": source_tick,
                 "source_replay_steps": 1,
-                "source_fsm_state": None,
-                "source_fsm_lifecycle": None,
+                "source_fsm_state": "P10" if source_proven_execute else None,
+                "source_fsm_lifecycle": (
+                    "EXECUTE_MOTION" if source_proven_execute else None
+                ),
             }
         ]
 
     latch_anchor_tick = (
-        controller_anchor_tick if controller_anchor_tick is not None else source_tick
+        source_tick
+        if source_proven_execute
+        else controller_anchor_tick
+        if controller_anchor_tick is not None
+        else source_tick
     )
-    return {
-        "schema": "wlr50_clean.phase_snapshot_replay_anchor_contract.v2",
+    result = {
+        "schema": (
+            "wlr50_clean.phase_snapshot_replay_anchor_contract.v3"
+            if source_proven_execute
+            else "wlr50_clean.phase_snapshot_replay_anchor_contract.v2"
+        ),
         "verified": True,
         "phase": phase_id,
         "mode": (
             "hybrid_physical_predecessor_verify_and_controller_anchors"
             if hybrid
+            else SOURCE_PROVEN_EXECUTE_RESTORE_MODE
+            if source_proven_execute
             else "single_physical_anchor"
         ),
         "physical_anchor_tick": source_tick,
@@ -3004,13 +3162,23 @@ def _phase_snapshot_replay_anchor_contract(
         "predecessor_verify_time_s": predecessor_verify_time_s,
         "controller_anchor_tick": controller_anchor_tick,
         "controller_anchor_time_s": controller_anchor_time_s,
-        "controller_state_anchor_tick": controller_anchor_tick,
+        "controller_state_anchor_tick": (
+            source_tick if source_proven_execute else controller_anchor_tick
+        ),
         "controller_state_anchor_role": (
-            "controller_anchor" if hybrid else None
+            "source_proven_transition"
+            if source_proven_execute
+            else "controller_anchor"
+            if hybrid
+            else None
         ),
         "latch_snapshot_anchor_tick": latch_anchor_tick,
         "latch_snapshot_anchor_role": (
-            "controller_anchor" if hybrid else "physical_anchor"
+            "source_proven_transition"
+            if source_proven_execute
+            else "controller_anchor"
+            if hybrid
+            else "physical_anchor"
         ),
         "target_entry_tick": target_entry_tick,
         "target_entry_time_s": phase_entry_time_s(target_entry_tick),
@@ -3049,6 +3217,281 @@ def _phase_snapshot_replay_anchor_contract(
         "source_replay_context_segments": context_segments,
         "all_source_replay_contexts_verified": True,
     }
+    if source_proven_execute:
+        restore_contract = payload["controller_restore_contract"]
+        assert source_proven_restore_proof is not None
+        result.update(
+            {
+                "controller_restore_mode": SOURCE_PROVEN_EXECUTE_RESTORE_MODE,
+                "controller_restore_contract": dict(restore_contract),
+                "source_transition_verified": True,
+                "source_transition_tick": source_proven_restore_proof[
+                    "source_transition_tick"
+                ],
+                "source_transition_time_s": source_proven_restore_proof[
+                    "source_transition_time_s"
+                ],
+                "source_transition_row_canonical_sha256": source_proven_restore_proof[
+                    "source_transition_row_canonical_sha256"
+                ],
+                "consumed_motion_tick": source_proven_restore_proof[
+                    "consumed_motion_tick"
+                ],
+                "first_episode_motion_tick": source_proven_restore_proof[
+                    "first_episode_motion_tick"
+                ],
+                "entry_guards_from_source_not_replayed": True,
+            }
+        )
+    return result
+
+
+def _source_proven_execute_restore_contract(
+    payload: Mapping[str, Any],
+    phase_id: str,
+    *,
+    authored_guard_names: Sequence[str] | None = None,
+) -> Mapping[str, Any] | None:
+    """Validate P10's immutable entry event without replaying its transient guard.
+
+    The successful source trial has already crossed P10's signed velocity
+    corridor at tick 7794.  A reset starts from that exact source observation,
+    applies the exact P10 motion-tick-zero command once, and therefore exposes
+    tick 7795 as the first live effective observation.  The source transition
+    is evidence, not a synthetic controller event: the fresh controller keeps
+    an empty history and resumes at motion tick one.
+    """
+
+    mode = payload.get("controller_restore_mode")
+    raw_contract = payload.get("controller_restore_contract")
+    if phase_id != "P10":
+        if mode is not None or raw_contract is not None:
+            raise IsaacFSMBackendError(
+                "source-proven EXECUTE restoration is exclusive to P10"
+            )
+        return None
+
+    failures: list[str] = []
+    if mode != SOURCE_PROVEN_EXECUTE_RESTORE_MODE:
+        failures.append("controller_restore_mode is not source-proven EXECUTE")
+    if not isinstance(raw_contract, Mapping):
+        failures.append("controller_restore_contract is missing")
+        contract: Mapping[str, Any] = {}
+    else:
+        contract = raw_contract
+    if contract.get("schema") != SOURCE_PROVEN_EXECUTE_RESTORE_SCHEMA:
+        failures.append("controller restore schema is invalid")
+    if payload.get("fsm_state") != "P10" or payload.get(
+        "fsm_lifecycle"
+    ) != "EXECUTE_MOTION":
+        failures.append("snapshot is not source P10 EXECUTE_MOTION")
+    if payload.get("source_tick") != P10_SOURCE_TRANSITION_TICK:
+        failures.append("P10 source tick is not the proven transition tick")
+    source_time = payload.get("source_time_s")
+    if (
+        isinstance(source_time, bool)
+        or not isinstance(source_time, (int, float))
+        or not math.isfinite(float(source_time))
+        or float(source_time)
+        != phase_entry_time_s(P10_SOURCE_TRANSITION_TICK)
+    ):
+        failures.append("P10 source time is not the proven transition time")
+    if payload.get("source_replay_steps") != 1:
+        failures.append("P10 source-proven reset must prime exactly once")
+    for forbidden in (
+        "target_entry_tick",
+        "predecessor_verify_tick",
+        "predecessor_verify_time_s",
+        "controller_anchor_tick",
+        "controller_anchor_time_s",
+    ):
+        if forbidden in payload:
+            failures.append(f"legacy P10 replay field remains: {forbidden}")
+
+    source_commands = payload.get("source_commands")
+    source_command = payload.get("source_command")
+    if (
+        not isinstance(source_command, Mapping)
+        or not isinstance(source_commands, list)
+        or len(source_commands) != 1
+        or source_commands[0] != source_command
+        or source_command.get("control_physics_tick")
+        != P10_SOURCE_TRANSITION_TICK
+    ):
+        failures.append("P10 prime command is not the exact tick-7794 source row")
+    elif (
+        source_command.get("source_fsm_state") not in (None, "P10")
+        or source_command.get("source_fsm_lifecycle")
+        not in (None, "EXECUTE_MOTION")
+    ):
+        failures.append("P10 prime command carries a conflicting FSM context")
+
+    scalar_contract = {
+        "source_transition_tick": P10_SOURCE_TRANSITION_TICK,
+        "prime_command_tick": P10_SOURCE_TRANSITION_TICK,
+        "effective_observation_tick": P10_EFFECTIVE_OBSERVATION_TICK,
+        "consumed_motion_tick": P10_CONSUMED_MOTION_TICK,
+        "first_episode_motion_tick": P10_FIRST_EPISODE_MOTION_TICK,
+    }
+    for name, expected in scalar_contract.items():
+        if type(contract.get(name)) is not int or contract.get(name) != expected:
+            failures.append(f"controller restore {name} is not {expected}")
+    transition_time = contract.get("source_transition_time_s")
+    if (
+        isinstance(transition_time, bool)
+        or not isinstance(transition_time, (int, float))
+        or not math.isfinite(float(transition_time))
+        or float(transition_time)
+        != phase_entry_time_s(P10_SOURCE_TRANSITION_TICK)
+    ):
+        failures.append("source transition time is not tick 7794 at 120 Hz")
+
+    transition = contract.get("source_transition_row")
+    transition_hash = contract.get("source_transition_row_canonical_sha256")
+    if not isinstance(transition, Mapping):
+        failures.append("source transition row is missing")
+        transition = {}
+    if (
+        not isinstance(transition_hash, str)
+        or len(transition_hash) != 64
+        or any(character not in "0123456789abcdef" for character in transition_hash)
+        or _canonical_hash(transition) != transition_hash
+    ):
+        failures.append("source transition canonical SHA-256 does not match")
+    if (
+        set(transition)
+        != {
+            "sim_time_s",
+            "state_id",
+            "from_lifecycle",
+            "to_lifecycle",
+            "reason",
+            "details",
+        }
+        or
+        transition.get("state_id") != "P10"
+        or transition.get("from_lifecycle") != "WAIT_ENTRY"
+        or transition.get("to_lifecycle") != "EXECUTE_MOTION"
+        or transition.get("reason") != "all live entry guards passed"
+    ):
+        failures.append("source transition is not the exact P10 entry edge")
+    row_time = transition.get("sim_time_s")
+    if (
+        isinstance(row_time, bool)
+        or not isinstance(row_time, (int, float))
+        or not math.isfinite(float(row_time))
+        or not math.isclose(
+            float(row_time),
+            phase_entry_time_s(P10_SOURCE_TRANSITION_TICK),
+            rel_tol=0.0,
+            abs_tol=2.0e-6,
+        )
+    ):
+        failures.append("source transition row time differs from tick 7794")
+    if "physics_tick" in transition and transition.get(
+        "physics_tick"
+    ) != P10_SOURCE_TRANSITION_TICK:
+        failures.append("source transition row physics tick differs from 7794")
+
+    order = contract.get("authored_entry_guard_order")
+    evidence = contract.get("authored_entry_guard_evidence")
+    expected_order = (
+        tuple(str(name) for name in authored_guard_names)
+        if authored_guard_names is not None
+        else P10_ENTRY_GUARD_ORDER
+    )
+    if not isinstance(order, list) or tuple(order) != expected_order:
+        failures.append("authored P10 entry guard order differs from frozen FSM")
+    details = transition.get("details")
+    transition_evidence = (
+        details.get("guards") if isinstance(details, Mapping) else None
+    )
+    if (
+        not isinstance(evidence, list)
+        or not isinstance(transition_evidence, list)
+        or evidence != transition_evidence
+    ):
+        failures.append("source guard evidence is not exact transition-row evidence")
+        evidence_rows: tuple[Any, ...] = ()
+    else:
+        evidence_rows = tuple(evidence)
+    evidence_names = tuple(
+        str(row.get("name", "")) if isinstance(row, Mapping) else ""
+        for row in evidence_rows
+    )
+    if evidence_names != expected_order:
+        failures.append("source guard evidence order differs from frozen FSM")
+    if any(
+        not isinstance(row, Mapping)
+        or set(row) != {"name", "passed", "value", "source", "reason"}
+        or row.get("passed") is not True
+        or not isinstance(row.get("source"), str)
+        or not row.get("source")
+        or not isinstance(row.get("reason"), str)
+        for row in evidence_rows
+    ):
+        failures.append("one or more source entry guards lack passing evidence")
+
+    compatibility = next(
+        (
+            row
+            for row in evidence_rows
+            if isinstance(row, Mapping)
+            and row.get("name") == "reference_entry_compatible"
+        ),
+        None,
+    )
+    compatibility_value = (
+        compatibility.get("value") if isinstance(compatibility, Mapping) else None
+    )
+    velocity_rows = (
+        [
+            row
+            for name, row in compatibility_value.items()
+            if str(name).endswith("_velocity") and isinstance(row, Mapping)
+        ]
+        if isinstance(compatibility_value, Mapping)
+        else []
+    )
+    if len(velocity_rows) != 1:
+        failures.append("source P10 signed velocity guard evidence is missing")
+        signed_velocity: Mapping[str, Any] | None = None
+    else:
+        signed_velocity = velocity_rows[0]
+        actual_velocity = signed_velocity.get("actual_deg_s")
+        if (
+            signed_velocity.get("signed_positive_rebound_required") is not True
+            or isinstance(actual_velocity, bool)
+            or not isinstance(actual_velocity, (int, float))
+            or not math.isfinite(float(actual_velocity))
+            or float(actual_velocity) <= 0.0
+        ):
+            failures.append("source P10 signed positive velocity evidence failed")
+
+    if failures:
+        raise IsaacFSMBackendError(
+            "P10 source-proven EXECUTE restore contract is invalid: "
+            + "; ".join(dict.fromkeys(failures))
+        )
+    return {
+        "schema": SOURCE_PROVEN_EXECUTE_RESTORE_SCHEMA,
+        "verified": True,
+        "mode": SOURCE_PROVEN_EXECUTE_RESTORE_MODE,
+        "source_transition_verified": True,
+        "source_transition_tick": P10_SOURCE_TRANSITION_TICK,
+        "source_transition_time_s": phase_entry_time_s(
+            P10_SOURCE_TRANSITION_TICK
+        ),
+        "source_transition_row_canonical_sha256": transition_hash,
+        "authored_entry_guard_order": list(expected_order),
+        "authored_entry_guard_evidence": list(evidence_rows),
+        "p10_signed_velocity_alignment": signed_velocity,
+        "prime_command_tick": P10_SOURCE_TRANSITION_TICK,
+        "effective_observation_tick": P10_EFFECTIVE_OBSERVATION_TICK,
+        "consumed_motion_tick": P10_CONSUMED_MOTION_TICK,
+        "first_episode_motion_tick": P10_FIRST_EPISODE_MOTION_TICK,
+        "entry_guards_from_source_not_replayed": True,
+    }
 
 
 def _validate_phase_snapshot_payload(
@@ -3061,6 +3504,10 @@ def _validate_phase_snapshot_payload(
         failures.append(str(exc))
     try:
         _phase_snapshot_replay_anchor_contract(payload, phase_id)
+    except IsaacFSMBackendError as exc:
+        failures.append(str(exc))
+    try:
+        _source_proven_execute_restore_contract(payload, phase_id)
     except IsaacFSMBackendError as exc:
         failures.append(str(exc))
     expected_history = list(PHASE_IDS[: PHASE_IDS.index(phase_id)])
@@ -4133,8 +4580,9 @@ def _write_phase_snapshot_state(
 def _restore_controller_from_snapshot(
     controller: Any, snapshot: Mapping[str, Any]
 ) -> Mapping[str, Any]:
-    """Rebuild a fresh controller immediately before its real entry decision."""
+    """Rebuild a fresh controller at the snapshot's authenticated lifecycle."""
 
+    from wlr50_clean.fsm.motion_executor import FeedbackCorrection
     from wlr50_clean.fsm.state_spec import Lifecycle
 
     phase_id = str(snapshot["fsm_state"])
@@ -4153,7 +4601,6 @@ def _restore_controller_from_snapshot(
     controller.state = state
     if str(controller.phase.state_id) != phase_id:
         raise IsaacFSMBackendError("controller graph and motion phase disagree")
-    controller.lifecycle = Lifecycle.WAIT_ENTRY
     controller.retries_used = 0
     controller.physics_tick = 0
     controller._last_sim_time_s = None
@@ -4177,6 +4624,124 @@ def _restore_controller_from_snapshot(
     controller.motion._tick_index = 0
     completed = tuple(str(item) for item in snapshot["phase_history"])
     controller._ppo_restored_phase_history = completed
+    authored_guard_names = tuple(
+        str(getattr(guard, "name", "")) for guard in state.entry_guards
+    )
+    source_proven = _source_proven_execute_restore_contract(
+        snapshot,
+        phase_id,
+        authored_guard_names=authored_guard_names,
+    )
+    consumed_motion_record: Mapping[str, Any] | None = None
+    if source_proven is None:
+        controller.lifecycle = Lifecycle.WAIT_ENTRY
+        controller._decision_lattice_origin_tick = 0
+        controller._ppo_source_proven_execute_contract = None
+        entry_guards_pending = True
+    else:
+        if phase_id != "P10":  # pragma: no cover - guarded by the validator.
+            raise IsaacFSMBackendError(
+                "source-proven EXECUTE restoration selected outside P10"
+            )
+        correction_fractions = (
+            state.normal_correction_fractions
+            if state.normal_correction_domain == "logical_command"
+            else ZERO_FULL12
+        )
+        correction = FeedbackCorrection(correction_fractions)
+        controller.motion.start_phase(
+            phase,
+            correction,
+            time_scale=state.normal_time_scale,
+        )
+        consumed_motion = controller.motion.tick()
+        source_command = snapshot["source_command"]
+        adapter_input = source_command["adapter_input"]
+        expected_requested = _full12(
+            adapter_input["requested_full12"],
+            "P10 source-proven motion-tick-zero command",
+        )
+        expected_bias = _full12(
+            adapter_input["drive_feedback_bias_requested_full12"],
+            "P10 source-proven motion-tick-zero drive bias",
+        )
+        normal_bias_callback = getattr(
+            controller, "_normal_drive_bias_full12", None
+        )
+        if not callable(normal_bias_callback):
+            raise IsaacFSMBackendError(
+                "frozen controller lacks its normal drive-bias implementation"
+            )
+        normal_bias = _full12(
+            normal_bias_callback(consumed_motion),
+            "P10 frozen motion-tick-zero normal drive bias",
+        )
+        consumed_tracking = tuple(consumed_motion.tracking_servo_names)
+        expected_tracking = tuple(adapter_input["tracking_servo_names"])
+        motion_failures: list[str] = []
+        if (
+            str(consumed_motion.state_id) != "P10"
+            or int(consumed_motion.tick_index) != P10_CONSUMED_MOTION_TICK
+            or not math.isclose(
+                float(consumed_motion.elapsed_s), 0.0, rel_tol=0.0, abs_tol=1.0e-12
+            )
+        ):
+            motion_failures.append("consumed motion frame is not P10 tick zero")
+        if tuple(consumed_motion.full12) != expected_requested:
+            motion_failures.append(
+                "frozen P10 motion tick zero differs from the source command"
+            )
+        if consumed_tracking != expected_tracking:
+            motion_failures.append(
+                "frozen P10 motion tick-zero tracking set differs from source"
+            )
+        if expected_bias != normal_bias:
+            motion_failures.append(
+                "frozen P10 motion tick-zero drive bias differs from source"
+            )
+        if getattr(phase, "drive_feedback", None) is not None:
+            motion_failures.append(
+                "P10 unexpectedly requires un-restored dynamic drive feedback"
+            )
+        if bool(consumed_motion.endpoint_issued):
+            motion_failures.append("P10 motion tick zero is already an endpoint")
+        if int(getattr(controller.motion, "_tick_index", -1)) != 1:
+            motion_failures.append("P10 motion executor did not advance exactly once")
+        if (
+            float(getattr(controller.motion, "_time_scale", math.nan))
+            != float(state.normal_time_scale)
+            or tuple(getattr(controller.motion._correction, "fractions", ()))
+            != tuple(correction_fractions)
+        ):
+            motion_failures.append(
+                "P10 motion executor does not retain frozen correction/time scale"
+            )
+        if motion_failures:
+            raise IsaacFSMBackendError(
+                "P10 source-proven controller restoration failed: "
+                + "; ".join(motion_failures)
+            )
+
+        controller.lifecycle = Lifecycle.EXECUTE_MOTION
+        controller._tracking_servo_names = consumed_tracking
+        controller._drive_feedback_tick_index = P10_CONSUMED_MOTION_TICK
+        # Reset-local tick zero consumes source observation 7795.  The source
+        # transition decision occurred one tick earlier, so the next 15 Hz
+        # decision is decision_stride-1 local ticks away.
+        controller._decision_lattice_origin_tick = (
+            int(controller.spec.decision_stride) - 1
+        )
+        controller._ppo_source_proven_execute_contract = dict(source_proven)
+        consumed_motion_record = {
+            "state_id": str(consumed_motion.state_id),
+            "tick_index": int(consumed_motion.tick_index),
+            "elapsed_s": float(consumed_motion.elapsed_s),
+            "full12": list(consumed_motion.full12),
+            "tracking_servo_names": list(consumed_tracking),
+            "normal_drive_bias_full12": list(normal_bias),
+            "endpoint_issued": bool(consumed_motion.endpoint_issued),
+        }
+        entry_guards_pending = False
     return {
         "schema": "wlr50_clean.phase_snapshot_controller_restore.v1",
         "state_id": controller.state.state_id,
@@ -4188,7 +4753,47 @@ def _restore_controller_from_snapshot(
         "retries_used": controller.retries_used,
         "termination": None,
         "history_is_independent": controller.history == [],
-        "entry_guards_pending_effective_tick_zero": True,
+        "mode": (
+            "wait_entry_live_guard_evaluation"
+            if source_proven is None
+            else SOURCE_PROVEN_EXECUTE_RESTORE_MODE
+        ),
+        "source_transition_verified": bool(source_proven),
+        "source_transition_tick": (
+            None if source_proven is None else source_proven["source_transition_tick"]
+        ),
+        "source_transition_time_s": (
+            None
+            if source_proven is None
+            else source_proven["source_transition_time_s"]
+        ),
+        "entry_guards_pending_effective_tick_zero": entry_guards_pending,
+        "entry_guards_from_source_not_replayed": bool(source_proven),
+        "consumed_motion_tick": (
+            None if source_proven is None else P10_CONSUMED_MOTION_TICK
+        ),
+        "first_episode_motion_tick": (
+            None if source_proven is None else P10_FIRST_EPISODE_MOTION_TICK
+        ),
+        "motion_tick_zero_source_command_verified": bool(source_proven),
+        "consumed_motion_frame": consumed_motion_record,
+        "frozen_normal_correction_fractions": (
+            None
+            if source_proven is None
+            else list(state.normal_correction_fractions)
+        ),
+        "frozen_normal_correction_domain": (
+            None if source_proven is None else state.normal_correction_domain
+        ),
+        "frozen_normal_time_scale": (
+            None if source_proven is None else state.normal_time_scale
+        ),
+        "next_decision_tick": (
+            None
+            if source_proven is None
+            else controller._decision_lattice_origin_tick
+        ),
+        "completion_guards_remain_pending": bool(source_proven),
         "physical_anchor_tick": replay_anchor_contract["physical_anchor_tick"],
         "predecessor_verify_tick": replay_anchor_contract[
             "predecessor_verify_tick"
@@ -4748,10 +5353,137 @@ def _verify_effective_entry_safety(observation: Any) -> Mapping[str, Any]:
     }
 
 
-def _verify_effective_controller_entry(
-    controller: Any, controller_frame: Any, phase: str
+def _verify_source_proven_execute_controller_entry(
+    controller: Any,
+    controller_frame: Any,
+    snapshot: Mapping[str, Any],
 ) -> Mapping[str, Any]:
-    """Verify the sole controller step naturally admitted the requested phase."""
+    """Prove that reset-local tick zero emitted P10 motion tick one.
+
+    P10's entry guards are intentionally *not* evaluated against tick 7795:
+    the signed rebound corridor is a one-tick source event, already bound to
+    the immutable transition row.  This verifier instead proves that no new
+    event was fabricated and that the ordinary frozen motion/completion
+    lifecycle continues from tick one.
+    """
+
+    state = getattr(controller, "state", None)
+    authored_guards = tuple(getattr(state, "entry_guards", ()))
+    expected_names = tuple(str(getattr(guard, "name", "")) for guard in authored_guards)
+    source_proof = _source_proven_execute_restore_contract(
+        snapshot,
+        "P10",
+        authored_guard_names=expected_names,
+    )
+    assert source_proof is not None
+    installed = getattr(controller, "_ppo_source_proven_execute_contract", None)
+    motion = getattr(controller, "motion", None)
+    motion_phase = getattr(motion, "phase", None)
+    lifecycle = _enum_value(getattr(controller_frame, "lifecycle", None))
+    events = tuple(getattr(controller_frame, "events", ()))
+    failures: list[str] = []
+    if not isinstance(installed, Mapping) or dict(installed) != dict(source_proof):
+        failures.append("source transition proof was not installed on the controller")
+    if events or tuple(getattr(controller, "history", ())):
+        failures.append("P10 entry transition was replayed or fabricated at reset")
+    if (
+        str(getattr(controller_frame, "state_id", "")) != "P10"
+        or str(getattr(state, "state_id", "")) != "P10"
+        or lifecycle != "EXECUTE_MOTION"
+        or _enum_value(getattr(controller, "lifecycle", None)) != "EXECUTE_MOTION"
+    ):
+        failures.append("controller is not continuing P10 EXECUTE_MOTION")
+    if (
+        motion_phase is None
+        or str(getattr(motion_phase, "state_id", "")) != "P10"
+        or type(getattr(motion, "_tick_index", None)) is not int
+        or getattr(motion, "_tick_index", None)
+        != P10_FIRST_EPISODE_MOTION_TICK + 1
+        or type(getattr(controller, "_drive_feedback_tick_index", None)) is not int
+        or getattr(controller, "_drive_feedback_tick_index", None)
+        != P10_FIRST_EPISODE_MOTION_TICK
+    ):
+        failures.append("first episode controller frame is not P10 motion tick one")
+    if (
+        type(getattr(controller_frame, "physics_tick", None)) is not int
+        or getattr(controller_frame, "physics_tick", None) != 0
+        or type(getattr(controller, "physics_tick", None)) is not int
+        or getattr(controller, "physics_tick", None) != 1
+        or bool(getattr(controller_frame, "decision_tick", True))
+    ):
+        failures.append("P10 reset-local clock is not aligned after the source decision")
+    if (
+        getattr(controller_frame, "termination", None) is not None
+        or getattr(controller, "termination", None) is not None
+        or getattr(controller_frame, "first_blocker", None) is not None
+        or getattr(controller, "_pending_blocker", None) is not None
+        or bool(getattr(controller_frame, "endpoint_issued", False))
+        or bool(getattr(controller, "_endpoint_issued", False))
+        or getattr(controller, "_verify_started_s", None) is not None
+    ):
+        failures.append("P10 continuation is terminal, blocked, or past its endpoint")
+    completion_guards = tuple(getattr(state, "completion_guards", ()))
+    completion_guard_names = tuple(
+        str(getattr(guard, "name", "")) for guard in completion_guards
+    )
+    if completion_guard_names != P10_COMPLETION_GUARD_ORDER:
+        failures.append("frozen P10 completion guard order is unavailable or changed")
+    if failures:
+        raise SensorContractFailure(
+            "effective phase entry controller/guard gate failed: "
+            + ", ".join(failures)
+        )
+    return {
+        "schema": "wlr50_clean.phase_effective_entry_controller.v2",
+        "verified": True,
+        "phase": "P10",
+        "lifecycle": lifecycle,
+        "nonterminal": True,
+        "unblocked": True,
+        "mode": SOURCE_PROVEN_EXECUTE_RESTORE_MODE,
+        "source_transition_verified": True,
+        "source_transition_tick": source_proof["source_transition_tick"],
+        "source_transition_time_s": source_proof["source_transition_time_s"],
+        "source_transition_row_canonical_sha256": source_proof[
+            "source_transition_row_canonical_sha256"
+        ],
+        "authored_entry_guard_names": list(expected_names),
+        "entry_guard_evidence": source_proof["authored_entry_guard_evidence"],
+        "p10_signed_velocity_alignment": source_proof[
+            "p10_signed_velocity_alignment"
+        ],
+        "entry_guards_from_source_not_replayed": True,
+        "new_entry_event_count": 0,
+        "consumed_motion_tick": P10_CONSUMED_MOTION_TICK,
+        "first_episode_motion_tick": P10_FIRST_EPISODE_MOTION_TICK,
+        "motion_tick_after_first_episode_frame": int(motion._tick_index),
+        "completion_guards_remain_pending": True,
+        "completion_guard_names": list(completion_guard_names),
+    }
+
+
+def _verify_effective_controller_entry(
+    controller: Any,
+    controller_frame: Any,
+    phase: str,
+    *,
+    snapshot: Mapping[str, Any] | None = None,
+) -> Mapping[str, Any]:
+    """Verify natural entry or P10's source-proven EXECUTE continuation."""
+
+    if (
+        snapshot is not None
+        and snapshot.get("controller_restore_mode")
+        == SOURCE_PROVEN_EXECUTE_RESTORE_MODE
+    ):
+        if phase != "P10":
+            raise SensorContractFailure(
+                "effective phase entry controller/guard gate failed: "
+                "source-proven EXECUTE restoration selected outside P10"
+            )
+        return _verify_source_proven_execute_controller_entry(
+            controller, controller_frame, snapshot
+        )
 
     state = getattr(controller, "state", None)
     authored_guards = tuple(getattr(state, "entry_guards", ()))

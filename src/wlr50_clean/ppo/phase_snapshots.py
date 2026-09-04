@@ -38,14 +38,17 @@ PHASE_IDS = tuple(f"P{i:02d}" for i in range(1, 14))
 PHYSICS_HZ = 120.0
 SOURCE_SETTLE_TICKS = 180
 SOURCE_CONTACT_HISTORY_SAMPLES = 3
-# P10 is the only entry with a signed rebound-velocity guard.  Its minimum
-# three-sample RR top-contact history starts inside the impact and is not a
-# reproducible generalized-coordinate reset.  Trial043's last pre-impact
-# stable window ends at tick 7560, exactly where the final P09 tracked-servo
-# command segment begins.  Seventeen additional pre-roll ticks place the
-# reset on that authored segment boundary while retaining the whole impact,
-# top-load latch, VERIFY_RESULT, and WAIT_ENTRY history in the live replay.
-P10_CONTACT_DYNAMICS_PREROLL_TICKS = 17
+CONTROLLER_RESTORE_CONTRACT_SCHEMA = (
+    "wlr50_clean.phase_snapshot_source_proven_execute_restore.v1"
+)
+SOURCE_PROVEN_EXECUTE_RESTORE_MODE = "source_proven_execute_after_prime"
+P10_AUTHORED_ENTRY_GUARD_ORDER = (
+    "previous_state_done",
+    "no_body_obstacle_collision",
+    "joint_hard_limits_valid",
+    "reference_entry_compatible",
+    "critical_actuators_available",
+)
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_PHASE_SNAPSHOT_ROOT = PROJECT_ROOT / "reference" / "ppo_phase_snapshots"
 _SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
@@ -122,6 +125,7 @@ class _PhaseEntryBoundary:
     target_entry_tick: int
     source_replay_steps: int
     uses_causal_predecessor: bool
+    controller_restore_mode: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -136,6 +140,8 @@ class PhaseSnapshotFileBuffer:
     predecessor_verify_time_s: float | None
     controller_anchor_tick: int | None
     controller_anchor_time_s: float | None
+    controller_restore_mode: str | None
+    source_transition_row_canonical_sha256: str | None
     snapshot_path: Path
     checksum_path: Path
     snapshot_bytes: bytes
@@ -154,6 +160,10 @@ class PhaseSnapshotFileBuffer:
             "predecessor_verify_time_s": self.predecessor_verify_time_s,
             "controller_anchor_tick": self.controller_anchor_tick,
             "controller_anchor_time_s": self.controller_anchor_time_s,
+            "controller_restore_mode": self.controller_restore_mode,
+            "source_transition_row_canonical_sha256": (
+                self.source_transition_row_canonical_sha256
+            ),
             "snapshot_path": str(self.snapshot_path),
             "checksum_path": str(self.checksum_path),
             "file_sha256": self.file_sha256,
@@ -1056,6 +1066,7 @@ def _phase_entry_boundaries_from_rows(
             target_entry_tick=0,
             source_replay_steps=1,
             uses_causal_predecessor=False,
+            controller_restore_mode=None,
         )
     }
     wait_entry_ticks: dict[str, int] = {}
@@ -1106,70 +1117,32 @@ def _phase_entry_boundaries_from_rows(
                 raise PhaseSnapshotError(f"{phase} entry is not on the 120 Hz lattice")
             details = row.get("details")
             guards = details.get("guards", ()) if isinstance(details, Mapping) else ()
-            uses_causal_predecessor = phase == "P10" and (
+            signed_positive_entry = (
                 _contains_signed_positive_rebound_requirement(guards)
             )
+            if phase == "P10" and not signed_positive_entry:
+                raise PhaseSnapshotError(
+                    "P10 entry lacks its authored signed-positive rebound evidence"
+                )
+            uses_causal_predecessor = phase == "P10" and signed_positive_entry
             if uses_causal_predecessor:
-                if leg_crossing_rows is None:
-                    raise PhaseSnapshotError(
-                        f"{phase} signed-positive entry lacks its contact-history "
-                        "anchor evidence"
-                    )
-                p10_top_loaded_latch_tick = _p10_top_loaded_latch_tick(
-                    leg_crossing_rows
-                )
-                controller_anchor_tick = wait_entry_ticks.get(phase)
-                if (
-                    controller_anchor_tick is None
-                    or controller_anchor_tick < 0
-                    or controller_anchor_tick >= tick
-                ):
-                    raise PhaseSnapshotError(
-                        f"{phase} signed-positive entry lacks a prior WAIT_ENTRY start"
-                    )
-                phase_index = PHASE_IDS.index(phase)
-                predecessor = PHASE_IDS[phase_index - 1]
-                predecessor_boundary = result.get(predecessor)
-                if predecessor_boundary is None:
-                    raise PhaseSnapshotError(
-                        f"{phase} signed-positive entry lacks the prior "
-                        f"{predecessor} phase-entry boundary"
-                    )
-                predecessor_verify_tick = verify_result_ticks.get(predecessor)
-                if (
-                    predecessor_verify_tick is None
-                    or predecessor_verify_tick < 0
-                    or predecessor_verify_tick >= controller_anchor_tick
-                ):
-                    raise PhaseSnapshotError(
-                        f"{phase} signed-positive entry lacks a prior "
-                        f"{predecessor} VERIFY_RESULT start"
-                    )
-                # A generalized-coordinate write cannot restore hidden PhysX
-                # contact/solver history.  Start at the last stable authored
-                # command-segment boundary before impact, rather than inside
-                # the impulse or at the earlier dynamic P09 entry.
-                source_tick = p10_top_loaded_latch_tick - (
-                    SOURCE_CONTACT_HISTORY_SAMPLES
-                    - 1
-                    + P10_CONTACT_DYNAMICS_PREROLL_TICKS
-                )
-                if not (
-                    predecessor_boundary.target_entry_tick
-                    <= source_tick
-                    < p10_top_loaded_latch_tick
-                    < predecessor_verify_tick
-                ):
-                    raise PhaseSnapshotError(
-                        f"{phase} stable command-segment anchor, top-load latch, "
-                        f"and {predecessor} VERIFY_RESULT are not causally ordered"
-                    )
-                source_replay_steps = tick - source_tick
+                # The signed rebound is a transient source entry condition, not
+                # generalized-coordinate state that PhysX can reconstruct after
+                # a reset.  Bind the exact successful source transition instead:
+                # write the entry observation, prime the first P10 EXECUTE command
+                # once, then restore the already-proven EXECUTE lifecycle.
+                source_tick = tick
+                predecessor_verify_tick = None
+                controller_anchor_tick = None
+                source_replay_steps = 1
+                controller_restore_mode = SOURCE_PROVEN_EXECUTE_RESTORE_MODE
+                uses_causal_predecessor = False
             else:
                 source_tick = tick
                 predecessor_verify_tick = None
                 controller_anchor_tick = None
                 source_replay_steps = 1
+                controller_restore_mode = None
             result[phase] = _PhaseEntryBoundary(
                 source_tick=source_tick,
                 predecessor_verify_tick=predecessor_verify_tick,
@@ -1177,6 +1150,7 @@ def _phase_entry_boundaries_from_rows(
                 target_entry_tick=tick,
                 source_replay_steps=source_replay_steps,
                 uses_causal_predecessor=uses_causal_predecessor,
+                controller_restore_mode=controller_restore_mode,
             )
     if tuple(result) != PHASE_IDS:
         missing = [phase for phase in PHASE_IDS if phase not in result]
@@ -1259,6 +1233,83 @@ def _event_latches(
     return state
 
 
+def _source_proven_execute_restore_contract(
+    rows: Iterable[Mapping[str, Any]],
+    *,
+    phase: str,
+    source_tick: int,
+) -> dict[str, Any]:
+    """Bind the exact successful source entry that authorizes EXECUTE restore."""
+
+    matches: list[Mapping[str, Any]] = []
+    for row in rows:
+        if (
+            row.get("state_id") != phase
+            or row.get("from_lifecycle") != "WAIT_ENTRY"
+            or row.get("to_lifecycle") != "EXECUTE_MOTION"
+        ):
+            continue
+        time_s = row.get("sim_time_s")
+        if (
+            isinstance(time_s, bool)
+            or not isinstance(time_s, (int, float))
+            or not math.isfinite(float(time_s))
+            or not math.isclose(
+                float(time_s), source_tick / PHYSICS_HZ, rel_tol=0.0, abs_tol=2.0e-6
+            )
+        ):
+            continue
+        matches.append(row)
+    if len(matches) != 1:
+        raise PhaseSnapshotError(
+            f"{phase} source-proven restore requires exactly one entry transition "
+            f"at tick {source_tick}"
+        )
+    transition_row = json.loads(
+        _canonical_bytes(matches[0]).decode("utf-8")
+    )
+    if transition_row.get("reason") != "all live entry guards passed":
+        raise PhaseSnapshotError(
+            f"{phase} source-proven transition lacks the successful entry reason"
+        )
+    details = transition_row.get("details")
+    guards = details.get("guards") if isinstance(details, Mapping) else None
+    if (
+        not isinstance(guards, list)
+        or any(not isinstance(guard, Mapping) for guard in guards)
+    ):
+        raise PhaseSnapshotError(
+            f"{phase} source-proven transition lacks authored guard evidence"
+        )
+    guard_order = [guard.get("name") for guard in guards]
+    if guard_order != list(P10_AUTHORED_ENTRY_GUARD_ORDER):
+        raise PhaseSnapshotError(
+            f"{phase} source-proven transition guard order differs from the authored FSM"
+        )
+    if any(guard.get("passed") is not True for guard in guards):
+        raise PhaseSnapshotError(
+            f"{phase} source-proven transition contains a failed entry guard"
+        )
+    if not _contains_signed_positive_rebound_requirement(guards):
+        raise PhaseSnapshotError(
+            f"{phase} source-proven transition lacks signed-positive rebound evidence"
+        )
+    transition_hash = _sha256_bytes(_canonical_bytes(transition_row))
+    return {
+        "schema": CONTROLLER_RESTORE_CONTRACT_SCHEMA,
+        "source_transition_tick": source_tick,
+        "source_transition_time_s": source_tick / PHYSICS_HZ,
+        "source_transition_row": transition_row,
+        "source_transition_row_canonical_sha256": transition_hash,
+        "authored_entry_guard_order": guard_order,
+        "authored_entry_guard_evidence": guards,
+        "prime_command_tick": source_tick,
+        "effective_observation_tick": source_tick + 1,
+        "consumed_motion_tick": 0,
+        "first_episode_motion_tick": 1,
+    }
+
+
 def _expected_replay_fsm_context(
     phase: str,
     tick: int,
@@ -1291,6 +1342,8 @@ def _snapshot_payload(
     source_command_contexts: Iterable[Mapping[str, Any]],
     contact_event_latches: Mapping[str, Any],
     level_reference_orientation_wxyz: list[float],
+    controller_restore_mode: str | None = None,
+    controller_restore_contract: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     base = observation["base"]
     joints = observation["joints"]
@@ -1382,6 +1435,15 @@ def _snapshot_payload(
             }
             for source, context in zip(replay_rows, replay_contexts, strict=True)
         )
+    elif controller_restore_mode == SOURCE_PROVEN_EXECUTE_RESTORE_MODE:
+        serialized_source_commands = tuple(
+            {
+                **source,
+                "source_fsm_state": context.get("state_id"),
+                "source_fsm_lifecycle": context.get("lifecycle"),
+            }
+            for source, context in zip(replay_rows, replay_contexts, strict=True)
+        )
     serialized_source_command = dict(serialized_source_commands[0])
     payload = {
         "schema": SNAPSHOT_SCHEMA,
@@ -1456,6 +1518,30 @@ def _snapshot_payload(
             "observation is the target phase-entry decision; live physics and frozen "
             "FSM own all subsequent state"
         )
+    if controller_restore_mode is not None:
+        if (
+            phase != "P10"
+            or uses_causal_predecessor
+            or controller_restore_mode != SOURCE_PROVEN_EXECUTE_RESTORE_MODE
+            or not isinstance(controller_restore_contract, Mapping)
+        ):
+            raise PhaseSnapshotError(
+                f"{phase} source-proven controller restore contract is invalid"
+            )
+        payload["controller_restore_mode"] = controller_restore_mode
+        payload["controller_restore_contract"] = dict(controller_restore_contract)
+        payload["snapshot_semantics"] = (
+            "the source phase-entry observation is written only before the first "
+            "episode physics tick; the exact first P10 EXECUTE command (motion tick "
+            "zero) is primed once, then the controller restores the hash-bound "
+            "source-proven EXECUTE lifecycle; the episode begins at motion tick one "
+            "on the next live observation and live physics and frozen FSM own all "
+            "subsequent state"
+        )
+    elif controller_restore_contract is not None:
+        raise PhaseSnapshotError(
+            f"{phase} controller restore contract lacks an explicit mode"
+        )
     return payload
 
 
@@ -1507,6 +1593,16 @@ def build_phase_snapshots(
         transition_rows,
         leg_crossing_rows=leg_crossing_rows,
     )
+    controller_restore_contracts = {
+        phase: _source_proven_execute_restore_contract(
+            transition_rows,
+            phase=phase,
+            source_tick=boundary.source_tick,
+        )
+        for phase, boundary in boundaries_by_phase.items()
+        if boundary.controller_restore_mode
+        == SOURCE_PROVEN_EXECUTE_RESTORE_MODE
+    }
     ticks = {
         tick
         for boundary in boundaries_by_phase.values()
@@ -1649,6 +1745,8 @@ def build_phase_snapshots(
                 leg_crossing_rows, controller_tick
             ),
             level_reference_orientation_wxyz=level_reference_orientation,
+            controller_restore_mode=boundary.controller_restore_mode,
+            controller_restore_contract=controller_restore_contracts.get(phase),
         )
         state_hash = _sha256_bytes(_canonical_bytes(payload))
         complete = {**payload, "state_sha256": state_hash}
@@ -1695,6 +1793,12 @@ def build_phase_snapshots(
                 boundary.controller_anchor_tick / PHYSICS_HZ
             )
             row["target_entry_tick"] = boundary.target_entry_tick
+        if boundary.controller_restore_mode is not None:
+            restore_contract = controller_restore_contracts[phase]
+            row["controller_restore_mode"] = boundary.controller_restore_mode
+            row["source_transition_row_canonical_sha256"] = restore_contract[
+                "source_transition_row_canonical_sha256"
+            ]
         rows.append(row)
     manifest = {
         "schema": MANIFEST_SCHEMA,
@@ -1999,6 +2103,118 @@ def _validate_additional_source_replay_row(
         )
 
 
+def _validate_source_proven_execute_restore_contract(
+    value: Any,
+    *,
+    phase: str,
+    source_tick: int,
+) -> Mapping[str, Any]:
+    expected_keys = {
+        "schema",
+        "source_transition_tick",
+        "source_transition_time_s",
+        "source_transition_row",
+        "source_transition_row_canonical_sha256",
+        "authored_entry_guard_order",
+        "authored_entry_guard_evidence",
+        "prime_command_tick",
+        "effective_observation_tick",
+        "consumed_motion_tick",
+        "first_episode_motion_tick",
+    }
+    if not isinstance(value, Mapping) or set(value) != expected_keys:
+        raise PhaseSnapshotError(
+            f"snapshot source-proven restore contract fields are incomplete for {phase}"
+        )
+    if value.get("schema") != CONTROLLER_RESTORE_CONTRACT_SCHEMA:
+        raise PhaseSnapshotError(
+            f"snapshot source-proven restore contract schema is invalid for {phase}"
+        )
+    clock_fields = {
+        "source_transition_tick": source_tick,
+        "prime_command_tick": source_tick,
+        "effective_observation_tick": source_tick + 1,
+        "consumed_motion_tick": 0,
+        "first_episode_motion_tick": 1,
+    }
+    if any(
+        type(value.get(name)) is not int or value.get(name) != expected
+        for name, expected in clock_fields.items()
+    ):
+        raise PhaseSnapshotError(
+            f"snapshot source-proven restore clock contract is invalid for {phase}"
+        )
+    transition_time = value.get("source_transition_time_s")
+    if (
+        isinstance(transition_time, bool)
+        or not isinstance(transition_time, (int, float))
+        or not math.isfinite(float(transition_time))
+        or not math.isclose(
+            float(transition_time),
+            source_tick / PHYSICS_HZ,
+            rel_tol=0.0,
+            abs_tol=1.0e-12,
+        )
+    ):
+        raise PhaseSnapshotError(
+            f"snapshot source-proven transition time is invalid for {phase}"
+        )
+    transition_row = value.get("source_transition_row")
+    if not isinstance(transition_row, Mapping):
+        raise PhaseSnapshotError(
+            f"snapshot source-proven transition row is invalid for {phase}"
+        )
+    row_time = transition_row.get("sim_time_s")
+    if (
+        transition_row.get("state_id") != phase
+        or transition_row.get("from_lifecycle") != "WAIT_ENTRY"
+        or transition_row.get("to_lifecycle") != "EXECUTE_MOTION"
+        or transition_row.get("reason") != "all live entry guards passed"
+        or isinstance(row_time, bool)
+        or not isinstance(row_time, (int, float))
+        or not math.isfinite(float(row_time))
+        or not math.isclose(
+            float(row_time), source_tick / PHYSICS_HZ, rel_tol=0.0, abs_tol=2.0e-6
+        )
+    ):
+        raise PhaseSnapshotError(
+            f"snapshot source-proven transition identity is invalid for {phase}"
+        )
+    transition_hash = _require_sha256(
+        value.get("source_transition_row_canonical_sha256"),
+        label=f"snapshot {phase} source transition row hash",
+    )
+    if transition_hash != _sha256_bytes(_canonical_bytes(transition_row)):
+        raise PhaseSnapshotError(
+            f"snapshot source-proven transition row hash mismatch for {phase}"
+        )
+    details = transition_row.get("details")
+    row_guards = details.get("guards") if isinstance(details, Mapping) else None
+    guard_order = value.get("authored_entry_guard_order")
+    guard_evidence = value.get("authored_entry_guard_evidence")
+    if (
+        not isinstance(row_guards, list)
+        or not isinstance(guard_order, list)
+        or not isinstance(guard_evidence, list)
+        or guard_evidence != row_guards
+        or guard_order
+        != [
+            guard.get("name") if isinstance(guard, Mapping) else None
+            for guard in row_guards
+        ]
+        or guard_order != list(P10_AUTHORED_ENTRY_GUARD_ORDER)
+        or any(
+            not isinstance(guard, Mapping) or guard.get("passed") is not True
+            for guard in row_guards
+        )
+        or not _contains_signed_positive_rebound_requirement(row_guards)
+    ):
+        raise PhaseSnapshotError(
+            f"snapshot source-proven authored guard evidence is invalid for {phase}"
+        )
+    return value
+
+
 def validate_phase_snapshot_payload_contract(
     payload: Mapping[str, Any],
     phase: str,
@@ -2027,6 +2243,48 @@ def validate_phase_snapshot_payload_contract(
     has_controller_anchor_tick = "controller_anchor_tick" in payload
     has_controller_anchor_time = "controller_anchor_time_s" in payload
     controller_anchor_tick = payload.get("controller_anchor_tick")
+    has_controller_restore_mode = "controller_restore_mode" in payload
+    has_controller_restore_contract = "controller_restore_contract" in payload
+    if phase == "P10":
+        if not (has_controller_restore_mode and has_controller_restore_contract):
+            raise PhaseSnapshotError(
+                "snapshot P10 must use source_proven_execute_after_prime"
+            )
+        if (
+            has_target_entry_tick
+            or has_predecessor_verify_tick
+            or has_predecessor_verify_time
+            or has_controller_anchor_tick
+            or has_controller_anchor_time
+        ):
+            raise PhaseSnapshotError(
+                "snapshot P10 forbids legacy hybrid replay anchors"
+            )
+    elif has_controller_restore_mode or has_controller_restore_contract:
+        raise PhaseSnapshotError(
+            f"snapshot controller restore metadata is forbidden for {phase}"
+        )
+    if has_controller_restore_mode != has_controller_restore_contract:
+        raise PhaseSnapshotError(
+            f"snapshot controller restore metadata is incomplete for {phase}"
+        )
+    controller_restore_mode = payload.get("controller_restore_mode")
+    controller_restore_contract: Mapping[str, Any] | None = None
+    if has_controller_restore_mode:
+        if (
+            phase != "P10"
+            or controller_restore_mode != SOURCE_PROVEN_EXECUTE_RESTORE_MODE
+            or has_target_entry_tick
+            or source_replay_steps != 1
+        ):
+            raise PhaseSnapshotError(
+                f"snapshot source-proven controller restore mode is invalid for {phase}"
+            )
+        controller_restore_contract = _validate_source_proven_execute_restore_contract(
+            payload.get("controller_restore_contract"),
+            phase=phase,
+            source_tick=source_tick,
+        )
     if has_target_entry_tick:
         if (
             phase != "P10"
@@ -2093,9 +2351,7 @@ def validate_phase_snapshot_payload_contract(
             f"snapshot non-causal reset declares replay anchors for {phase}"
         )
     if causal_predecessor_required is True and not has_target_entry_tick:
-        raise PhaseSnapshotError(
-            f"snapshot {phase} lacks its required causal predecessor target tick"
-        )
+        raise PhaseSnapshotError("legacy causal-predecessor snapshots are forbidden")
     if causal_predecessor_required is False and has_target_entry_tick:
         raise PhaseSnapshotError(
             f"snapshot {phase} unexpectedly declares causal predecessor semantics"
@@ -2172,6 +2428,13 @@ def validate_phase_snapshot_payload_contract(
                 "target_entry_tick",
             }
         )
+    elif has_controller_restore_mode:
+        expected_source_keys.update(
+            {
+                "source_fsm_state",
+                "source_fsm_lifecycle",
+            }
+        )
     if not isinstance(source, Mapping) or set(source) != expected_source_keys:
         raise PhaseSnapshotError(
             f"snapshot source-command replay fields are incomplete for {phase}"
@@ -2200,6 +2463,14 @@ def validate_phase_snapshot_payload_contract(
         ):
             raise PhaseSnapshotError(
                 f"snapshot causal source-command context mismatch for {phase}"
+            )
+    elif has_controller_restore_mode:
+        if (
+            source.get("source_fsm_state") != phase
+            or source.get("source_fsm_lifecycle") != "EXECUTE_MOTION"
+        ):
+            raise PhaseSnapshotError(
+                f"snapshot source-proven prime command context mismatch for {phase}"
             )
 
     for name in (
@@ -2443,6 +2714,28 @@ def validate_phase_snapshot_payload_contract(
             raise PhaseSnapshotError(
                 f"manifest unexpectedly declares a hybrid replay boundary for {phase}"
             )
+        if controller_restore_contract is not None:
+            if (
+                manifest_row.get("controller_restore_mode")
+                != SOURCE_PROVEN_EXECUTE_RESTORE_MODE
+                or manifest_row.get("source_transition_row_canonical_sha256")
+                != controller_restore_contract.get(
+                    "source_transition_row_canonical_sha256"
+                )
+            ):
+                raise PhaseSnapshotError(
+                    f"manifest source-proven controller restore binding mismatch for {phase}"
+                )
+        elif any(
+            field in manifest_row
+            for field in (
+                "controller_restore_mode",
+                "source_transition_row_canonical_sha256",
+            )
+        ):
+            raise PhaseSnapshotError(
+                f"manifest unexpectedly declares controller restore metadata for {phase}"
+            )
         bindings = {
             "source_command_row_canonical_sha256": source[
                 "source_command_row_canonical_sha256"
@@ -2533,15 +2826,9 @@ def capture_validated_phase_snapshot_bundle(
         label="phase snapshot manifest source_artifacts",
     )
     causal_predecessor_phases = manifest.get("causal_predecessor_phases")
-    if (
-        not isinstance(causal_predecessor_phases, list)
-        or any(phase != "P10" for phase in causal_predecessor_phases)
-        or len(set(causal_predecessor_phases)) != len(causal_predecessor_phases)
-        or causal_predecessor_phases
-        != [phase for phase in PHASE_IDS if phase in causal_predecessor_phases]
-    ):
+    if causal_predecessor_phases != []:
         raise PhaseSnapshotError(
-            "phase snapshot causal-predecessor phase list is invalid"
+            "phase snapshot causal_predecessor_phases must be exactly empty"
         )
     causal_predecessor_phase_set = set(causal_predecessor_phases)
     rows = manifest.get("snapshots")
@@ -2562,18 +2849,15 @@ def capture_validated_phase_snapshot_bundle(
         "drive_target_full12_sha256",
         "actuation_contract_sha256",
     }
+    source_proven_manifest_fields = {
+        "controller_restore_mode",
+        "source_transition_row_canonical_sha256",
+    }
     if any(
         set(row)
         != (
-            expected_row_fields
-            | {
-                "predecessor_verify_tick",
-                "predecessor_verify_time_s",
-                "controller_anchor_tick",
-                "controller_anchor_time_s",
-                "target_entry_tick",
-            }
-            if row.get("phase") in causal_predecessor_phase_set
+            expected_row_fields | source_proven_manifest_fields
+            if row.get("phase") == "P10"
             else expected_row_fields
         )
         for row in rows
@@ -2624,6 +2908,24 @@ def capture_validated_phase_snapshot_bundle(
         if type(source_replay_steps) is not int or source_replay_steps <= 0:
             raise PhaseSnapshotError(
                 f"manifest source replay step count is invalid for {phase}"
+            )
+        manifest_restore_mode = row.get("controller_restore_mode")
+        manifest_transition_hash: str | None = None
+        if phase == "P10":
+            if (
+                manifest_restore_mode != SOURCE_PROVEN_EXECUTE_RESTORE_MODE
+                or source_replay_steps != 1
+            ):
+                raise PhaseSnapshotError(
+                    f"manifest source-proven controller restore mode is invalid for {phase}"
+                )
+            manifest_transition_hash = _require_sha256(
+                row.get("source_transition_row_canonical_sha256"),
+                label=f"manifest source transition row hash for {phase}",
+            )
+        elif manifest_restore_mode is not None:
+            raise PhaseSnapshotError(
+                f"manifest controller restore mode is forbidden for {phase}"
             )
         target_entry_tick: int | None = None
         predecessor_verify_tick: int | None = None
@@ -2756,6 +3058,8 @@ def capture_validated_phase_snapshot_bundle(
                 predecessor_verify_time_s=predecessor_verify_time,
                 controller_anchor_tick=controller_anchor_tick,
                 controller_anchor_time_s=controller_anchor_time,
+                controller_restore_mode=manifest_restore_mode,
+                source_transition_row_canonical_sha256=manifest_transition_hash,
                 snapshot_path=snapshot_path,
                 checksum_path=checksum_path,
                 snapshot_bytes=snapshot_bytes,
@@ -2858,6 +3162,16 @@ def load_validated_phase_snapshot_payload(
         raise PhaseSnapshotError(f"pinned controller-anchor tick mismatch for {phase}")
     if payload.get("controller_anchor_time_s") != entry.controller_anchor_time_s:
         raise PhaseSnapshotError(f"pinned controller-anchor time mismatch for {phase}")
+    if payload.get("controller_restore_mode") != entry.controller_restore_mode:
+        raise PhaseSnapshotError(f"pinned controller restore mode mismatch for {phase}")
+    payload_restore_contract = payload.get("controller_restore_contract")
+    payload_transition_hash = (
+        payload_restore_contract.get("source_transition_row_canonical_sha256")
+        if isinstance(payload_restore_contract, Mapping)
+        else None
+    )
+    if payload_transition_hash != entry.source_transition_row_canonical_sha256:
+        raise PhaseSnapshotError(f"pinned source transition hash mismatch for {phase}")
     manifest = bundle.manifest_payload()
     rows = manifest.get("snapshots")
     manifest_row = next(
@@ -2913,6 +3227,8 @@ def phase_snapshot_bundle_file_hashes(
         "predecessor_verify_time_s",
         "controller_anchor_tick",
         "controller_anchor_time_s",
+        "controller_restore_mode",
+        "source_transition_row_canonical_sha256",
         "snapshot_path",
         "checksum_path",
         "file_sha256",
@@ -2946,69 +3262,40 @@ def phase_snapshot_bundle_file_hashes(
         predecessor_verify_time = entry.get("predecessor_verify_time_s")
         controller_anchor_tick = entry.get("controller_anchor_tick")
         controller_anchor_time = entry.get("controller_anchor_time_s")
+        controller_restore_mode = entry.get("controller_restore_mode")
+        source_transition_hash = entry.get(
+            "source_transition_row_canonical_sha256"
+        )
         if type(source_tick) is not int or source_tick < 0:
             raise PhaseSnapshotError(f"bundle source tick is invalid for {phase}")
         if type(source_replay_steps) is not int or source_replay_steps <= 0:
             raise PhaseSnapshotError(
                 f"bundle source replay step count is invalid for {phase}"
             )
-        if target_entry_tick is None:
-            if (
-                source_replay_steps != 1
-                or predecessor_verify_tick is not None
-                or predecessor_verify_time is not None
-                or controller_anchor_tick is not None
-                or controller_anchor_time is not None
-            ):
+        if (
+            source_replay_steps != 1
+            or target_entry_tick is not None
+            or predecessor_verify_tick is not None
+            or predecessor_verify_time is not None
+            or controller_anchor_tick is not None
+            or controller_anchor_time is not None
+        ):
+            raise PhaseSnapshotError(
+                f"bundle forbids legacy hybrid replay anchors for {phase}"
+            )
+        if phase == "P10":
+            if controller_restore_mode != SOURCE_PROVEN_EXECUTE_RESTORE_MODE:
                 raise PhaseSnapshotError(
-                    f"bundle non-causal replay boundary is invalid for {phase}"
+                    "bundle P10 must use source_proven_execute_after_prime"
                 )
-        else:
-            if (
-                phase != "P10"
-                or type(target_entry_tick) is not int
-                or target_entry_tick != source_tick + source_replay_steps
-            ):
-                raise PhaseSnapshotError(
-                    f"bundle target-entry tick is invalid for {phase}"
-                )
-            if (
-                type(predecessor_verify_tick) is not int
-                or not source_tick < predecessor_verify_tick < target_entry_tick
-            ):
-                raise PhaseSnapshotError(
-                    f"bundle predecessor verify tick is invalid for {phase}"
-                )
-            if (
-                isinstance(predecessor_verify_time, bool)
-                or not isinstance(predecessor_verify_time, (int, float))
-                or not math.isfinite(float(predecessor_verify_time))
-                or float(predecessor_verify_time)
-                != predecessor_verify_tick / PHYSICS_HZ
-            ):
-                raise PhaseSnapshotError(
-                    f"bundle predecessor verify time is invalid for {phase}"
-                )
-            if (
-                type(controller_anchor_tick) is not int
-                or not source_tick
-                < predecessor_verify_tick
-                < controller_anchor_tick
-                < target_entry_tick
-            ):
-                raise PhaseSnapshotError(
-                    f"bundle controller anchor tick is invalid for {phase}"
-                )
-            if (
-                isinstance(controller_anchor_time, bool)
-                or not isinstance(controller_anchor_time, (int, float))
-                or not math.isfinite(float(controller_anchor_time))
-                or float(controller_anchor_time)
-                != controller_anchor_tick / PHYSICS_HZ
-            ):
-                raise PhaseSnapshotError(
-                    f"bundle controller anchor time is invalid for {phase}"
-                )
+            _require_sha256(
+                source_transition_hash,
+                label=f"bundle source transition row hash for {phase}",
+            )
+        elif controller_restore_mode is not None or source_transition_hash is not None:
+            raise PhaseSnapshotError(
+                f"bundle controller restore metadata is forbidden for {phase}"
+            )
         expected_phase_root = snapshot_root / phase
         snapshot_path = str(Path(str(entry.get("snapshot_path", ""))).resolve())
         checksum_path = str(Path(str(entry.get("checksum_path", ""))).resolve())

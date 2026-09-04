@@ -30,7 +30,7 @@ SUCCESSFUL_FSM_ATTITUDE_ENVELOPE_SCHEMA = (
 # caller cannot relabel arbitrary numbers as a successful-FSM envelope merely
 # by editing both the values and the self-declared digest in the config.
 SUCCESSFUL_FSM_ATTITUDE_ENVELOPE_DERIVATION_SHA256 = (
-    "1ebb3ef370fcc69cf8a466d677c774e62b7a67656c05837534192326a4fab09d"
+    "9c0b56dad962f6700186df24513daec46a42deaf57a94c59590366098e5630ae"
 )
 STATE_IDS = tuple(f"P{index:02d}" for index in range(1, 14))
 DENSE_FAMILIES = (

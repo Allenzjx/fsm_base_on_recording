@@ -2,8 +2,9 @@
 
 The probe wraps production Isaac-facing dependencies so that a strict reset
 rejection still records real PhysX contacts, source-replay drift, and clock
-non-advancement.  Priming belongs to ``TRAINING_RESET_STATE_WRITE`` and never
-advances the frozen controller or episode clock.
+non-advancement.  Priming belongs to ``TRAINING_RESET_STATE_WRITE``.  Ordinary
+phases do not advance the controller; source-proven P10 consumes authenticated
+motion tick zero after the real prime while the episode clock remains at zero.
 """
 
 from __future__ import annotations
@@ -18,8 +19,13 @@ from typing import Any, Mapping, Sequence
 import uuid
 
 from .phase_effective_entry import (
+    EffectivePhaseEntryError,
+    SOURCE_PROVEN_EXECUTE_RESTORE_MODE,
     _expected_replay_anchor_contract,
     _replay_evidence_failures,
+    _source_proven_execute_bindings,
+    _validate_controller_entry_guard,
+    _validated_source_proven_execute_restore,
     phase_entry_time_s,
 )
 
@@ -118,6 +124,9 @@ class _ReplayWindow:
     target_entry_tick: int
     source_replay_steps: int
     control_ticks: tuple[int, ...]
+    controller_restore_mode: str | None
+    controller_restore_contract: Mapping[str, Any] | None
+    restore_bindings: Mapping[str, Any]
 
 
 def _validated_replay_window(
@@ -139,6 +148,35 @@ def _validated_replay_window(
     ):
         raise PhaseSnapshotLiveProbeError(
             f"validated phase snapshot replay window is invalid for {phase}"
+        )
+    try:
+        restore_contract = _validated_source_proven_execute_restore(snapshot, phase)
+        restore_bindings = _source_proven_execute_bindings(snapshot, phase)
+    except EffectivePhaseEntryError as exc:
+        raise PhaseSnapshotLiveProbeError(
+            f"validated controller-restore contract is invalid for {phase}"
+        ) from exc
+    restore_mode = (
+        None
+        if restore_contract is None
+        else SOURCE_PROVEN_EXECUTE_RESTORE_MODE
+    )
+    entry_restore_mode = getattr(entry, "controller_restore_mode", None)
+    entry_transition_hash = getattr(
+        entry, "source_transition_row_canonical_sha256", None
+    )
+    if restore_contract is not None:
+        if (
+            entry_restore_mode != restore_mode
+            or entry_transition_hash
+            != restore_contract["source_transition_row_canonical_sha256"]
+        ):
+            raise PhaseSnapshotLiveProbeError(
+                "validated P10 manifest restore binding differs from its payload"
+            )
+    elif entry_restore_mode is not None or entry_transition_hash is not None:
+        raise PhaseSnapshotLiveProbeError(
+            f"validated manifest has an unpaired controller restore for {phase}"
         )
     target_entry_tick = source_tick + replay_steps
     hybrid = "target_entry_tick" in snapshot
@@ -281,6 +319,15 @@ def _validated_replay_window(
             raise PhaseSnapshotLiveProbeError(
                 "validated P10 three-segment replay contexts are invalid"
             )
+    elif restore_contract is not None:
+        command = commands[0]
+        if (
+            command.get("source_fsm_state") != "P10"
+            or command.get("source_fsm_lifecycle") != "EXECUTE_MOTION"
+        ):
+            raise PhaseSnapshotLiveProbeError(
+                "validated source-proven P10 replay context is not EXECUTE_MOTION"
+            )
     return _ReplayWindow(
         payload=snapshot,
         source_tick=source_tick,
@@ -291,6 +338,9 @@ def _validated_replay_window(
         target_entry_tick=target_entry_tick,
         source_replay_steps=replay_steps,
         control_ticks=control_ticks,
+        controller_restore_mode=restore_mode,
+        controller_restore_contract=restore_contract,
+        restore_bindings=restore_bindings,
     )
 
 
@@ -741,6 +791,10 @@ def _attempt_passed(
         or row.get("source_control_physics_ticks")
         != list(replay_window.control_ticks)
         or row.get("extra_physics_priming_steps") != prime_steps
+        or any(
+            row.get(name) != expected
+            for name, expected in replay_window.restore_bindings.items()
+        )
     ):
         return False
     source_commands = replay_window.payload["source_commands"]
@@ -789,7 +843,7 @@ def _attempt_passed(
         _CALIBRATION_EFFECTIVE_ENTRY_FIELDS
         if calibration_mode
         else _ACCEPTANCE_EFFECTIVE_ENTRY_FIELDS
-    )
+    ) | frozenset(replay_window.restore_bindings)
     if set(effective_entry) != expected_effective_entry_fields:
         return False
     if _replay_evidence_failures(
@@ -807,6 +861,21 @@ def _attempt_passed(
     safety_flags = entry_safety.get("flags")
     if not isinstance(safety_flags, Mapping):
         return False
+    if replay_window.controller_restore_contract is None:
+        # Preserve the long-standing diagnostic gate for ordinary phases.  Its
+        # full authored-guard validation is owned by calibration import.
+        controller_entry_proof_ok = True
+    else:
+        try:
+            _validate_controller_entry_guard(
+                entry_guards,
+                phase=str(row.get("phase")),
+                snapshot_payload=replay_window.payload,
+            )
+        except EffectivePhaseEntryError:
+            controller_entry_proof_ok = False
+        else:
+            controller_entry_proof_ok = True
     p10_alignment_ok = True
     if row.get("phase") == "P10":
         alignment = entry_guards.get("p10_signed_velocity_alignment")
@@ -882,6 +951,10 @@ def _attempt_passed(
             and anchor_proof_ok
             and effective_entry.get("effective_entry_offset_s")
             == phase_entry_time_s(prime_steps)
+            and all(
+                effective_entry.get(name) == expected
+                for name, expected in replay_window.restore_bindings.items()
+            )
             and isinstance(diagnostic_proof, Mapping)
             and diagnostic_proof.get("schema")
             == "wlr50_clean.phase_snapshot_live_comparison.v2"
@@ -898,6 +971,10 @@ def _attempt_passed(
             and anchor_proof_ok
             and effective_entry.get("effective_entry_offset_s")
             == phase_entry_time_s(prime_steps)
+            and all(
+                effective_entry.get(name) == expected
+                for name, expected in replay_window.restore_bindings.items()
+            )
             and effective_entry.get("verified") is True
             and not effective_entry.get("failures")
         )
@@ -959,12 +1036,17 @@ def _attempt_passed(
         and entry_safety.get("all_failure_flags_false") is True
         and not any(bool(value) for value in safety_flags.values())
         and entry_guards.get("schema")
-        == "wlr50_clean.phase_effective_entry_controller.v1"
+        == (
+            "wlr50_clean.phase_effective_entry_controller.v2"
+            if replay_window.controller_restore_contract is not None
+            else "wlr50_clean.phase_effective_entry_controller.v1"
+        )
         and entry_guards.get("verified") is True
         and entry_guards.get("phase") == row.get("phase")
         and entry_guards.get("lifecycle") == "EXECUTE_MOTION"
         and entry_guards.get("nonterminal") is True
         and entry_guards.get("unblocked") is True
+        and controller_entry_proof_ok
         and p10_alignment_ok
         and snapshot_write.get("fsm_clock_steps_during_priming") == 0
         and snapshot_write.get("episode_clock_steps_during_priming") == 0
@@ -1216,6 +1298,16 @@ def run_phase_snapshot_live_probe(
             phase: loaded_phases[phase][2].source_replay_steps
             for phase in selected_phases
         },
+        "controller_restore_modes_by_phase": {
+            phase: loaded_phases[phase][2].controller_restore_mode
+            for phase in selected_phases
+        },
+        "source_transition_hashes_by_phase": {
+            phase: loaded_phases[phase][2].restore_bindings.get(
+                "source_transition_row_canonical_sha256"
+            )
+            for phase in selected_phases
+        },
         "controller_anchors_by_phase": {
             phase: (
                 None
@@ -1339,6 +1431,7 @@ def run_phase_snapshot_live_probe(
                     "effective_entry_offset_s": (
                         phase_entry_time_s(replay_window.source_replay_steps)
                     ),
+                    **replay_window.restore_bindings,
                     "source_control_physics_ticks": list(replay_window.control_ticks),
                     "snapshot_path": str(entry.snapshot_path),
                     "snapshot_file_sha256": entry.file_sha256,
