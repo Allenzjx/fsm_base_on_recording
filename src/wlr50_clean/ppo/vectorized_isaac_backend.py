@@ -14,6 +14,8 @@ contract/probe tests without pretending that a live benchmark took place.
 
 from __future__ import annotations
 
+import builtins
+import hashlib
 import importlib.util
 import math
 import time
@@ -78,7 +80,6 @@ from wlr50_clean.ppo.isaac_fsm_backend import (
     _validate_sensor_contract,
     build_residual_actuation_plan,
     capture_canonical_articulation_reset_state,
-    restore_canonical_articulation_reset_state,
 )
 from wlr50_clean.ppo.ppo_env_adapter import AuthoritativeFrame
 from wlr50_clean.sensing.contact_classifier import (
@@ -100,6 +101,18 @@ ENV_SPACING_M = 8.0
 CONTACT_HISTORY_LENGTH = 3
 PAIR_COUNT = 2
 ZERO12 = (0.0,) * 12
+_CONTACT_RESET_BUFFER_SHAPES = {
+    "force_matrix_w": lambda count: (count, 1, PAIR_COUNT, 3),
+    "force_matrix_w_history": lambda count: (
+        count,
+        CONTACT_HISTORY_LENGTH,
+        1,
+        PAIR_COUNT,
+        3,
+    ),
+    "contact_pos_w": lambda count: (count, 1, PAIR_COUNT, 3),
+    "friction_forces_w": lambda count: (count, 1, PAIR_COUNT, 3),
+}
 
 
 def _shared_ground_size_m(
@@ -703,9 +716,19 @@ class VectorizedIsaacFSMBackend:
         self._validate_physical_batch()
         # ``default_joint_pos`` is zero because the locked config deliberately
         # defers to the USD-authored standing pose.  Capture the actual native
-        # state now, before reset_all can overwrite that authored pose.
+        # state and direct-PhysX limits before any vector adapter is created.
         self._canonical_reset_state = capture_canonical_articulation_reset_state(
             self.robot
+        )
+        self._servo_joint_ids = tuple(
+            resolve_joint_indices(
+                tuple(str(name) for name in self.robot.joint_names)
+            ).servo_ids
+        )
+        self._native_servo_limit_state = _native_servo_limit_state(
+            self.robot,
+            servo_joint_ids=self._servo_joint_ids,
+            expected_instance_count=self.num_envs,
         )
         origins = _numpy(self.scene.env_origins)
         sensors = {
@@ -735,6 +758,9 @@ class VectorizedIsaacFSMBackend:
         self._episode_tick = 0
         self.global_physics_step_count = 0
         self._reset_count = 0
+        self._physical_reset_count = 0
+        self._reset_transaction_poisoned = False
+        self._last_reset_lifecycle: Mapping[str, Any] | None = None
 
     @property
     def frames(self) -> tuple[AuthoritativeFrame, ...]:
@@ -765,8 +791,28 @@ class VectorizedIsaacFSMBackend:
                 "vector benchmark accepts no randomization or state-mutation reset options"
             )
         self._require_running("vector reset")
-        self._restore_default_state()
+        if self._reset_transaction_poisoned:
+            raise VectorizedIsaacBackendError(
+                "vector backend is poisoned by a failed global reset transaction"
+            )
+        reset_lifecycle = self._prepare_physical_reset()
         self.command_adapter = _BatchedCommandAdapter(self.robot, self.num_envs)
+        authored_servo_limits = _native_servo_limit_state(
+            self.robot,
+            servo_joint_ids=self._servo_joint_ids,
+            expected_instance_count=self.num_envs,
+        )
+        reset_lifecycle = {
+            **reset_lifecycle,
+            "post_reset_authoritative_servo_limit_sha256": authored_servo_limits[
+                "sha256"
+            ],
+            "post_reset_authoritative_servo_limit_shape": authored_servo_limits[
+                "shape"
+            ],
+            "authoritative_limits_reinstalled_after_physics_reset": True,
+        }
+        self._last_reset_lifecycle = reset_lifecycle
         self.contact_bank.reset()
 
         calibration_readers: tuple[SensorReader, ...] = ()
@@ -827,6 +873,9 @@ class VectorizedIsaacFSMBackend:
             _validate_sensor_contract(observation, SENSED_BODIES, require_finite=True)
             controller_frame = controller.step(observation, sim_time_s=0.0)
             _validate_controller_clock(controller_frame, physics_tick=0, sim_time_s=0.0)
+            _require_p01_reset_state(
+                controller_frame, row=row, source="frozen controller"
+            )
             semantic = self._semantics[row]
             semantic._controller = controller
             semantic._level_reference_orientation = _mean_quaternion(
@@ -836,6 +885,8 @@ class VectorizedIsaacFSMBackend:
                 row=row,
                 seed=seed_rows[row],
                 options=option_rows[row],
+                reset_lifecycle=reset_lifecycle,
+                logical_state_id="P01",
             )
             semantic._last_atomic_ack = last_ack.rows[row]
             semantic._previous_action_full12 = ZERO12
@@ -844,6 +895,9 @@ class VectorizedIsaacFSMBackend:
             semantic._episode_tick = 0
             frame = semantic._build_authoritative_frame(
                 observation, controller_frame, previous_frame=None
+            )
+            _require_p01_reset_state(
+                frame, row=row, source="authoritative frame"
             )
             semantic._authoritative_frame = frame
             semantic._done = _frame_is_terminal(frame)
@@ -1039,14 +1093,250 @@ class VectorizedIsaacFSMBackend:
         self.global_physics_step_count += 1
         self.contact_bank.capture(self.global_physics_step_count)
 
-    def _restore_default_state(self) -> None:
-        restore_canonical_articulation_reset_state(
+    def _prepare_physical_reset(self) -> dict[str, Any]:
+        """Reach the native pre-limit scene state without indexed state writes.
+
+        The first logical episode consumes the authoritative hard reset already
+        performed by :func:`_create_vector_scene`.  Every later episode uses one
+        global STOP/PLAY reset.  IsaacLab's callbacks must replace every native
+        articulation/contact view before controller or actuator state is rebuilt.
+        """
+
+        if self._physical_reset_count == 0:
+            self._assert_native_pre_limit_state("fresh SceneFactory reset")
+            lifecycle = {
+                "physics_lifecycle_reset": "scene_factory_reset_before_limit_authoring",
+                "global_simulation_resets_this_barrier": 0,
+                "stop_guard_armed": False,
+                "stop_callback_reinitialized_articulation_view": False,
+                "stop_callback_reinitialized_articulation_data": False,
+                "stop_callback_reinitialized_contact_view_count": 0,
+                "stop_callback_reinitialized_contact_body_view_count": 0,
+                "stop_callback_reinitialized_contact_buffer_bank_count": 0,
+                "stop_callback_reinitialized_contact_buffer_count": 0,
+                "callback_exception_observed": False,
+            }
+        else:
+            lifecycle = self._guarded_global_hard_reset()
+        self._physical_reset_count += 1
+        return {
+            "schema": "wlr50_clean.vectorized_isaac_backend.reset_lifecycle.v1",
+            **lifecycle,
+            "physical_reset_generation": self._physical_reset_count,
+            "reset_scope": "all_environments_synchronously",
+            "partial_subset_reset_supported": False,
+            "servo_limit_authoring_backend": (
+                "Articulation.write_joint_position_limit_to_sim_direct_physx"
+            ),
+            "usd_session_limit_mutations_this_barrier": 0,
+            "reset_initialization_order": (
+                "physics_reset_from_usd_native_limits_then_author_direct_physx_limits_then_settle"
+            ),
+            "pre_limit_native_state_sha256": self._canonical_reset_state.state_sha256,
+            "pre_limit_native_state_instance_count": (
+                self._canonical_reset_state.instance_count
+            ),
+            "pre_limit_native_servo_limit_sha256": self._native_servo_limit_state[
+                "sha256"
+            ],
+            "pre_limit_native_servo_limit_shape": self._native_servo_limit_state[
+                "shape"
+            ],
+            "root_pose_writes_this_barrier": 0,
+            "root_velocity_writes_this_barrier": 0,
+            "joint_state_writes_this_barrier": 0,
+            "external_force_or_impulse_writes_this_barrier": 0,
+            "gravity_writes_this_barrier": 0,
+        }
+
+    def _guarded_global_hard_reset(self) -> dict[str, Any]:
+        """Hard-reset the one batched simulation and prove callback freshness."""
+
+        simulation = self.sim
+        reset = getattr(simulation, "reset", None)
+        is_playing = getattr(simulation, "is_playing", None)
+        if not all(callable(value) for value in (reset, is_playing)):
+            raise VectorizedIsaacBackendError(
+                "global vector reset requires reset/is_playing"
+            )
+        if not bool(is_playing()):
+            raise VectorizedIsaacBackendError(
+                "global vector reset must start from a playing SimulationContext"
+            )
+        callback_error = getattr(builtins, "ISAACLAB_CALLBACK_EXCEPTION", None)
+        if callback_error is not None:
+            raise VectorizedIsaacBackendError(
+                "an IsaacLab callback exception predates the vector reset transaction"
+            )
+
+        # IsaacLab's public hard-reset API owns the guard around its internal
+        # stop/play transaction.  Do not split that transaction with a naked
+        # ``stop()`` call: the standalone STOP callback otherwise renders in a
+        # loop while the timeline is stopped.
+        guard_name = "_disable_app_control_on_stop_handle"
+        prior_guard = getattr(simulation, guard_name, None)
+        if type(prior_guard) is not bool:
+            raise VectorizedIsaacBackendError(
+                "SimulationContext app-control STOP guard is unavailable or non-boolean"
+            )
+
+        old_articulation_view = self.robot.root_physx_view
+        old_articulation_data = self.robot.data
+        old_contact_views = {
+            name: sensor.contact_physx_view
+            for name, sensor in self.contact_bank.sensors.items()
+        }
+        old_contact_body_views = {
+            name: sensor.body_physx_view
+            for name, sensor in self.contact_bank.sensors.items()
+        }
+        old_contact_buffers = _contact_reset_buffer_refs(
+            self.contact_bank.sensors,
+            num_envs=self.num_envs,
+            expected_device=self.device,
+        )
+        if (
+            old_articulation_view is None
+            or old_articulation_data is None
+            or len(old_contact_views) != len(SENSED_BODIES)
+            or any(view is None for view in old_contact_views.values())
+            or any(view is None for view in old_contact_body_views.values())
+        ):
+            raise VectorizedIsaacBackendError(
+                "native views are incomplete before the global vector reset"
+            )
+
+        self._reset_transaction_poisoned = True
+        try:
+            reset(soft=False)
+            if getattr(simulation, guard_name, None) is not prior_guard:
+                raise VectorizedIsaacBackendError(
+                    "SimulationContext did not restore its app-control STOP guard"
+                )
+
+            if not bool(is_playing()):
+                raise VectorizedIsaacBackendError(
+                    "physics timeline did not resume after the global hard reset"
+                )
+            callback_error = getattr(builtins, "ISAACLAB_CALLBACK_EXCEPTION", None)
+            if callback_error is not None:
+                raise VectorizedIsaacBackendError(
+                    "IsaacLab STOP/PLAY callback failed during the global vector reset: "
+                    f"{type(callback_error).__name__}: {callback_error}"
+                )
+
+            # Match the first-scene lifecycle without writing root or joint state.
+            self.scene.reset()
+            self.scene.update(0.0)
+            if not bool(getattr(self.robot, "is_initialized", False)):
+                raise VectorizedIsaacBackendError(
+                    "articulation did not reinitialize after the global hard reset"
+                )
+            if not self.contact_bank.initialized:
+                raise VectorizedExactPairFailure(
+                    "contact bank did not reinitialize after the global hard reset"
+                )
+
+            new_articulation_view = self.robot.root_physx_view
+            new_articulation_data = self.robot.data
+            new_contact_views = {
+                name: sensor.contact_physx_view
+                for name, sensor in self.contact_bank.sensors.items()
+            }
+            new_contact_body_views = {
+                name: sensor.body_physx_view
+                for name, sensor in self.contact_bank.sensors.items()
+            }
+            new_contact_buffers = _contact_reset_buffer_refs(
+                self.contact_bank.sensors,
+                num_envs=self.num_envs,
+                expected_device=self.device,
+            )
+            contact_views_recreated = sum(
+                new_contact_views[name] is not old_contact_views[name]
+                for name in old_contact_views
+            )
+            contact_body_views_recreated = sum(
+                new_contact_body_views[name] is not old_contact_body_views[name]
+                for name in old_contact_body_views
+            )
+            contact_buffer_banks_recreated = sum(
+                all(
+                    new_contact_buffers[name][buffer_name]
+                    is not old_contact_buffers[name][buffer_name]
+                    for buffer_name in _CONTACT_RESET_BUFFER_SHAPES
+                )
+                for name in old_contact_buffers
+            )
+            if new_articulation_view is old_articulation_view:
+                raise VectorizedIsaacBackendError(
+                    "STOP/PLAY reused the stale articulation PhysX view"
+                )
+            if new_articulation_data is old_articulation_data:
+                raise VectorizedIsaacBackendError(
+                    "STOP/PLAY reused the stale articulation data buffers"
+                )
+            if contact_views_recreated != len(SENSED_BODIES):
+                raise VectorizedExactPairFailure(
+                    "STOP/PLAY did not replace every contact PhysX view"
+                )
+            if contact_body_views_recreated != len(SENSED_BODIES):
+                raise VectorizedExactPairFailure(
+                    "STOP/PLAY did not replace every contact body PhysX view"
+                )
+            if contact_buffer_banks_recreated != len(SENSED_BODIES):
+                raise VectorizedExactPairFailure(
+                    "STOP/PLAY did not replace every required contact tensor buffer"
+                )
+            self._assert_native_pre_limit_state("reused global hard reset")
+        except (VectorizedIsaacBackendError, VectorizedExactPairFailure):
+            raise
+        except Exception as exc:
+            raise VectorizedIsaacBackendError(
+                "global vector reset transaction failed: "
+                f"{type(exc).__name__}: {exc}"
+            ) from exc
+
+        self._reset_transaction_poisoned = False
+        return {
+            "physics_lifecycle_reset": "guarded_global_hard_reset_before_limit_authoring",
+            "global_simulation_resets_this_barrier": 1,
+            "stop_guard_armed": True,
+            "stop_guard_owned_by": "isaaclab.SimulationContext.reset",
+            "stop_callback_reinitialized_articulation_view": True,
+            "stop_callback_reinitialized_articulation_data": True,
+            "stop_callback_reinitialized_contact_view_count": contact_views_recreated,
+            "stop_callback_reinitialized_contact_body_view_count": (
+                contact_body_views_recreated
+            ),
+            "stop_callback_reinitialized_contact_buffer_bank_count": (
+                contact_buffer_banks_recreated
+            ),
+            "stop_callback_reinitialized_contact_buffer_count": (
+                contact_buffer_banks_recreated
+                * len(_CONTACT_RESET_BUFFER_SHAPES)
+            ),
+            "callback_exception_observed": False,
+        }
+
+    def _assert_native_pre_limit_state(self, context: str) -> None:
+        current_state = capture_canonical_articulation_reset_state(self.robot)
+        if (
+            current_state.instance_count != self._canonical_reset_state.instance_count
+            or current_state.state_sha256 != self._canonical_reset_state.state_sha256
+        ):
+            raise VectorizedIsaacBackendError(
+                f"{context} did not restore the fresh USD-authored articulation state"
+            )
+        current_limits = _native_servo_limit_state(
             self.robot,
-            self._canonical_reset_state,
+            servo_joint_ids=self._servo_joint_ids,
             expected_instance_count=self.num_envs,
         )
-        self.scene.reset()
-        self.robot.update(0.0)
+        if current_limits != self._native_servo_limit_state:
+            raise VectorizedIsaacBackendError(
+                f"{context} did not restore the fresh native servo limits"
+            )
 
     def _make_readers(self) -> tuple[SensorReader, ...]:
         result = []
@@ -1156,6 +1446,8 @@ class VectorizedIsaacFSMBackend:
         row: int,
         seed: int,
         options: Mapping[str, Any],
+        reset_lifecycle: Mapping[str, Any],
+        logical_state_id: str,
     ) -> dict[str, Any]:
         return {
             "schema": "wlr50_clean.vectorized_isaac_backend.reset.v1",
@@ -1167,6 +1459,8 @@ class VectorizedIsaacFSMBackend:
             "reset_options": dict(options),
             "reset_count": self._reset_count + 1,
             "env_index": row,
+            "logical_reset_state_id": str(logical_state_id),
+            "logical_reset_to_p01": str(logical_state_id) == "P01",
             "env_origin_w_m": list(_tensor_row(self.scene.env_origins[row])),
             "num_envs": self.num_envs,
             "shared_ground_visual_size_m": list(
@@ -1187,6 +1481,7 @@ class VectorizedIsaacFSMBackend:
             "recording_accesses": 0,
             "canonical_reset_state_source": "fresh_scene_post_sim_reset_pre_settle",
             "canonical_reset_state_sha256": self._canonical_reset_state.state_sha256,
+            "physical_reset_lifecycle": dict(reset_lifecycle),
             "locked_scene_snapshot": locked_scene_snapshot(),
         }
 
@@ -1389,6 +1684,80 @@ def _numpy(value: Any) -> np.ndarray:
         if callable(method):
             current = method()
     return np.asarray(current, dtype=float)
+
+
+def _native_servo_limit_state(
+    robot: Any,
+    *,
+    servo_joint_ids: Sequence[int],
+    expected_instance_count: int,
+) -> dict[str, Any]:
+    """Hash the direct PhysX servo limits before the vector adapter authors them."""
+
+    try:
+        raw = robot.root_physx_view.get_dof_limits()
+        values = _numpy(raw)[:, list(int(value) for value in servo_joint_ids), :]
+    except Exception as exc:
+        raise VectorizedIsaacBackendError(
+            "native PhysX servo limits are unavailable: "
+            f"{type(exc).__name__}: {exc}"
+        ) from exc
+    expected_shape = (int(expected_instance_count), len(SERVO_ORDER), 2)
+    if values.shape != expected_shape or not np.isfinite(values).all():
+        raise VectorizedIsaacBackendError(
+            f"native PhysX servo limits shape={values.shape}, expected {expected_shape} finite"
+        )
+    canonical = np.ascontiguousarray(values, dtype="<f8")
+    digest = hashlib.sha256()
+    digest.update(str(expected_shape).encode("ascii"))
+    digest.update(canonical.tobytes(order="C"))
+    return {"shape": list(expected_shape), "sha256": digest.hexdigest()}
+
+
+def _contact_reset_buffer_refs(
+    sensors: Mapping[str, Any],
+    *,
+    num_envs: int,
+    expected_device: str,
+) -> dict[str, dict[str, Any]]:
+    """Validate and retain the buffers that ContactSensor rebuilds on PLAY."""
+
+    if set(sensors) != set(SENSED_BODIES):
+        raise VectorizedExactPairFailure(
+            "contact reset evidence requires the exact 13-body sensor bank"
+        )
+    result: dict[str, dict[str, Any]] = {}
+    for body_name in SENSED_BODIES:
+        data = getattr(sensors[body_name], "_data", None)
+        if data is None:
+            raise VectorizedExactPairFailure(
+                f"{body_name} contact data container is unavailable"
+            )
+        buffers: dict[str, Any] = {}
+        for buffer_name, shape_factory in _CONTACT_RESET_BUFFER_SHAPES.items():
+            buffer = getattr(data, buffer_name, None)
+            expected_shape = tuple(shape_factory(int(num_envs)))
+            actual_shape = tuple(getattr(buffer, "shape", ()))
+            actual_device = str(getattr(buffer, "device", "cpu"))
+            if actual_shape != expected_shape:
+                raise VectorizedExactPairFailure(
+                    f"{body_name} {buffer_name} shape={actual_shape}, expected {expected_shape}"
+                )
+            if actual_device != str(expected_device):
+                raise VectorizedExactPairFailure(
+                    f"{body_name} {buffer_name} device={actual_device}, expected {expected_device}"
+                )
+            buffers[buffer_name] = buffer
+        result[body_name] = buffers
+    return result
+
+
+def _require_p01_reset_state(value: Any, *, row: int, source: str) -> None:
+    state_id = str(getattr(value, "state_id", ""))
+    if state_id != "P01":
+        raise VectorizedIsaacBackendError(
+            f"env {int(row)} {source} did not logically reset to P01; received {state_id!r}"
+        )
 
 
 def _tensor_row(value: Any) -> tuple[float, ...]:

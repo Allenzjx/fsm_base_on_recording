@@ -16,6 +16,7 @@ from wlr50_clean.ppo.vectorized_isaac_backend import (
     _create_vector_scene,
     probe_vectorized_isaac_backend,
 )
+import wlr50_clean.ppo.vectorized_isaac_backend as vector_backend_module
 from wlr50_clean.sensing.contact_classifier import SENSED_BODIES
 from wlr50_clean.sensing.sensor_reader import (
     GROUND_COLLISION_PRIM_PATH,
@@ -189,12 +190,247 @@ def test_source_contract_has_one_global_step_and_no_single_env_physics_loop() ->
     assert "plan.combined_post_mapper_bias_full12" in step
 
 
-def test_vector_reset_restores_captured_usd_state_not_zero_default_cache() -> None:
-    source = inspect.getsource(VectorizedIsaacFSMBackend._restore_default_state)
+def test_vector_reset_uses_native_hard_reset_without_indexed_state_writes() -> None:
+    prepare = inspect.getsource(VectorizedIsaacFSMBackend._prepare_physical_reset)
+    hard_reset = inspect.getsource(VectorizedIsaacFSMBackend._guarded_global_hard_reset)
 
-    assert "restore_canonical_articulation_reset_state" in source
-    assert "self._canonical_reset_state" in source
-    assert "default_joint_pos" not in source
+    assert "self._guarded_global_hard_reset()" in prepare
+    assert "reset(soft=False)" in hard_reset
+    assert ".stop(" not in hard_reset
+    assert "write_root_pose_to_sim" not in prepare + hard_reset
+    assert "write_root_velocity_to_sim" not in prepare + hard_reset
+    assert "write_joint_state_to_sim" not in prepare + hard_reset
+    assert "restore_canonical_articulation_reset_state" not in prepare + hard_reset
+    assert "default_joint_pos" not in prepare + hard_reset
+
+
+def test_partial_vector_reset_request_fails_before_any_physical_mutation() -> None:
+    backend = VectorizedIsaacFSMBackend.__new__(VectorizedIsaacFSMBackend)
+    backend.num_envs = 8
+
+    with pytest.raises(VectorizedIsaacBackendError, match="one seed/options row"):
+        backend.reset_all(seeds=range(7))
+    with pytest.raises(VectorizedIsaacBackendError, match="one seed/options row"):
+        backend.reset_all(seeds=range(8), options=({},) * 7)
+
+
+class _LifecycleView:
+    def __init__(self, num_envs: int) -> None:
+        self.limits = np.zeros((num_envs, 12, 2), dtype=float)
+        self.limits[..., 0] = -1.0
+        self.limits[..., 1] = 1.0
+
+    def get_dof_limits(self) -> np.ndarray:
+        return self.limits
+
+
+class _LifecycleRobot:
+    def __init__(self, num_envs: int) -> None:
+        self.num_envs = num_envs
+        self.is_initialized = True
+        self.root_physx_view = _LifecycleView(num_envs)
+        self.data = SimpleNamespace(joint_pos=np.zeros((num_envs, 12), dtype=float))
+        self.native_state_sha256 = "native-articulation-state"
+        self.prohibited_writes = 0
+
+    def reinitialize(self) -> None:
+        self.is_initialized = True
+        self.root_physx_view = _LifecycleView(self.num_envs)
+        self.data = SimpleNamespace(joint_pos=np.zeros((self.num_envs, 12), dtype=float))
+        self.native_state_sha256 = "native-articulation-state"
+
+    def write_root_pose_to_sim(self, *_args, **_kwargs) -> None:
+        self.prohibited_writes += 1
+
+    def write_root_velocity_to_sim(self, *_args, **_kwargs) -> None:
+        self.prohibited_writes += 1
+
+    def write_joint_state_to_sim(self, *_args, **_kwargs) -> None:
+        self.prohibited_writes += 1
+
+
+class _LifecycleSensor:
+    def __init__(self, num_envs: int) -> None:
+        self.num_envs = num_envs
+        self._data = SimpleNamespace()
+        self.reinitialize()
+
+    def reinitialize(self) -> None:
+        self.is_initialized = True
+        self.contact_physx_view = object()
+        self.body_physx_view = object()
+        self._data.force_matrix_w = np.zeros((self.num_envs, 1, 2, 3))
+        self._data.force_matrix_w_history = np.zeros(
+            (self.num_envs, 3, 1, 2, 3)
+        )
+        self._data.contact_pos_w = np.full((self.num_envs, 1, 2, 3), np.nan)
+        self._data.friction_forces_w = np.zeros((self.num_envs, 1, 2, 3))
+
+
+class _LifecycleContactBank:
+    def __init__(self, num_envs: int) -> None:
+        self.sensors = {
+            name: _LifecycleSensor(num_envs) for name in SENSED_BODIES
+        }
+
+    @property
+    def initialized(self) -> bool:
+        return all(sensor.is_initialized for sensor in self.sensors.values())
+
+
+class _LifecycleScene:
+    def __init__(self, robot: _LifecycleRobot, bank: _LifecycleContactBank) -> None:
+        self.robot = robot
+        self.bank = bank
+        self.reset_count = 0
+        self.update_count = 0
+
+    def reset(self) -> None:
+        self.reset_count += 1
+
+    def update(self, dt: float) -> None:
+        assert dt == 0.0
+        self.update_count += 1
+
+
+class _LifecycleSimulation:
+    def __init__(
+        self,
+        robot: _LifecycleRobot,
+        bank: _LifecycleContactBank,
+        *,
+        callback_failure: BaseException | None = None,
+    ) -> None:
+        self.robot = robot
+        self.bank = bank
+        self.callback_failure = callback_failure
+        self._disable_app_control_on_stop_handle = False
+        self.playing = True
+        self.reset_calls: list[bool] = []
+
+    def is_playing(self) -> bool:
+        return self.playing
+
+    def reset(self, *, soft: bool) -> None:
+        self.reset_calls.append(soft)
+        # Model the public IsaacLab transaction: it owns the STOP guard,
+        # invalidates every native view, then PLAY callbacks recreate them.
+        self._disable_app_control_on_stop_handle = True
+        self.playing = False
+        self.robot.is_initialized = False
+        self.robot.root_physx_view = None
+        for sensor in self.bank.sensors.values():
+            sensor.is_initialized = False
+            sensor.contact_physx_view = None
+            sensor.body_physx_view = None
+        self.robot.reinitialize()
+        for sensor in self.bank.sensors.values():
+            sensor.reinitialize()
+        self.playing = True
+        self._disable_app_control_on_stop_handle = False
+        if self.callback_failure is not None:
+            import builtins
+
+            builtins.ISAACLAB_CALLBACK_EXCEPTION = self.callback_failure
+
+
+def _lifecycle_backend(monkeypatch: pytest.MonkeyPatch):
+    num_envs = 8
+    robot = _LifecycleRobot(num_envs)
+    bank = _LifecycleContactBank(num_envs)
+    scene = _LifecycleScene(robot, bank)
+    simulation = _LifecycleSimulation(robot, bank)
+    backend = VectorizedIsaacFSMBackend.__new__(VectorizedIsaacFSMBackend)
+    backend.num_envs = num_envs
+    backend.device = "cpu"
+    backend.robot = robot
+    backend.scene = scene
+    backend.sim = simulation
+    backend.contact_bank = bank
+    backend._servo_joint_ids = tuple(range(8))
+    backend._canonical_reset_state = SimpleNamespace(
+        instance_count=num_envs,
+        state_sha256="native-articulation-state",
+    )
+    backend._native_servo_limit_state = vector_backend_module._native_servo_limit_state(
+        robot,
+        servo_joint_ids=backend._servo_joint_ids,
+        expected_instance_count=num_envs,
+    )
+    backend._physical_reset_count = 0
+    backend._reset_transaction_poisoned = False
+    monkeypatch.setattr(
+        vector_backend_module,
+        "capture_canonical_articulation_reset_state",
+        lambda current: SimpleNamespace(
+            instance_count=current.num_envs,
+            state_sha256=current.native_state_sha256,
+        ),
+    )
+    monkeypatch.setattr(
+        __import__("builtins"), "ISAACLAB_CALLBACK_EXCEPTION", None, raising=False
+    )
+    return backend, robot, scene, simulation
+
+
+def test_two_reused_reset_cycles_rebuild_all_native_views_and_restore_native_limits(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    backend, robot, scene, simulation = _lifecycle_backend(monkeypatch)
+
+    fresh = backend._prepare_physical_reset()
+    assert fresh["physical_reset_generation"] == 1
+    assert fresh["physics_lifecycle_reset"] == "scene_factory_reset_before_limit_authoring"
+
+    # Represent direct PhysX limit authoring and a progressed episode.  Each
+    # later reset must discard both without any indexed state write.
+    for expected_generation in (2, 3):
+        robot.root_physx_view.limits[:, :8, :] += float(expected_generation)
+        robot.native_state_sha256 = "progressed-episode-state"
+        evidence = backend._prepare_physical_reset()
+        assert evidence["physical_reset_generation"] == expected_generation
+        assert evidence["global_simulation_resets_this_barrier"] == 1
+        assert evidence["stop_guard_owned_by"] == "isaaclab.SimulationContext.reset"
+        assert evidence["stop_callback_reinitialized_articulation_view"] is True
+        assert evidence["stop_callback_reinitialized_articulation_data"] is True
+        assert evidence["stop_callback_reinitialized_contact_view_count"] == 13
+        assert evidence["stop_callback_reinitialized_contact_body_view_count"] == 13
+        assert evidence["stop_callback_reinitialized_contact_buffer_bank_count"] == 13
+        assert evidence["stop_callback_reinitialized_contact_buffer_count"] == 52
+        assert evidence["root_pose_writes_this_barrier"] == 0
+        assert evidence["root_velocity_writes_this_barrier"] == 0
+        assert evidence["joint_state_writes_this_barrier"] == 0
+
+    assert simulation.reset_calls == [False, False]
+    assert scene.reset_count == 2
+    assert scene.update_count == 2
+    assert robot.prohibited_writes == 0
+    assert backend._reset_transaction_poisoned is False
+
+
+def test_callback_failure_poisoning_prevents_reset_reuse(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    backend, robot, _scene, simulation = _lifecycle_backend(monkeypatch)
+    backend._prepare_physical_reset()
+    robot.root_physx_view.limits[:, :8, :] += 2.0
+    robot.native_state_sha256 = "progressed-episode-state"
+    simulation.callback_failure = RuntimeError("contact view callback failed")
+
+    with pytest.raises(VectorizedIsaacBackendError, match="callback failed"):
+        backend._prepare_physical_reset()
+
+    assert backend._reset_transaction_poisoned is True
+
+
+def test_logical_reset_requires_p01_for_controller_and_authoritative_frame() -> None:
+    require_p01 = vector_backend_module._require_p01_reset_state
+
+    require_p01(SimpleNamespace(state_id="P01"), row=0, source="controller")
+    with pytest.raises(VectorizedIsaacBackendError, match="received 'P02'"):
+        require_p01(SimpleNamespace(state_id="P02"), row=3, source="controller")
+    with pytest.raises(VectorizedIsaacBackendError, match="received ''"):
+        require_p01(SimpleNamespace(), row=7, source="authoritative frame")
 
 
 def test_batched_adapter_reuses_canonical_servo_limits() -> None:
