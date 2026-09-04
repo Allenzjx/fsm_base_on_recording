@@ -145,7 +145,7 @@ try {
         $ExitCode = $LASTEXITCODE
         $LiveCommands = @(
             "baseline-eval", "zero-residual-live", "nonzero-residual-smoke",
-            "soft-reset-equivalence", "vector-benchmark", "train", "evaluate",
+            "reset-throughput-probe", "soft-reset-equivalence", "vector-benchmark", "train", "evaluate",
             "export-inference-actor", "capture-video-source"
         )
         if ($Subcommand -in $LiveCommands) {

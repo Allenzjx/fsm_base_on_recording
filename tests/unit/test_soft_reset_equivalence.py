@@ -645,6 +645,159 @@ def _signals(*, success: bool) -> SimpleNamespace:
     )
 
 
+def _install_reset_probe_fakes(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    short_first_step: bool = False,
+    change_reused_nominal: bool = False,
+) -> list[object]:
+    from wlr50_clean.ppo import isaac_fsm_backend, residual_direct_env
+
+    backend_instances: list[object] = []
+
+    class FakeBackend:
+        def __init__(self, simulation_app):
+            self.simulation_app = simulation_app
+            backend_instances.append(self)
+
+    class FakeEpisode:
+        def __init__(self, backend, *, collect_trace):
+            assert backend is backend_instances[0]
+            assert collect_trace is False
+            self.reset_count = 0
+            self.tick_callback = None
+            self.decision_count = 0
+            self.done = False
+            self.frame = None
+
+        def reset(self, *, seed):
+            assert seed == 2001
+            self.reset_count += 1
+            self.decision_count = 0
+            self.done = False
+            self.frame = SimpleNamespace(
+                physics_tick=0,
+                info=_reset_metadata(reused=self.reset_count == 2),
+            )
+            return (0.0,) * 125, dict(self.frame.info)
+
+        def step(self, action):
+            assert tuple(action) == ZERO12
+            assert self.frame is not None
+            tick_count = 4 if short_first_step and self.decision_count == 0 else 8
+            nominal_value = self.decision_count / 100.0
+            if change_reused_nominal and self.reset_count == 2:
+                nominal_value += 0.01
+            nominal = (nominal_value,) * 12
+            projection = SimpleNamespace(
+                raw_residual_full12=ZERO12,
+                safe_projected_residual_full12=ZERO12,
+                applied_action_full12=nominal,
+                zero_residual_fast_path=True,
+            )
+            source = SimpleNamespace(
+                state_id="P01", nominal_action_full12=nominal
+            )
+            current = SimpleNamespace(state_id="P01")
+            for _ in range(tick_count):
+                assert self.tick_callback is not None
+                self.tick_callback(source, current, projection)
+            self.decision_count += 1
+            self.frame = SimpleNamespace(
+                physics_tick=(self.decision_count - 1) * 8 + tick_count,
+                info={},
+            )
+            return SimpleNamespace(
+                info={"physics_ticks_executed": tick_count},
+            )
+
+    monkeypatch.setattr(isaac_fsm_backend, "IsaacFSMBackend", FakeBackend)
+    monkeypatch.setattr(residual_direct_env, "ResidualEpisodeEnv", FakeEpisode)
+    return backend_instances
+
+
+def _reset_probe_args(tmp_path: Path) -> SimpleNamespace:
+    return SimpleNamespace(
+        num_envs=1,
+        episode_count=2,
+        policy_decisions=8,
+        residual_mode="zero",
+        deterministic=True,
+        seed=2001,
+        run_dir=tmp_path,
+    )
+
+
+def test_reset_throughput_probe_records_exact_short_two_reset_run(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    backend_instances = _install_reset_probe_fakes(monkeypatch)
+    timer = iter((0.0, 2.0, 3.0, 5.0, 10.0, 13.0, 15.0, 19.0))
+    monkeypatch.setattr(cli.time, "perf_counter", lambda: next(timer))
+
+    assert cli._reset_throughput_probe(_reset_probe_args(tmp_path), object()) == 0
+    assert len(backend_instances) == 1
+    probe_path = tmp_path / cli.RESET_THROUGHPUT_PROBE_FILENAME
+    payload = json.loads(probe_path.read_text(encoding="utf-8"))
+    assert payload["schema"] == cli.RESET_THROUGHPUT_PROBE_SCHEMA
+    assert payload["status"] == "PASSED"
+    assert payload["artifact_role"] == "RESET_THROUGHPUT_DIAGNOSTIC_ONLY"
+    assert payload["soft_reset_equivalence_gate_eligible"] is False
+    assert payload["policy_decisions_per_episode"] == 8
+    assert payload["physics_ticks_per_episode"] == 64
+    assert [row["reset_role"] for row in payload["episodes"]] == [
+        "fresh_scene",
+        "soft_reset_reuse",
+    ]
+    assert payload["episodes"][0]["reset_wall_s"] == 2.0
+    assert payload["episodes"][0]["step_wall_s"] == 2.0
+    assert payload["episodes"][0]["ticks_per_wall_s"] == 32.0
+    assert payload["episodes"][1]["reset_wall_s"] == 3.0
+    assert payload["episodes"][1]["step_wall_s"] == 4.0
+    assert payload["episodes"][1]["ticks_per_wall_s"] == 16.0
+    assert all(
+        len(row["tick0_actor_observation_v2_sha256"]) == 64
+        and len(row["nominal_action_120hz_sha256"]) == 64
+        and row["nominal_action_120hz_sha256"]
+        == row["applied_action_120hz_sha256"]
+        and row["physics_tick_count"] == 64
+        for row in payload["episodes"]
+    )
+    assert payload["reset_metadata_comparison"]["passed"] is True
+    assert not (tmp_path / SOFT_RESET_ACCEPTANCE_FILENAME).exists()
+
+
+def test_reset_throughput_probe_rejects_short_step_before_publishing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _install_reset_probe_fakes(monkeypatch, short_first_step=True)
+    timer = iter((0.0, 1.0, 2.0))
+    monkeypatch.setattr(cli.time, "perf_counter", lambda: next(timer))
+
+    with pytest.raises(cli.CliError, match="did not advance exactly 8 physics ticks"):
+        cli._reset_throughput_probe(_reset_probe_args(tmp_path), object())
+    assert not (tmp_path / cli.RESET_THROUGHPUT_PROBE_FILENAME).exists()
+    assert not (tmp_path / SOFT_RESET_ACCEPTANCE_FILENAME).exists()
+
+
+def test_reset_throughput_probe_fails_closed_on_cross_reset_stream_mismatch(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _install_reset_probe_fakes(monkeypatch, change_reused_nominal=True)
+    timer = iter((0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0))
+    monkeypatch.setattr(cli.time, "perf_counter", lambda: next(timer))
+
+    assert cli._reset_throughput_probe(_reset_probe_args(tmp_path), object()) == 2
+    payload = json.loads(
+        (tmp_path / cli.RESET_THROUGHPUT_PROBE_FILENAME).read_text(encoding="utf-8")
+    )
+    assert payload["status"] == "FAILED"
+    assert payload["checks"]["nominal_120hz_sequences_equal"] is False
+    assert payload["checks"]["applied_120hz_sequences_equal"] is False
+    assert payload["soft_reset_equivalence_gate_eligible"] is False
+    assert not (tmp_path / SOFT_RESET_ACCEPTANCE_FILENAME).exists()
+
+
 def test_parser_dispatch_and_powershell_entrypoint_are_wired(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -697,3 +850,61 @@ def test_parser_dispatch_and_powershell_entrypoint_are_wired(
     assert "[string]$SoftResetAcceptance" in train_script
     assert '"--soft-reset-acceptance"' in train_script
     assert "single-env training requires" in train_script
+
+
+def test_reset_throughput_probe_parser_dispatch_and_wrapper_are_wired(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    parsed = cli._parser().parse_args(
+        [
+            "reset-throughput-probe",
+            "--run-dir",
+            str(tmp_path),
+            "--seed",
+            "2001",
+            "--num-envs",
+            "1",
+            "--episode-count",
+            "2",
+            "--policy-decisions",
+            "8",
+            "--deterministic",
+        ]
+    )
+    assert parsed.command == "reset-throughput-probe"
+    assert parsed.policy_decisions == 8
+    assert "reset-throughput-probe" in cli.LIVE_COMMANDS
+
+    app = SimpleNamespace(update=lambda: None, close=lambda **kwargs: None)
+    isaaclab = ModuleType("isaaclab")
+    app_module = ModuleType("isaaclab.app")
+    app_module.AppLauncher = lambda **kwargs: SimpleNamespace(app=app)
+    monkeypatch.setitem(sys.modules, "isaaclab", isaaclab)
+    monkeypatch.setitem(sys.modules, "isaaclab.app", app_module)
+    calls = []
+    monkeypatch.setattr(
+        cli,
+        "_reset_throughput_probe",
+        lambda args, simulation_app: calls.append((args, simulation_app)) or 0,
+    )
+    assert cli._dispatch_live(parsed) == 0
+    assert calls == [(parsed, app)]
+
+    script = (
+        PROJECT_ROOT / "scripts" / "run_reset_throughput_probe.ps1"
+    ).read_text(encoding="utf-8")
+    assert "_invoke_ppo_cli.ps1" in script
+    assert '-RunKind "reset-throughput-probe"' in script
+    assert '-TrainingStage "reset-throughput-probe-live"' in script
+    assert '-Subcommand "reset-throughput-probe"' in script
+    assert '"--episode-count", "2"' in script
+    assert '"--policy-decisions", "8"' in script
+    assert '"--residual-mode", "zero"' in script
+    assert '"--deterministic"' in script
+    assert "EnvironmentCount 1" in script
+    assert SOFT_RESET_ACCEPTANCE_FILENAME not in script
+
+    common_wrapper = (
+        PROJECT_ROOT / "scripts" / "_invoke_ppo_cli.ps1"
+    ).read_text(encoding="utf-8")
+    assert '"reset-throughput-probe"' in common_wrapper

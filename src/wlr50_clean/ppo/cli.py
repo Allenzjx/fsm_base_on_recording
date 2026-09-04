@@ -23,11 +23,16 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_TRAINING_CONFIG = PROJECT_ROOT / "configs" / "ppo_training_phase_v1.yaml"
 DEFAULT_INTERFACE_CONFIG = PROJECT_ROOT / "configs" / "ppo_interface_v2.yaml"
 OUTPUT_ROOT = PROJECT_ROOT / "outputs" / "ppo_phase_v1"
+RESET_THROUGHPUT_PROBE_FILENAME = "reset_throughput_probe.json"
+RESET_THROUGHPUT_PROBE_SCHEMA = "wlr50_clean.reset_throughput_probe.v1"
+RESET_THROUGHPUT_PROBE_DECISIONS = 8
+RESET_THROUGHPUT_PROBE_PHYSICS_TICKS = 64
 LIVE_COMMANDS = frozenset(
     {
         "baseline-eval",
         "zero-residual-live",
         "nonzero-residual-smoke",
+        "reset-throughput-probe",
         "soft-reset-equivalence",
         "vector-benchmark",
         "train",
@@ -51,6 +56,7 @@ def _parser() -> argparse.ArgumentParser:
         "build-phase-snapshots",
         "zero-residual-live",
         "nonzero-residual-smoke",
+        "reset-throughput-probe",
         "soft-reset-equivalence",
         "vector-benchmark",
         "train",
@@ -882,6 +888,208 @@ def _soft_reset_equivalence(args: argparse.Namespace, simulation_app: Any) -> in
     _json(args.run_dir / SOFT_RESET_ACCEPTANCE_FILENAME, result)
     print(json.dumps(result, separators=(",", ":")), flush=True)
     return 0 if result["passed"] else 2
+
+
+def _reset_throughput_probe(args: argparse.Namespace, simulation_app: Any) -> int:
+    """Measure two exact short reset horizons without producing gate evidence."""
+
+    from .isaac_fsm_backend import IsaacFSMBackend
+    from .residual_direct_env import (
+        DECISION_HZ,
+        PHYSICS_HZ,
+        PHYSICS_TICKS_PER_DECISION,
+        ResidualEpisodeEnv,
+    )
+    from .soft_reset_equivalence import (
+        CompactZeroResidualTickAudit,
+        actor_observation_v2_fingerprint,
+        compare_reset_metadata,
+        select_reset_metadata,
+        soft_reset_contract_hashes,
+    )
+
+    if args.num_envs != 1 or args.episode_count != 2:
+        raise CliError(
+            "reset throughput probe requires exactly two resets in one num-envs=1 process"
+        )
+    if args.residual_mode != "zero" or not args.deterministic:
+        raise CliError("reset throughput probe requires deterministic zero residuals")
+    if args.policy_decisions not in (None, RESET_THROUGHPUT_PROBE_DECISIONS):
+        raise CliError(
+            "reset throughput probe has a fixed horizon of exactly 8 policy decisions"
+        )
+    if (
+        DECISION_HZ != 15.0
+        or PHYSICS_HZ != 120.0
+        or PHYSICS_TICKS_PER_DECISION != 8
+        or RESET_THROUGHPUT_PROBE_DECISIONS * PHYSICS_TICKS_PER_DECISION
+        != RESET_THROUGHPUT_PROBE_PHYSICS_TICKS
+    ):
+        raise CliError("reset throughput probe runtime cadence differs from 15 Hz / 120 Hz")
+
+    def _elapsed(started: float, *, label: str) -> float:
+        value = time.perf_counter() - started
+        if not math.isfinite(value) or value <= 0.0:
+            raise CliError(f"{label} wall time must be positive and finite")
+        return value
+
+    contract_hashes_at_start = soft_reset_contract_hashes(PROJECT_ROOT)
+    backend = IsaacFSMBackend(simulation_app)
+    env = ResidualEpisodeEnv(backend, collect_trace=False)
+    episodes: list[dict[str, Any]] = []
+    for episode_index, reset_role in enumerate(("fresh_scene", "soft_reset_reuse")):
+        env.tick_callback = None
+        reset_started = time.perf_counter()
+        initial_observation, _ = env.reset(seed=args.seed)
+        reset_wall_s = _elapsed(reset_started, label=f"{reset_role} reset")
+        if env.frame is None:
+            raise CliError(f"{reset_role} reset returned no authoritative frame")
+        if (
+            int(env.frame.physics_tick) != 0
+            or int(env.decision_count) != 0
+            or bool(env.done)
+        ):
+            raise CliError(f"{reset_role} reset did not return a fresh logical tick zero")
+
+        tick0_actor = actor_observation_v2_fingerprint(initial_observation)
+        reset_metadata = select_reset_metadata(env.frame.info)
+        tick_audit = CompactZeroResidualTickAudit()
+        env.tick_callback = tick_audit.append
+
+        step_started = time.perf_counter()
+        for decision_index in range(RESET_THROUGHPUT_PROBE_DECISIONS):
+            if env.done:
+                raise CliError(
+                    f"{reset_role} terminated before decision {decision_index} of "
+                    f"{RESET_THROUGHPUT_PROBE_DECISIONS}"
+                )
+            if env.frame is None:
+                raise CliError(f"{reset_role} lost its authoritative frame")
+            before_tick = int(env.frame.physics_tick)
+            step = env.step((0.0,) * 12)
+            if env.frame is None:
+                raise CliError(f"{reset_role} step returned no authoritative frame")
+            ticks_executed = step.info.get("physics_ticks_executed")
+            expected_tick = (decision_index + 1) * PHYSICS_TICKS_PER_DECISION
+            if (
+                isinstance(ticks_executed, bool)
+                or not isinstance(ticks_executed, int)
+                or ticks_executed != PHYSICS_TICKS_PER_DECISION
+                or int(env.frame.physics_tick) - before_tick
+                != PHYSICS_TICKS_PER_DECISION
+                or int(env.frame.physics_tick) != expected_tick
+                or int(env.decision_count) != decision_index + 1
+            ):
+                raise CliError(
+                    f"{reset_role} decision {decision_index} did not advance exactly "
+                    f"{PHYSICS_TICKS_PER_DECISION} physics ticks"
+                )
+        step_wall_s = _elapsed(step_started, label=f"{reset_role} steps")
+
+        audit = tick_audit.finalize()
+        if (
+            audit.get("tick_count") != RESET_THROUGHPUT_PROBE_PHYSICS_TICKS
+            or audit.get("raw_zero_tick_count")
+            != RESET_THROUGHPUT_PROBE_PHYSICS_TICKS
+            or audit.get("projected_zero_tick_count")
+            != RESET_THROUGHPUT_PROBE_PHYSICS_TICKS
+            or audit.get("zero_fast_path_tick_count")
+            != RESET_THROUGHPUT_PROBE_PHYSICS_TICKS
+        ):
+            raise CliError(f"{reset_role} 120 Hz tick audit has an invalid fixed shape")
+        nominal_sha256 = audit.get("nominal_sequence_sha256")
+        applied_sha256 = audit.get("applied_sequence_sha256")
+        if (
+            not isinstance(nominal_sha256, str)
+            or len(nominal_sha256) != 64
+            or not isinstance(applied_sha256, str)
+            or len(applied_sha256) != 64
+        ):
+            raise CliError(f"{reset_role} 120 Hz action SHA-256 evidence is invalid")
+        ticks_per_wall_s = RESET_THROUGHPUT_PROBE_PHYSICS_TICKS / step_wall_s
+        if not math.isfinite(ticks_per_wall_s) or ticks_per_wall_s <= 0.0:
+            raise CliError(f"{reset_role} tick throughput is not positive and finite")
+        episodes.append(
+            {
+                "episode_index": episode_index,
+                "reset_role": reset_role,
+                "seed": args.seed,
+                "reset_wall_s": reset_wall_s,
+                "step_wall_s": step_wall_s,
+                "ticks_per_wall_s": ticks_per_wall_s,
+                "decision_count": int(env.decision_count),
+                "physics_tick_count": int(env.frame.physics_tick),
+                "tick0_actor_observation_v2_dimension": tick0_actor["dimension"],
+                "tick0_actor_observation_v2_sha256": tick0_actor["sha256"],
+                "nominal_action_120hz_sha256": nominal_sha256,
+                "applied_action_120hz_sha256": applied_sha256,
+                "zero_residual_bitwise_120hz": bool(audit.get("passed")),
+                "reset_metadata": reset_metadata,
+            }
+        )
+
+    reset_metadata_comparison = compare_reset_metadata(
+        episodes[0]["reset_metadata"], episodes[1]["reset_metadata"]
+    )
+    contract_hashes_at_end = soft_reset_contract_hashes(PROJECT_ROOT)
+    checks = {
+        "one_backend_instance_two_resets": len(episodes) == 2,
+        "fixed_8_decision_64_tick_shape": all(
+            row["decision_count"] == RESET_THROUGHPUT_PROBE_DECISIONS
+            and row["physics_tick_count"] == RESET_THROUGHPUT_PROBE_PHYSICS_TICKS
+            for row in episodes
+        ),
+        "positive_finite_wall_timings": all(
+            math.isfinite(float(row[name])) and float(row[name]) > 0.0
+            for row in episodes
+            for name in ("reset_wall_s", "step_wall_s", "ticks_per_wall_s")
+        ),
+        "both_zero_residual_bitwise_at_120hz": all(
+            row["zero_residual_bitwise_120hz"] is True for row in episodes
+        ),
+        "tick0_actor_observations_equal": (
+            episodes[0]["tick0_actor_observation_v2_dimension"]
+            == episodes[1]["tick0_actor_observation_v2_dimension"]
+            == 125
+            and episodes[0]["tick0_actor_observation_v2_sha256"]
+            == episodes[1]["tick0_actor_observation_v2_sha256"]
+        ),
+        "nominal_120hz_sequences_equal": (
+            episodes[0]["nominal_action_120hz_sha256"]
+            == episodes[1]["nominal_action_120hz_sha256"]
+        ),
+        "applied_120hz_sequences_equal": (
+            episodes[0]["applied_action_120hz_sha256"]
+            == episodes[1]["applied_action_120hz_sha256"]
+        ),
+        "reset_metadata_equivalent": bool(reset_metadata_comparison["passed"]),
+        "runtime_contract_files_unchanged": (
+            contract_hashes_at_start == contract_hashes_at_end
+        ),
+    }
+    passed = all(checks.values())
+    result = {
+        "schema": RESET_THROUGHPUT_PROBE_SCHEMA,
+        "artifact_role": "RESET_THROUGHPUT_DIAGNOSTIC_ONLY",
+        "soft_reset_equivalence_gate_eligible": False,
+        "status": "PASSED" if passed else "FAILED",
+        "seed": args.seed,
+        "backend_instance_count": 1,
+        "episode_count": len(episodes),
+        "decision_hz": DECISION_HZ,
+        "physics_hz": PHYSICS_HZ,
+        "policy_decisions_per_episode": RESET_THROUGHPUT_PROBE_DECISIONS,
+        "physics_ticks_per_decision": PHYSICS_TICKS_PER_DECISION,
+        "physics_ticks_per_episode": RESET_THROUGHPUT_PROBE_PHYSICS_TICKS,
+        "checks": checks,
+        "episodes": episodes,
+        "reset_metadata_comparison": reset_metadata_comparison,
+        "runtime_contract_file_sha256": contract_hashes_at_start,
+        "runtime_contract_file_sha256_at_end": contract_hashes_at_end,
+    }
+    _json(args.run_dir / RESET_THROUGHPUT_PROBE_FILENAME, result)
+    print(json.dumps(result, separators=(",", ":")), flush=True)
+    return 0 if passed else 2
 
 
 def _vector_benchmark(args: argparse.Namespace, simulation_app: Any) -> int:
@@ -2826,6 +3034,8 @@ def _dispatch_live(args: argparse.Namespace) -> int:
     try:
         if args.command in {"baseline-eval", "zero-residual-live", "nonzero-residual-smoke"}:
             exit_code = _baseline_or_gate(args, app)
+        elif args.command == "reset-throughput-probe":
+            exit_code = _reset_throughput_probe(args, app)
         elif args.command == "soft-reset-equivalence":
             exit_code = _soft_reset_equivalence(args, app)
         elif args.command == "vector-benchmark":
