@@ -2234,9 +2234,9 @@ def _build_payload(
         raise TrainingOrchestrationError(
             "phase-curriculum chunks must use one environment"
         )
-    if environment_counts_by_stage["full-episode"] != 1:
+    if environment_counts_by_stage["full-episode"] != selected_num_envs:
         raise TrainingOrchestrationError(
-            "full-episode chunks must use one environment"
+            "full-episode chunks must use the finalized matrix selected N"
         )
 
     soft_binding: dict[str, Any] | None = None

@@ -43,6 +43,8 @@ from .checkpoint_promotion import (
     REQUIRED_LOCKED_TEST_HASH_GATES,
     REQUIRED_PROMOTION_GATES,
     VALIDATION_SEEDS,
+    CheckpointPromotionError,
+    validate_checkpoint_artifact_provenance,
 )
 from .checkpoint_runtime_capture import CHECKPOINT_CAPTURE_SCHEMA
 from .evaluation_artifacts import (
@@ -92,6 +94,7 @@ from .video_artifacts import (
 )
 
 
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
 TRAINING_MANIFEST_SCHEMA = "wlr50_clean.ppo_final_training_manifest.v1"
 EVALUATION_MANIFEST_SCHEMA = "wlr50_clean.ppo_final_evaluation_manifest.v1"
 TRAINING_RESULT_SCHEMA = "wlr50_clean.ppo_training_run.v1"
@@ -546,14 +549,25 @@ def _validate_checkpoint_contract(
     if not isinstance(files, Mapping) or not files:
         raise FinalizationError(f"{label} has no checkpoint input-file inventory")
     verified_by_name: dict[str, str] = {}
+    frozen_input_names = frozenset(_CHECKPOINT_HASH_FILE_NAMES.values())
     for raw_path, raw_hash in files.items():
         source = _path(raw_path, base=base, label=f"{label} input file")
         expected = _require_hash(raw_hash, label=f"{label} input file hash")
         if not source.is_file() or sha256_file(source) != expected:
             raise FinalizationError(f"{label} input file SHA-256 mismatch: {source}")
-        if source.name in verified_by_name and verified_by_name[source.name] != expected:
-            raise FinalizationError(f"{label} has ambiguous input files named {source.name}")
-        verified_by_name[source.name] = expected
+        # The phase snapshot inventory intentionally contains thirteen files
+        # named ``snapshot.json`` and thirteen named ``snapshot.sha256``.
+        # Basename uniqueness is only meaningful for the five versioned
+        # controller/environment/schema/reward inputs resolved below.
+        if source.name in frozen_input_names:
+            if (
+                source.name in verified_by_name
+                and verified_by_name[source.name] != expected
+            ):
+                raise FinalizationError(
+                    f"{label} has ambiguous input files named {source.name}"
+                )
+            verified_by_name[source.name] = expected
     for key in FROZEN_HASH_FIELDS:
         declared = _require_hash(payload.get(key), label=f"{label} {key}")
         expected_name = _CHECKPOINT_HASH_FILE_NAMES[key]
@@ -561,6 +575,78 @@ def _validate_checkpoint_contract(
             raise FinalizationError(
                 f"{label} {key} is not bound to its {expected_name} input file"
             )
+    from .phase_snapshots import (
+        PhaseSnapshotError,
+        capture_validated_phase_snapshot_bundle,
+        phase_snapshot_bundle_file_hashes,
+    )
+    from .phase_effective_entry import (
+        EffectivePhaseEntryError,
+        capture_validated_effective_phase_entry_contract,
+    )
+
+    snapshot_root = PROJECT_ROOT / "reference" / "ppo_phase_snapshots"
+    try:
+        snapshot_pin = capture_validated_phase_snapshot_bundle(
+            snapshot_root, canonical_root=snapshot_root
+        )
+        snapshot_record = snapshot_pin.as_record()
+        effective_pin = capture_validated_effective_phase_entry_contract(
+            PROJECT_ROOT / "configs" / "ppo_phase_effective_entry_v1.json",
+            expected_snapshot_bundle=snapshot_pin,
+        )
+    except (OSError, PhaseSnapshotError, EffectivePhaseEntryError) as exc:
+        raise FinalizationError(
+            f"{label} current phase reset contract is invalid: {exc}"
+        ) from exc
+    expected_phase_contract = {
+        "phase_snapshot_manifest": snapshot_record["manifest_path"],
+        "phase_snapshot_manifest_sha256": snapshot_record["manifest_sha256"],
+        "phase_snapshot_bundle_sha256": snapshot_record["bundle_sha256"],
+        "phase_snapshot_bundle": snapshot_record,
+        "phase_effective_entry_contract_path": str(effective_pin.contract_path),
+        "phase_effective_entry_contract_file_sha256": effective_pin.file_sha256,
+        "phase_effective_entry_contract_sidecar_path": str(effective_pin.sidecar_path),
+        "phase_effective_entry_contract_sidecar_sha256": (
+            effective_pin.sidecar_file_sha256
+        ),
+        "phase_effective_entry_contract_sha256": effective_pin.contract_sha256,
+        "phase_effective_entry_contract": effective_pin.as_record(),
+    }
+    differing = [
+        field
+        for field, value in expected_phase_contract.items()
+        if payload.get(field) != value
+    ]
+    if differing:
+        raise FinalizationError(
+            f"{label} phase reset contract differs: " + ", ".join(differing)
+        )
+    required_files = phase_snapshot_bundle_file_hashes(snapshot_record)
+    required_files.update(effective_pin.file_hashes())
+    if any(files.get(path) != digest for path, digest in required_files.items()):
+        raise FinalizationError(
+            f"{label} phase reset contract file inventory is incomplete or stale"
+        )
+
+
+def _validate_checkpoint_embedded_provenance(
+    checkpoint_path: Path,
+    manifest_path: Path,
+    *,
+    label: str,
+) -> Mapping[str, Any]:
+    """Revalidate embedded infos and current qualification proofs through promotion."""
+
+    try:
+        evidence = validate_checkpoint_artifact_provenance(
+            checkpoint_path, manifest_path
+        )
+    except CheckpointPromotionError as exc:
+        raise FinalizationError(
+            f"{label} embedded checkpoint provenance is invalid: {exc}"
+        ) from exc
+    return evidence.manifest
 
 
 def _validate_training_run(run_dir: Path | str) -> dict[str, Any]:
@@ -669,6 +755,11 @@ def _validate_training_run(run_dir: Path | str) -> dict[str, Any]:
         raise FinalizationError(f"{stage} immutable checkpoint manifest is inconsistent")
     _validate_checkpoint_contract(
         checkpoint_payload, base=history_manifest.path.parent, label=f"{stage} checkpoint"
+    )
+    _validate_checkpoint_embedded_provenance(
+        history_path,
+        history_manifest.path,
+        label=f"{stage} checkpoint",
     )
     resume_manifest_path = _path(
         checkpoint_payload.get("resume_checkpoint"),
@@ -1354,11 +1445,16 @@ def _validate_checkpoint_manifests(
                 base=snapshot.path.parent,
                 label=f"checkpoint manifest {snapshot.path.name}",
             )
-            _declared_file(
+            checkpoint_path, _ = _declared_file(
                 payload,
                 path_key="checkpoint_path",
                 hash_key="checkpoint_sha256",
                 base=snapshot.path.parent,
+                label=f"checkpoint manifest {snapshot.path.name}",
+            )
+            _validate_checkpoint_embedded_provenance(
+                checkpoint_path,
+                snapshot.path,
                 label=f"checkpoint manifest {snapshot.path.name}",
             )
         elif schema == CHECKPOINT_VALIDATION_PROMOTION_SCHEMA:
@@ -2347,6 +2443,13 @@ def finalize_ppo_phase_delivery(
         raise FinalizationError(
             "legacy training_run_dirs disagree with prefinal orchestration chunks"
         )
+    validated_training_runs = _validate_training_runs(orchestrated_run_dirs)
+    if tuple(row["stage"] for row in validated_training_runs) != tuple(
+        chunk["stage"] for chunk in chunks
+    ):
+        raise FinalizationError(
+            "deeply validated training stages disagree with prefinal orchestration chunks"
+        )
     baseline, _, baseline_workers = _validate_batch(
         baseline_aggregate_path,
         role="baseline",
@@ -2670,6 +2773,11 @@ def finalize_ppo_phase_delivery(
             not destination.is_file() or destination.read_bytes() != content
         ):
             raise FinalizationError(f"refusing to overwrite final artifact: {destination}")
+    _validate_checkpoint_embedded_provenance(
+        improved_path,
+        improved_manifest.path,
+        label="terminal improved checkpoint publication boundary",
+    )
     _assert_inventory_unchanged(root, inventory, excluded=destinations)
     _assert_evidence_records_unchanged((training_payload, evaluation_payload))
     created = _publish_bundle(publications)

@@ -35,6 +35,7 @@ from wlr50_clean.ppo.phase_snapshots import (
     phase_snapshot_actuation_contract_sha256,
     phase_snapshot_drive_target_sha256,
 )
+from wlr50_clean.ppo.phase_effective_entry import EffectivePhaseEntryError
 
 
 SERVO_NAMES = (
@@ -55,6 +56,30 @@ WHEEL_NAMES = (
 )
 BODY_NAMES = tuple(f"body_{index:02d}" for index in range(13))
 ZERO = (0.0,) * 12
+
+
+class FakeEffectiveEntryContract:
+    contract_sha256 = "2" * 64
+    phase_snapshot_bundle_sha256 = "3" * 64
+
+    def entry(self, phase: str):
+        if phase == "P01":
+            raise EffectivePhaseEntryError("P01 is not calibrated")
+        if phase not in {f"P{index:02d}" for index in range(2, 14)}:
+            raise EffectivePhaseEntryError(f"missing phase {phase}")
+        return {
+            "schema": "fake.phase_effective_entry.v1",
+            "phase": phase,
+            "entry_sha256": "4" * 64,
+        }
+
+    def as_record(self):
+        return {
+            "schema": "fake.phase_effective_entry_contract_record.v1",
+            "contract_sha256": self.contract_sha256,
+            "phase_snapshot_bundle_sha256": self.phase_snapshot_bundle_sha256,
+            "phase_count": 12,
+        }
 
 
 def _value(name: str):
@@ -381,16 +406,74 @@ class FakeController:
             action_mask_full12=(1,) * 12,
             waypoints=(SimpleNamespace(full12=ZERO),),
         )
+        self.state = SimpleNamespace(
+            entry_guards=tuple(
+                SimpleNamespace(name=name)
+                for name in (
+                    "previous_state_done",
+                    "no_body_obstacle_collision",
+                    "joint_hard_limits_valid",
+                    "reference_entry_compatible",
+                    "critical_actuators_available",
+                )
+            )
+        )
         self.motion = FakeMotion(self.phase)
         self.physics_tick = 0
+        self.lifecycle = _value("EXECUTE_MOTION")
+        self.termination = None
         self.abort_calls = []
 
     def step(self, observation, *, sim_time_s):
         tick = self.physics_tick
         self.runtime.events.append(("controller.step", tick, sim_time_s))
         self.motion._tick_index = tick + 1
+        events = ()
+        if self.lifecycle.value == "WAIT_ENTRY":
+            guard_rows = []
+            for guard in self.state.entry_guards:
+                value = True
+                passed = not (
+                    self.runtime.entry_guard_failure
+                    and guard.name == "previous_state_done"
+                )
+                if (
+                    self.phase.state_id == "P10"
+                    and guard.name == "reference_entry_compatible"
+                ):
+                    value = {
+                        "rear_right_knee_velocity": {
+                            "actual_deg_s": self.runtime.p10_entry_velocity_deg_s,
+                            "signed_positive_rebound_required": True,
+                        }
+                    }
+                guard_rows.append(
+                    {
+                        "name": guard.name,
+                        "passed": passed,
+                        "value": value,
+                        "source": "fake.live.entry_guard",
+                        "reason": "passed",
+                    }
+                )
+            events = (
+                SimpleNamespace(
+                    state_id=self.phase.state_id,
+                    from_lifecycle="WAIT_ENTRY",
+                    to_lifecycle="EXECUTE_MOTION",
+                    reason="all live entry guards passed",
+                    details={"guards": tuple(guard_rows)},
+                ),
+            )
+            self.lifecycle = _value("EXECUTE_MOTION")
         termination = None
-        if tick == 1 and self.runtime.fault == "success":
+        if tick == 0 and self.runtime.entry_controller_result is not None:
+            termination = SimpleNamespace(
+                result=_value(self.runtime.entry_controller_result),
+                reason="invalid tick-zero terminal result",
+            )
+            self.termination = termination
+        elif tick == 1 and self.runtime.fault == "success":
             termination = SimpleNamespace(result=_value("SUCCESS"), reason="P13 guards")
         elif tick == 1 and self.runtime.fault == "blocked":
             termination = SimpleNamespace(
@@ -400,7 +483,11 @@ class FakeController:
             physics_tick=tick,
             sim_time_s=sim_time_s,
             state_id=self.phase.state_id,
-            lifecycle=_value("EXECUTE_MOTION"),
+            lifecycle=(
+                _value(self.runtime.entry_frame_lifecycle)
+                if tick == 0 and self.runtime.entry_frame_lifecycle is not None
+                else self.lifecycle
+            ),
             full12=(tick / 100.0,) + ZERO[1:],
             decision_tick=tick % 8 == 0,
             full12_atomic_write_required=True,
@@ -411,8 +498,12 @@ class FakeController:
             drive_feedback_details={"fake": True},
             endpoint_issued=False,
             termination=termination,
-            first_blocker=None,
-            events=(),
+            first_blocker=(
+                {"name": "fake_entry_blocker"}
+                if tick == 0 and self.runtime.entry_first_blocker
+                else None
+            ),
+            events=events,
         )
         self.physics_tick += 1
         return frame
@@ -427,7 +518,13 @@ class FakeReader:
         self.role = role
         self.last_command = None
         self.ticks = []
-        self.contact_classifier = SimpleNamespace(force_on_n=0.25, force_off_n=0.12)
+        self.contact_classifier = SimpleNamespace(
+            force_on_n=0.25,
+            force_off_n=0.12,
+            history_length=3,
+            _states={},
+            _history={},
+        )
 
     def read(self, *, physics_tick, simulation_time_s, commanded_full12):
         if self.runtime.strict_reader_clock and physics_tick != len(self.ticks):
@@ -440,9 +537,13 @@ class FakeReader:
             (f"reader.{self.role}", physics_tick, simulation_time_s)
         )
         fault = (
-            self.runtime.fault
-            if self.role == "live" and physics_tick == 1
-            else None
+            self.runtime.entry_fault
+            if self.role == "live" and physics_tick == 0
+            else (
+                self.runtime.fault
+                if self.role == "live" and physics_tick == 1
+                else None
+            )
         )
         invalid = bool(
             self.runtime.invalid_pair and self.role == "live" and physics_tick == 1
@@ -578,10 +679,30 @@ class FakeSimulation:
 
 
 class FakeRuntime:
-    def __init__(self, *, fault=None, invalid_pair=False, strict_reader_clock=False):
+    def __init__(
+        self,
+        *,
+        fault=None,
+        invalid_pair=False,
+        strict_reader_clock=False,
+        effective_entry_error: str | None = None,
+        entry_fault: str | None = None,
+        entry_controller_result: str | None = None,
+        entry_guard_failure: bool = False,
+        p10_entry_velocity_deg_s: float = 1.0,
+        entry_frame_lifecycle: str | None = None,
+        entry_first_blocker: bool = False,
+    ):
         self.fault = fault
         self.invalid_pair = invalid_pair
         self.strict_reader_clock = strict_reader_clock
+        self.effective_entry_error = effective_entry_error
+        self.entry_fault = entry_fault
+        self.entry_controller_result = entry_controller_result
+        self.entry_guard_failure = entry_guard_failure
+        self.p10_entry_velocity_deg_s = p10_entry_velocity_deg_s
+        self.entry_frame_lifecycle = entry_frame_lifecycle
+        self.entry_first_blocker = entry_first_blocker
         self.events = []
         self.reader_count = 0
         self.reader_count_this_reset = 0
@@ -771,10 +892,28 @@ class FakeRuntime:
             controller.phase.macro_phase = int(phase[1:])
             controller.motion.phase = controller.phase
             controller.restored_history = tuple(snapshot["phase_history"])
+            controller.lifecycle = _value("WAIT_ENTRY")
+            controller.termination = None
             return {
                 "state_id": phase,
-                "lifecycle": "EXECUTE_MOTION",
+                "lifecycle": "WAIT_ENTRY",
                 "history_is_independent": True,
+                "entry_guards_pending_effective_tick_zero": True,
+            }
+
+        def verify_effective_entry(contract, phase, comparison):
+            self.events.append(("verify_effective_entry", phase))
+            if self.effective_entry_error is not None:
+                raise EffectivePhaseEntryError(self.effective_entry_error)
+            entry = contract.entry(phase)
+            return {
+                "schema": "fake.phase_effective_entry_live_proof.v1",
+                "verified": True,
+                "phase": phase,
+                "contract_sha256": contract.contract_sha256,
+                "entry_sha256": entry["entry_sha256"],
+                "fingerprint_maximum_ulp_distance": 0,
+                "contact_contract_verified": True,
             }
 
         return BackendDependencies(
@@ -797,11 +936,15 @@ class FakeRuntime:
             restore_controller_snapshot=restore_controller_snapshot,
             restore_guard_snapshot=restore_guard_snapshot,
             capture_session_limit_state=capture_session_limit_state,
+            verify_effective_entry=verify_effective_entry,
         )
 
 
 def _backend(runtime):
-    return IsaacFSMBackend(dependencies=runtime.dependencies())
+    return IsaacFSMBackend(
+        dependencies=runtime.dependencies(),
+        expected_effective_entry_contract=FakeEffectiveEntryContract(),
+    )
 
 
 def test_reset_settles_and_step_preserves_atomic_order_and_drive_feedback() -> None:
@@ -818,6 +961,13 @@ def test_reset_settles_and_step_preserves_atomic_order_and_drive_feedback() -> N
     assert initial.info["settle_atomic_full12_writes"] == SETTLE_TICKS
     assert initial.info["level_calibration_sample_count"] == LEVEL_CALIBRATION_TICKS
     assert initial.info["effective_phase_entry_semantics"] == "natural_p01_post_settle"
+    assert initial.info["reset_generation"] == 1
+    assert initial.info["reset_generation_commit"] == (
+        "committed_after_authoritative_entry_gate"
+    )
+    assert initial.info["phase_snapshot_restoration"]["authoritative_entry"][
+        "verified"
+    ] is True
     assert initial.info["next_post_reset_command_tick"] == SETTLE_TICKS
     assert initial.info["raw_observation"] is backend.raw_observation
     assert initial.info["raw_controller_frame"] is backend.controller_frame
@@ -853,6 +1003,10 @@ def test_reset_settles_and_step_preserves_atomic_order_and_drive_feedback() -> N
     assert following.info["in_episode_force_or_impulse_writes"] == 0
     assert following.info["in_episode_gravity_writes"] == 0
     assert following.info["recording_accesses"] == 0
+    assert following.info["phase_snapshot_restoration"]["authoritative_entry"][
+        "verified"
+    ] is True
+    assert following.info["reset_generation"] == 1
     ack = following.info["atomic_ack"]
     assert ack["ppo_actuation_contract"] == (
         "frozen_nominal_plus_post_mapper_residual.v1"
@@ -1498,17 +1652,23 @@ def test_phase_snapshot_reset_restores_independent_phase_state_and_proves_live_s
     assert physical["fsm_clock_steps_during_priming"] == 0
     assert physical["episode_clock_steps_during_priming"] == 0
     assert physical["contact_sensor_reads_after_prime"] == 1
-    assert physical["classifier_restored_before_only_episode_read"] is True
-    assert physical["classifier_current_force_hysteresis_contract_verified"] is True
+    assert physical["classifier_restored_before_only_episode_read"] is False
+    assert physical["classifier_source_state_restored"] is False
+    assert physical["classifier_source_history_restored"] is False
+    assert physical["classifier_cold_started_before_only_episode_read"] is True
     assert physical["classifier_history_equivalence_claimed"] is False
     assert physical["raw_sensor_history_rewarmed_from_prime"] is True
     assert physical["current_contact_force_provenance"] == (
         "current_final_solver_force_only"
     )
     assert physical["sensor_history_samples_after_reset"] == 1
-    assert physical["priming_observation"][
-        "current_raw_force_hysteresis_contract_matches_snapshot"
-    ] is True
+    assert physical["source_snapshot_post_prime_diagnostic"]["verified"] is True
+    assert physical["effective_entry_contract"]["verified"] is True
+    assert physical["entry_safety_contract"]["verified"] is True
+    assert physical["entry_guard_contract"]["verified"] is True
+    assert physical["authoritative_entry_contract"]["verified"] is True
+    assert restoration["effective_entry"]["verified"] is True
+    assert restoration["entry_guards"]["lifecycle"] == "EXECUTE_MOTION"
     assert frame.info["reset_root_pose_writes"] == 1
     assert frame.info["reset_root_velocity_writes"] == 1
     assert frame.info["reset_joint_state_writes"] == 1
@@ -1723,12 +1883,148 @@ def test_explicit_p01_snapshot_keeps_the_normal_p01_reset_path() -> None:
     assert not any(row[0] == "restore_controller_snapshot" for row in runtime.events)
 
 
+def test_failed_second_reset_poisoned_the_successful_prior_generation() -> None:
+    runtime = FakeRuntime()
+    backend = _backend(runtime)
+    first = backend.reset(seed=4, options={})
+    first_adapter = backend._adapter
+
+    runtime.entry_fault = "body"
+    with pytest.raises(
+        SensorContractFailure, match="authoritative-frame gate failed"
+    ):
+        backend.reset(seed=5, options={})
+
+    assert first.info["reset_generation"] == 1
+    assert backend._reset_generation == 2
+    assert backend._committed_reset_generation is None
+    assert backend._reset_count == 1
+    assert backend._adapter is None
+    assert backend._reader is None
+    assert backend._controller is None
+    assert backend._raw_observation is None
+    assert backend._controller_frame is None
+    assert backend._authoritative_frame is None
+    assert runtime.adapter is not first_adapter
+    assert backend._snapshot_restoration["authoritative_entry"]["verified"] is False
+    with pytest.raises(IsaacFSMBackendError, match="committed reset generation"):
+        backend.step_physics(ZERO)
+
+    runtime.entry_fault = None
+    recovered = backend.reset(seed=6, options={})
+    assert recovered.info["reset_generation"] == 3
+    assert backend._committed_reset_generation == 3
+    assert backend._reset_count == 2
+
+
+def test_invalid_second_reset_poisoned_prior_generation_before_physics() -> None:
+    runtime = FakeRuntime()
+    backend = _backend(runtime)
+    backend.reset(seed=4, options={})
+    physics_steps_before = runtime.sim.step_count
+
+    with pytest.raises(IsaacFSMBackendError, match="prohibited"):
+        backend.reset(seed=5, options={"recording_path": "forbidden.jsonl"})
+
+    assert runtime.sim.step_count == physics_steps_before
+    assert backend._reset_generation == 2
+    assert backend._committed_reset_generation is None
+    assert backend._authoritative_frame is None
+    assert backend._adapter is None
+    with pytest.raises(IsaacFSMBackendError, match="committed reset generation"):
+        backend.step_physics(ZERO)
+
+
+@pytest.mark.parametrize(
+    "entry_fault", ["body", "wheel", "fall", "nan", "joint", "explosion"]
+)
+def test_p01_physical_entry_failures_never_commit(entry_fault: str) -> None:
+    backend = _backend(FakeRuntime(entry_fault=entry_fault))
+
+    with pytest.raises(SensorContractFailure):
+        backend.reset(seed=4, options={})
+
+    assert backend._committed_reset_generation is None
+    assert backend._reset_count == 0
+    with pytest.raises(IsaacFSMBackendError, match="committed reset generation"):
+        backend.step_physics(ZERO)
+
+
+@pytest.mark.parametrize(
+    "entry_controller_result", ["SUCCESS", "INCOMPLETE_CONTROLLER_BLOCKED"]
+)
+def test_p01_terminal_or_timeout_entry_never_commits(
+    entry_controller_result: str,
+) -> None:
+    backend = _backend(
+        FakeRuntime(entry_controller_result=entry_controller_result)
+    )
+
+    with pytest.raises(
+        SensorContractFailure, match="authoritative-frame gate failed"
+    ):
+        backend.reset(seed=4, options={})
+
+    assert backend._committed_reset_generation is None
+    assert backend._reset_count == 0
+
+
+def test_p01_non_neutral_safety_projection_never_commits(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    backend = _backend(FakeRuntime())
+    build = backend._build_authoritative_frame
+
+    def unsafe_frame(*args, **kwargs):
+        frame = build(*args, **kwargs)
+        return replace(
+            frame,
+            safety_projection=replace(
+                frame.safety_projection,
+                residual_enabled=False,
+                reason="test-only non-neutral projection",
+            ),
+        )
+
+    monkeypatch.setattr(backend, "_build_authoritative_frame", unsafe_frame)
+
+    with pytest.raises(SensorContractFailure, match="non-neutral safety"):
+        backend.reset(seed=4, options={})
+
+    assert backend._committed_reset_generation is None
+    assert backend._reset_count == 0
+
+
+@pytest.mark.parametrize(
+    "runtime",
+    [
+        FakeRuntime(entry_frame_lifecycle="WAIT_ENTRY"),
+        FakeRuntime(entry_first_blocker=True),
+    ],
+    ids=("non-execute", "blocked-without-termination"),
+)
+def test_p01_nonrunning_or_blocked_controller_never_commits(runtime) -> None:
+    backend = _backend(runtime)
+
+    with pytest.raises(
+        SensorContractFailure,
+        match="authoritative controller frame is not running/nonterminal",
+    ):
+        backend.reset(seed=4, options={})
+
+    assert backend._committed_reset_generation is None
+    assert backend._reset_count == 0
+
+
 def test_phase_snapshot_fails_before_scene_mutation_without_complete_restore_seams() -> None:
     runtime = FakeRuntime()
     dependencies = replace(runtime.dependencies(), restore_guard_snapshot=None)
-    backend = IsaacFSMBackend(dependencies=dependencies)
+    backend = IsaacFSMBackend(
+        dependencies=dependencies,
+        expected_effective_entry_contract=FakeEffectiveEntryContract(),
+    )
 
-    with pytest.raises(IsaacFSMBackendError, match="restoration seams"):
+    with pytest.raises(IsaacFSMBackendError, match="effective-entry seams"):
         backend.reset(seed=8, options={"training_phase_snapshot": "P08"})
 
     assert runtime.sim.step_count == 0
@@ -1857,7 +2153,8 @@ def test_real_frozen_controller_and_guard_tracker_restore_from_checked_snapshot(
     )
     controller_proof = _restore_controller_from_snapshot(controller, loaded.payload)
     assert controller_proof["state_id"] == "P09"
-    assert controller_proof["lifecycle"] == "EXECUTE_MOTION"
+    assert controller_proof["lifecycle"] == "WAIT_ENTRY"
+    assert controller_proof["entry_guards_pending_effective_tick_zero"] is True
     assert controller.motion._tick_index == 0
     assert controller._ppo_restored_phase_history == tuple(
         f"P{index:02d}" for index in range(1, 9)
@@ -1872,10 +2169,14 @@ def test_real_frozen_controller_and_guard_tracker_restore_from_checked_snapshot(
     assert guard_proof["active_lift"]["FR"] is True
     assert guard_proof["active_lift"]["FL"] is True
     assert guard_proof["active_lift"]["RR"] is False
-    assert guard_proof["classifier_wheel_pairs_restored"] == 8
+    assert guard_proof["classifier_wheel_pairs_restored"] == 0
+    assert guard_proof["classifier_source_state_restored"] is False
+    assert guard_proof["classifier_source_history_restored"] is False
+    assert reader.contact_classifier._states == {}
+    assert reader.contact_classifier._history == {}
 
 
-def test_snapshot_live_state_mismatch_fails_closed_before_first_controller_tick() -> None:
+def test_source_snapshot_drift_is_diagnostic_after_effective_contract_passes() -> None:
     runtime = FakeRuntime()
     dependencies = runtime.dependencies()
     payload = _snapshot_payload("P08")
@@ -1891,13 +2192,113 @@ def test_snapshot_live_state_mismatch_fails_closed_before_first_controller_tick(
         dependencies,
         load_phase_snapshot=lambda phase: mismatched,
     )
-    backend = IsaacFSMBackend(dependencies=dependencies)
+    backend = IsaacFSMBackend(
+        dependencies=dependencies,
+        expected_effective_entry_contract=FakeEffectiveEntryContract(),
+    )
 
-    with pytest.raises(SensorContractFailure, match="could not be proven"):
+    frame = backend.reset(seed=81, options={"training_phase_snapshot": "P08"})
+
+    diagnostic = frame.info["phase_snapshot_restoration"][
+        "source_snapshot_diagnostic"
+    ]
+    assert diagnostic["verified"] is False
+    assert frame.info["phase_snapshot_restoration"]["effective_entry"][
+        "verified"
+    ] is True
+    assert sum(row[0] == "controller.step" for row in runtime.events) == 1
+
+
+def test_effective_entry_mismatch_fails_before_first_controller_tick() -> None:
+    runtime = FakeRuntime(effective_entry_error="fingerprint exceeds one ULP")
+    backend = _backend(runtime)
+
+    with pytest.raises(SensorContractFailure, match="effective-entry contract failed"):
         backend.reset(seed=81, options={"training_phase_snapshot": "P08"})
 
     assert runtime.controller.physics_tick == 0
     assert not any(row[0] == "controller.step" for row in runtime.events)
+    assert backend._reset_count == 0
+
+
+@pytest.mark.parametrize("entry_fault", ["body", "wheel", "fall", "joint", "explosion"])
+def test_effective_entry_safety_failures_do_not_commit_reset(entry_fault: str) -> None:
+    runtime = FakeRuntime(entry_fault=entry_fault)
+    backend = _backend(runtime)
+
+    with pytest.raises(SensorContractFailure, match="safety gate failed"):
+        backend.reset(seed=81, options={"training_phase_snapshot": "P08"})
+
+    assert backend._reset_count == 0
+    assert backend._authoritative_frame is None
+    assert backend._snapshot_restoration["entry_safety"]["verified"] is False
+
+
+def test_effective_entry_nan_fails_sensor_contract_without_committing_reset() -> None:
+    runtime = FakeRuntime(entry_fault="nan")
+    backend = _backend(runtime)
+
+    with pytest.raises(SensorContractFailure, match="non-finite"):
+        backend.reset(seed=81, options={"training_phase_snapshot": "P08"})
+
+    assert backend._reset_count == 0
+    assert backend._snapshot_restoration["entry_sensor"]["verified"] is False
+
+
+@pytest.mark.parametrize(
+    "runtime",
+    [
+        FakeRuntime(entry_controller_result="SUCCESS"),
+        FakeRuntime(entry_controller_result="INCOMPLETE_CONTROLLER_BLOCKED"),
+        FakeRuntime(entry_guard_failure=True),
+        FakeRuntime(p10_entry_velocity_deg_s=-1.0),
+    ],
+    ids=("terminal", "blocked", "guard-failed", "p10-signed-velocity"),
+)
+def test_effective_controller_entry_failure_does_not_commit_reset(runtime) -> None:
+    backend = _backend(runtime)
+    phase = "P10" if runtime.p10_entry_velocity_deg_s < 0.0 else "P08"
+
+    with pytest.raises(SensorContractFailure, match="controller/guard gate failed"):
+        backend.reset(seed=81, options={"training_phase_snapshot": phase})
+
+    assert backend._reset_count == 0
+    assert backend._authoritative_frame is None
+    assert backend._snapshot_restoration["entry_guards"]["verified"] is False
+
+
+def test_p10_effective_entry_proves_signed_positive_velocity_guard() -> None:
+    runtime = FakeRuntime(p10_entry_velocity_deg_s=2.5)
+    frame = _backend(runtime).reset(
+        seed=81, options={"training_phase_snapshot": "P10"}
+    )
+
+    proof = frame.info["phase_snapshot_restoration"]["entry_guards"]
+    assert proof["verified"] is True
+    assert proof["p10_signed_velocity_alignment"] == {
+        "actual_deg_s": 2.5,
+        "signed_positive_rebound_required": True,
+    }
+
+
+def test_reference_conformance_remains_diagnostic_at_effective_entry() -> None:
+    frame = _backend(FakeRuntime()).reset(
+        seed=81, options={"training_phase_snapshot": "P08"}
+    )
+    candidate = replace(
+        frame,
+        termination_signals=replace(
+            frame.termination_signals,
+            reference_conformance_outside_30pct=True,
+        ),
+    )
+
+    proof = backend_module._verify_effective_authoritative_entry(candidate)
+
+    assert "reference_conformance_outside_30pct" not in proof["termination_flags"]
+    assert proof["diagnostic_ignored_for_termination"] == {
+        "reference_conformance_outside_30pct": True
+    }
 
 
 def test_invalid_action_and_prohibited_options_fail_before_episode_mutation() -> None:

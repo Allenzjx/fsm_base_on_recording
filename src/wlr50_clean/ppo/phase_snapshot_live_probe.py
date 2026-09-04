@@ -12,8 +12,10 @@ from dataclasses import dataclass, field, replace
 import hashlib
 import json
 import math
+import os
 from pathlib import Path
 from typing import Any, Mapping, Sequence
+import uuid
 
 
 PROBE_SCHEMA = "wlr50_clean.phase_snapshot_live_probe.v2"
@@ -21,6 +23,7 @@ PROBE_FILENAME = "phase_snapshot_live_probe.json"
 PROBE_PHASES = tuple(f"P{index:02d}" for index in range(2, 14))
 ATTEMPTS_PER_PHASE = 2
 _MISSING = object()
+_PROBE_PROCESS_INSTANCE_ID = uuid.uuid4().hex
 
 
 class PhaseSnapshotLiveProbeError(RuntimeError):
@@ -450,19 +453,44 @@ def _attempt_passed(row: Mapping[str, Any]) -> bool:
     prime_steps = row.get("extra_physics_priming_steps")
     if isinstance(prime_steps, bool) or not isinstance(prime_steps, int):
         return False
-    priming_observation = snapshot_write.get("priming_observation")
-    if not isinstance(priming_observation, Mapping):
-        return False
     source_match = snapshot_write.get("source_actuation_match")
     if not isinstance(source_match, Mapping):
         return False
     pre_prime_root = snapshot_write.get("pre_prime_root_link_readback")
     if not isinstance(pre_prime_root, Mapping):
         return False
+    effective_entry = snapshot_write.get("effective_entry_contract")
+    entry_safety = snapshot_write.get("entry_safety_contract")
+    entry_guards = snapshot_write.get("entry_guard_contract")
+    if not all(
+        isinstance(value, Mapping)
+        for value in (effective_entry, entry_safety, entry_guards)
+    ):
+        return False
+    safety_flags = entry_safety.get("flags")
+    if not isinstance(safety_flags, Mapping):
+        return False
+    p10_alignment_ok = True
+    if row.get("phase") == "P10":
+        alignment = entry_guards.get("p10_signed_velocity_alignment")
+        actual_velocity = (
+            alignment.get("actual_deg_s")
+            if isinstance(alignment, Mapping)
+            else None
+        )
+        p10_alignment_ok = bool(
+            isinstance(alignment, Mapping)
+            and alignment.get("signed_positive_rebound_required") is True
+            and isinstance(actual_velocity, (int, float))
+            and not isinstance(actual_velocity, bool)
+            and math.isfinite(float(actual_velocity))
+            and float(actual_velocity) > 0.0
+        )
     return bool(
         row.get("reset_completed") is True
-        and diagnostic.get("exact_contacts_match") is True
-        and diagnostic.get("physical_state_within_production_tolerances") is True
+        # The source-t comparison is diagnostic only.  Production acceptance
+        # is the separately calibrated snapshot-plus-one-PhysX-tick contract.
+        and diagnostic.get("observation_available") is True
         and diagnostic.get("observation_physics_tick") == 0
         and diagnostic.get("observation_simulation_time_s") == 0.0
         and clocks.get("backend_episode_tick") == 0
@@ -486,11 +514,6 @@ def _attempt_passed(row: Mapping[str, Any]) -> bool:
         and snapshot_write.get("prime_physics_steps") == prime_steps
         and snapshot_write.get("prime_atomic_full12_writes") == 1
         and snapshot_write.get("logical_target_fallback_used") is False
-        and source_match.get("all_fields_match") is True
-        and source_match.get("source_target_hash_matches") is True
-        and source_match.get("logical_target_fallback_used") is False
-        and source_match.get("source_drive_target_full12_sha256")
-        == row.get("source_drive_target_full12_sha256")
         and snapshot_write.get("current_contact_force_provenance")
         == "current_final_solver_force_only"
         and snapshot_write.get("sensor_history_samples_after_reset") == 1
@@ -499,11 +522,23 @@ def _attempt_passed(row: Mapping[str, Any]) -> bool:
             "classifier_current_force_hysteresis_contract_verified"
         )
         is True
-        and priming_observation.get("raw_physx_contact_sources_verified") is True
-        and priming_observation.get(
-            "current_raw_force_hysteresis_contract_matches_snapshot"
-        )
-        is True
+        and effective_entry.get("schema")
+        == "wlr50_clean.ppo_phase_effective_entry_live_proof.v1"
+        and effective_entry.get("verified") is True
+        and not effective_entry.get("failures")
+        and entry_safety.get("schema")
+        == "wlr50_clean.phase_effective_entry_safety.v1"
+        and entry_safety.get("verified") is True
+        and entry_safety.get("all_failure_flags_false") is True
+        and not any(bool(value) for value in safety_flags.values())
+        and entry_guards.get("schema")
+        == "wlr50_clean.phase_effective_entry_controller.v1"
+        and entry_guards.get("verified") is True
+        and entry_guards.get("phase") == row.get("phase")
+        and entry_guards.get("lifecycle") == "EXECUTE_MOTION"
+        and entry_guards.get("nonterminal") is True
+        and entry_guards.get("unblocked") is True
+        and p10_alignment_ok
         and snapshot_write.get("fsm_clock_steps_during_priming") == 0
         and snapshot_write.get("episode_clock_steps_during_priming") == 0
         and row.get("physics_steps_during_reset") == 180 + prime_steps
@@ -528,11 +563,15 @@ def _is_ordinary_reset_rejection(
 
     from .isaac_fsm_backend import SensorContractFailure
 
+    ordinary_prefixes = (
+        "phase snapshot live restoration could not be proven: ",
+        "phase effective-entry contract failed: ",
+        "effective phase entry safety gate failed: ",
+        "effective phase entry controller/guard gate failed: ",
+    )
     return bool(
         type(exc) is SensorContractFailure
-        and str(exc).startswith(
-            "phase snapshot live restoration could not be proven: "
-        )
+        and str(exc).startswith(ordinary_prefixes)
         and not bool(getattr(backend, "_phase_snapshot_integrity_failed", False))
         and capture.snapshot_write_finished
         and bool(capture.post_snapshot_observations)
@@ -606,6 +645,7 @@ def run_phase_snapshot_live_probe(
     run_dir: Path,
     seed: int,
     snapshot_bundle: Any,
+    effective_entry_contract: Any | None = None,
     prime_physics_steps: int = 1,
     phases: Sequence[str] | None = None,
 ) -> Mapping[str, Any]:
@@ -615,6 +655,9 @@ def run_phase_snapshot_live_probe(
     from .phase_snapshots import (
         assert_phase_snapshot_bundle_unchanged,
         load_validated_phase_snapshot_payload,
+    )
+    from .phase_effective_entry import (
+        assert_effective_phase_entry_contract_unchanged,
     )
 
     if (
@@ -626,6 +669,25 @@ def run_phase_snapshot_live_probe(
             "prime_physics_steps must be exactly one for the production reset"
         )
     selected_phases = _selected_probe_phases(phases)
+    if (
+        effective_entry_contract is None
+        or not callable(getattr(effective_entry_contract, "as_record", None))
+        or not isinstance(
+            getattr(effective_entry_contract, "phase_snapshot_bundle_sha256", None),
+            str,
+        )
+        or not isinstance(getattr(snapshot_bundle, "bundle_sha256", None), str)
+    ):
+        raise PhaseSnapshotLiveProbeError(
+            "phase-snapshot probe requires pinned snapshot/effective-entry contracts"
+        )
+    if (
+        effective_entry_contract.phase_snapshot_bundle_sha256
+        != snapshot_bundle.bundle_sha256
+    ):
+        raise PhaseSnapshotLiveProbeError(
+            "effective-entry contract belongs to a different snapshot bundle"
+        )
     expected_attempt_count = len(selected_phases) * ATTEMPTS_PER_PHASE
     expected_fresh_count = 1
     expected_reused_count = expected_attempt_count - expected_fresh_count
@@ -664,6 +726,8 @@ def run_phase_snapshot_live_probe(
     payload: dict[str, Any] = {
         "schema": PROBE_SCHEMA,
         "artifact_role": "DIAGNOSTIC_ONLY_NOT_TRAINING_ACCEPTANCE",
+        "probe_process_id": os.getpid(),
+        "probe_process_instance_id": _PROBE_PROCESS_INSTANCE_ID,
         "status": "RUNNING",
         "passed": False,
         "seed": int(seed),
@@ -696,6 +760,7 @@ def run_phase_snapshot_live_probe(
             ),
         },
         "phase_snapshot_bundle": snapshot_bundle.as_record(),
+        "phase_effective_entry_contract": effective_entry_contract.as_record(),
         "attempts": [],
         "failure_reasons": [],
     }
@@ -709,6 +774,7 @@ def run_phase_snapshot_live_probe(
             simulation_app,
             dependencies=dependencies,
             expected_phase_snapshot_bundle=snapshot_bundle,
+            expected_effective_entry_contract=effective_entry_contract,
             phase_snapshot_prime_physics_steps=prime_physics_steps,
         )
         for phase in selected_phases:
@@ -784,7 +850,7 @@ def run_phase_snapshot_live_probe(
                         None
                         if caught_exception is None
                         else (
-                            "ORDINARY_POST_WRITE_RESTORE_MISMATCH"
+                            "EFFECTIVE_ENTRY_ACCEPTANCE_MISMATCH"
                             if _is_ordinary_reset_rejection(
                                 caught_exception,
                                 backend=backend,
@@ -850,6 +916,10 @@ def run_phase_snapshot_live_probe(
                     snapshot_bundle,
                     canonical_root=snapshot_bundle.snapshot_root,
                 )
+                assert_effective_phase_entry_contract_unchanged(
+                    effective_entry_contract,
+                    expected_snapshot_bundle=snapshot_bundle,
+                )
                 if caught_exception is None and row["passed"] is not True:
                     # A production reset which returns successfully must agree
                     # with every probe runtime invariant.  Otherwise the live
@@ -878,7 +948,7 @@ def run_phase_snapshot_live_probe(
         ]
         payload["failure_reasons"] = failures
         payload["failure_classification"] = (
-            None if not failures else "ORDINARY_POST_WRITE_RESTORE_MISMATCH"
+            None if not failures else "EFFECTIVE_ENTRY_ACCEPTANCE_MISMATCH"
         )
 
     fresh_count = sum(
@@ -905,6 +975,21 @@ def run_phase_snapshot_live_probe(
             "reused_scene_attempt_count": reused_count,
         }
     )
+    try:
+        assert_phase_snapshot_bundle_unchanged(
+            snapshot_bundle,
+            canonical_root=snapshot_bundle.snapshot_root,
+        )
+        assert_effective_phase_entry_contract_unchanged(
+            effective_entry_contract,
+            expected_snapshot_bundle=snapshot_bundle,
+        )
+    except Exception as exc:
+        _seal_fatal_probe_failure(output, payload, attempts, exc)
+        raise PhaseSnapshotLiveProbeError(
+            "phase-snapshot live probe terminated on an integrity or "
+            "infrastructure failure"
+        ) from exc
     _write_probe(output, payload)
     return payload
 

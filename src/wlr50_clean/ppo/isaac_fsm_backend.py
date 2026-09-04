@@ -26,6 +26,13 @@ from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
 from .action_projection import SafetyProjection
+from .phase_effective_entry import (
+    CONTACT_FORCE_OFF_N,
+    CONTACT_FORCE_ON_N,
+    EffectivePhaseEntryError,
+    ValidatedEffectivePhaseEntryContract,
+    validate_effective_phase_entry_comparison,
+)
 from .observation_schema import NonFiniteObservationError, PPOObservationFrame
 from .ppo_env_adapter import AuthoritativeFrame
 from .phase_snapshots import (
@@ -226,6 +233,10 @@ class BackendDependencies:
     restore_controller_snapshot: Callable[..., Mapping[str, Any]] | None = None
     restore_guard_snapshot: Callable[..., Mapping[str, Any]] | None = None
     capture_session_limit_state: Callable[[Any], Mapping[str, Any]] | None = None
+    verify_effective_entry: Callable[
+        [ValidatedEffectivePhaseEntryContract, str, Mapping[str, Any]],
+        Mapping[str, Any],
+    ] | None = None
 
 
 def _load_live_dependencies() -> BackendDependencies:
@@ -265,6 +276,7 @@ def _load_live_dependencies() -> BackendDependencies:
         restore_controller_snapshot=_restore_controller_from_snapshot,
         restore_guard_snapshot=_restore_guard_tracker_from_snapshot,
         capture_session_limit_state=_session_servo_limit_state,
+        verify_effective_entry=validate_effective_phase_entry_comparison,
     )
 
 
@@ -286,6 +298,9 @@ class IsaacFSMBackend:
         motion_contract_path: Path | str = DEFAULT_MOTION_CONTRACT_PATH,
         dependencies: BackendDependencies | None = None,
         expected_phase_snapshot_bundle: ValidatedPhaseSnapshotBundle | None = None,
+        expected_effective_entry_contract: (
+            ValidatedEffectivePhaseEntryContract | None
+        ) = None,
         phase_snapshot_prime_physics_steps: int = PHASE_SNAPSHOT_PRIME_PHYSICS_STEPS,
     ) -> None:
         self.simulation_app = simulation_app
@@ -301,6 +316,16 @@ class IsaacFSMBackend:
                 "injected phase snapshot bundle does not use the production loader root"
             )
         self._expected_phase_snapshot_bundle = expected_phase_snapshot_bundle
+        if (
+            expected_effective_entry_contract is not None
+            and expected_phase_snapshot_bundle is not None
+            and expected_effective_entry_contract.phase_snapshot_bundle_sha256
+            != expected_phase_snapshot_bundle.bundle_sha256
+        ):
+            raise IsaacFSMBackendError(
+                "effective-entry contract is bound to a different phase snapshot bundle"
+            )
+        self._expected_effective_entry_contract = expected_effective_entry_contract
         if (
             isinstance(phase_snapshot_prime_physics_steps, bool)
             or not isinstance(phase_snapshot_prime_physics_steps, int)
@@ -334,6 +359,8 @@ class IsaacFSMBackend:
         self._video_pre_action_tick_count = 0
         self._video_post_terminal_tick_count = 0
         self._reset_count = 0
+        self._reset_generation = 0
+        self._committed_reset_generation: int | None = None
         self._done = False
         self._body_collision_seen = False
         self._wheel_only_seen = False
@@ -373,6 +400,43 @@ class IsaacFSMBackend:
     def last_atomic_ack(self) -> Mapping[str, Any] | None:
         return None if self._last_atomic_ack is None else dict(self._last_atomic_ack)
 
+    def _poison_episode_state_for_reset(self, *, clear_evidence: bool) -> None:
+        """Make every prior episode unusable before a reset can mutate physics."""
+
+        self._committed_reset_generation = None
+        self._adapter = None
+        self._reader = None
+        self._controller = None
+        self._raw_observation = None
+        self._controller_frame = None
+        self._authoritative_frame = None
+        self._last_valid_actor_observation = None
+        self._last_atomic_ack = None
+        self._level_reference_orientation = None
+        self._level_calibration = {}
+        self._reset_metadata = {}
+        if clear_evidence:
+            self._snapshot_restoration = {}
+        self._previous_action_full12 = ZERO_FULL12
+        self._reset_prime_tick_count = 0
+        self._episode_tick = 0
+        self._first_episode_physical_command_tick_actual = None
+        self._video_pre_action_tick_count = 0
+        self._video_post_terminal_tick_count = 0
+        self._done = True
+        self._body_collision_seen = False
+        self._wheel_only_seen = False
+        self._nan_inf_seen = False
+        self._joint_limit_seen = False
+        self._fall_seen = False
+        self._physics_explosion_seen = False
+
+    def _require_committed_reset_generation(self, operation: str) -> None:
+        if self._committed_reset_generation != self._reset_generation:
+            raise IsaacFSMBackendError(
+                f"{operation} requires a successfully committed reset generation"
+            )
+
     def reset(
         self, *, seed: int, options: Mapping[str, Any]
     ) -> AuthoritativeFrame:
@@ -383,15 +447,21 @@ class IsaacFSMBackend:
         frozen baseline.  The seed is still recorded for paired rollouts.
         """
 
+        # Calling reset permanently invalidates the preceding episode before
+        # input validation, scene reset, state writes, or any other mutable
+        # operation.  A failed attempt can therefore never fall back to an old
+        # authoritative frame paired with partially rebuilt components.
+        self._reset_generation += 1
+        reset_generation = self._reset_generation
+        self._poison_episode_state_for_reset(clear_evidence=True)
         reset_seed = _non_negative_seed(seed)
         reset_options = dict(options)
         _validate_reset_options(reset_options)
-        self._reset_prime_tick_count = 0
-        self._first_episode_physical_command_tick_actual = None
         dependencies = self._dependencies or _load_live_dependencies()
         self._dependencies = dependencies
         snapshot_phase = _snapshot_phase_option(reset_options)
         loaded_snapshot: LoadedPhaseSnapshot | None = None
+        effective_entry: Mapping[str, Any] | None = None
         if snapshot_phase is not None:
             if self._phase_snapshot_integrity_failed:
                 raise IsaacFSMBackendError(
@@ -421,17 +491,32 @@ class IsaacFSMBackend:
                     "phase snapshot loader returned a different FSM state"
                 )
             _validate_phase_snapshot_payload(loaded_snapshot.payload, snapshot_phase)
-            if snapshot_phase != "P01" and any(
-                callback is None
-                for callback in (
-                    dependencies.write_phase_snapshot,
-                    dependencies.restore_guard_snapshot,
-                    dependencies.restore_controller_snapshot,
-                )
-            ):
-                raise IsaacFSMBackendError(
-                    "phase curriculum lacks physical/controller/guard restoration seams"
-                )
+            if snapshot_phase != "P01":
+                if self._expected_effective_entry_contract is None:
+                    raise IsaacFSMBackendError(
+                        "phase curriculum lacks a pinned effective-entry contract"
+                    )
+                try:
+                    effective_entry = self._expected_effective_entry_contract.entry(
+                        snapshot_phase
+                    )
+                except EffectivePhaseEntryError as exc:
+                    self._phase_snapshot_integrity_failed = True
+                    raise IsaacFSMBackendError(
+                        f"effective-entry contract rejected {snapshot_phase}: {exc}"
+                    ) from exc
+                if any(
+                    callback is None
+                    for callback in (
+                        dependencies.write_phase_snapshot,
+                        dependencies.restore_guard_snapshot,
+                        dependencies.restore_controller_snapshot,
+                        dependencies.verify_effective_entry,
+                    )
+                ):
+                    raise IsaacFSMBackendError(
+                        "phase curriculum lacks physical/controller/guard/effective-entry seams"
+                    )
 
         reset_writes = {
             "root_pose_writes": 0,
@@ -666,6 +751,20 @@ class IsaacFSMBackend:
                     "source_tick": int(loaded_snapshot.payload["source_tick"]),
                 }
             )
+            if effective_entry is not None:
+                assert self._expected_effective_entry_contract is not None
+                self._snapshot_restoration.update(
+                    {
+                        "source_snapshot_semantics": "source_recording_tick_t",
+                        "effective_entry_semantics": (
+                            "source_snapshot_plus_one_real_physx_tick_no_rewind"
+                        ),
+                        "effective_entry_contract": (
+                            self._expected_effective_entry_contract.as_record()
+                        ),
+                        "effective_entry_sha256": effective_entry["entry_sha256"],
+                    }
+                )
         if loaded_snapshot is not None and snapshot_phase != "P01":
             assert dependencies.write_phase_snapshot is not None
             initial_command = _full12(
@@ -801,12 +900,12 @@ class IsaacFSMBackend:
         _validate_rate_contract(adapter, controller)
         if loaded_snapshot is not None and snapshot_phase != "P01":
             # This is the sole ContactSensor read after the real prime.  The
-            # reader first receives the artifact's historical guard state so
-            # the same observation can safely become the controller's episode
-            # frame.  Verification independently checks the *current* raw
-            # PhysX force against the real hysteresis threshold: off for an
-            # artifact-active pair, on for an artifact-inactive pair.  Sensor
-            # force history is intentionally re-warmed, never claimed restored.
+            # reader receives only the source cumulative guard-latch prefix.
+            # Contact classifier state/history remain cold, so this read both
+            # updates the latches with effective tick zero and classifies from
+            # the current raw PhysX force.  The source-t comparison is retained
+            # as a diagnostic; only the pinned effective-entry contract gates
+            # reset success.
             reader = dependencies.reader_from_scene(scene, adapter, backends)
             assert dependencies.restore_guard_snapshot is not None
             assert dependencies.restore_controller_snapshot is not None
@@ -827,6 +926,8 @@ class IsaacFSMBackend:
                 or contact_force_on_n <= 0.0
                 or contact_force_off_n < 0.0
                 or contact_force_off_n >= contact_force_on_n
+                or contact_force_on_n != CONTACT_FORCE_ON_N
+                or contact_force_off_n != CONTACT_FORCE_OFF_N
             ):
                 raise SensorContractFailure(
                     "phase snapshot live restoration could not be proven: "
@@ -837,11 +938,25 @@ class IsaacFSMBackend:
                 simulation_time_s=0.0,
                 commanded_full12=prime_acks[-1]["drive_target_full12"],
             )
-            _validate_sensor_contract(
-                observation,
-                dependencies.expected_contact_bodies,
-                require_finite=True,
-            )
+            try:
+                _validate_sensor_contract(
+                    observation,
+                    dependencies.expected_contact_bodies,
+                    require_finite=True,
+                )
+            except SensorContractFailure as exc:
+                self._phase_snapshot_integrity_failed = True
+                failed_sensor = {"verified": False, "error": str(exc)}
+                physical_proof["entry_sensor_contract"] = failed_sensor
+                self._snapshot_restoration.update(
+                    {
+                        "guard_state": guard_proof,
+                        "controller_state": controller_proof,
+                        "entry_sensor": failed_sensor,
+                    }
+                )
+                raise
+            physical_proof["entry_sensor_contract"] = {"verified": True}
             priming_comparison = _compare_phase_snapshot_observation(
                 observation,
                 loaded_snapshot.payload,
@@ -850,34 +965,90 @@ class IsaacFSMBackend:
             )
             physical_proof.update(
                 {
-                    "priming_observation": priming_comparison,
+                    "source_snapshot_post_prime_diagnostic": priming_comparison,
                     "contact_sensor_reads_after_prime": 1,
-                    "classifier_restored_before_only_episode_read": True,
-                    "classifier_current_force_hysteresis_contract_verified": True,
+                    "classifier_restored_before_only_episode_read": False,
+                    "classifier_source_state_restored": False,
+                    "classifier_source_history_restored": False,
+                    "classifier_cold_started_before_only_episode_read": True,
                     "classifier_history_equivalence_claimed": False,
                     "raw_sensor_history_rewarmed_from_prime": True,
-                    "restored_classifier_state_used": "hysteresis_active_state_only",
-                    "restored_guard_state_used": "cumulative_event_latches",
+                    "restored_classifier_state_used": "none",
+                    "restored_guard_state_used": "source_cumulative_latch_prefix",
+                    "effective_tick_zero_guard_update_applied": True,
                     "contact_backend_reset_after_prime": False,
                 }
             )
-            observation_proof = _verify_phase_snapshot_observation(
-                observation,
-                loaded_snapshot.payload,
-                contact_force_on_n=contact_force_on_n,
-                contact_force_off_n=contact_force_off_n,
+            assert effective_entry is not None
+            assert self._expected_effective_entry_contract is not None
+            assert dependencies.verify_effective_entry is not None
+            try:
+                effective_proof = dict(
+                    dependencies.verify_effective_entry(
+                        self._expected_effective_entry_contract,
+                        snapshot_phase,
+                        priming_comparison,
+                    )
+                )
+            except EffectivePhaseEntryError as exc:
+                physical_proof["effective_entry_contract"] = {
+                    "verified": False,
+                    "contract_sha256": (
+                        self._expected_effective_entry_contract.contract_sha256
+                    ),
+                    "entry_sha256": effective_entry["entry_sha256"],
+                    "error": str(exc),
+                }
+                self._snapshot_restoration.update(
+                    {
+                        "guard_state": guard_proof,
+                        "controller_state": controller_proof,
+                        "source_snapshot_diagnostic": priming_comparison,
+                        "effective_entry": physical_proof[
+                            "effective_entry_contract"
+                        ],
+                    }
+                )
+                raise SensorContractFailure(
+                    "phase effective-entry contract failed: " + str(exc)
+                ) from exc
+            _require_running(scene, "effective phase-entry verification")
+            try:
+                safety_proof = _verify_effective_entry_safety(observation)
+            except SensorContractFailure as exc:
+                self._phase_snapshot_integrity_failed = True
+                failed_safety = {"verified": False, "error": str(exc)}
+                physical_proof["entry_safety_contract"] = failed_safety
+                self._snapshot_restoration.update(
+                    {
+                        "guard_state": guard_proof,
+                        "controller_state": controller_proof,
+                        "source_snapshot_diagnostic": priming_comparison,
+                        "effective_entry": effective_proof,
+                        "entry_safety": failed_safety,
+                    }
+                )
+                raise
+            physical_proof.update(
+                {
+                    "effective_entry_contract": effective_proof,
+                    "entry_safety_contract": safety_proof,
+                }
             )
             physical_proof.update(
                 {
-                    "episode_live_observation": observation_proof,
-                    "episode_verification_followed_classifier_restore": True,
+                    "episode_live_observation": effective_proof,
+                    "episode_verification_followed_classifier_restore": False,
                 }
             )
             self._snapshot_restoration.update(
                 {
                     "guard_state": guard_proof,
                     "controller_state": controller_proof,
-                    "live_observation": observation_proof,
+                    "source_snapshot_diagnostic": priming_comparison,
+                    "effective_entry": effective_proof,
+                    "entry_safety": safety_proof,
+                    "live_observation": effective_proof,
                 }
             )
         else:
@@ -899,6 +1070,19 @@ class IsaacFSMBackend:
             raise IsaacFSMBackendError(
                 "restored frozen controller did not emit the requested phase"
             )
+        if loaded_snapshot is not None and snapshot_phase != "P01":
+            try:
+                controller_entry_proof = _verify_effective_controller_entry(
+                    controller, controller_frame, snapshot_phase
+                )
+            except SensorContractFailure as exc:
+                self._phase_snapshot_integrity_failed = True
+                failed_entry = {"verified": False, "error": str(exc)}
+                physical_proof["entry_guard_contract"] = failed_entry
+                self._snapshot_restoration["entry_guards"] = failed_entry
+                raise
+            physical_proof["entry_guard_contract"] = controller_entry_proof
+            self._snapshot_restoration["entry_guards"] = controller_entry_proof
 
         self._adapter = adapter
         self._reader = reader
@@ -909,7 +1093,6 @@ class IsaacFSMBackend:
         self._episode_tick = 0
         self._video_pre_action_tick_count = 0
         self._video_post_terminal_tick_count = 0
-        self._reset_count += 1
         self._done = False
         self._body_collision_seen = False
         self._wheel_only_seen = False
@@ -925,13 +1108,40 @@ class IsaacFSMBackend:
             options=reset_options,
             reset_writes=reset_writes,
         )
-        result = self._build_authoritative_frame(
-            observation,
-            controller_frame,
-            previous_frame=None,
-        )
+        try:
+            result = self._build_authoritative_frame(
+                observation,
+                controller_frame,
+                previous_frame=None,
+            )
+            authoritative_proof = _verify_effective_authoritative_entry(result)
+        except SensorContractFailure as exc:
+            if loaded_snapshot is not None and snapshot_phase != "P01":
+                self._phase_snapshot_integrity_failed = True
+            self._snapshot_restoration["authoritative_entry"] = {
+                "verified": False,
+                "error": str(exc),
+            }
+            self._poison_episode_state_for_reset(clear_evidence=False)
+            raise
+        except Exception:
+            self._poison_episode_state_for_reset(clear_evidence=False)
+            raise
+        if loaded_snapshot is not None and snapshot_phase != "P01":
+            physical_proof["authoritative_entry_contract"] = authoritative_proof
+        self._snapshot_restoration["authoritative_entry"] = authoritative_proof
+        restoration_record = dict(self._snapshot_restoration)
+        self._reset_metadata["phase_snapshot_restoration"] = restoration_record
+        if isinstance(result.info, dict):
+            result.info["phase_snapshot_restoration"] = restoration_record
+            result.info["reset_generation"] = reset_generation
+            result.info["reset_generation_commit"] = (
+                "committed_after_authoritative_entry_gate"
+            )
+        self._reset_count += 1
         self._authoritative_frame = result
-        self._done = _frame_is_terminal(result)
+        self._done = False
+        self._committed_reset_generation = reset_generation
         return result
 
     def step_physics(
@@ -939,6 +1149,7 @@ class IsaacFSMBackend:
     ) -> AuthoritativeFrame:
         """Atomically write one projected Full12, then advance physics once."""
 
+        self._require_committed_reset_generation("step_physics")
         action = _full12(applied_action_full12, "applied_action_full12")
         if (
             self._scene is None
@@ -1818,7 +2029,14 @@ class IsaacFSMBackend:
             "controller_hash": _sha256_file(self.fsm_path),
             "motion_contract_hash": _sha256_file(self.motion_contract_path),
             "seed": seed,
-            "reset_count": self._reset_count,
+            # Metadata is prepared before a phase reset is committed.  The
+            # counter advances only after the authoritative reset-entry
+            # frame passes every hard gate, so expose the prospective count.
+            "reset_count": self._reset_count + 1,
+            "reset_generation": self._reset_generation,
+            "reset_generation_commit": (
+                "committed_after_authoritative_entry_gate"
+            ),
             "reset_options": dict(options),
             "physics_hz": PHYSICS_HZ,
             "physics_dt_s": PHYSICS_DT_S,
@@ -2506,9 +2724,8 @@ def _write_phase_snapshot_state(
 def _restore_controller_from_snapshot(
     controller: Any, snapshot: Mapping[str, Any]
 ) -> Mapping[str, Any]:
-    """Rebuild a fresh frozen controller at a proven phase-entry boundary."""
+    """Rebuild a fresh controller immediately before its real entry decision."""
 
-    from wlr50_clean.fsm.motion_executor import FeedbackCorrection
     from wlr50_clean.fsm.state_spec import Lifecycle
 
     phase_id = str(snapshot["fsm_state"])
@@ -2524,7 +2741,7 @@ def _restore_controller_from_snapshot(
     controller.state = state
     if str(controller.phase.state_id) != phase_id:
         raise IsaacFSMBackendError("controller graph and motion phase disagree")
-    controller.lifecycle = Lifecycle.EXECUTE_MOTION
+    controller.lifecycle = Lifecycle.WAIT_ENTRY
     controller.retries_used = 0
     controller.physics_tick = 0
     controller._last_sim_time_s = None
@@ -2544,16 +2761,8 @@ def _restore_controller_from_snapshot(
 
     phase = controller.phase
     controller.motion._last_full12 = tuple(phase.start_full12)
-    correction = FeedbackCorrection(
-        state.normal_correction_fractions
-        if state.normal_correction_domain == "logical_command"
-        else ZERO_FULL12
-    )
-    controller.motion.start_phase(
-        phase,
-        correction,
-        time_scale=state.normal_time_scale,
-    )
+    controller.motion._phase = None
+    controller.motion._tick_index = 0
     completed = tuple(str(item) for item in snapshot["phase_history"])
     controller._ppo_restored_phase_history = completed
     return {
@@ -2567,15 +2776,19 @@ def _restore_controller_from_snapshot(
         "retries_used": controller.retries_used,
         "termination": None,
         "history_is_independent": controller.history == [],
+        "entry_guards_pending_effective_tick_zero": True,
     }
 
 
 def _restore_guard_tracker_from_snapshot(
     reader: Any, snapshot: Mapping[str, Any]
 ) -> Mapping[str, Any]:
-    """Restore measured cumulative latches into one fresh reader instance."""
+    """Restore only source cumulative latches into one fresh reader instance.
 
-    from collections import deque
+    Contact hysteresis and history are deliberately cold.  The sole tick-zero
+    read below must classify the effective entry from its current raw PhysX
+    force; source-t classifier bits are not part of the effective-entry ABI.
+    """
 
     tracker = getattr(reader, "guard_tracker", None)
     classifier = getattr(reader, "contact_classifier", None)
@@ -2600,7 +2813,11 @@ def _restore_guard_tracker_from_snapshot(
     if classifier is None or not hasattr(classifier, "_states") or not hasattr(
         classifier, "_history"
     ):
-        raise IsaacFSMBackendError("fresh exact-pair classifier cannot restore contact state")
+        raise IsaacFSMBackendError("fresh exact-pair classifier state is unavailable")
+    if dict(classifier._states) or dict(classifier._history):
+        raise IsaacFSMBackendError(
+            "phase curriculum requires a cold contact classifier before tick zero"
+        )
 
     source_tick = int(snapshot["source_tick"])
     latch_rows = snapshot["contact_event_latches"]
@@ -2641,39 +2858,14 @@ def _restore_guard_tracker_from_snapshot(
     tracker._front_crossed_tick = relative_ticks("front_face_crossed_tick")
     tracker._top_loaded_tick = relative_ticks("top_loaded_tick")
 
-    contact_state = snapshot["contact_state"]
-    geometry = snapshot["obstacle_relative_geometry"]
-    for leg, wheel_name in _LEG_TO_WHEEL.items():
-        contact_class = str(contact_state[wheel_name]["class"])
-        air = contact_class == "AIR"
-        tracker._air_seen[leg] = bool(air or tracker._active_lift[leg])
-        tracker._recent_air[leg].append(air)
-        bottom_z = float(geometry["wheel_bottoms_w_m"][wheel_name][2])
-        tracker._recent_wheel_bottom_z[leg].append(bottom_z)
-        tracker._wheel_min_bottom_z[leg] = bottom_z
-        tracker._wheel_max_bottom_z[leg] = bottom_z
-
-    history_length = int(getattr(classifier, "history_length", 3))
-    body_by_wheel = {
-        "front_left_ankle": "front_left_wheel",
-        "front_right_ankle": "front_right_wheel",
-        "rear_left_ankle": "rear_left_wheel",
-        "rear_right_ankle": "rear_right_wheel",
+    # Instantaneous source-t contact and geometry are not restored.  These
+    # rolling buffers are populated only by the sole effective tick-zero
+    # observation.  A cumulative active-lift latch proves only that AIR has
+    # occurred previously; no source classifier bit seeds the new reader.
+    tracker._air_seen = {
+        leg: bool(tracker._active_lift[leg]) for leg in _LEG_TO_WHEEL
     }
-    classifier._states.clear()
-    classifier._history.clear()
-    for wheel_name, body_name in body_by_wheel.items():
-        row = contact_state[wheel_name]
-        for pair_name, field in (
-            ("ground", "ground_active"),
-            ("obstacle", "obstacle_active"),
-        ):
-            active = bool(row[field])
-            key = (body_name, pair_name)
-            classifier._states[key] = active
-            classifier._history[key] = deque(
-                (active,) * history_length, maxlen=history_length
-            )
+
     return {
         "schema": "wlr50_clean.phase_snapshot_guard_restore.v1",
         "active_lift": dict(tracker._active_lift),
@@ -2681,7 +2873,13 @@ def _restore_guard_tracker_from_snapshot(
         "top_loaded": dict(tracker._top_loaded),
         "air_seen": dict(tracker._air_seen),
         "source_ticks_shifted_to_episode_relative": True,
-        "classifier_wheel_pairs_restored": 8,
+        "source_latch_prefix_restored": True,
+        "effective_tick_zero_observation_update_pending": True,
+        "classifier_wheel_pairs_restored": 0,
+        "classifier_source_state_restored": False,
+        "classifier_source_history_restored": False,
+        "classifier_state_before_effective_tick_zero": {},
+        "classifier_history_before_effective_tick_zero": {},
         "history_is_independent": True,
     }
 
@@ -2951,6 +3149,242 @@ def _verify_phase_snapshot_observation(
         **comparison,
         "schema": "wlr50_clean.phase_snapshot_live_proof.v1",
         "verified": True,
+    }
+
+
+def _verify_effective_entry_safety(observation: Any) -> Mapping[str, Any]:
+    """Fail before reset success on every physical/sensing safety source."""
+
+    guards = _member(observation, "guards")
+    required_guard_names = (
+        "wheel_only_climb_detected",
+        "non_finite_observation_or_command",
+        "joint_hard_limit_violation",
+        "physics_explosion_or_fall",
+    )
+    if not isinstance(guards, Mapping) or any(
+        not isinstance(guards.get(name), Mapping)
+        or type(guards[name].get("passed")) is not bool
+        for name in required_guard_names
+    ):
+        raise SensorContractFailure(
+            "effective phase entry lacks complete safety guard evidence"
+        )
+    body_collision = _member(_member(observation, "body_collision"), "detected")
+    all_finite = _member(observation, "all_finite")
+    if type(body_collision) is not bool or type(all_finite) is not bool:
+        raise SensorContractFailure(
+            "effective phase entry lacks typed body/finiteness evidence"
+        )
+    fall, explosion, physics_values = _fall_and_explosion(observation)
+    flags = {
+        "body_collision": body_collision,
+        "wheel_only_climb": bool(guards["wheel_only_climb_detected"]["passed"]),
+        "fall": fall,
+        "nan_inf": bool(
+            not all_finite
+            or guards["non_finite_observation_or_command"]["passed"]
+        ),
+        "hard_joint_limit": bool(guards["joint_hard_limit_violation"]["passed"]),
+        "physics_explosion": bool(explosion),
+        "combined_physics_abort_guard": bool(
+            guards["physics_explosion_or_fall"]["passed"]
+        ),
+    }
+    failures = [name for name, asserted in flags.items() if asserted]
+    if failures:
+        raise SensorContractFailure(
+            "effective phase entry safety gate failed: " + ", ".join(failures)
+        )
+    return {
+        "schema": "wlr50_clean.phase_effective_entry_safety.v1",
+        "verified": True,
+        "all_failure_flags_false": True,
+        "flags": flags,
+        "physics_guard_values": physics_values,
+    }
+
+
+def _verify_effective_controller_entry(
+    controller: Any, controller_frame: Any, phase: str
+) -> Mapping[str, Any]:
+    """Verify the sole controller step naturally admitted the requested phase."""
+
+    state = getattr(controller, "state", None)
+    authored_guards = tuple(getattr(state, "entry_guards", ()))
+    expected_names = tuple(str(getattr(guard, "name", "")) for guard in authored_guards)
+    events = tuple(getattr(controller_frame, "events", ()))
+    transitions = [
+        event
+        for event in events
+        if str(_member(event, "state_id", "")) == phase
+        and str(_member(event, "from_lifecycle", "")) == "WAIT_ENTRY"
+        and str(_member(event, "to_lifecycle", "")) == "EXECUTE_MOTION"
+        and str(_member(event, "reason", "")) == "all live entry guards passed"
+    ]
+    failures: list[str] = []
+    if len(transitions) != 1:
+        failures.append("missing unique WAIT_ENTRY-to-EXECUTE entry event")
+        guard_rows: tuple[Any, ...] = ()
+    else:
+        details = _member(transitions[0], "details", {})
+        guard_rows = tuple(
+            details.get("guards", ()) if isinstance(details, Mapping) else ()
+        )
+    received_names = tuple(str(_member(row, "name", "")) for row in guard_rows)
+    if not expected_names or received_names != expected_names:
+        failures.append("entry event does not contain every authored guard in order")
+    if any(_member(row, "passed") is not True for row in guard_rows):
+        failures.append("one or more requested-phase entry guards failed")
+    lifecycle = _enum_value(getattr(controller_frame, "lifecycle", None))
+    if (
+        str(getattr(controller_frame, "state_id", "")) != phase
+        or lifecycle != "EXECUTE_MOTION"
+        or _enum_value(getattr(controller, "lifecycle", None)) != "EXECUTE_MOTION"
+    ):
+        failures.append("controller is not executing the requested phase")
+    if (
+        getattr(controller_frame, "termination", None) is not None
+        or getattr(controller, "termination", None) is not None
+        or getattr(controller_frame, "first_blocker", None) is not None
+    ):
+        failures.append("controller entry is terminal or blocked")
+    p10_signed_velocity: Mapping[str, Any] | None = None
+    if phase == "P10":
+        compatibility = next(
+            (
+                row
+                for row in guard_rows
+                if _member(row, "name") == "reference_entry_compatible"
+            ),
+            None,
+        )
+        value = _member(compatibility, "value", {})
+        velocity_rows = (
+            {
+                str(name): row
+                for name, row in value.items()
+                if str(name).endswith("_velocity") and isinstance(row, Mapping)
+            }
+            if isinstance(value, Mapping)
+            else {}
+        )
+        if len(velocity_rows) != 1:
+            failures.append("P10 signed velocity guard evidence is missing")
+        else:
+            p10_signed_velocity = next(iter(velocity_rows.values()))
+            actual = p10_signed_velocity.get("actual_deg_s")
+            if (
+                p10_signed_velocity.get("signed_positive_rebound_required") is not True
+                or not isinstance(actual, (int, float))
+                or isinstance(actual, bool)
+                or not math.isfinite(float(actual))
+                or float(actual) <= 0.0
+            ):
+                failures.append("P10 signed positive velocity alignment failed")
+    if failures:
+        raise SensorContractFailure(
+            "effective phase entry controller/guard gate failed: "
+            + ", ".join(failures)
+        )
+    return {
+        "schema": "wlr50_clean.phase_effective_entry_controller.v1",
+        "verified": True,
+        "phase": phase,
+        "lifecycle": lifecycle,
+        "nonterminal": True,
+        "unblocked": True,
+        "authored_entry_guard_names": list(expected_names),
+        "entry_guard_evidence": [
+            {
+                "name": _member(row, "name"),
+                "passed": _member(row, "passed"),
+                "value": _member(row, "value"),
+                "source": _member(row, "source"),
+                "reason": _member(row, "reason"),
+            }
+            for row in guard_rows
+        ],
+        "p10_signed_velocity_alignment": p10_signed_velocity,
+    }
+
+
+def _verify_effective_authoritative_entry(
+    frame: AuthoritativeFrame,
+) -> Mapping[str, Any]:
+    """Gate every P01-P13 authoritative frame before reset commits it."""
+
+    termination = frame.termination_signals
+    termination_flags = {
+        "success": termination.success,
+        "body_collision": termination.body_collision,
+        "wheel_only_climb": termination.wheel_only_climb,
+        "fall": termination.fall,
+        "nan_inf": termination.nan_inf,
+        "hard_joint_limit": termination.hard_joint_limit,
+        "physics_explosion": termination.physics_explosion,
+        "timeout": termination.timeout,
+    }
+    reference_conformance_diagnostic = bool(
+        termination.reference_conformance_outside_30pct
+    )
+    safety = frame.safety_projection
+    safety_contract = {
+        "residual_enabled": safety.residual_enabled,
+        "channel_mask_full12": tuple(safety.channel_mask_full12),
+        "force_wheels_zero": safety.force_wheels_zero,
+        "body_collision_detected": safety.body_collision_detected,
+        "wheel_only_climb_detected": safety.wheel_only_climb_detected,
+        "override_full12": safety.override_full12,
+        "reason": safety.reason,
+    }
+    failures: list[str] = []
+    termination_mapping = frame.info.get("termination_mapping", {})
+    first_blocker = (
+        termination_mapping.get("first_blocker")
+        if isinstance(termination_mapping, Mapping)
+        else None
+    )
+    if any(bool(value) for value in termination_flags.values()):
+        failures.append("authoritative frame is terminal")
+    if (
+        safety.residual_enabled is not True
+        or tuple(safety.channel_mask_full12) != (1,) * FULL12_SIZE
+        or safety.force_wheels_zero is not False
+        or safety.body_collision_detected is not False
+        or safety.wheel_only_climb_detected is not False
+        or safety.override_full12 is not None
+        or safety.reason is not None
+    ):
+        failures.append("authoritative frame has a non-neutral safety projection")
+    if (
+        frame.info.get("controller_lifecycle") != "EXECUTE_MOTION"
+        or frame.info.get("controller_termination") is not None
+        or frame.info.get("controller_task_result") is not None
+        or bool(first_blocker)
+        or _frame_is_terminal(frame)
+    ):
+        failures.append("authoritative controller frame is not running/nonterminal")
+    if failures:
+        raise SensorContractFailure(
+            "effective phase entry authoritative-frame gate failed: "
+            + ", ".join(failures)
+        )
+    return {
+        "schema": "wlr50_clean.phase_authoritative_reset_entry.v1",
+        "scope": "P01_through_P13_post_controller_frame",
+        "effective_fingerprint_evaluated_here": False,
+        "verified": True,
+        "nonterminal": True,
+        "controller_running": True,
+        "unblocked": True,
+        "termination_flags": termination_flags,
+        "diagnostic_ignored_for_termination": {
+            "reference_conformance_outside_30pct": (
+                reference_conformance_diagnostic
+            ),
+        },
+        "safety_projection": safety_contract,
     }
 
 

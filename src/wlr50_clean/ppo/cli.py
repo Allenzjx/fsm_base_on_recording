@@ -24,6 +24,9 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_TRAINING_CONFIG = PROJECT_ROOT / "configs" / "ppo_training_phase_v1.yaml"
 DEFAULT_INTERFACE_CONFIG = PROJECT_ROOT / "configs" / "ppo_interface_v2.yaml"
 DEFAULT_PHASE_SNAPSHOT_ROOT = PROJECT_ROOT / "reference" / "ppo_phase_snapshots"
+DEFAULT_EFFECTIVE_ENTRY_CONTRACT_PATH = (
+    PROJECT_ROOT / "configs" / "ppo_phase_effective_entry_v1.json"
+)
 OUTPUT_ROOT = PROJECT_ROOT / "outputs" / "ppo_phase_v1"
 RESET_THROUGHPUT_PROBE_FILENAME = "reset_throughput_probe.json"
 RESET_THROUGHPUT_PROBE_SCHEMA = "wlr50_clean.reset_throughput_probe.v1"
@@ -37,6 +40,7 @@ LIVE_COMMANDS = frozenset(
         "reset-throughput-probe",
         "soft-reset-equivalence",
         "phase-snapshot-live-probe",
+        "phase-zero-residual-rollout",
         "vector-benchmark",
         "initialize-zero-residual",
         "train",
@@ -45,6 +49,7 @@ LIVE_COMMANDS = frozenset(
         "capture-video-source",
     }
 )
+PHASE_CONTRACT_LIVE_COMMANDS = LIVE_COMMANDS - {"vector-benchmark"}
 
 
 class CliError(RuntimeError):
@@ -52,7 +57,7 @@ class CliError(RuntimeError):
 
 
 def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
     commands = parser.add_subparsers(dest="command", required=True)
     for name in (
         "preflight",
@@ -63,6 +68,7 @@ def _parser() -> argparse.ArgumentParser:
         "reset-throughput-probe",
         "soft-reset-equivalence",
         "phase-snapshot-live-probe",
+        "phase-zero-residual-rollout",
         "vector-benchmark",
         "initialize-zero-residual",
         "train",
@@ -77,7 +83,7 @@ def _parser() -> argparse.ArgumentParser:
         "publish-videos",
         "publish-initial-zero-residual",
     ):
-        command = commands.add_parser(name)
+        command = commands.add_parser(name, allow_abbrev=False)
         command.add_argument("--run-dir", type=Path, required=True)
         command.add_argument("--seed", type=int, required=True)
         command.add_argument("--num-envs", type=int, required=True)
@@ -122,6 +128,22 @@ def _parser() -> argparse.ArgumentParser:
         command.add_argument("--ffmpeg", type=Path)
         command.add_argument("--soft-reset-acceptance", type=Path)
         command.add_argument("--vector-benchmark-matrix", type=Path)
+        command.add_argument(
+            "--phase-effective-entry-holdout-acceptance",
+            type=Path,
+            help=(
+                "finalized seed-1003 P02-P13 external holdout acceptance; "
+                "mandatory for phase-curriculum training"
+            ),
+        )
+        command.add_argument(
+            "--phase-zero-residual-rollout-evidence",
+            type=Path,
+            help=(
+                "finalized P01-P13 zero-residual phase rollout; mandatory "
+                "before phase-curriculum training"
+            ),
+        )
         command.add_argument(
             "--evaluation-run-dir",
             type=Path,
@@ -311,12 +333,58 @@ def _capture_runtime_snapshot_bundle(args: argparse.Namespace):
         raise CliError(f"phase snapshot bundle validation failed: {exc}") from exc
 
 
+def _capture_runtime_effective_entry_contract(pinned_snapshot_bundle: Any):
+    """Capture the effective-entry contract after its snapshot dependency."""
+
+    from .phase_effective_entry import (
+        EffectivePhaseEntryError,
+        capture_validated_effective_phase_entry_contract,
+    )
+
+    try:
+        return capture_validated_effective_phase_entry_contract(
+            DEFAULT_EFFECTIVE_ENTRY_CONTRACT_PATH,
+            expected_snapshot_bundle=pinned_snapshot_bundle,
+        )
+    except (OSError, EffectivePhaseEntryError) as exc:
+        raise CliError(f"effective phase-entry contract validation failed: {exc}") from exc
+
+
+def _capture_runtime_phase_contracts(args: argparse.Namespace) -> tuple[Any, Any]:
+    """Pin snapshot bytes, then their dependent effective-entry contract bytes."""
+
+    snapshot_bundle = _capture_runtime_snapshot_bundle(args)
+    effective_contract = _capture_runtime_effective_entry_contract(snapshot_bundle)
+    args._pinned_phase_snapshot_bundle = snapshot_bundle
+    args._pinned_effective_entry_contract = effective_contract
+    return snapshot_bundle, effective_contract
+
+
+def _pinned_runtime_phase_contracts(args: argparse.Namespace) -> tuple[Any, Any]:
+    """Return the pre-launch pins, with a direct-call fallback for unit helpers."""
+
+    from .phase_effective_entry import ValidatedEffectivePhaseEntryContract
+    from .phase_snapshots import ValidatedPhaseSnapshotBundle
+
+    snapshot_bundle = getattr(args, "_pinned_phase_snapshot_bundle", None)
+    effective_contract = getattr(args, "_pinned_effective_entry_contract", None)
+    if snapshot_bundle is None and effective_contract is None:
+        return _capture_runtime_phase_contracts(args)
+    if not isinstance(snapshot_bundle, ValidatedPhaseSnapshotBundle):
+        raise CliError("phase snapshot pin is not an immutable validated bundle")
+    if not isinstance(effective_contract, ValidatedEffectivePhaseEntryContract):
+        raise CliError("effective-entry pin is not an immutable validated contract")
+    if effective_contract.phase_snapshot_bundle_sha256 != snapshot_bundle.bundle_sha256:
+        raise CliError("effective-entry pin belongs to a different snapshot bundle")
+    return snapshot_bundle, effective_contract
+
+
 def _validated_runtime_snapshot_bundle(args: argparse.Namespace) -> Mapping[str, Any]:
     """Validate and return the checkpoint-facing snapshot bundle record."""
 
     from .phase_snapshots import PHASE_IDS
 
-    record = _capture_runtime_snapshot_bundle(args).as_record()
+    record = _pinned_runtime_phase_contracts(args)[0].as_record()
     live_root = _live_phase_snapshot_root()
     entries = record.get("snapshots")
     if (
@@ -349,6 +417,126 @@ def _revalidate_pinned_snapshot_bundle(pinned_snapshot_bundle: Any) -> None:
         raise CliError(f"pinned phase snapshot bundle changed: {exc}") from exc
 
 
+def _revalidate_pinned_phase_contracts(
+    pinned_snapshot_bundle: Any,
+    pinned_effective_entry_contract: Any,
+) -> None:
+    """Revalidate both pins in dependency order without accepting fresh values."""
+
+    from .phase_effective_entry import (
+        EffectivePhaseEntryError,
+        ValidatedEffectivePhaseEntryContract,
+        assert_effective_phase_entry_contract_unchanged,
+    )
+
+    _revalidate_pinned_snapshot_bundle(pinned_snapshot_bundle)
+    if not isinstance(
+        pinned_effective_entry_contract, ValidatedEffectivePhaseEntryContract
+    ):
+        raise CliError("effective-entry pin is not an immutable validated contract")
+    try:
+        assert_effective_phase_entry_contract_unchanged(
+            pinned_effective_entry_contract,
+            expected_snapshot_bundle=pinned_snapshot_bundle,
+        )
+    except (OSError, EffectivePhaseEntryError) as exc:
+        raise CliError(f"pinned effective phase-entry contract changed: {exc}") from exc
+
+
+def _effective_entry_contract_fields(contract: Any) -> dict[str, Any]:
+    from .phase_effective_entry import ValidatedEffectivePhaseEntryContract
+
+    if not isinstance(contract, ValidatedEffectivePhaseEntryContract):
+        raise CliError("checkpoint effective-entry pin is not validated")
+    return {
+        "phase_effective_entry_contract_path": str(contract.contract_path),
+        "phase_effective_entry_contract_file_sha256": contract.file_sha256,
+        "phase_effective_entry_contract_sidecar_path": str(contract.sidecar_path),
+        "phase_effective_entry_contract_sidecar_sha256": (
+            contract.sidecar_file_sha256
+        ),
+        "phase_effective_entry_contract_sha256": contract.contract_sha256,
+        "phase_effective_entry_contract": contract.as_record(),
+    }
+
+
+def _phase_effective_entry_holdout_fields(
+    evidence: Mapping[str, Any],
+) -> tuple[dict[str, Any], dict[str, str]]:
+    """Return checkpoint fields plus the exact external files inventory."""
+
+    acceptance = evidence.get("acceptance")
+    acceptance_path = Path(str(evidence.get("path", ""))).resolve()
+    run_manifest_path = Path(str(evidence.get("run_manifest", ""))).resolve()
+    if (
+        evidence.get("passed") is not True
+        or not isinstance(acceptance, Mapping)
+        or acceptance.get("passed") is not True
+        or acceptance.get("status") != "PASSED"
+        or not acceptance_path.is_file()
+        or not run_manifest_path.is_file()
+        or _sha256(acceptance_path) != evidence.get("sha256")
+        or _sha256(run_manifest_path) != evidence.get("run_manifest_sha256")
+    ):
+        raise CliError("phase effective-entry holdout checkpoint evidence is invalid")
+    fields = {
+        "phase_effective_entry_holdout_acceptance_path": str(acceptance_path),
+        "phase_effective_entry_holdout_acceptance_sha256": evidence["sha256"],
+        "phase_effective_entry_holdout_contract_sha256": evidence[
+            "phase_effective_entry_contract_sha256"
+        ],
+        "phase_effective_entry_holdout_source_git_commit": evidence[
+            "source_git_commit"
+        ],
+        "phase_effective_entry_holdout_acceptance": dict(acceptance),
+        "phase_effective_entry_holdout_evidence": dict(evidence),
+        "phase_effective_entry_holdout_files": {
+            str(acceptance_path): str(evidence["sha256"]),
+            str(run_manifest_path): str(evidence["run_manifest_sha256"]),
+        },
+    }
+    files = {
+        str(acceptance_path): str(evidence["sha256"]),
+        str(run_manifest_path): str(evidence["run_manifest_sha256"]),
+    }
+    return fields, files
+
+
+def _phase_zero_residual_rollout_fields(
+    evidence: Mapping[str, Any],
+) -> tuple[dict[str, Any], dict[str, str]]:
+    """Return checkpoint fields plus exact external rollout evidence files."""
+
+    from .phase_zero_residual_rollout import TRAINING_EVIDENCE_SCHEMA
+
+    evidence_path = Path(str(evidence.get("path", ""))).resolve()
+    run_manifest_path = Path(str(evidence.get("run_manifest", ""))).resolve()
+    if (
+        evidence.get("schema") != TRAINING_EVIDENCE_SCHEMA
+        or evidence.get("passed") is not True
+        or not evidence_path.is_file()
+        or not run_manifest_path.is_file()
+        or _sha256(evidence_path) != evidence.get("sha256")
+        or _sha256(run_manifest_path) != evidence.get("run_manifest_sha256")
+    ):
+        raise CliError("phase zero-residual rollout checkpoint evidence is invalid")
+    files = {
+        str(evidence_path): str(evidence["sha256"]),
+        str(run_manifest_path): str(evidence["run_manifest_sha256"]),
+    }
+    fields = {
+        "phase_zero_residual_rollout_evidence_path": str(evidence_path),
+        "phase_zero_residual_rollout_evidence_sha256": evidence["sha256"],
+        "phase_zero_residual_rollout_run_manifest_path": str(run_manifest_path),
+        "phase_zero_residual_rollout_run_manifest_sha256": evidence[
+            "run_manifest_sha256"
+        ],
+        "phase_zero_residual_rollout_evidence": dict(evidence),
+        "phase_zero_residual_rollout_files": files,
+    }
+    return fields, files
+
+
 def _snapshot_bundle_files(bundle: Mapping[str, Any]) -> tuple[Path, ...]:
     from .phase_snapshots import PhaseSnapshotError, phase_snapshot_bundle_file_hashes
 
@@ -364,6 +552,7 @@ def _require_manifest_snapshot_contract(
     bundle: Mapping[str, Any],
     *,
     label: str,
+    effective_entry_contract: Any | None = None,
 ) -> None:
     expected = {
         "phase_snapshot_manifest": bundle["manifest_path"],
@@ -398,6 +587,41 @@ def _require_manifest_snapshot_contract(
             f"missing={missing}, mismatched={mismatched}"
         )
 
+    if effective_entry_contract is None:
+        snapshot_pin = _capture_runtime_snapshot_bundle(
+            argparse.Namespace(snapshot_root=Path(bundle["snapshot_root"]))
+        )
+        if snapshot_pin.as_record() != dict(bundle):
+            raise CliError(f"{label} snapshot record changed before contract validation")
+        effective_entry_contract = _capture_runtime_effective_entry_contract(
+            snapshot_pin
+        )
+    expected_effective = _effective_entry_contract_fields(
+        effective_entry_contract
+    )
+    differing_effective = [
+        field
+        for field, value in expected_effective.items()
+        if manifest.get(field) != value
+    ]
+    if differing_effective:
+        raise CliError(
+            f"{label} differs from the validated effective-entry contract: "
+            + ", ".join(differing_effective)
+        )
+    effective_files = effective_entry_contract.file_hashes()
+    missing_effective = [path for path in effective_files if path not in declared_files]
+    mismatched_effective = [
+        path
+        for path, digest in effective_files.items()
+        if path in declared_files and declared_files[path] != digest
+    ]
+    if missing_effective or mismatched_effective:
+        raise CliError(
+            f"{label} does not bind the effective-entry contract file inventory: "
+            f"missing={missing_effective}, mismatched={mismatched_effective}"
+        )
+
 
 def _preflight(args: argparse.Namespace) -> int:
     from .observation_schema import OBSERVATION_DIMENSION
@@ -418,7 +642,8 @@ def _preflight(args: argparse.Namespace) -> int:
     objectives = load_phase_objectives()
     reward = load_reward_v2_config()
     termination = load_termination_config_v2()
-    snapshot_bundle = _validated_runtime_snapshot_bundle(args)
+    snapshot_pin, effective_entry_pin = _pinned_runtime_phase_contracts(args)
+    snapshot_bundle = snapshot_pin.as_record()
     frozen_manifest = PROJECT_ROOT / "artifacts" / "ppo_phase_v1_start" / "frozen_fsm_hashes.json"
     frozen = json.loads(frozen_manifest.read_text(encoding="utf-8"))
     mismatches = []
@@ -460,6 +685,7 @@ def _preflight(args: argparse.Namespace) -> int:
         "training_profile": str(profile.path),
         "snapshot_count": snapshot_bundle["phase_count"],
         "phase_snapshot_bundle": snapshot_bundle,
+        "phase_effective_entry_contract": effective_entry_pin.as_record(),
         "schema_outputs": [str(csv_path), str(json_path)],
         "scale_audit_output": str(scale_path),
     }
@@ -468,6 +694,7 @@ def _preflight(args: argparse.Namespace) -> int:
 
     result["reward_duplicate_signal_audit"] = asdict(reward_duplicate_signal_audit())
     result["standing_still_audit"] = asdict(reward_standing_still_exploit_test())
+    _revalidate_pinned_phase_contracts(snapshot_pin, effective_entry_pin)
     _json(args.run_dir / "preflight.json", result)
     print(json.dumps(result, separators=(",", ":")))
     return 0 if result["passed"] else 2
@@ -648,7 +875,14 @@ def _run_live_episodes(
             "acceptance episodes require one fresh Isaac process each; invoke the "
             "provided PowerShell gate script to aggregate multiple seeds"
         )
-    backend = IsaacFSMBackend(simulation_app)
+    pinned_snapshot_bundle, pinned_effective_entry_contract = (
+        _pinned_runtime_phase_contracts(args)
+    )
+    backend = IsaacFSMBackend(
+        simulation_app,
+        expected_phase_snapshot_bundle=pinned_snapshot_bundle,
+        expected_effective_entry_contract=pinned_effective_entry_contract,
+    )
     env = ResidualEpisodeEnv(backend, collect_trace=True)
     episodes = []
     started = time.perf_counter()
@@ -727,6 +961,9 @@ def _run_live_episodes(
         "wall_time_s": time.perf_counter() - started,
         "episodes": episodes,
     }
+    _revalidate_pinned_phase_contracts(
+        pinned_snapshot_bundle, pinned_effective_entry_contract
+    )
     _json(args.run_dir / "live_gate_summary.json", result)
     return result
 
@@ -810,6 +1047,8 @@ def _checkpoint_config_paths(args: argparse.Namespace) -> tuple[Path, ...]:
     return (
         args.training_config,
         args.interface_config,
+        DEFAULT_EFFECTIVE_ENTRY_CONTRACT_PATH,
+        DEFAULT_EFFECTIVE_ENTRY_CONTRACT_PATH.with_suffix(".sha256"),
         PROJECT_ROOT / "configs" / "ppo_observation_schema_v2.json",
         PROJECT_ROOT / "configs" / "ppo_phase_action_masks_v2.yaml",
         PROJECT_ROOT / "configs" / "ppo_phase_objectives_v2.yaml",
@@ -820,6 +1059,9 @@ def _checkpoint_config_paths(args: argparse.Namespace) -> tuple[Path, ...]:
         PROJECT_ROOT / "configs" / "environment_lock.json",
         PROJECT_ROOT / "configs" / "fsm_states.yaml",
         PROJECT_ROOT / "configs" / "recording_motion_contract.json",
+        PROJECT_ROOT / "configs" / "ppo_action_projection.yaml",
+        PROJECT_ROOT / "configs" / "ppo_observation_schema.json",
+        PROJECT_ROOT / "configs" / "conformance_policy.yaml",
     )
 
 
@@ -954,6 +1196,9 @@ def _checkpoint_manifest_payload(
     global_step: int,
     stage: str,
     pinned_snapshot_bundle: Any | None = None,
+    pinned_effective_entry_contract: Any | None = None,
+    include_phase_effective_entry_holdout: bool = True,
+    include_phase_zero_residual_rollout: bool = True,
 ) -> dict[str, Any]:
     from .phase_snapshots import (
         PhaseSnapshotError,
@@ -962,24 +1207,47 @@ def _checkpoint_manifest_payload(
     )
 
     paths = _checkpoint_config_paths(args)
-    pinned = (
-        _capture_runtime_snapshot_bundle(args)
-        if pinned_snapshot_bundle is None
-        else pinned_snapshot_bundle
-    )
+    if pinned_snapshot_bundle is None and pinned_effective_entry_contract is None:
+        pinned, effective_contract = _pinned_runtime_phase_contracts(args)
+    else:
+        pinned = pinned_snapshot_bundle
+        effective_contract = pinned_effective_entry_contract
+        if effective_contract is None:
+            candidate = getattr(args, "_pinned_effective_entry_contract", None)
+            if (
+                candidate is not None
+                and getattr(candidate, "phase_snapshot_bundle_sha256", None)
+                == getattr(pinned, "bundle_sha256", None)
+            ):
+                effective_contract = candidate
+            else:
+                effective_contract = _capture_runtime_effective_entry_contract(pinned)
     if not isinstance(pinned, ValidatedPhaseSnapshotBundle):
         raise CliError("checkpoint snapshot pin is not a validated immutable bundle")
     if pinned.snapshot_root != _live_phase_snapshot_root():
         raise CliError("checkpoint snapshot pin differs from the live loader root")
+    # Checkpoint metadata must describe the exact pre-launch pins, and the
+    # files backing both pins must still be byte-identical at publication.
+    _revalidate_pinned_phase_contracts(pinned, effective_contract)
     snapshot_bundle = pinned.as_record()
     try:
         snapshot_file_hashes = phase_snapshot_bundle_file_hashes(snapshot_bundle)
     except PhaseSnapshotError as exc:
         raise CliError(f"checkpoint snapshot pin is invalid: {exc}") from exc
+    effective_fields = _effective_entry_contract_fields(effective_contract)
+    effective_file_hashes = effective_contract.file_hashes()
     file_hashes = _hash_manifest(paths)
     if set(file_hashes).intersection(snapshot_file_hashes):
         raise CliError("checkpoint config and phase snapshot file sets overlap")
     file_hashes.update(snapshot_file_hashes)
+    for path, digest in effective_file_hashes.items():
+        existing = file_hashes.get(path)
+        if existing is not None and existing != digest:
+            raise CliError(
+                "checkpoint config and effective-entry contract hashes disagree for "
+                + path
+            )
+        file_hashes[path] = digest
     payload = {
         "schema": "wlr50_clean.phase_residual_checkpoint_manifest.v1",
         "stage": stage,
@@ -1000,6 +1268,7 @@ def _checkpoint_manifest_payload(
         "phase_snapshot_manifest_sha256": snapshot_bundle["manifest_sha256"],
         "phase_snapshot_bundle_sha256": snapshot_bundle["bundle_sha256"],
         "phase_snapshot_bundle": snapshot_bundle,
+        **effective_fields,
         **_checkpoint_creation_runtime_identity(args),
     }
     soft_reset = getattr(args, "_soft_reset_acceptance_evidence", None)
@@ -1013,6 +1282,34 @@ def _checkpoint_manifest_payload(
         payload["vector_benchmark_matrix"] = dict(vector_matrix)
         payload["vector_benchmark_matrix_path"] = vector_matrix["path"]
         payload["vector_benchmark_matrix_sha256"] = vector_matrix["sha256"]
+    holdout = getattr(args, "_phase_effective_entry_holdout_evidence", None)
+    if include_phase_effective_entry_holdout and holdout is not None:
+        holdout_fields, holdout_files = _phase_effective_entry_holdout_fields(holdout)
+        if holdout_fields["phase_effective_entry_holdout_files"] != holdout_files:
+            raise CliError("phase effective-entry holdout files inventory is invalid")
+        payload.update(holdout_fields)
+    elif (
+        include_phase_effective_entry_holdout
+        and stage == "phase-curriculum"
+        and getattr(args, "command", None) == "train"
+    ):
+        raise CliError(
+            "phase-curriculum checkpoint publication requires pinned holdout evidence"
+        )
+    rollout = getattr(args, "_phase_zero_residual_rollout_evidence", None)
+    if include_phase_zero_residual_rollout and rollout is not None:
+        rollout_fields, rollout_files = _phase_zero_residual_rollout_fields(rollout)
+        if rollout_fields["phase_zero_residual_rollout_files"] != rollout_files:
+            raise CliError("phase zero-residual rollout files inventory is invalid")
+        payload.update(rollout_fields)
+    elif (
+        include_phase_zero_residual_rollout
+        and stage == "phase-curriculum"
+        and getattr(args, "command", None) == "train"
+    ):
+        raise CliError(
+            "phase-curriculum checkpoint publication requires pinned zero-rollout evidence"
+        )
     return payload
 
 
@@ -1020,6 +1317,9 @@ def _current_checkpoint_runtime_contract(
     args: argparse.Namespace,
     *,
     pinned_snapshot_bundle: Any | None = None,
+    pinned_effective_entry_contract: Any | None = None,
+    include_phase_effective_entry_holdout: bool = False,
+    include_phase_zero_residual_rollout: bool = False,
 ) -> Mapping[str, Any]:
     """Build the immutable runtime subset a loaded checkpoint must match."""
 
@@ -1028,6 +1328,13 @@ def _current_checkpoint_runtime_contract(
         global_step=0,
         stage="current_runtime_contract",
         pinned_snapshot_bundle=pinned_snapshot_bundle,
+        pinned_effective_entry_contract=pinned_effective_entry_contract,
+        include_phase_effective_entry_holdout=(
+            include_phase_effective_entry_holdout
+        ),
+        include_phase_zero_residual_rollout=(
+            include_phase_zero_residual_rollout
+        ),
     )
 
 
@@ -1058,7 +1365,14 @@ def _soft_reset_equivalence(args: argparse.Namespace, simulation_app: Any) -> in
         raise CliError("soft-reset equivalence requires deterministic zero residuals")
 
     contract_hashes_at_start = soft_reset_contract_hashes(PROJECT_ROOT)
-    backend = IsaacFSMBackend(simulation_app)
+    pinned_snapshot_bundle, pinned_effective_entry_contract = (
+        _pinned_runtime_phase_contracts(args)
+    )
+    backend = IsaacFSMBackend(
+        simulation_app,
+        expected_phase_snapshot_bundle=pinned_snapshot_bundle,
+        expected_effective_entry_contract=pinned_effective_entry_contract,
+    )
     env = ResidualEpisodeEnv(backend, collect_trace=False)
     traces: list[tuple[Mapping[str, Any], ...]] = []
     summaries: list[dict[str, Any]] = []
@@ -1241,6 +1555,9 @@ def _soft_reset_equivalence(args: argparse.Namespace, simulation_app: Any) -> in
         "contract_file_sha256_at_end": contract_hashes_at_end,
         "artifacts": artifacts,
     }
+    _revalidate_pinned_phase_contracts(
+        pinned_snapshot_bundle, pinned_effective_entry_contract
+    )
     _json(args.run_dir / SOFT_RESET_ACCEPTANCE_FILENAME, result)
     print(json.dumps(result, separators=(",", ":")), flush=True)
     return 0 if result["passed"] else 2
@@ -1290,7 +1607,14 @@ def _reset_throughput_probe(args: argparse.Namespace, simulation_app: Any) -> in
         return value
 
     contract_hashes_at_start = soft_reset_contract_hashes(PROJECT_ROOT)
-    backend = IsaacFSMBackend(simulation_app)
+    pinned_snapshot_bundle, pinned_effective_entry_contract = (
+        _pinned_runtime_phase_contracts(args)
+    )
+    backend = IsaacFSMBackend(
+        simulation_app,
+        expected_phase_snapshot_bundle=pinned_snapshot_bundle,
+        expected_effective_entry_contract=pinned_effective_entry_contract,
+    )
     env = ResidualEpisodeEnv(backend, collect_trace=False)
     episodes: list[dict[str, Any]] = []
     for episode_index, reset_role in enumerate(("fresh_scene", "soft_reset_reuse")):
@@ -1443,6 +1767,9 @@ def _reset_throughput_probe(args: argparse.Namespace, simulation_app: Any) -> in
         "runtime_contract_file_sha256": contract_hashes_at_start,
         "runtime_contract_file_sha256_at_end": contract_hashes_at_end,
     }
+    _revalidate_pinned_phase_contracts(
+        pinned_snapshot_bundle, pinned_effective_entry_contract
+    )
     _json(args.run_dir / RESET_THROUGHPUT_PROBE_FILENAME, result)
     print(json.dumps(result, separators=(",", ":")), flush=True)
     return 0 if passed else 2
@@ -1455,18 +1782,295 @@ def _phase_snapshot_live_probe(
 
     from .phase_snapshot_live_probe import run_phase_snapshot_live_probe
 
-    pinned_snapshot_bundle = _capture_runtime_snapshot_bundle(args)
+    pinned_snapshot_bundle, pinned_effective_entry_contract = (
+        _pinned_runtime_phase_contracts(args)
+    )
     result = run_phase_snapshot_live_probe(
         simulation_app,
         run_dir=args.run_dir,
         seed=args.seed,
         snapshot_bundle=pinned_snapshot_bundle,
+        effective_entry_contract=pinned_effective_entry_contract,
         prime_physics_steps=args.phase_snapshot_prime_physics_steps,
         phases=None if args.phase is None else (args.phase,),
     )
-    _revalidate_pinned_snapshot_bundle(pinned_snapshot_bundle)
+    _revalidate_pinned_phase_contracts(
+        pinned_snapshot_bundle, pinned_effective_entry_contract
+    )
     print(json.dumps(result, separators=(",", ":"), allow_nan=False), flush=True)
     return 0 if result.get("passed") is True else 2
+
+
+def _validate_phase_rollout_holdout(
+    args: argparse.Namespace,
+) -> Mapping[str, Any]:
+    """Pin the external holdout before starting the rollout's Isaac process."""
+
+    supplied = getattr(args, "phase_effective_entry_holdout_acceptance", None)
+    if supplied is None:
+        raise CliError(
+            "phase-zero-residual-rollout requires an explicit "
+            "--phase-effective-entry-holdout-acceptance"
+        )
+    from .phase_effective_entry_holdout import (
+        PhaseEffectiveEntryHoldoutError,
+        validate_phase_effective_entry_holdout_acceptance,
+    )
+
+    snapshot_bundle, effective_entry_contract = _pinned_runtime_phase_contracts(args)
+    try:
+        evidence = validate_phase_effective_entry_holdout_acceptance(
+            _resolve_project_path(Path(supplied)),
+            project_root=PROJECT_ROOT,
+            config_paths=_checkpoint_config_paths(args),
+            snapshot_bundle=snapshot_bundle,
+            effective_entry_contract=effective_entry_contract,
+        )
+    except PhaseEffectiveEntryHoldoutError as exc:
+        raise CliError(
+            f"phase rollout holdout acceptance rejected: {exc}"
+        ) from exc
+    args.phase_effective_entry_holdout_acceptance = Path(evidence["path"])
+    args._phase_effective_entry_holdout_evidence = evidence
+    return evidence
+
+
+def _revalidate_phase_rollout_holdout(
+    args: argparse.Namespace,
+    snapshot_bundle: Any,
+    effective_entry_contract: Any,
+) -> Mapping[str, Any]:
+    expected = getattr(args, "_phase_effective_entry_holdout_evidence", None)
+    if not isinstance(expected, Mapping):
+        raise CliError("phase rollout holdout acceptance was not pinned pre-launch")
+    from .phase_effective_entry_holdout import (
+        PhaseEffectiveEntryHoldoutError,
+        validate_phase_effective_entry_holdout_acceptance,
+    )
+
+    try:
+        current = validate_phase_effective_entry_holdout_acceptance(
+            Path(str(expected.get("path", ""))),
+            project_root=PROJECT_ROOT,
+            config_paths=_checkpoint_config_paths(args),
+            snapshot_bundle=snapshot_bundle,
+            effective_entry_contract=effective_entry_contract,
+        )
+    except PhaseEffectiveEntryHoldoutError as exc:
+        raise CliError(f"phase rollout holdout changed after capture: {exc}") from exc
+    if current != dict(expected):
+        raise CliError("phase rollout holdout evidence changed after capture")
+    return current
+
+
+def _phase_zero_residual_rollout(
+    args: argparse.Namespace, simulation_app: Any
+) -> int:
+    """Run one bounded real-physics zero-residual window from every phase."""
+
+    from .isaac_fsm_backend import IsaacFSMBackend
+    from .phase_zero_residual_rollout import (
+        ARTIFACT_FILENAME,
+        MAX_DECISIONS_PER_PHASE,
+        build_contract_binding,
+        run_phase_zero_residual_rollout,
+    )
+    from .residual_direct_env import ResidualEpisodeEnv
+
+    if args.num_envs != 1 or args.episode_count != 13:
+        raise CliError(
+            "phase-zero-residual-rollout requires num-envs=1 and episode-count=13"
+        )
+    if args.residual_mode != "zero" or not args.deterministic:
+        raise CliError(
+            "phase-zero-residual-rollout requires deterministic zero residuals"
+        )
+    if args.seed_set != "train":
+        raise CliError("phase-zero-residual-rollout requires seed-set=train")
+    if args.policy_decisions not in (None, MAX_DECISIONS_PER_PHASE):
+        raise CliError(
+            "phase-zero-residual-rollout has a fixed maximum of 64 decisions per phase"
+        )
+    holdout = getattr(args, "_phase_effective_entry_holdout_evidence", None)
+    if not isinstance(holdout, Mapping):
+        raise CliError("phase rollout holdout acceptance was not pinned pre-launch")
+    snapshot_bundle, effective_entry_contract = _pinned_runtime_phase_contracts(args)
+    binding = build_contract_binding(
+        snapshot_bundle, effective_entry_contract, holdout
+    )
+    backend = IsaacFSMBackend(
+        simulation_app,
+        expected_phase_snapshot_bundle=snapshot_bundle,
+        expected_effective_entry_contract=effective_entry_contract,
+    )
+    episode = ResidualEpisodeEnv(backend, collect_trace=False)
+    result = run_phase_zero_residual_rollout(
+        episode,
+        seed=args.seed,
+        contract_binding=binding,
+        max_decisions_per_phase=MAX_DECISIONS_PER_PHASE,
+    )
+    _revalidate_phase_rollout_holdout(
+        args, snapshot_bundle, effective_entry_contract
+    )
+    _revalidate_pinned_phase_contracts(
+        snapshot_bundle, effective_entry_contract
+    )
+    _json(args.run_dir / ARTIFACT_FILENAME, result)
+    print(json.dumps(result, separators=(",", ":"), allow_nan=False), flush=True)
+    return 0 if result.get("passed") is True else 2
+
+
+def _require_training_phase_zero_residual_rollout(
+    args: argparse.Namespace,
+) -> Mapping[str, Any] | None:
+    """Reject phase-curriculum training until the bounded live rollout passes."""
+
+    if args.stage != "phase-curriculum":
+        return None
+    supplied = getattr(args, "phase_zero_residual_rollout_evidence", None)
+    if supplied is None:
+        raise CliError(
+            "phase-curriculum training requires an explicit "
+            "--phase-zero-residual-rollout-evidence produced after holdout acceptance"
+        )
+    holdout = getattr(args, "_phase_effective_entry_holdout_evidence", None)
+    if not isinstance(holdout, Mapping):
+        raise CliError(
+            "phase zero-residual rollout validation requires pinned holdout evidence"
+        )
+    from .phase_zero_residual_rollout import (
+        PhaseZeroResidualRolloutError,
+        build_contract_binding,
+        validate_phase_zero_residual_rollout_evidence,
+    )
+
+    snapshot_bundle, effective_entry_contract = _pinned_runtime_phase_contracts(args)
+    binding = build_contract_binding(
+        snapshot_bundle, effective_entry_contract, holdout
+    )
+    try:
+        evidence = validate_phase_zero_residual_rollout_evidence(
+            _resolve_project_path(Path(supplied)),
+            project_root=PROJECT_ROOT,
+            expected_contract_binding=binding,
+        )
+    except PhaseZeroResidualRolloutError as exc:
+        raise CliError(f"phase zero-residual rollout rejected: {exc}") from exc
+    args.phase_zero_residual_rollout_evidence = Path(evidence["path"])
+    args._phase_zero_residual_rollout_evidence = evidence
+    return evidence
+
+
+def _revalidate_training_phase_zero_residual_rollout(
+    args: argparse.Namespace,
+) -> Mapping[str, Any] | None:
+    expected = getattr(args, "_phase_zero_residual_rollout_evidence", None)
+    holdout = getattr(args, "_phase_effective_entry_holdout_evidence", None)
+    if not isinstance(expected, Mapping):
+        if args.stage == "phase-curriculum":
+            raise CliError("phase rollout training evidence was not pinned pre-launch")
+        return None
+    if not isinstance(holdout, Mapping):
+        raise CliError("phase rollout revalidation requires pinned holdout evidence")
+    from .phase_zero_residual_rollout import (
+        PhaseZeroResidualRolloutError,
+        build_contract_binding,
+        validate_phase_zero_residual_rollout_evidence,
+    )
+
+    snapshot_bundle, effective_entry_contract = _pinned_runtime_phase_contracts(args)
+    binding = build_contract_binding(
+        snapshot_bundle, effective_entry_contract, holdout
+    )
+    try:
+        current = validate_phase_zero_residual_rollout_evidence(
+            Path(str(expected.get("path", ""))),
+            project_root=PROJECT_ROOT,
+            expected_contract_binding=binding,
+        )
+    except PhaseZeroResidualRolloutError as exc:
+        raise CliError(f"phase zero-residual rollout changed: {exc}") from exc
+    if current != dict(expected):
+        raise CliError("phase zero-residual rollout evidence changed after capture")
+    return current
+
+
+def _inherit_training_phase_zero_residual_rollout(
+    args: argparse.Namespace,
+    checkpoint_infos: Mapping[str, Any],
+    pinned_snapshot_bundle: Any,
+    pinned_effective_entry_contract: Any,
+) -> Mapping[str, Any] | None:
+    """Validate and retain Stage 1 rollout qualification across resumes."""
+
+    if args.stage == "smoke":
+        return getattr(args, "_phase_zero_residual_rollout_evidence", None)
+    resume_stage = checkpoint_infos.get("stage")
+    if args.stage == "phase-curriculum" and (
+        not isinstance(resume_stage, str)
+        or resume_stage not in ("smoke", "phase-curriculum")
+    ):
+        raise CliError(
+            "phase-curriculum resume checkpoint has invalid or missing stage ancestry"
+        )
+    embedded = checkpoint_infos.get("phase_zero_residual_rollout_evidence")
+    if not isinstance(embedded, Mapping):
+        if args.stage == "phase-curriculum" and resume_stage == "smoke":
+            # The initial/smoke checkpoint predates Stage 1 qualification; the
+            # explicit pre-launch rollout pin remains authoritative.
+            return getattr(args, "_phase_zero_residual_rollout_evidence", None)
+        raise CliError(
+            f"{args.stage} resume checkpoint omits phase zero-residual "
+            "rollout ancestry"
+        )
+    holdout = getattr(args, "_phase_effective_entry_holdout_evidence", None)
+    if not isinstance(holdout, Mapping):
+        raise CliError(
+            "resume checkpoint rollout ancestry requires validated holdout ancestry"
+        )
+    from .phase_zero_residual_rollout import (
+        PhaseZeroResidualRolloutError,
+        build_contract_binding,
+        validate_phase_zero_residual_rollout_evidence,
+    )
+
+    binding = build_contract_binding(
+        pinned_snapshot_bundle, pinned_effective_entry_contract, holdout
+    )
+    try:
+        current = validate_phase_zero_residual_rollout_evidence(
+            Path(str(embedded.get("path", ""))),
+            project_root=PROJECT_ROOT,
+            expected_contract_binding=binding,
+        )
+    except PhaseZeroResidualRolloutError as exc:
+        raise CliError(
+            f"inherited phase zero-residual rollout rejected: {exc}"
+        ) from exc
+    if current != dict(embedded):
+        raise CliError(
+            "resume checkpoint phase zero-residual rollout evidence is stale "
+            "or was substituted"
+        )
+    explicit = getattr(args, "_phase_zero_residual_rollout_evidence", None)
+    if args.stage == "phase-curriculum" and (
+        not isinstance(explicit, Mapping) or dict(explicit) != current
+    ):
+        raise CliError(
+            "phase-curriculum resume checkpoint rollout differs from the "
+            "explicit pre-launch evidence"
+        )
+    expected_fields, _ = _phase_zero_residual_rollout_fields(current)
+    for field, value in expected_fields.items():
+        if checkpoint_infos.get(field) != value:
+            raise CliError(
+                "resume checkpoint rollout manifest/infos binding differs for "
+                f"{field!r}"
+            )
+    args.phase_zero_residual_rollout_evidence = Path(current["path"])
+    args._phase_zero_residual_rollout_evidence = current
+    return current
 
 
 def _vector_benchmark(args: argparse.Namespace, simulation_app: Any) -> int:
@@ -2067,6 +2671,7 @@ def _construct_live_runner(
     reset_seeds: Sequence[int] | None = None,
     collect_trace: bool = False,
     pinned_snapshot_bundle: Any | None = None,
+    pinned_effective_entry_contract: Any | None = None,
 ):
     from .residual_direct_env import (
         DEFAULT_PHASE_CURRICULUM_MAX_DECISIONS,
@@ -2081,8 +2686,29 @@ def _construct_live_runner(
         getattr(args, "command", "train") == "train"
         and args.stage == "phase-curriculum"
     )
-    if phase_curriculum and pinned_snapshot_bundle is None:
-        pinned_snapshot_bundle = _capture_runtime_snapshot_bundle(args)
+    if args.num_envs == 1:
+        if (
+            pinned_snapshot_bundle is None
+            and pinned_effective_entry_contract is None
+        ):
+            (
+                pinned_snapshot_bundle,
+                pinned_effective_entry_contract,
+            ) = _pinned_runtime_phase_contracts(args)
+        elif pinned_effective_entry_contract is None:
+            candidate = getattr(args, "_pinned_effective_entry_contract", None)
+            if (
+                candidate is not None
+                and getattr(candidate, "phase_snapshot_bundle_sha256", None)
+                == getattr(pinned_snapshot_bundle, "bundle_sha256", None)
+            ):
+                pinned_effective_entry_contract = candidate
+            else:
+                pinned_effective_entry_contract = (
+                    _capture_runtime_effective_entry_contract(
+                        pinned_snapshot_bundle
+                    )
+                )
     selected_seeds = (
         profile.seed_train if reset_seeds is None else tuple(reset_seeds)
     )
@@ -2105,6 +2731,9 @@ def _construct_live_runner(
             IsaacFSMBackend(
                 simulation_app,
                 expected_phase_snapshot_bundle=pinned_snapshot_bundle,
+                expected_effective_entry_contract=(
+                    pinned_effective_entry_contract
+                ),
             ),
             collect_trace=collect_trace,
         )
@@ -2455,6 +3084,156 @@ def _require_training_soft_reset_acceptance(
     return evidence
 
 
+def _require_training_phase_effective_entry_holdout(
+    args: argparse.Namespace,
+) -> Mapping[str, Any] | None:
+    """Reject provisional effective-entry data before phase-curriculum launch."""
+
+    if args.stage != "phase-curriculum":
+        return None
+    supplied = getattr(args, "phase_effective_entry_holdout_acceptance", None)
+    if supplied is None:
+        raise CliError(
+            "phase-curriculum training requires an explicit "
+            "--phase-effective-entry-holdout-acceptance produced from twelve "
+            "independent seed-1003 P02-P13 live probes"
+        )
+    from .phase_effective_entry_holdout import (
+        PhaseEffectiveEntryHoldoutError,
+        validate_phase_effective_entry_holdout_acceptance,
+    )
+
+    snapshot_bundle, effective_entry_contract = _pinned_runtime_phase_contracts(args)
+    try:
+        evidence = validate_phase_effective_entry_holdout_acceptance(
+            _resolve_project_path(Path(supplied)),
+            project_root=PROJECT_ROOT,
+            config_paths=_checkpoint_config_paths(args),
+            snapshot_bundle=snapshot_bundle,
+            effective_entry_contract=effective_entry_contract,
+        )
+    except PhaseEffectiveEntryHoldoutError as exc:
+        raise CliError(
+            f"phase effective-entry holdout acceptance rejected: {exc}"
+        ) from exc
+    args.phase_effective_entry_holdout_acceptance = Path(evidence["path"])
+    args._phase_effective_entry_holdout_evidence = evidence
+    return evidence
+
+
+def _revalidate_training_phase_effective_entry_holdout(
+    args: argparse.Namespace,
+    pinned_snapshot_bundle: Any,
+    pinned_effective_entry_contract: Any,
+) -> Mapping[str, Any] | None:
+    """Re-read the gate and all source runs without accepting replacement bytes."""
+
+    expected = getattr(args, "_phase_effective_entry_holdout_evidence", None)
+    if not isinstance(expected, Mapping):
+        if args.stage == "phase-curriculum":
+            raise CliError("phase-curriculum holdout evidence was not pinned pre-launch")
+        return None
+    from .phase_effective_entry_holdout import (
+        PhaseEffectiveEntryHoldoutError,
+        validate_phase_effective_entry_holdout_acceptance,
+    )
+
+    try:
+        current = validate_phase_effective_entry_holdout_acceptance(
+            Path(str(expected.get("path", ""))),
+            project_root=PROJECT_ROOT,
+            config_paths=_checkpoint_config_paths(args),
+            snapshot_bundle=pinned_snapshot_bundle,
+            effective_entry_contract=pinned_effective_entry_contract,
+        )
+    except PhaseEffectiveEntryHoldoutError as exc:
+        raise CliError(
+            f"phase effective-entry holdout changed after capture: {exc}"
+        ) from exc
+    if current != dict(expected):
+        raise CliError("phase effective-entry holdout evidence changed after capture")
+    return current
+
+
+def _inherit_training_phase_effective_entry_holdout(
+    args: argparse.Namespace,
+    checkpoint_infos: Mapping[str, Any],
+    pinned_snapshot_bundle: Any,
+    pinned_effective_entry_contract: Any,
+) -> Mapping[str, Any] | None:
+    """Carry the external reset qualification through later training stages.
+
+    Only a first phase-curriculum entry from smoke may rely on the explicit
+    pre-launch pin.  A phase-curriculum continuation and every later stage must
+    retain and revalidate the exact evidence embedded in its resume checkpoint.
+    """
+
+    if args.stage == "smoke":
+        return getattr(args, "_phase_effective_entry_holdout_evidence", None)
+    resume_stage = checkpoint_infos.get("stage")
+    if args.stage == "phase-curriculum" and (
+        not isinstance(resume_stage, str)
+        or resume_stage not in ("smoke", "phase-curriculum")
+    ):
+        raise CliError(
+            "phase-curriculum resume checkpoint has invalid or missing stage ancestry"
+        )
+    if args.stage not in {
+        "phase-curriculum",
+        "full-episode",
+        "mild-randomization",
+    }:
+        return getattr(args, "_phase_effective_entry_holdout_evidence", None)
+    embedded = checkpoint_infos.get("phase_effective_entry_holdout_evidence")
+    if not isinstance(embedded, Mapping):
+        if args.stage == "phase-curriculum" and resume_stage == "smoke":
+            return getattr(args, "_phase_effective_entry_holdout_evidence", None)
+        raise CliError(
+            f"{args.stage} resume checkpoint omits phase effective-entry "
+            "holdout ancestry"
+        )
+    from .phase_effective_entry_holdout import (
+        PhaseEffectiveEntryHoldoutError,
+        validate_phase_effective_entry_holdout_acceptance,
+    )
+
+    try:
+        current = validate_phase_effective_entry_holdout_acceptance(
+            Path(str(embedded.get("path", ""))),
+            project_root=PROJECT_ROOT,
+            config_paths=_checkpoint_config_paths(args),
+            snapshot_bundle=pinned_snapshot_bundle,
+            effective_entry_contract=pinned_effective_entry_contract,
+        )
+    except PhaseEffectiveEntryHoldoutError as exc:
+        raise CliError(
+            f"inherited phase effective-entry holdout acceptance rejected: {exc}"
+        ) from exc
+    if current != dict(embedded):
+        raise CliError(
+            "resume checkpoint phase effective-entry holdout evidence is stale "
+            "or was substituted"
+        )
+    explicit = getattr(args, "_phase_effective_entry_holdout_evidence", None)
+    if args.stage == "phase-curriculum" and (
+        not isinstance(explicit, Mapping) or dict(explicit) != current
+    ):
+        raise CliError(
+            "phase-curriculum resume checkpoint holdout differs from the "
+            "explicit pre-launch evidence"
+        )
+    expected_fields, _ = _phase_effective_entry_holdout_fields(current)
+    for field, value in expected_fields.items():
+        if checkpoint_infos.get(field) != value:
+            raise CliError(
+                "resume checkpoint holdout manifest/infos binding differs for "
+                f"{field!r}"
+            )
+    args.phase_effective_entry_holdout_acceptance = Path(current["path"])
+    args._phase_effective_entry_holdout_evidence = current
+    return current
+
+
 def _initialize_zero_residual(args: argparse.Namespace, simulation_app: Any) -> int:
     """Create and verify a run-local zero actor without publishing canonical state."""
 
@@ -2467,7 +3246,9 @@ def _initialize_zero_residual(args: argparse.Namespace, simulation_app: Any) -> 
     if args.checkpoint is not None or args.checkpoint_manifest is not None:
         raise CliError("zero-residual checkpoint initialization cannot resume a checkpoint")
 
-    pinned_snapshot_bundle = _capture_runtime_snapshot_bundle(args)
+    pinned_snapshot_bundle, pinned_effective_entry_contract = (
+        _pinned_runtime_phase_contracts(args)
+    )
     from .rl_library_wrapper import (
         capture_training_rng_state,
         initialize_zero_mean_actor,
@@ -2486,12 +3267,15 @@ def _initialize_zero_residual(args: argparse.Namespace, simulation_app: Any) -> 
         max_iterations=1,
         reset_seeds=(args.seed,),
         pinned_snapshot_bundle=pinned_snapshot_bundle,
+        pinned_effective_entry_contract=pinned_effective_entry_contract,
     )
     if args.seed not in profile.seed_train:
         raise CliError("initializer seed is not in the configured train seed set")
     if env.num_envs != 1:
         raise CliError("zero-residual initializer constructed a non-single environment")
-    _revalidate_pinned_snapshot_bundle(pinned_snapshot_bundle)
+    _revalidate_pinned_phase_contracts(
+        pinned_snapshot_bundle, pinned_effective_entry_contract
+    )
     initialize_zero_mean_actor(runner)
     if not zero_mean_actor_output_layer_verified(runner):
         raise CliError("zero-residual actor output layer is not exact zero before save")
@@ -2503,6 +3287,7 @@ def _initialize_zero_residual(args: argparse.Namespace, simulation_app: Any) -> 
             global_step=0,
             stage="initial_zero_residual",
             pinned_snapshot_bundle=pinned_snapshot_bundle,
+            pinned_effective_entry_contract=pinned_effective_entry_contract,
         ),
         "optimizer_learning_rate": optimizer_learning_rate(runner),
         "training_rng_seed_evidence": rng_seed_evidence,
@@ -2518,7 +3303,9 @@ def _initialize_zero_residual(args: argparse.Namespace, simulation_app: Any) -> 
         manifest,
         purpose="initialize-zero-residual-round-trip",
     )
-    _revalidate_pinned_snapshot_bundle(pinned_snapshot_bundle)
+    _revalidate_pinned_phase_contracts(
+        pinned_snapshot_bundle, pinned_effective_entry_contract
+    )
     round_trip = load_checkpoint_round_trip(
         runner, checkpoint, captured_bundle=capture
     )
@@ -2528,7 +3315,9 @@ def _initialize_zero_residual(args: argparse.Namespace, simulation_app: Any) -> 
         manifest_path=manifest,
         expected_global_policy_decisions=0,
         expected_runtime_contract=_current_checkpoint_runtime_contract(
-            args, pinned_snapshot_bundle=pinned_snapshot_bundle
+            args,
+            pinned_snapshot_bundle=pinned_snapshot_bundle,
+            pinned_effective_entry_contract=pinned_effective_entry_contract,
         ),
         captured_bundle=capture,
     )
@@ -2539,7 +3328,9 @@ def _initialize_zero_residual(args: argparse.Namespace, simulation_app: Any) -> 
         or not zero_mean_actor_output_layer_verified(runner)
     ):
         raise CliError("reloaded zero-residual checkpoint is not an exact-zero actor")
-    _revalidate_pinned_snapshot_bundle(pinned_snapshot_bundle)
+    _revalidate_pinned_phase_contracts(
+        pinned_snapshot_bundle, pinned_effective_entry_contract
+    )
     result = {
         "schema": "wlr50_clean.initial_zero_residual_checkpoint_run.v1",
         "stage": "initial_zero_residual",
@@ -2555,6 +3346,9 @@ def _initialize_zero_residual(args: argparse.Namespace, simulation_app: Any) -> 
         "zero_mean_actor_output_layer_verified_before_save": True,
         "zero_mean_actor_output_layer_verified_after_load": True,
         "phase_snapshot_bundle": pinned_snapshot_bundle.as_record(),
+        "phase_effective_entry_contract": (
+            pinned_effective_entry_contract.as_record()
+        ),
         "training_rng_seed_evidence": rng_seed_evidence,
         "runner_config": config,
         "training_profile_seed_train": list(profile.seed_train),
@@ -2630,7 +3424,23 @@ def _train(args: argparse.Namespace, simulation_app: Any) -> int:
     # Phase-curriculum resets are loaded by the production backend from one
     # fixed root.  All other training stages bind the same bundle for a common
     # checkpoint ABI.
-    pinned_snapshot_bundle = _capture_runtime_snapshot_bundle(args)
+    pinned_snapshot_bundle, pinned_effective_entry_contract = (
+        _pinned_runtime_phase_contracts(args)
+    )
+    holdout_evidence = getattr(
+        args, "_phase_effective_entry_holdout_evidence", None
+    )
+    if args.stage == "phase-curriculum" and holdout_evidence is None:
+        holdout_evidence = _require_training_phase_effective_entry_holdout(args)
+    _revalidate_training_phase_effective_entry_holdout(
+        args, pinned_snapshot_bundle, pinned_effective_entry_contract
+    )
+    rollout_evidence = getattr(
+        args, "_phase_zero_residual_rollout_evidence", None
+    )
+    if args.stage == "phase-curriculum" and rollout_evidence is None:
+        rollout_evidence = _require_training_phase_zero_residual_rollout(args)
+    _revalidate_training_phase_zero_residual_rollout(args)
     from .rl_library_wrapper import (
         capture_training_rng_state,
         entropy_coefficient_at_policy_decision,
@@ -2679,13 +3489,20 @@ def _train(args: argparse.Namespace, simulation_app: Any) -> int:
     iterations = iterations_for_policy_decisions(
         budget, num_envs=args.num_envs, rollout_length=profile.rollout_length
     )
+    _revalidate_training_phase_effective_entry_holdout(
+        args, pinned_snapshot_bundle, pinned_effective_entry_contract
+    )
+    _revalidate_training_phase_zero_residual_rollout(args)
     profile, env, runner, config = _construct_live_runner(
         args,
         simulation_app,
         max_iterations=iterations,
         pinned_snapshot_bundle=pinned_snapshot_bundle,
+        pinned_effective_entry_contract=pinned_effective_entry_contract,
     )
-    _revalidate_pinned_snapshot_bundle(pinned_snapshot_bundle)
+    _revalidate_pinned_phase_contracts(
+        pinned_snapshot_bundle, pinned_effective_entry_contract
+    )
     checkpoints = OUTPUT_ROOT / "checkpoints"
     checkpoints.mkdir(parents=True, exist_ok=True)
     initial_path = checkpoints / "checkpoint_initial_zero_residual.pt"
@@ -2708,12 +3525,30 @@ def _train(args: argparse.Namespace, simulation_app: Any) -> int:
         starting_manifest_path,
         purpose=f"train-resume-{args.stage}",
     )
-    _revalidate_pinned_snapshot_bundle(pinned_snapshot_bundle)
+    _revalidate_pinned_phase_contracts(
+        pinned_snapshot_bundle, pinned_effective_entry_contract
+    )
     starting_infos = load_checkpoint_round_trip(
         runner,
         starting_checkpoint,
         captured_bundle=starting_capture,
     )
+    inherited_holdout = _inherit_training_phase_effective_entry_holdout(
+        args,
+        starting_infos,
+        pinned_snapshot_bundle,
+        pinned_effective_entry_contract,
+    )
+    if inherited_holdout is not None:
+        holdout_evidence = inherited_holdout
+    inherited_rollout = _inherit_training_phase_zero_residual_rollout(
+        args,
+        starting_infos,
+        pinned_snapshot_bundle,
+        pinned_effective_entry_contract,
+    )
+    if inherited_rollout is not None:
+        rollout_evidence = inherited_rollout
     if starting_checkpoint == initial_path:
         if (
             starting_infos.get("stage") != "initial_zero_residual"
@@ -2729,7 +3564,15 @@ def _train(args: argparse.Namespace, simulation_app: Any) -> int:
         starting_infos,
         manifest_path=starting_manifest_path,
         expected_runtime_contract=_current_checkpoint_runtime_contract(
-            args, pinned_snapshot_bundle=pinned_snapshot_bundle
+            args,
+            pinned_snapshot_bundle=pinned_snapshot_bundle,
+            pinned_effective_entry_contract=pinned_effective_entry_contract,
+            include_phase_effective_entry_holdout=(
+                "phase_effective_entry_holdout_evidence" in starting_infos
+            ),
+            include_phase_zero_residual_rollout=(
+                "phase_zero_residual_rollout_evidence" in starting_infos
+            ),
         ),
         captured_bundle=starting_capture,
     )
@@ -2762,7 +3605,13 @@ def _train(args: argparse.Namespace, simulation_app: Any) -> int:
         global_policy_decision=starting_step + stage_decisions,
         planned_policy_decisions=planned_entropy_decisions,
     )
-    _revalidate_pinned_snapshot_bundle(pinned_snapshot_bundle)
+    _revalidate_pinned_phase_contracts(
+        pinned_snapshot_bundle, pinned_effective_entry_contract
+    )
+    _revalidate_training_phase_effective_entry_holdout(
+        args, pinned_snapshot_bundle, pinned_effective_entry_contract
+    )
+    _revalidate_training_phase_zero_residual_rollout(args)
     started = time.perf_counter()
     applied_entropy_schedule = learn_with_entropy_schedule(
         runner,
@@ -2771,7 +3620,9 @@ def _train(args: argparse.Namespace, simulation_app: Any) -> int:
         entropy_end=entropy_window_end,
         init_at_random_ep_len=False,
     )
-    _revalidate_pinned_snapshot_bundle(pinned_snapshot_bundle)
+    _revalidate_pinned_phase_contracts(
+        pinned_snapshot_bundle, pinned_effective_entry_contract
+    )
     training_telemetry = dict(env.training_telemetry())
     _validate_training_telemetry(
         training_telemetry,
@@ -2780,12 +3631,19 @@ def _train(args: argparse.Namespace, simulation_app: Any) -> int:
     )
     actual_decisions = starting_step + stage_decisions
     run_checkpoint = args.run_dir / f"checkpoint_{args.stage}_{actual_decisions}.pt"
-    _revalidate_pinned_snapshot_bundle(pinned_snapshot_bundle)
+    _revalidate_pinned_phase_contracts(
+        pinned_snapshot_bundle, pinned_effective_entry_contract
+    )
+    _revalidate_training_phase_effective_entry_holdout(
+        args, pinned_snapshot_bundle, pinned_effective_entry_contract
+    )
+    _revalidate_training_phase_zero_residual_rollout(args)
     manifest = _checkpoint_manifest_payload(
         args,
         global_step=actual_decisions,
         stage=args.stage,
         pinned_snapshot_bundle=pinned_snapshot_bundle,
+        pinned_effective_entry_contract=pinned_effective_entry_contract,
     )
     manifest = {
         **manifest,
@@ -2827,7 +3685,15 @@ def _train(args: argparse.Namespace, simulation_app: Any) -> int:
         manifest_path=run_manifest,
         expected_global_policy_decisions=actual_decisions,
         expected_runtime_contract=_current_checkpoint_runtime_contract(
-            args, pinned_snapshot_bundle=pinned_snapshot_bundle
+            args,
+            pinned_snapshot_bundle=pinned_snapshot_bundle,
+            pinned_effective_entry_contract=pinned_effective_entry_contract,
+            include_phase_effective_entry_holdout=(
+                holdout_evidence is not None
+            ),
+            include_phase_zero_residual_rollout=(
+                rollout_evidence is not None
+            ),
         ),
         captured_bundle=saved_capture,
     )
@@ -2902,6 +3768,9 @@ def _train(args: argparse.Namespace, simulation_app: Any) -> int:
             profile.early_stop_when_promotion_gate_passes
         ),
         "phase_snapshot_bundle": pinned_snapshot_bundle.as_record(),
+        "phase_effective_entry_contract": (
+            pinned_effective_entry_contract.as_record()
+        ),
         "environment_contract": dict(env.cfg),
         "training_telemetry": training_telemetry,
         "entropy_schedule": {
@@ -2922,6 +3791,12 @@ def _train(args: argparse.Namespace, simulation_app: Any) -> int:
         "training_rng_resume_evidence": rng_resume_evidence,
         "soft_reset_acceptance": (
             None if soft_reset_evidence is None else dict(soft_reset_evidence)
+        ),
+        "phase_effective_entry_holdout_evidence": (
+            None if holdout_evidence is None else dict(holdout_evidence)
+        ),
+        "phase_zero_residual_rollout_evidence": (
+            None if rollout_evidence is None else dict(rollout_evidence)
         ),
         "vector_benchmark_acceptance": (
             None
@@ -2955,6 +3830,13 @@ def _train(args: argparse.Namespace, simulation_app: Any) -> int:
         "round_trip_infos": dict(round_trip),
         "runner_config": config,
     }
+    _revalidate_pinned_phase_contracts(
+        pinned_snapshot_bundle, pinned_effective_entry_contract
+    )
+    _revalidate_training_phase_effective_entry_holdout(
+        args, pinned_snapshot_bundle, pinned_effective_entry_contract
+    )
+    _revalidate_training_phase_zero_residual_rollout(args)
     _json(args.run_dir / "training_result.json", training)
     print(json.dumps(training, separators=(",", ":")), flush=True)
     return 0
@@ -2967,6 +3849,10 @@ def _evaluate(args: argparse.Namespace, simulation_app: Any) -> int:
         validate_resume_checkpoint_provenance,
     )
     from .live_stream_writer import LiveStreamWriter
+
+    pinned_snapshot_bundle, pinned_effective_entry_contract = (
+        _pinned_runtime_phase_contracts(args)
+    )
 
     checkpoint = _resolve_project_path(args.checkpoint) if args.checkpoint else None
     if checkpoint is None or not checkpoint.is_file():
@@ -2995,8 +3881,9 @@ def _evaluate(args: argparse.Namespace, simulation_app: Any) -> int:
     checkpoint_manifest_payload = checkpoint_capture.manifest_payload
     _require_manifest_snapshot_contract(
         checkpoint_manifest_payload,
-        _validated_runtime_snapshot_bundle(args),
+        pinned_snapshot_bundle.as_record(),
         label="evaluation checkpoint manifest",
+        effective_entry_contract=pinned_effective_entry_contract,
     )
 
     _, env, runner, _ = _construct_live_runner(
@@ -3005,6 +3892,8 @@ def _evaluate(args: argparse.Namespace, simulation_app: Any) -> int:
         max_iterations=1,
         reset_seeds=(args.seed,),
         collect_trace=True,
+        pinned_snapshot_bundle=pinned_snapshot_bundle,
+        pinned_effective_entry_contract=pinned_effective_entry_contract,
     )
     infos = load_checkpoint_round_trip(
         runner,
@@ -3015,7 +3904,11 @@ def _evaluate(args: argparse.Namespace, simulation_app: Any) -> int:
         checkpoint,
         infos,
         manifest_path=checkpoint_manifest,
-        expected_runtime_contract=_current_checkpoint_runtime_contract(args),
+        expected_runtime_contract=_current_checkpoint_runtime_contract(
+            args,
+            pinned_snapshot_bundle=pinned_snapshot_bundle,
+            pinned_effective_entry_contract=pinned_effective_entry_contract,
+        ),
         captured_bundle=checkpoint_capture,
     )
     if len(env.environments) != 1:
@@ -3119,6 +4012,9 @@ def _evaluate(args: argparse.Namespace, simulation_app: Any) -> int:
         "wall_time_s": time.perf_counter() - started,
         "checkpoint_infos": dict(infos),
     }
+    _revalidate_pinned_phase_contracts(
+        pinned_snapshot_bundle, pinned_effective_entry_contract
+    )
     _json(args.run_dir / "checkpoint_evaluation.json", result)
     print(json.dumps(result, separators=(",", ":")), flush=True)
     # A worker's contract is evidence capture, not candidate promotion.  A
@@ -3359,7 +4255,8 @@ def _export_paired_evaluation(args: argparse.Namespace) -> int:
         raise CliError(
             "paired episode directories differ from their finalized aggregate workers"
         )
-    snapshot_bundle = _validated_runtime_snapshot_bundle(args)
+    snapshot_pin, effective_entry_pin = _pinned_runtime_phase_contracts(args)
+    snapshot_bundle = snapshot_pin.as_record()
     runtime_hash_paths = {
         "controller_hash": PROJECT_ROOT / "configs" / "fsm_states.yaml",
         "environment_hash": PROJECT_ROOT / "configs" / "environment_lock.json",
@@ -3375,13 +4272,13 @@ def _export_paired_evaluation(args: argparse.Namespace) -> int:
         raise CliError("internal paired-export checkpoint hash set is incomplete")
 
     def require_current_checkpoint_contract() -> None:
-        current_snapshot_bundle = _validated_runtime_snapshot_bundle(args)
-        if current_snapshot_bundle != snapshot_bundle:
-            raise CliError("phase snapshot bundle changed during paired evaluation")
+        _revalidate_pinned_phase_contracts(snapshot_pin, effective_entry_pin)
+        current_snapshot_bundle = snapshot_pin.as_record()
         _require_manifest_snapshot_contract(
             provenance.manifest,
             current_snapshot_bundle,
             label="candidate checkpoint manifest",
+            effective_entry_contract=effective_entry_pin,
         )
         for field, path in runtime_hash_paths.items():
             declared = str(provenance.manifest.get(field, "")).lower()
@@ -3612,6 +4509,9 @@ def _export_inference_actor(args: argparse.Namespace, simulation_app: Any) -> in
         raise CliError("inference actor export requires num-envs=1")
     if not args.deterministic:
         raise CliError("inference actor export requires --deterministic")
+    pinned_snapshot_bundle, pinned_effective_entry_contract = (
+        _pinned_runtime_phase_contracts(args)
+    )
     checkpoint = _required_artifact_argument(args, "checkpoint", "--checkpoint")
     manifest_path = _required_artifact_argument(
         args, "checkpoint_manifest", "--checkpoint-manifest"
@@ -3625,8 +4525,9 @@ def _export_inference_actor(args: argparse.Namespace, simulation_app: Any) -> in
     manifest = checkpoint_capture.manifest_payload
     _require_manifest_snapshot_contract(
         manifest,
-        _validated_runtime_snapshot_bundle(args),
+        pinned_snapshot_bundle.as_record(),
         label="inference-export checkpoint manifest",
+        effective_entry_contract=pinned_effective_entry_contract,
     )
 
     _, _, runner, _ = _construct_live_runner(
@@ -3635,6 +4536,8 @@ def _export_inference_actor(args: argparse.Namespace, simulation_app: Any) -> in
         max_iterations=1,
         reset_seeds=(args.seed,),
         collect_trace=False,
+        pinned_snapshot_bundle=pinned_snapshot_bundle,
+        pinned_effective_entry_contract=pinned_effective_entry_contract,
     )
     infos = load_checkpoint_round_trip(
         runner,
@@ -3645,7 +4548,11 @@ def _export_inference_actor(args: argparse.Namespace, simulation_app: Any) -> in
         checkpoint,
         infos,
         manifest_path=manifest_path,
-        expected_runtime_contract=_current_checkpoint_runtime_contract(args),
+        expected_runtime_contract=_current_checkpoint_runtime_contract(
+            args,
+            pinned_snapshot_bundle=pinned_snapshot_bundle,
+            pinned_effective_entry_contract=pinned_effective_entry_contract,
+        ),
         captured_bundle=checkpoint_capture,
     )
     required_info_fields = (
@@ -3691,6 +4598,9 @@ def _export_inference_actor(args: argparse.Namespace, simulation_app: Any) -> in
         "onnx_actor": None if artifacts.onnx_actor is None else str(artifacts.onnx_actor),
         "export_manifest": str(artifacts.export_manifest),
     }
+    _revalidate_pinned_phase_contracts(
+        pinned_snapshot_bundle, pinned_effective_entry_contract
+    )
     _json(args.run_dir / "inference_actor_export.json", result)
     print(json.dumps(result, separators=(",", ":")), flush=True)
     return 0
@@ -3737,12 +4647,16 @@ def _require_video_capture_request(args: argparse.Namespace) -> None:
     manifest_path = _required_artifact_argument(
         args, "checkpoint_manifest", "--checkpoint-manifest"
     )
+    pinned_snapshot_bundle, pinned_effective_entry_contract = (
+        _pinned_runtime_phase_contracts(args)
+    )
     provenance = validate_checkpoint_artifact_provenance(checkpoint, manifest_path)
     manifest = provenance.manifest
     _require_manifest_snapshot_contract(
         manifest,
-        _validated_runtime_snapshot_bundle(args),
+        pinned_snapshot_bundle.as_record(),
         label="video checkpoint manifest",
+        effective_entry_contract=pinned_effective_entry_contract,
     )
     if (
         manifest.get("publication_role") != "improved"
@@ -3767,6 +4681,10 @@ def _capture_video_source(args: argparse.Namespace, simulation_app: Any) -> int:
 
     from .video_runtime import capture_live_policy_video
 
+    pinned_snapshot_bundle, pinned_effective_entry_contract = (
+        _pinned_runtime_phase_contracts(args)
+    )
+
     configured_viewport = _configure_active_viewport()
     source_root = Path(args._video_source_root)
 
@@ -3790,7 +4708,12 @@ def _capture_video_source(args: argparse.Namespace, simulation_app: Any) -> int:
         from .residual_direct_env import ResidualEpisodeEnv
 
         episode = ResidualEpisodeEnv(
-            IsaacFSMBackend(simulation_app), collect_trace=True
+            IsaacFSMBackend(
+                simulation_app,
+                expected_phase_snapshot_bundle=pinned_snapshot_bundle,
+                expected_effective_entry_contract=pinned_effective_entry_contract,
+            ),
+            collect_trace=True,
         )
         capture = capture_live_policy_video(
             episode,
@@ -3820,6 +4743,8 @@ def _capture_video_source(args: argparse.Namespace, simulation_app: Any) -> int:
             max_iterations=1,
             reset_seeds=(args.seed,),
             collect_trace=True,
+            pinned_snapshot_bundle=pinned_snapshot_bundle,
+            pinned_effective_entry_contract=pinned_effective_entry_contract,
         )
         if len(env.environments) != 1:
             raise CliError("PPO video runner did not expose exactly one episode")
@@ -3833,7 +4758,11 @@ def _capture_video_source(args: argparse.Namespace, simulation_app: Any) -> int:
             args.checkpoint,
             infos,
             manifest_path=args.checkpoint_manifest,
-            expected_runtime_contract=_current_checkpoint_runtime_contract(args),
+            expected_runtime_contract=_current_checkpoint_runtime_contract(
+                args,
+                pinned_snapshot_bundle=pinned_snapshot_bundle,
+                pinned_effective_entry_contract=pinned_effective_entry_contract,
+            ),
             captured_bundle=checkpoint_capture,
         )
         offline_provenance = dict(args._video_checkpoint_provenance)
@@ -3895,6 +4824,9 @@ def _capture_video_source(args: argparse.Namespace, simulation_app: Any) -> int:
             else checkpoint_capture.as_dict()
         ),
     }
+    _revalidate_pinned_phase_contracts(
+        pinned_snapshot_bundle, pinned_effective_entry_contract
+    )
     _json(args.run_dir / "video_source_capture.json", result)
     print(json.dumps(result, separators=(",", ":")), flush=True)
     return 0
@@ -3971,6 +4903,11 @@ def _cleanup_isaac(simulation_app: Any) -> None:
 def _dispatch_live(args: argparse.Namespace) -> int:
     if args.command == "train":
         _require_canonical_initial_checkpoint(args)
+        _revalidate_training_phase_zero_residual_rollout(args)
+    phase_contracts = None
+    if args.command in PHASE_CONTRACT_LIVE_COMMANDS:
+        phase_contracts = _pinned_runtime_phase_contracts(args)
+        _revalidate_pinned_phase_contracts(*phase_contracts)
     # AppLauncher is the only Isaac import before the application exists.
     from isaaclab.app import AppLauncher
 
@@ -3991,6 +4928,8 @@ def _dispatch_live(args: argparse.Namespace) -> int:
             exit_code = _soft_reset_equivalence(args, app)
         elif args.command == "phase-snapshot-live-probe":
             exit_code = _phase_snapshot_live_probe(args, app)
+        elif args.command == "phase-zero-residual-rollout":
+            exit_code = _phase_zero_residual_rollout(args, app)
         elif args.command == "vector-benchmark":
             exit_code = _vector_benchmark(args, app)
         elif args.command == "initialize-zero-residual":
@@ -4005,6 +4944,10 @@ def _dispatch_live(args: argparse.Namespace) -> int:
             exit_code = _capture_video_source(args, app)
         else:
             raise CliError(f"unsupported live command: {args.command}")
+        if phase_contracts is not None:
+            _revalidate_pinned_phase_contracts(*phase_contracts)
+        if args.command == "train":
+            _revalidate_training_phase_zero_residual_rollout(args)
         # Closing the stack re-hashes both the source pair and the private
         # load-only copies.  Do this before publishing the authoritative live
         # exit result so an integrity failure cannot be finalized as success.
@@ -4050,8 +4993,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _publish_videos(args)
         if args.command == "publish-initial-zero-residual":
             return _publish_initial_zero_residual(args)
+        if args.command in PHASE_CONTRACT_LIVE_COMMANDS:
+            # Capture the authoritative snapshot bundle first, then its bound
+            # effective-entry contract, before AppLauncher or scene mutation.
+            _capture_runtime_phase_contracts(args)
         if args.command in {
             "phase-snapshot-live-probe",
+            "phase-zero-residual-rollout",
             "initialize-zero-residual",
             "train",
             "evaluate",
@@ -4064,9 +5012,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             # Resolve immutable checkpoint evidence and reject headless or
             # multi-episode capture before importing AppLauncher.
             _require_video_capture_request(args)
+        if args.command == "phase-zero-residual-rollout":
+            _validate_phase_rollout_holdout(args)
         if args.command == "train":
             # Validate before AppLauncher so a missing/stale proof cannot even
             # start an expensive live training process.
+            _require_training_phase_effective_entry_holdout(args)
+            _require_training_phase_zero_residual_rollout(args)
             _require_training_soft_reset_acceptance(args)
             if args.num_envs > 1:
                 from .rl_library_wrapper import load_training_profile

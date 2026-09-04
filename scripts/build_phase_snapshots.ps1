@@ -13,7 +13,10 @@ $Configs = @(
     "configs\frozen_successful_fsm.yaml",
     "configs\environment_lock.json",
     "configs\fsm_states.yaml",
-    "configs\recording_motion_contract.json"
+    "configs\recording_motion_contract.json",
+    "configs\ppo_action_projection.yaml",
+    "configs\ppo_observation_schema.json",
+    "configs\conformance_policy.yaml"
 )
 $BaseArgs = @(
     "--training-config", $Configs[0],

@@ -521,8 +521,10 @@ def test_soft_reset_command_uses_one_backend_and_writes_compact_acceptance(
     backend_instances = []
 
     class FakeBackend:
-        def __init__(self, simulation_app):
+        def __init__(self, simulation_app, **kwargs):
             self.simulation_app = simulation_app
+            assert kwargs["expected_phase_snapshot_bundle"] is not None
+            assert kwargs["expected_effective_entry_contract"] is not None
             backend_instances.append(self)
 
     class FakeEpisode:
@@ -656,8 +658,10 @@ def _install_reset_probe_fakes(
     backend_instances: list[object] = []
 
     class FakeBackend:
-        def __init__(self, simulation_app):
+        def __init__(self, simulation_app, **kwargs):
             self.simulation_app = simulation_app
+            assert kwargs["expected_phase_snapshot_bundle"] is not None
+            assert kwargs["expected_effective_entry_contract"] is not None
             backend_instances.append(self)
 
     class FakeEpisode:

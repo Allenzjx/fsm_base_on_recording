@@ -605,16 +605,174 @@ class ResidualEpisodeEnv:
     def reset(
         self, *, seed: int, options: Mapping[str, Any] | None = None
     ) -> tuple[tuple[float, ...], Mapping[str, Any]]:
-        self.seed = int(seed)
-        self.frame = self.backend.reset(seed=self.seed, options=dict(options or {}))
-        self.bridge.reset(state_id=self.frame.state_id)
+        reset_seed = int(seed)
+        frame = self.backend.reset(seed=reset_seed, options=dict(options or {}))
+        self._validate_reset_frame(frame)
+        self.seed = reset_seed
+        self.frame = frame
+        self.bridge.reset(state_id=frame.state_id)
         self.previous_residual = (0.0,) * ACTION_DIMENSION
         self.previous_previous_residual = (0.0,) * ACTION_DIMENSION
         self.decision_count = 0
         self.done = False
         self.trace = []
-        self.observation = self._encode(self.frame)
-        return self.observation, dict(self.frame.info)
+        self.observation = self._encode(frame)
+        return self.observation, dict(frame.info)
+
+    def _validate_reset_frame(self, frame: AuthoritativeFrame) -> None:
+        """Reject a reset that is already terminal, unsafe, or controller-blocked."""
+
+        signals = frame.termination_signals
+        terminal_fields = (
+            ("SUCCESS", "success"),
+            ("BODY_COLLISION", "body_collision"),
+            ("WHEEL_ONLY_CLIMB", "wheel_only_climb"),
+            ("FALL", "fall"),
+            ("NAN_INF", "nan_inf"),
+            ("HARD_JOINT_LIMIT", "hard_joint_limit"),
+            ("PHYSICS_EXPLOSION", "physics_explosion"),
+            ("TIMEOUT", "timeout"),
+        )
+        terminal_sources = [
+            label
+            for label, field_name in terminal_fields
+            if bool(_member(signals, field_name, False))
+        ]
+        timeout_s = _member(_member(self.termination_evaluator, "config"), "timeout_s")
+        if timeout_s is not None:
+            try:
+                reset_timed_out = (
+                    math.isfinite(float(timeout_s))
+                    and float(frame.sim_time_s) + 1.0e-12 >= float(timeout_s)
+                )
+            except (TypeError, ValueError):
+                reset_timed_out = False
+            if reset_timed_out and "TIMEOUT" not in terminal_sources:
+                terminal_sources.append("TIMEOUT")
+        info = frame.info
+        for info_flag in ("terminated", "truncated", "done"):
+            if bool(info.get(info_flag, False)):
+                terminal_sources.append(f"info.{info_flag}")
+        if info.get("termination_reason") not in (None, ""):
+            terminal_sources.append("info.termination_reason")
+        if terminal_sources:
+            raise ResidualDirectEnvError(
+                "backend returned a terminal reset frame: "
+                + ", ".join(terminal_sources)
+            )
+
+        safety = frame.safety_projection
+        unsafe_safety = []
+        if not bool(_member(safety, "residual_enabled", False)):
+            unsafe_safety.append("residual_disabled")
+        expected_safety_mask = (1,) * ACTION_DIMENSION
+        if tuple(_member(safety, "channel_mask_full12", ())) != expected_safety_mask:
+            unsafe_safety.append("channel_mask")
+        if bool(_member(safety, "force_wheels_zero", False)):
+            unsafe_safety.append("wheels_forced_zero")
+        if bool(_member(safety, "body_collision_detected", False)):
+            unsafe_safety.append("body_collision")
+        if bool(_member(safety, "wheel_only_climb_detected", False)):
+            unsafe_safety.append("wheel_only_climb")
+        if _member(safety, "override_full12") is not None:
+            unsafe_safety.append("override")
+        if _member(safety, "reason") is not None:
+            unsafe_safety.append("reason")
+        if unsafe_safety:
+            raise ResidualDirectEnvError(
+                "backend returned an unsafe reset SafetyProjection: "
+                + ", ".join(unsafe_safety)
+            )
+
+        raw_controller_frame = info.get("raw_controller_frame")
+        lifecycle_sources = []
+        if "controller_lifecycle" in info:
+            lifecycle_sources.append(
+                ("info.controller_lifecycle", info["controller_lifecycle"])
+            )
+        missing = object()
+        raw_lifecycle = _member(raw_controller_frame, "lifecycle", missing)
+        if raw_lifecycle is not missing:
+            lifecycle_sources.append(
+                ("raw_controller_frame.lifecycle", raw_lifecycle)
+            )
+        for source, lifecycle in lifecycle_sources:
+            lifecycle_value = str(getattr(lifecycle, "value", lifecycle))
+            if lifecycle_value != "EXECUTE_MOTION":
+                raise ResidualDirectEnvError(
+                    f"backend reset controller is not EXECUTE_MOTION: "
+                    f"{source}={lifecycle_value}"
+                )
+
+        controller_terminal_sources = []
+        for key in ("controller_task_result", "controller_result"):
+            if key in info:
+                result = info[key]
+                result_value = (
+                    None if result is None else str(getattr(result, "value", result))
+                )
+                if result_value not in (None, "", "RUNNING"):
+                    controller_terminal_sources.append(f"info.{key}={result_value}")
+        for key in (
+            "controller_termination",
+            "controller_reason",
+            "controller_details",
+            "first_blocker",
+            "pending_blocker",
+            "controller_blocker",
+        ):
+            if info.get(key) not in (None, "", (), [], {}):
+                controller_terminal_sources.append(f"info.{key}")
+        for key in ("controller_blocked", "controller_blocked_encoded_as_truncation"):
+            if bool(info.get(key, False)):
+                controller_terminal_sources.append(f"info.{key}")
+
+        termination_mapping = info.get("termination_mapping")
+        if isinstance(termination_mapping, Mapping):
+            mapped_result = termination_mapping.get("controller_result")
+            mapped_result_value = (
+                None
+                if mapped_result is None
+                else str(getattr(mapped_result, "value", mapped_result))
+            )
+            if mapped_result_value not in (None, "", "RUNNING"):
+                controller_terminal_sources.append(
+                    f"termination_mapping.controller_result={mapped_result_value}"
+                )
+            for key in (
+                "controller_reason",
+                "controller_details",
+                "first_blocker",
+                "active_sources",
+                "primary_source",
+            ):
+                if termination_mapping.get(key) not in (None, "", (), [], {}):
+                    controller_terminal_sources.append(f"termination_mapping.{key}")
+            if bool(
+                termination_mapping.get(
+                    "controller_blocked_encoded_as_truncation", False
+                )
+            ):
+                controller_terminal_sources.append(
+                    "termination_mapping.controller_blocked_encoded_as_truncation"
+                )
+
+        if raw_controller_frame is not None:
+            if _member(raw_controller_frame, "termination") is not None:
+                controller_terminal_sources.append("raw_controller_frame.termination")
+            if _member(raw_controller_frame, "first_blocker") not in (
+                None,
+                "",
+                (),
+                [],
+                {},
+            ):
+                controller_terminal_sources.append("raw_controller_frame.first_blocker")
+        if controller_terminal_sources:
+            raise ResidualDirectEnvError(
+                "backend returned controller termination or blocker state at reset: "
+                + ", ".join(controller_terminal_sources)
+            )
 
     def refresh_after_video_pre_action_hold(
         self,
@@ -800,9 +958,9 @@ class ResidualEpisodeEnv:
             phase_progress=frame.phase_progress,
             # The authoritative observation is built from the backend's
             # actual previous logical action.  This matters at a phase-entry
-            # snapshot: the reset-only physical write restores a non-zero
-            # action, while ``atomic_ack`` still describes the preceding
-            # zero-command settle because no episode action was issued.
+            # snapshot: the prior action is the source-t prime command that
+            # produced effective tick zero, not the preceding zero-command
+            # settle.  No policy episode action has been issued yet.
             previous_action_full12=frame.observation.previous_action_full12,
             previous_projected_residual_full12=self.bridge.previous_projected_residual_full12,
         )

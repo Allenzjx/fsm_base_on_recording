@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 
@@ -55,10 +56,59 @@ def test_common_wrapper_locks_runtime_reserves_logs_and_finalizes() -> None:
 
 def test_common_wrapper_rejects_duplicate_controlled_arguments() -> None:
     text = (_root() / "scripts" / "_invoke_ppo_cli.ps1").read_text(encoding="utf-8")
-    assert "$ControlledArgumentPattern" in text
-    assert "run-dir|seed|num-envs" in text
-    assert "@($BaseCliArgs) + @($CliArgs)" in text
-    assert "cannot override controlled argument" in text
+    for option in (
+        "run-dir",
+        "seed",
+        "num-envs",
+        "training-config",
+        "interface-config",
+        "fsm-config",
+        "snapshot-root",
+        "stage",
+        "checkpoint",
+        "checkpoint-manifest",
+        "residual-mode",
+        "seed-set",
+        "deterministic",
+        "headless",
+        "no-headless",
+        "soft-reset-acceptance",
+        "vector-benchmark-matrix",
+        "phase-effective-entry-holdout-acceptance",
+        "phase-zero-residual-rollout-evidence",
+    ):
+        assert f'"{option}"' in text
+    assert "foreach ($Argument in @($BaseCliArgs))" in text
+    assert "foreach ($Argument in @($CliArgs))" in text
+    assert "$BaseOptionNames.Contains" not in text
+    assert "@($BaseOptionNames)" in text
+    assert "StartsWith($OptionName" in text
+    assert "CliArgs cannot override managed launcher/semantic argument" in text
+
+    guard_block = text[
+        text.index("$HelperOwnedArgumentNames") : text.index("function Get-LongOptionName")
+    ]
+    guarded = set(re.findall(r'"([a-z0-9][a-z0-9-]*)"', guard_block))
+    parser_options = set()
+    for module in (
+        "cli.py",
+        "vector_benchmark_matrix.py",
+        "phase_effective_entry_holdout.py",
+        "training_orchestration.py",
+    ):
+        source = (
+            _root() / "src" / "wlr50_clean" / "ppo" / module
+        ).read_text(encoding="utf-8")
+        parser_options.update(
+            re.findall(r'add_argument\(\s*"--([a-z0-9][a-z0-9-]*)"', source)
+        )
+    assert parser_options <= guarded, sorted(parser_options - guarded)
+    assert "no-headless" in guarded
+
+    cli = (_root() / "src" / "wlr50_clean" / "ppo" / "cli.py").read_text(
+        encoding="utf-8"
+    )
+    assert cli.count("allow_abbrev=False") == 2
 
 
 def test_multi_env_train_wrapper_requires_only_finalized_matrix() -> None:
@@ -157,6 +207,47 @@ def test_managed_artifact_scripts_hash_objectives_and_environment_lock() -> None
         text = (scripts / name).read_text(encoding="utf-8")
         assert "configs\\ppo_phase_objectives_v2.yaml" in text, name
         assert "configs\\environment_lock.json" in text, name
+
+
+def test_effective_entry_consumers_hash_config_and_sidecar() -> None:
+    scripts = _root() / "scripts"
+    consumers = []
+    for path in scripts.glob("*.ps1"):
+        text = path.read_text(encoding="utf-8")
+        if "$Configs = @(" not in text or path.name == "build_phase_snapshots.ps1":
+            continue
+        consumers.append(path.name)
+        assert "configs\\ppo_phase_effective_entry_v1.json" in text, path.name
+        assert "configs\\ppo_phase_effective_entry_v1.sha256" in text, path.name
+    assert consumers
+
+
+def test_all_managed_wrappers_and_checkpoints_hash_runtime_loaded_v1_configs() -> None:
+    scripts = _root() / "scripts"
+    consumers = []
+    required = (
+        "configs\\ppo_action_projection.yaml",
+        "configs\\ppo_observation_schema.json",
+        "configs\\conformance_policy.yaml",
+    )
+    for path in scripts.glob("*.ps1"):
+        text = path.read_text(encoding="utf-8")
+        if "$Configs = @(" not in text:
+            continue
+        consumers.append(path.name)
+        for config in required:
+            assert text.count(config) == 1, (path.name, config)
+    assert consumers
+
+    cli = (_root() / "src" / "wlr50_clean" / "ppo" / "cli.py").read_text(
+        encoding="utf-8"
+    )
+    for config in (
+        'PROJECT_ROOT / "configs" / "ppo_action_projection.yaml"',
+        'PROJECT_ROOT / "configs" / "ppo_observation_schema.json"',
+        'PROJECT_ROOT / "configs" / "conformance_policy.yaml"',
+    ):
+        assert config in cli
 
 
 def test_final_delivery_requires_the_complete_six_manifest_chain() -> None:

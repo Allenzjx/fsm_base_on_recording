@@ -8,9 +8,12 @@ from types import SimpleNamespace
 import pytest
 
 from wlr50_clean.ppo import checkpoint_promotion, cli, rl_library_wrapper, video_artifacts
+from wlr50_clean.ppo.phase_effective_entry import (
+    capture_validated_effective_phase_entry_contract,
+)
 from wlr50_clean.ppo.phase_snapshots import (
+    capture_validated_phase_snapshot_bundle,
     phase_snapshot_bundle_file_hashes,
-    validated_phase_snapshot_bundle_record,
 )
 
 
@@ -72,8 +75,13 @@ def test_ppo_capture_request_binds_the_promoted_checkpoint_and_manifest(
         "load_training_profile",
         lambda path: SimpleNamespace(video_seed=4001),
     )
-    snapshot_bundle = validated_phase_snapshot_bundle_record(
-        cli.DEFAULT_PHASE_SNAPSHOT_ROOT
+    snapshot_pin = capture_validated_phase_snapshot_bundle(
+        cli.DEFAULT_PHASE_SNAPSHOT_ROOT,
+        canonical_root=cli.DEFAULT_PHASE_SNAPSHOT_ROOT,
+    )
+    snapshot_bundle = snapshot_pin.as_record()
+    effective_pin = capture_validated_effective_phase_entry_contract(
+        expected_snapshot_bundle=snapshot_pin,
     )
     provenance = SimpleNamespace(
         checkpoint_path=checkpoint.resolve(),
@@ -87,7 +95,18 @@ def test_ppo_capture_request_binds_the_promoted_checkpoint_and_manifest(
             "phase_snapshot_manifest_sha256": snapshot_bundle["manifest_sha256"],
             "phase_snapshot_bundle_sha256": snapshot_bundle["bundle_sha256"],
             "phase_snapshot_bundle": snapshot_bundle,
-            "files": phase_snapshot_bundle_file_hashes(snapshot_bundle),
+            "phase_effective_entry_contract_path": str(effective_pin.contract_path),
+            "phase_effective_entry_contract_file_sha256": effective_pin.file_sha256,
+            "phase_effective_entry_contract_sidecar_path": str(effective_pin.sidecar_path),
+            "phase_effective_entry_contract_sidecar_sha256": (
+                effective_pin.sidecar_file_sha256
+            ),
+            "phase_effective_entry_contract_sha256": effective_pin.contract_sha256,
+            "phase_effective_entry_contract": effective_pin.as_record(),
+            "files": {
+                **phase_snapshot_bundle_file_hashes(snapshot_bundle),
+                **effective_pin.file_hashes(),
+            },
         },
         as_dict=lambda: {
             "checkpoint_path": str(checkpoint.resolve()),

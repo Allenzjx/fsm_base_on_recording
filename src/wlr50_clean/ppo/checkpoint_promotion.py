@@ -114,6 +114,34 @@ _PHASE_SNAPSHOT_CONTRACT_FIELDS = (
     "phase_snapshot_bundle_sha256",
     "phase_snapshot_bundle",
 )
+_PHASE_EFFECTIVE_ENTRY_CONTRACT_FIELDS = (
+    "phase_effective_entry_contract_path",
+    "phase_effective_entry_contract_file_sha256",
+    "phase_effective_entry_contract_sidecar_path",
+    "phase_effective_entry_contract_sidecar_sha256",
+    "phase_effective_entry_contract_sha256",
+    "phase_effective_entry_contract",
+)
+_PHASE_EFFECTIVE_ENTRY_HOLDOUT_FIELDS = (
+    "phase_effective_entry_holdout_acceptance_path",
+    "phase_effective_entry_holdout_acceptance_sha256",
+    "phase_effective_entry_holdout_contract_sha256",
+    "phase_effective_entry_holdout_source_git_commit",
+    "phase_effective_entry_holdout_acceptance",
+    "phase_effective_entry_holdout_evidence",
+    "phase_effective_entry_holdout_files",
+)
+_PHASE_ZERO_RESIDUAL_ROLLOUT_FIELDS = (
+    "phase_zero_residual_rollout_evidence_path",
+    "phase_zero_residual_rollout_evidence_sha256",
+    "phase_zero_residual_rollout_run_manifest_path",
+    "phase_zero_residual_rollout_run_manifest_sha256",
+    "phase_zero_residual_rollout_evidence",
+    "phase_zero_residual_rollout_files",
+)
+_HOLDOUT_OPTIONAL_CHECKPOINT_STAGES = frozenset(
+    {"initial_zero_residual", "smoke"}
+)
 _CHECKPOINT_EMBEDDED_REQUIRED_FIELDS = (
     "schema",
     "stage",
@@ -127,6 +155,7 @@ _CHECKPOINT_EMBEDDED_REQUIRED_FIELDS = (
     "files",
     *FROZEN_HASH_FIELDS,
     *_PHASE_SNAPSHOT_CONTRACT_FIELDS,
+    *_PHASE_EFFECTIVE_ENTRY_CONTRACT_FIELDS,
 )
 
 
@@ -326,22 +355,40 @@ def _validate_checkpoint_snapshot_contract(
         capture_validated_phase_snapshot_bundle,
         phase_snapshot_bundle_file_hashes,
     )
+    from .phase_effective_entry import (
+        DEFAULT_EFFECTIVE_ENTRY_CONTRACT_PATH,
+        EffectivePhaseEntryError,
+        capture_validated_effective_phase_entry_contract,
+    )
 
     try:
-        current_bundle = capture_validated_phase_snapshot_bundle(
+        snapshot_pin = capture_validated_phase_snapshot_bundle(
             DEFAULT_PHASE_SNAPSHOT_ROOT,
             canonical_root=DEFAULT_PHASE_SNAPSHOT_ROOT,
-        ).as_record()
+        )
+        current_bundle = snapshot_pin.as_record()
         required_files = phase_snapshot_bundle_file_hashes(current_bundle)
-    except (OSError, PhaseSnapshotError) as exc:
+        effective_pin = capture_validated_effective_phase_entry_contract(
+            DEFAULT_EFFECTIVE_ENTRY_CONTRACT_PATH,
+            expected_snapshot_bundle=snapshot_pin,
+        )
+    except (OSError, PhaseSnapshotError, EffectivePhaseEntryError) as exc:
         raise CheckpointPromotionError(
-            f"current phase snapshot bundle is invalid: {exc}"
+            f"current phase reset contract is invalid: {exc}"
         ) from exc
     expected_fields = {
         "phase_snapshot_manifest": current_bundle["manifest_path"],
         "phase_snapshot_manifest_sha256": current_bundle["manifest_sha256"],
         "phase_snapshot_bundle_sha256": current_bundle["bundle_sha256"],
         "phase_snapshot_bundle": current_bundle,
+        "phase_effective_entry_contract_path": str(effective_pin.contract_path),
+        "phase_effective_entry_contract_file_sha256": effective_pin.file_sha256,
+        "phase_effective_entry_contract_sidecar_path": str(effective_pin.sidecar_path),
+        "phase_effective_entry_contract_sidecar_sha256": (
+            effective_pin.sidecar_file_sha256
+        ),
+        "phase_effective_entry_contract_sha256": effective_pin.contract_sha256,
+        "phase_effective_entry_contract": effective_pin.as_record(),
     }
     differing = [
         field
@@ -356,6 +403,13 @@ def _validate_checkpoint_snapshot_contract(
     files = manifest.get("files")
     if not isinstance(files, Mapping):
         raise CheckpointPromotionError("checkpoint manifest omits files hash evidence")
+    for path, digest in effective_pin.file_hashes().items():
+        existing = required_files.get(path)
+        if existing is not None and existing != digest:
+            raise CheckpointPromotionError(
+                "snapshot/effective-entry file inventories disagree"
+            )
+        required_files[path] = digest
     missing = [path for path in required_files if path not in files]
     mismatched = [
         path
@@ -364,8 +418,21 @@ def _validate_checkpoint_snapshot_contract(
     ]
     if missing or mismatched:
         raise CheckpointPromotionError(
-            "checkpoint manifest does not bind all 27 phase snapshot files"
+            "checkpoint manifest does not bind the phase reset contract files"
         )
+
+    _validate_checkpoint_holdout_contract(
+        manifest,
+        embedded_infos,
+        snapshot_pin=snapshot_pin,
+        effective_pin=effective_pin,
+    )
+    _validate_checkpoint_zero_residual_rollout_contract(
+        manifest,
+        embedded_infos,
+        snapshot_pin=snapshot_pin,
+        effective_pin=effective_pin,
+    )
 
     missing_embedded = [
         field for field in _CHECKPOINT_EMBEDDED_REQUIRED_FIELDS if field not in embedded_infos
@@ -398,6 +465,198 @@ def _validate_checkpoint_snapshot_contract(
         raise CheckpointPromotionError(
             "checkpoint sidecar rewrites embedded training provenance: "
             + ", ".join(sorted(str(field) for field in differing_saved_fields))
+        )
+
+
+def _validate_checkpoint_holdout_contract(
+    manifest: Mapping[str, Any],
+    embedded_infos: Mapping[str, Any],
+    *,
+    snapshot_pin: Any,
+    effective_pin: Any,
+) -> None:
+    """Require and revalidate external holdout proof after the smoke stage."""
+
+    stage = str(manifest.get("stage", ""))
+    manifest_present = {
+        field for field in _PHASE_EFFECTIVE_ENTRY_HOLDOUT_FIELDS if field in manifest
+    }
+    embedded_present = {
+        field
+        for field in _PHASE_EFFECTIVE_ENTRY_HOLDOUT_FIELDS
+        if field in embedded_infos
+    }
+    if (
+        stage in _HOLDOUT_OPTIONAL_CHECKPOINT_STAGES
+        and not manifest_present
+        and not embedded_present
+    ):
+        return
+    required = set(_PHASE_EFFECTIVE_ENTRY_HOLDOUT_FIELDS)
+    if manifest_present != required or embedded_present != required:
+        missing_manifest = sorted(required - manifest_present)
+        missing_embedded = sorted(required - embedded_present)
+        raise CheckpointPromotionError(
+            "checkpoint holdout acceptance is incomplete; manifest missing="
+            f"{missing_manifest}, embedded infos missing={missing_embedded}"
+        )
+    differences = [
+        field
+        for field in _PHASE_EFFECTIVE_ENTRY_HOLDOUT_FIELDS
+        if manifest.get(field) != embedded_infos.get(field)
+    ]
+    if differences:
+        raise CheckpointPromotionError(
+            "checkpoint manifest and embedded infos disagree on holdout acceptance: "
+            + ", ".join(differences)
+        )
+
+    from .phase_effective_entry_holdout import (
+        PhaseEffectiveEntryHoldoutError,
+        validate_phase_effective_entry_holdout_acceptance,
+    )
+
+    declared_path = _unredirected_absolute_path(
+        str(manifest["phase_effective_entry_holdout_acceptance_path"]),
+        label="phase effective-entry holdout acceptance",
+    )
+    try:
+        current = validate_phase_effective_entry_holdout_acceptance(
+            declared_path,
+            project_root=PROJECT_ROOT,
+            snapshot_bundle=snapshot_pin,
+            effective_entry_contract=effective_pin,
+        )
+    except PhaseEffectiveEntryHoldoutError as exc:
+        raise CheckpointPromotionError(
+            f"checkpoint holdout acceptance is stale or invalid: {exc}"
+        ) from exc
+    expected_fields = {
+        "phase_effective_entry_holdout_acceptance_path": str(declared_path),
+        "phase_effective_entry_holdout_acceptance_sha256": current["sha256"],
+        "phase_effective_entry_holdout_contract_sha256": current[
+            "phase_effective_entry_contract_sha256"
+        ],
+        "phase_effective_entry_holdout_source_git_commit": current[
+            "source_git_commit"
+        ],
+        "phase_effective_entry_holdout_acceptance": current["acceptance"],
+        "phase_effective_entry_holdout_evidence": current,
+        "phase_effective_entry_holdout_files": {
+            str(declared_path): current["sha256"],
+            str(Path(str(current["run_manifest"])).resolve()): current[
+                "run_manifest_sha256"
+            ],
+        },
+    }
+    differing = [
+        field
+        for field, expected in expected_fields.items()
+        if manifest.get(field) != expected
+    ]
+    if differing:
+        raise CheckpointPromotionError(
+            "checkpoint holdout acceptance differs from the current validated proof: "
+            + ", ".join(differing)
+        )
+
+
+def _validate_checkpoint_zero_residual_rollout_contract(
+    manifest: Mapping[str, Any],
+    embedded_infos: Mapping[str, Any],
+    *,
+    snapshot_pin: Any,
+    effective_pin: Any,
+) -> None:
+    """Require and revalidate the live zero-residual proof after smoke."""
+
+    stage = str(manifest.get("stage", ""))
+    manifest_present = {
+        field for field in _PHASE_ZERO_RESIDUAL_ROLLOUT_FIELDS if field in manifest
+    }
+    embedded_present = {
+        field
+        for field in _PHASE_ZERO_RESIDUAL_ROLLOUT_FIELDS
+        if field in embedded_infos
+    }
+    if (
+        stage in _HOLDOUT_OPTIONAL_CHECKPOINT_STAGES
+        and not manifest_present
+        and not embedded_present
+    ):
+        return
+    required = set(_PHASE_ZERO_RESIDUAL_ROLLOUT_FIELDS)
+    if manifest_present != required or embedded_present != required:
+        missing_manifest = sorted(required - manifest_present)
+        missing_embedded = sorted(required - embedded_present)
+        raise CheckpointPromotionError(
+            "checkpoint phase zero-residual rollout is incomplete; manifest missing="
+            f"{missing_manifest}, embedded infos missing={missing_embedded}"
+        )
+    differences = [
+        field
+        for field in _PHASE_ZERO_RESIDUAL_ROLLOUT_FIELDS
+        if manifest.get(field) != embedded_infos.get(field)
+    ]
+    if differences:
+        raise CheckpointPromotionError(
+            "checkpoint manifest and embedded infos disagree on phase "
+            "zero-residual rollout: " + ", ".join(differences)
+        )
+
+    from .phase_zero_residual_rollout import (
+        PhaseZeroResidualRolloutError,
+        build_contract_binding,
+        validate_phase_zero_residual_rollout_evidence,
+    )
+
+    declared_path = _unredirected_absolute_path(
+        str(manifest["phase_zero_residual_rollout_evidence_path"]),
+        label="phase zero-residual rollout evidence",
+    )
+    holdout_evidence = manifest.get("phase_effective_entry_holdout_evidence")
+    if not isinstance(holdout_evidence, Mapping):
+        raise CheckpointPromotionError(
+            "checkpoint phase zero-residual rollout omits validated holdout ancestry"
+        )
+    try:
+        contract_binding = build_contract_binding(
+            snapshot_pin,
+            effective_pin,
+            holdout_evidence,
+        )
+        current = validate_phase_zero_residual_rollout_evidence(
+            declared_path,
+            project_root=PROJECT_ROOT,
+            expected_contract_binding=contract_binding,
+        )
+    except PhaseZeroResidualRolloutError as exc:
+        raise CheckpointPromotionError(
+            f"checkpoint phase zero-residual rollout is stale or invalid: {exc}"
+        ) from exc
+    run_manifest_path = Path(str(current["run_manifest"])).resolve()
+    expected_fields = {
+        "phase_zero_residual_rollout_evidence_path": str(declared_path),
+        "phase_zero_residual_rollout_evidence_sha256": current["sha256"],
+        "phase_zero_residual_rollout_run_manifest_path": str(run_manifest_path),
+        "phase_zero_residual_rollout_run_manifest_sha256": current[
+            "run_manifest_sha256"
+        ],
+        "phase_zero_residual_rollout_evidence": current,
+        "phase_zero_residual_rollout_files": {
+            str(declared_path): current["sha256"],
+            str(run_manifest_path): current["run_manifest_sha256"],
+        },
+    }
+    differing = [
+        field
+        for field, expected in expected_fields.items()
+        if manifest.get(field) != expected
+    ]
+    if differing:
+        raise CheckpointPromotionError(
+            "checkpoint phase zero-residual rollout differs from the current "
+            "validated proof: " + ", ".join(differing)
         )
 
 
@@ -523,6 +782,20 @@ def validate_checkpoint_artifact_provenance(
         manifest_sha256=evidence.manifest_sha256,
         manifest=dict(evidence.manifest),
     )
+
+
+def _assert_checkpoint_evidence_unchanged(
+    expected: _CheckpointEvidence, *, label: str
+) -> None:
+    """Repeat full checkpoint/infos/qualification validation before publication."""
+
+    current = _validate_checkpoint(expected.checkpoint, expected.manifest_path)
+    if (
+        current.checkpoint_sha256 != expected.checkpoint_sha256
+        or current.manifest_sha256 != expected.manifest_sha256
+        or dict(current.manifest) != dict(expected.manifest)
+    ):
+        raise CheckpointPromotionError(f"{label} checkpoint evidence changed")
 
 
 def _validate_decision_aggregate_binding(
@@ -1213,6 +1486,9 @@ def promote_best_validation_checkpoint(
             role="candidate",
             checkpoint=checkpoint,
         )
+        _assert_checkpoint_evidence_unchanged(
+            checkpoint, label="validation promotion source"
+        )
         _publish_bundle_no_replace(
             (
                 (stage_best, artifacts.best_checkpoint),
@@ -1860,6 +2136,9 @@ def promote_improved_checkpoint(
             != locked.worker_artifact_sha256
         ):
             raise CheckpointPromotionError("improved promotion input changed during publication")
+        _assert_checkpoint_evidence_unchanged(
+            checkpoint, label="improved promotion source"
+        )
         _publish_bundle_no_replace(
             (
                 (stage_improved, artifacts.improved_checkpoint),

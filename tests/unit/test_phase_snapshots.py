@@ -23,6 +23,27 @@ from wlr50_clean.ppo.phase_snapshots import (
 )
 
 
+def test_directory_identity_ignores_child_churn_but_rejects_replacement(
+    tmp_path: Path,
+) -> None:
+    identity = phase_snapshots_subject._path_identity(
+        tmp_path.resolve(), label="test directory", directory=True
+    )
+    metadata_churn = list(identity)
+    metadata_churn[4] += 1
+    metadata_churn[5] += 1
+    metadata_churn[6] += 1
+    assert phase_snapshots_subject._same_path_identity(
+        identity, tuple(metadata_churn)
+    )
+
+    replacement = list(identity)
+    replacement[3] += 1
+    assert not phase_snapshots_subject._same_path_identity(
+        identity, tuple(replacement)
+    )
+
+
 def _observation(tick: int) -> dict:
     joints = (
         "front_left_hip", "front_left_knee", "front_right_hip", "front_right_knee",

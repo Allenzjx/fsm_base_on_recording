@@ -42,9 +42,10 @@ def _install_chain_stubs(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     *,
+    selected_num_envs: int = 8,
     smoke_num_envs: int = 8,
     phase_num_envs: int = 1,
-    full_num_envs: int = 1,
+    full_num_envs: int = 8,
     full_requested: int = 100_000,
     promotion_bound_index: int | None = None,
 ) -> dict[str, object]:
@@ -53,12 +54,12 @@ def _install_chain_stubs(
     profile.parent.mkdir(parents=True)
     profile.write_bytes(subject.DEFAULT_TRAINING_CONFIG.read_bytes())
     matrix = root / "matrix.json"
-    _write_json(matrix, {"selected_num_envs": 8})
+    _write_json(matrix, {"selected_num_envs": selected_num_envs})
     matrix_record = _record(matrix)
     matrix_evidence = {
         "path": str(matrix.resolve()),
         "sha256": matrix_record["sha256"],
-        "selected_num_envs": 8,
+        "selected_num_envs": selected_num_envs,
         "passed": True,
     }
     soft_raw = {"path": str(root / "soft.json"), "passed": True}
@@ -97,7 +98,9 @@ def _install_chain_stubs(
     terminal_bytes = b""
     terminal_last = root / "checkpoint_last.pt"
     for index, (stage, requested, num_envs) in enumerate(specs):
-        global_step += requested
+        rollout_length = (requested + num_envs - 1) // num_envs
+        stage_decisions = num_envs * rollout_length
+        global_step += stage_decisions
         history = root / "history" / f"checkpoint_{index:02d}.pt"
         history.parent.mkdir(exist_ok=True)
         terminal_bytes = f"history-{index}".encode("ascii")
@@ -109,12 +112,12 @@ def _install_chain_stubs(
         chunk = {
             "stage": stage,
             "requested_policy_decisions": requested,
-            "stage_policy_decisions": requested,
+            "stage_policy_decisions": stage_decisions,
             "global_policy_decisions": global_step,
-            "resume_global_policy_decisions": global_step - requested,
+            "resume_global_policy_decisions": global_step - stage_decisions,
             "iterations": 1,
             "num_envs": num_envs,
-            "rollout_length": requested // num_envs,
+            "rollout_length": rollout_length,
             "run_directory": str(root / f"training-{index}"),
             "run_manifest": history_record,
             "training_result": history_record,
@@ -281,19 +284,52 @@ def test_budget_exhaustion_accepts_mixed_env_chain_and_failed_screenings(
     assert payload["environment_counts_by_stage"] == {
         "smoke": 8,
         "phase-curriculum": 1,
-        "full-episode": 1,
+        "full-episode": 8,
     }
     assert payload["selected_vector_num_envs"] == 8
     assert payload["chunk_count"] == 21
     assert all(not row["screening"]["physical_passed"] for row in payload["chunks"])
 
 
+@pytest.mark.parametrize("selected_num_envs", (8, 16, 32))
+def test_smoke_and_full_use_matrix_selected_n_while_phase_remains_single_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    selected_num_envs: int,
+) -> None:
+    inputs = _install_chain_stubs(
+        tmp_path,
+        monkeypatch,
+        selected_num_envs=selected_num_envs,
+        smoke_num_envs=selected_num_envs,
+        full_num_envs=selected_num_envs,
+    )
+    payload = _build_from_stubs(inputs)
+
+    assert payload["environment_counts_by_stage"] == {
+        "smoke": selected_num_envs,
+        "phase-curriculum": 1,
+        "full-episode": selected_num_envs,
+    }
+    phase_chunks = [
+        row for row in inputs["chunks"] if row["stage"] == "phase-curriculum"
+    ]
+    vector_chunks = [
+        row for row in inputs["chunks"] if row["stage"] != "phase-curriculum"
+    ]
+    assert all(row["soft_reset_acceptance_raw"] is not None for row in phase_chunks)
+    assert all(row["vector_matrix_raw"] is None for row in phase_chunks)
+    assert all(row["soft_reset_acceptance_raw"] is None for row in vector_chunks)
+    assert all(row["vector_matrix_raw"] is not None for row in vector_chunks)
+
+
 @pytest.mark.parametrize(
     ("smoke_num_envs", "phase_num_envs", "full_num_envs", "message"),
     (
-        (1, 1, 1, "smoke"),
-        (8, 8, 1, "phase-curriculum"),
-        (8, 1, 8, "full-episode"),
+        (1, 1, 8, "smoke"),
+        (8, 8, 8, "phase-curriculum"),
+        (8, 1, 1, "full-episode"),
+        (8, 1, 16, "full-episode"),
     ),
 )
 def test_stage_environment_rules_fail_closed(
@@ -1110,7 +1146,7 @@ def test_cadence_driver_runs_21_guarded_chunks_and_fresh_screenings() -> None:
     assert "$RequestedChunkDecisions = 10000" in text
     assert 'Name = "smoke"; Chunks = 1; NumEnvs = $SelectedNumEnvs' in text
     assert 'Name = "phase-curriculum"; Chunks = 10; NumEnvs = 1' in text
-    assert 'Name = "full-episode"; Chunks = 10; NumEnvs = 1' in text
+    assert 'Name = "full-episode"; Chunks = 10; NumEnvs = $SelectedNumEnvs' in text
     assert 'CliArgs = @("--policy-decisions", [string]$RequestedChunkDecisions)' in text
     assert "whole-PPO-batch cadence contract" in text
     assert "rounding_overrun_policy_decisions" in text

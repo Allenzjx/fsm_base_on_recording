@@ -203,10 +203,82 @@ if ($RuntimeStatus.Count -ne 0) {
     throw "PPO runtime implementation/config must match committed HEAD before evidence capture: $DirtyRuntimePaths"
 }
 
-$ControlledArgumentPattern = '^--(?:run-dir|seed|num-envs)(?:=|$)'
-foreach ($Argument in @($BaseCliArgs) + @($CliArgs)) {
-    if ([string]$Argument -match $ControlledArgumentPattern) {
-        throw "BaseCliArgs/CliArgs cannot override controlled argument: $Argument"
+$HelperOwnedArgumentNames = @("run-dir", "seed", "num-envs")
+$SemanticLockedArgumentNames = @(
+    "training-config", "interface-config", "fsm-config", "config",
+    "selected-trial", "snapshot-root", "phase-snapshot-prime-physics-steps", "phase",
+    "stage", "checkpoint", "checkpoint-manifest", "source-checkpoint", "source-manifest",
+    "candidate-checkpoint", "candidate-manifest", "promotion-decision",
+    "best-validation-checkpoint", "best-validation-manifest",
+    "validation-promotion-manifest", "locked-test-aggregate", "output-root",
+    "seed-set", "residual-mode", "deterministic", "headless", "no-headless",
+    "episode-count", "policy-decisions", "phase-curriculum-max-decisions",
+    "video-source-role", "fsm-video-source-dir", "ppo-video-source-dir", "ffmpeg",
+    "capture-fps", "measured-ticks", "maximum-duration-s",
+    "soft-reset-acceptance", "vector-benchmark-matrix",
+    "phase-effective-entry-holdout-acceptance", "phase-zero-residual-rollout-evidence",
+    "evaluation-run-dir", "evaluation-role", "episode-dir", "baseline-episode-dir",
+    "candidate-episode-dir", "baseline-aggregate", "candidate-validation-aggregate",
+    "metrics-output-dir", "evidence-only-worker", "require-save-load-round-trip",
+    "benchmark", "probe-run-dir", "training-run-dir", "screening-run-dir",
+    "initial-checkpoint-publication-run"
+)
+
+function Get-LongOptionName {
+    param([string]$Argument)
+
+    $OptionMatch = [regex]::Match(
+        $Argument,
+        '^--(?<name>[A-Za-z0-9][A-Za-z0-9-]*)(?:=.*)?$',
+        [Text.RegularExpressions.RegexOptions]::CultureInvariant
+    )
+    if (-not $OptionMatch.Success) {
+        return $null
+    }
+    return $OptionMatch.Groups["name"].Value
+}
+
+function Test-LockedLongOption {
+    param(
+        [string]$OptionName,
+        [string[]]$LockedNames
+    )
+
+    foreach ($LockedName in $LockedNames) {
+        # argparse accepts unique long-option abbreviations by default.  Treat
+        # every prefix of a locked option as locked too, including modules that
+        # do not explicitly disable abbreviation.
+        if ($LockedName.StartsWith($OptionName, [StringComparison]::OrdinalIgnoreCase)) {
+            return $true
+        }
+    }
+    return $false
+}
+
+$BaseOptionNames = [Collections.Generic.HashSet[string]]::new(
+    [StringComparer]::OrdinalIgnoreCase
+)
+foreach ($Argument in @($BaseCliArgs)) {
+    $OptionName = Get-LongOptionName ([string]$Argument)
+    if ($null -eq $OptionName) {
+        continue
+    }
+    if (Test-LockedLongOption `
+            -OptionName $OptionName `
+            -LockedNames $HelperOwnedArgumentNames) {
+        throw "BaseCliArgs cannot override helper-owned argument: $Argument"
+    }
+    [void]$BaseOptionNames.Add($OptionName)
+}
+$LockedOptionNames = @($HelperOwnedArgumentNames) +
+    @($SemanticLockedArgumentNames) + @($BaseOptionNames)
+foreach ($Argument in @($CliArgs)) {
+    $OptionName = Get-LongOptionName ([string]$Argument)
+    if ($null -eq $OptionName) {
+        continue
+    }
+    if (Test-LockedLongOption -OptionName $OptionName -LockedNames $LockedOptionNames) {
+        throw "CliArgs cannot override managed launcher/semantic argument: $Argument"
     }
 }
 
@@ -331,6 +403,7 @@ try {
         $LiveCommands = @(
             "baseline-eval", "zero-residual-live", "nonzero-residual-smoke",
             "reset-throughput-probe", "soft-reset-equivalence", "phase-snapshot-live-probe",
+            "phase-zero-residual-rollout",
             "vector-benchmark", "initialize-zero-residual", "train", "evaluate",
             "export-inference-actor", "capture-video-source"
         )

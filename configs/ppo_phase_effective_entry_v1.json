@@ -1,0 +1,2950 @@
+{
+  "schema": "wlr50_clean.ppo_phase_effective_entry_contract.v1",
+  "derivation": {
+    "schema": "wlr50_clean.ppo_phase_effective_entry_derivation.v1",
+    "source_git_commit": "00d6cc6712e71cb12c58431beb180f0476aab4ed",
+    "phase_snapshot_bundle": {
+      "schema": "wlr50_clean.ppo_phase_snapshot_bundle_record.v1",
+      "snapshot_root": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots",
+      "manifest_path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\manifest.json",
+      "manifest_sha256": "9669c4a50409a43b3b0fb30d5901b242a90e230efb4fed2e25460039681afd2f",
+      "phase_count": 13,
+      "snapshots": [
+        {
+          "phase": "P01",
+          "snapshot_path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P01\\snapshot.json",
+          "checksum_path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P01\\snapshot.sha256",
+          "file_sha256": "501c53057f2bb501796e6b4ec29a82c8dbf43a627ce667137417e0b3bb1e4ed0",
+          "state_sha256": "00b4afee4fc4df5c90aecad96877ae01b8d4965882f1f22ef0b0ca6a05bc5c76",
+          "checksum_file_sha256": "7b575273a9932aeaeedc0c0363519050ac78dac527be10866245ea2f585a9113"
+        },
+        {
+          "phase": "P02",
+          "snapshot_path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P02\\snapshot.json",
+          "checksum_path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P02\\snapshot.sha256",
+          "file_sha256": "90054ae9daefc221b4220a34b9911938ce92390dcead3aefabee47bea21ecc2a",
+          "state_sha256": "b7388d5972fdfded309c1af81d8bec84c79c829e94a54108b11d77f58dec29f2",
+          "checksum_file_sha256": "9fe85f6b166d73964fb569ff93da56527907dfeb030e6299d16b500aa9747c95"
+        },
+        {
+          "phase": "P03",
+          "snapshot_path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P03\\snapshot.json",
+          "checksum_path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P03\\snapshot.sha256",
+          "file_sha256": "e05fbcb77c1cab858ccb9f17a0bc8ef2c684fcd81032a9db14e4e78f6815a02a",
+          "state_sha256": "af70b2596057db97876bb812f041d37889e53e3681c5e43745283df9150a2e82",
+          "checksum_file_sha256": "eef92269ac36d203a5ecd193c55dbb8dbee5fc545b06ecf3cbb823b7a4d7cd45"
+        },
+        {
+          "phase": "P04",
+          "snapshot_path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P04\\snapshot.json",
+          "checksum_path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P04\\snapshot.sha256",
+          "file_sha256": "82ef122984fb6746ac24a48e06337e6fa1242a54b497d455f0b2bd23aa824dde",
+          "state_sha256": "7d6b475ec515fd0b75448d38c1c46a71805dff5190d224983c67a5dc4f773c41",
+          "checksum_file_sha256": "0bb026100024f2ac2ff26fd4ed6b4fa61312159beb12b1239ae0bc9cbc29c4d7"
+        },
+        {
+          "phase": "P05",
+          "snapshot_path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P05\\snapshot.json",
+          "checksum_path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P05\\snapshot.sha256",
+          "file_sha256": "640a171cf173e5182cc625ac22be905379816902f0023285c8dc1e9d52edbafb",
+          "state_sha256": "20c03d579a4cdf2823da4ed6f13e87df8a0ffcefe20e4018a3c44902ab2d6a06",
+          "checksum_file_sha256": "dae9ce743e9922bb0b5dd63eb74d1994c2e996216b8201aa3ca6357675376b02"
+        },
+        {
+          "phase": "P06",
+          "snapshot_path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P06\\snapshot.json",
+          "checksum_path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P06\\snapshot.sha256",
+          "file_sha256": "6cea181570b813fffb20c6368ee3819fcde059d5933b7be822f1a0f497b72218",
+          "state_sha256": "62c8d31b76899968eef17ae9c7ea00e3a6b037dcd123333d6030094ddc98cae3",
+          "checksum_file_sha256": "ef2c7dbd5ad47793f6fbfe790058788268d1d8a75a13f637f11be4ffc272f35c"
+        },
+        {
+          "phase": "P07",
+          "snapshot_path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P07\\snapshot.json",
+          "checksum_path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P07\\snapshot.sha256",
+          "file_sha256": "866c9c50a411cc9f0dc0adbddcf5361307a650d69b517d2271f7b596ba06c046",
+          "state_sha256": "f9d1063685c4374c049e9c3cfa27ab8807fc488ad437d23b0be9507e04f42163",
+          "checksum_file_sha256": "3628e713741e3e1ac9d2807c174e1f18a72644743725c52de398b0c32e127a69"
+        },
+        {
+          "phase": "P08",
+          "snapshot_path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P08\\snapshot.json",
+          "checksum_path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P08\\snapshot.sha256",
+          "file_sha256": "6f29df73c59e4cfc1caa359f21a4100ef65fcec91246ee79222b98d0be0d2d23",
+          "state_sha256": "6c2f97c05524e7714ab00ef5fcef31637c582d80df1ea63a68fc4ba73223e61d",
+          "checksum_file_sha256": "f98230f903fd773c59b3b16cff9375469d168c2e8f85088fb7718b5fad534cc1"
+        },
+        {
+          "phase": "P09",
+          "snapshot_path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P09\\snapshot.json",
+          "checksum_path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P09\\snapshot.sha256",
+          "file_sha256": "d75fd5c282da203721163747902031c90e3b6b90eb65b3b06eb6eb677b50873b",
+          "state_sha256": "9c16fe0f9ed4e18b21cac4a4d70fb7ef8bf83ee7044a362dc12a14d9cb33d7e2",
+          "checksum_file_sha256": "449c44d3101077f9ce115f82b11dfbd4847ae06d4db113ee86919e57253b82cd"
+        },
+        {
+          "phase": "P10",
+          "snapshot_path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P10\\snapshot.json",
+          "checksum_path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P10\\snapshot.sha256",
+          "file_sha256": "6ccd27f81465cb9729abc5745ca3fc19d2fc91cb1646cba973c42acc019f631f",
+          "state_sha256": "547a0fb95168dd0daa461dd43066f7aeb65f99687651c2be20f1e23a6439ae2e",
+          "checksum_file_sha256": "9048051a8d3268067945218044872e32e43d465afd40387ad6c12555e2a905e7"
+        },
+        {
+          "phase": "P11",
+          "snapshot_path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P11\\snapshot.json",
+          "checksum_path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P11\\snapshot.sha256",
+          "file_sha256": "4a903d1fc486f85a1b7f7624e733031576eedda8e1f3abcf44d6c46671aacded",
+          "state_sha256": "35996ba6c91f17762e8c72177d0b229aa841b878beac945308dcd1950e74e3d0",
+          "checksum_file_sha256": "14228ffd965c76f593d77fdf8747d223b11954b7c267125a5553fcc8b6df1a02"
+        },
+        {
+          "phase": "P12",
+          "snapshot_path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P12\\snapshot.json",
+          "checksum_path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P12\\snapshot.sha256",
+          "file_sha256": "a1c7fb561c41d9191766b05e99d8b1cc4a9018b57f927cfd73d9eb534bf383b4",
+          "state_sha256": "95f5d40fac53a3b006c9b23a40e5a67153c2c55349183900e605ca7e5160beff",
+          "checksum_file_sha256": "0021c57893d804b17d3f3bb7f43c9c8e7ba3f46fd68d883254b67e11d79de9e1"
+        },
+        {
+          "phase": "P13",
+          "snapshot_path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P13\\snapshot.json",
+          "checksum_path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P13\\snapshot.sha256",
+          "file_sha256": "e1a55b77ec7f3bbb72d287f77fcc671568c272ab5399b8d6e97f2d2fc8e56e93",
+          "state_sha256": "9f87c523ff62cfbd7132652b4161243109687ee2a1a5588a7178f475d90fd034",
+          "checksum_file_sha256": "36ccac1102d4bcd9b8bea5aa54029d90175c08d6deb138e1ab77e8cc4ba41e17"
+        }
+      ],
+      "bundle_sha256": "9a3b57300d500b17894cf8ca0e1dbc915d5ed3f15ca1023366053cad7dc14551",
+      "source_trial": "trial_043_20260902_clean_v010"
+    },
+    "environment_lock": {
+      "path": "C:/robotics_sim/wlr_robot/fsm_base_on_recording_ppo_phase_v1/configs/environment_lock.json",
+      "bytes": 5153,
+      "sha256": "602f6e0893d999e5cb078aadf75541234440a3af918dc58e0154e80ff16ea3cb"
+    },
+    "frozen_ledger": {
+      "path": "C:/robotics_sim/wlr_robot/fsm_base_on_recording_ppo_phase_v1/artifacts/ppo_phase_v1_start/frozen_fsm_hashes.json",
+      "bytes": 3438,
+      "sha256": "c36ab3e603b8881c463dd72ec6a84092b892edb0ca62c35d39c1bc6ec26a18e2"
+    },
+    "runtime_content_sha256": "06d9714a2886ee4f84517b04853e742abd604d63b2dc9d7ac16b1380e59f4b72",
+    "identity_config_sha256": "6f361829fc13e4661af91ba77f02fdec0907e5b1e11661eeccc212b8c80c25dd",
+    "calibration_artifacts": [
+      {
+        "schema": "wlr50_clean.ppo_phase_effective_entry_calibration.v1",
+        "phase": "P02",
+        "run_id": "20260904T145955257598Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe",
+        "seed": 1002,
+        "source_git_commit": "00d6cc6712e71cb12c58431beb180f0476aab4ed",
+        "files": {
+          "run_manifest": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T145955257598Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/run_manifest.json",
+            "bytes": 5276,
+            "sha256": "8c43a57766115f89de50e9802d6fbcfa7d21f2e8817011955d1f5c4bc1ed7e1f"
+          },
+          "probe": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T145955257598Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/phase_snapshot_live_probe.json",
+            "bytes": 94890,
+            "sha256": "e95b0e61f9be5d7f01e864598def5d3c1e6be97d07749d6fc09cd4c1800bfd78"
+          },
+          "runtime_before": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T145955257598Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/committed_runtime_identity.before.json",
+            "bytes": 50522,
+            "sha256": "342952c9433f54888ad3c4e1cb69ba6e701f3135c999ada4c7e24f673043ca57"
+          },
+          "runtime_after": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T145955257598Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/committed_runtime_identity.after.json",
+            "bytes": 50522,
+            "sha256": "342952c9433f54888ad3c4e1cb69ba6e701f3135c999ada4c7e24f673043ca57"
+          },
+          "frozen_before": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T145955257598Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/frozen_hashes.before.json",
+            "bytes": 9149,
+            "sha256": "4bfeedafa14084f17b73a8e31dc5c4abccdee94b479f9da9beb04798180b2ff6"
+          },
+          "frozen_after": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T145955257598Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/frozen_hashes.after.json",
+            "bytes": 9149,
+            "sha256": "224a639b8ae15e28dd9fe4fbec70fe63c13251288dc4c3088d1cdb230c6f482e"
+          }
+        },
+        "runtime_content_sha256": "06d9714a2886ee4f84517b04853e742abd604d63b2dc9d7ac16b1380e59f4b72",
+        "identity_config_sha256": "6f361829fc13e4661af91ba77f02fdec0907e5b1e11661eeccc212b8c80c25dd",
+        "phase_snapshot_bundle_sha256": "9a3b57300d500b17894cf8ca0e1dbc915d5ed3f15ca1023366053cad7dc14551",
+        "environment_lock_sha256": "602f6e0893d999e5cb078aadf75541234440a3af918dc58e0154e80ff16ea3cb",
+        "frozen_ledger_sha256": "c36ab3e603b8881c463dd72ec6a84092b892edb0ca62c35d39c1bc6ec26a18e2",
+        "fresh_attempt_index": 0,
+        "reused_attempt_index": 1,
+        "captured_filesystem_identity_count": 14
+      },
+      {
+        "schema": "wlr50_clean.ppo_phase_effective_entry_calibration.v1",
+        "phase": "P03",
+        "run_id": "20260904T150033155449Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe",
+        "seed": 1002,
+        "source_git_commit": "00d6cc6712e71cb12c58431beb180f0476aab4ed",
+        "files": {
+          "run_manifest": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150033155449Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/run_manifest.json",
+            "bytes": 5276,
+            "sha256": "c27b059e3bac70530b06c7a7998899fe903a2aecbdb8d2b8353f9f4c671a07eb"
+          },
+          "probe": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150033155449Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/phase_snapshot_live_probe.json",
+            "bytes": 95150,
+            "sha256": "a9b623e852250ef583034f234988f77548acf4fea6bb26997ff2790eec451c2c"
+          },
+          "runtime_before": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150033155449Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/committed_runtime_identity.before.json",
+            "bytes": 50522,
+            "sha256": "342952c9433f54888ad3c4e1cb69ba6e701f3135c999ada4c7e24f673043ca57"
+          },
+          "runtime_after": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150033155449Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/committed_runtime_identity.after.json",
+            "bytes": 50522,
+            "sha256": "342952c9433f54888ad3c4e1cb69ba6e701f3135c999ada4c7e24f673043ca57"
+          },
+          "frozen_before": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150033155449Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/frozen_hashes.before.json",
+            "bytes": 9149,
+            "sha256": "5c0c21f1a540db419c00dc1637e0ffd59831784808e48c4c9b82a09437943d6f"
+          },
+          "frozen_after": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150033155449Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/frozen_hashes.after.json",
+            "bytes": 9149,
+            "sha256": "560fa4bfa4a299c3ea77d0c5d01cb7646cb4263eec00ceea70b97d424dc691a8"
+          }
+        },
+        "runtime_content_sha256": "06d9714a2886ee4f84517b04853e742abd604d63b2dc9d7ac16b1380e59f4b72",
+        "identity_config_sha256": "6f361829fc13e4661af91ba77f02fdec0907e5b1e11661eeccc212b8c80c25dd",
+        "phase_snapshot_bundle_sha256": "9a3b57300d500b17894cf8ca0e1dbc915d5ed3f15ca1023366053cad7dc14551",
+        "environment_lock_sha256": "602f6e0893d999e5cb078aadf75541234440a3af918dc58e0154e80ff16ea3cb",
+        "frozen_ledger_sha256": "c36ab3e603b8881c463dd72ec6a84092b892edb0ca62c35d39c1bc6ec26a18e2",
+        "fresh_attempt_index": 0,
+        "reused_attempt_index": 1,
+        "captured_filesystem_identity_count": 14
+      },
+      {
+        "schema": "wlr50_clean.ppo_phase_effective_entry_calibration.v1",
+        "phase": "P04",
+        "run_id": "20260904T150108566113Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe",
+        "seed": 1002,
+        "source_git_commit": "00d6cc6712e71cb12c58431beb180f0476aab4ed",
+        "files": {
+          "run_manifest": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150108566113Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/run_manifest.json",
+            "bytes": 5276,
+            "sha256": "fe452ecac6db0d6b53639148090aea1fca7dad98aa950f197fff28f618438e33"
+          },
+          "probe": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150108566113Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/phase_snapshot_live_probe.json",
+            "bytes": 96016,
+            "sha256": "9b85b5595c9fe038b3e96113de1d5889fd36df2b6503fc8018762e62f7497b38"
+          },
+          "runtime_before": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150108566113Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/committed_runtime_identity.before.json",
+            "bytes": 50522,
+            "sha256": "342952c9433f54888ad3c4e1cb69ba6e701f3135c999ada4c7e24f673043ca57"
+          },
+          "runtime_after": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150108566113Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/committed_runtime_identity.after.json",
+            "bytes": 50522,
+            "sha256": "342952c9433f54888ad3c4e1cb69ba6e701f3135c999ada4c7e24f673043ca57"
+          },
+          "frozen_before": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150108566113Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/frozen_hashes.before.json",
+            "bytes": 9149,
+            "sha256": "07bd564304a46556e10245e0963e591b5725795cc76a10daab9786e128a2198f"
+          },
+          "frozen_after": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150108566113Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/frozen_hashes.after.json",
+            "bytes": 9149,
+            "sha256": "5a693b2a23f074b9d4a8e0cdcca8ac3c5656fe8499d5616641308f5c8bcf9721"
+          }
+        },
+        "runtime_content_sha256": "06d9714a2886ee4f84517b04853e742abd604d63b2dc9d7ac16b1380e59f4b72",
+        "identity_config_sha256": "6f361829fc13e4661af91ba77f02fdec0907e5b1e11661eeccc212b8c80c25dd",
+        "phase_snapshot_bundle_sha256": "9a3b57300d500b17894cf8ca0e1dbc915d5ed3f15ca1023366053cad7dc14551",
+        "environment_lock_sha256": "602f6e0893d999e5cb078aadf75541234440a3af918dc58e0154e80ff16ea3cb",
+        "frozen_ledger_sha256": "c36ab3e603b8881c463dd72ec6a84092b892edb0ca62c35d39c1bc6ec26a18e2",
+        "fresh_attempt_index": 0,
+        "reused_attempt_index": 1,
+        "captured_filesystem_identity_count": 14
+      },
+      {
+        "schema": "wlr50_clean.ppo_phase_effective_entry_calibration.v1",
+        "phase": "P05",
+        "run_id": "20260904T150144775500Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe",
+        "seed": 1002,
+        "source_git_commit": "00d6cc6712e71cb12c58431beb180f0476aab4ed",
+        "files": {
+          "run_manifest": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150144775500Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/run_manifest.json",
+            "bytes": 5276,
+            "sha256": "bbb87eb824a030d570d6db9e5fb05bc51ec47a6494c14103bc737ddd1d0972f9"
+          },
+          "probe": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150144775500Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/phase_snapshot_live_probe.json",
+            "bytes": 96418,
+            "sha256": "018466a980a2e56b7730cdb6679185df8f36b5978b4b59b4ebbd1fab0bfd3e61"
+          },
+          "runtime_before": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150144775500Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/committed_runtime_identity.before.json",
+            "bytes": 50522,
+            "sha256": "342952c9433f54888ad3c4e1cb69ba6e701f3135c999ada4c7e24f673043ca57"
+          },
+          "runtime_after": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150144775500Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/committed_runtime_identity.after.json",
+            "bytes": 50522,
+            "sha256": "342952c9433f54888ad3c4e1cb69ba6e701f3135c999ada4c7e24f673043ca57"
+          },
+          "frozen_before": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150144775500Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/frozen_hashes.before.json",
+            "bytes": 9149,
+            "sha256": "113d933ce4ca68859f881d387920f0d08dab6a973dd1c1e5c3875a22a972643c"
+          },
+          "frozen_after": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150144775500Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/frozen_hashes.after.json",
+            "bytes": 9149,
+            "sha256": "ccac1e6354191f14900cfa879870f9f842bb97e8cd7bcf6e22761812956d7d34"
+          }
+        },
+        "runtime_content_sha256": "06d9714a2886ee4f84517b04853e742abd604d63b2dc9d7ac16b1380e59f4b72",
+        "identity_config_sha256": "6f361829fc13e4661af91ba77f02fdec0907e5b1e11661eeccc212b8c80c25dd",
+        "phase_snapshot_bundle_sha256": "9a3b57300d500b17894cf8ca0e1dbc915d5ed3f15ca1023366053cad7dc14551",
+        "environment_lock_sha256": "602f6e0893d999e5cb078aadf75541234440a3af918dc58e0154e80ff16ea3cb",
+        "frozen_ledger_sha256": "c36ab3e603b8881c463dd72ec6a84092b892edb0ca62c35d39c1bc6ec26a18e2",
+        "fresh_attempt_index": 0,
+        "reused_attempt_index": 1,
+        "captured_filesystem_identity_count": 14
+      },
+      {
+        "schema": "wlr50_clean.ppo_phase_effective_entry_calibration.v1",
+        "phase": "P06",
+        "run_id": "20260904T150221215221Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe",
+        "seed": 1002,
+        "source_git_commit": "00d6cc6712e71cb12c58431beb180f0476aab4ed",
+        "files": {
+          "run_manifest": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150221215221Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/run_manifest.json",
+            "bytes": 5276,
+            "sha256": "7d525ea88004fb89999b475abdad5b74fd2e1ec6fac5062640393fb6ffdff0e5"
+          },
+          "probe": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150221215221Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/phase_snapshot_live_probe.json",
+            "bytes": 95246,
+            "sha256": "673fc395057b734b07012a7931d1a1bc04fa99f0169f8efb07cdbe030e861a8e"
+          },
+          "runtime_before": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150221215221Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/committed_runtime_identity.before.json",
+            "bytes": 50522,
+            "sha256": "342952c9433f54888ad3c4e1cb69ba6e701f3135c999ada4c7e24f673043ca57"
+          },
+          "runtime_after": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150221215221Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/committed_runtime_identity.after.json",
+            "bytes": 50522,
+            "sha256": "342952c9433f54888ad3c4e1cb69ba6e701f3135c999ada4c7e24f673043ca57"
+          },
+          "frozen_before": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150221215221Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/frozen_hashes.before.json",
+            "bytes": 9149,
+            "sha256": "00e4080298c8eeaf7508e1b096f6c77de11b22b495332a4db07a930dd0687220"
+          },
+          "frozen_after": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150221215221Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/frozen_hashes.after.json",
+            "bytes": 9149,
+            "sha256": "d9005a53e87dd3af91b7ae030b0870b059138ba285e2c42db014f168e6f97603"
+          }
+        },
+        "runtime_content_sha256": "06d9714a2886ee4f84517b04853e742abd604d63b2dc9d7ac16b1380e59f4b72",
+        "identity_config_sha256": "6f361829fc13e4661af91ba77f02fdec0907e5b1e11661eeccc212b8c80c25dd",
+        "phase_snapshot_bundle_sha256": "9a3b57300d500b17894cf8ca0e1dbc915d5ed3f15ca1023366053cad7dc14551",
+        "environment_lock_sha256": "602f6e0893d999e5cb078aadf75541234440a3af918dc58e0154e80ff16ea3cb",
+        "frozen_ledger_sha256": "c36ab3e603b8881c463dd72ec6a84092b892edb0ca62c35d39c1bc6ec26a18e2",
+        "fresh_attempt_index": 0,
+        "reused_attempt_index": 1,
+        "captured_filesystem_identity_count": 14
+      },
+      {
+        "schema": "wlr50_clean.ppo_phase_effective_entry_calibration.v1",
+        "phase": "P07",
+        "run_id": "20260904T150258094110Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe",
+        "seed": 1002,
+        "source_git_commit": "00d6cc6712e71cb12c58431beb180f0476aab4ed",
+        "files": {
+          "run_manifest": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150258094110Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/run_manifest.json",
+            "bytes": 5276,
+            "sha256": "9c0d5352c6ee162fb53fbd518f842bf76aa8dd2853382bd3604e4002cb80b4b9"
+          },
+          "probe": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150258094110Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/phase_snapshot_live_probe.json",
+            "bytes": 96456,
+            "sha256": "567c6bafcabb05123579bb78556c18bee5616e533580dbab77715e1925b210a8"
+          },
+          "runtime_before": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150258094110Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/committed_runtime_identity.before.json",
+            "bytes": 50522,
+            "sha256": "342952c9433f54888ad3c4e1cb69ba6e701f3135c999ada4c7e24f673043ca57"
+          },
+          "runtime_after": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150258094110Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/committed_runtime_identity.after.json",
+            "bytes": 50522,
+            "sha256": "342952c9433f54888ad3c4e1cb69ba6e701f3135c999ada4c7e24f673043ca57"
+          },
+          "frozen_before": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150258094110Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/frozen_hashes.before.json",
+            "bytes": 9149,
+            "sha256": "7f89f040053976900a8a8850b228b8dfae296dc43493ec5a3802e84406666e03"
+          },
+          "frozen_after": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150258094110Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/frozen_hashes.after.json",
+            "bytes": 9149,
+            "sha256": "96fa9b6ba0e648e9fb7a129460b81494f9566a3e354cdb818c5b1c1f75d59587"
+          }
+        },
+        "runtime_content_sha256": "06d9714a2886ee4f84517b04853e742abd604d63b2dc9d7ac16b1380e59f4b72",
+        "identity_config_sha256": "6f361829fc13e4661af91ba77f02fdec0907e5b1e11661eeccc212b8c80c25dd",
+        "phase_snapshot_bundle_sha256": "9a3b57300d500b17894cf8ca0e1dbc915d5ed3f15ca1023366053cad7dc14551",
+        "environment_lock_sha256": "602f6e0893d999e5cb078aadf75541234440a3af918dc58e0154e80ff16ea3cb",
+        "frozen_ledger_sha256": "c36ab3e603b8881c463dd72ec6a84092b892edb0ca62c35d39c1bc6ec26a18e2",
+        "fresh_attempt_index": 0,
+        "reused_attempt_index": 1,
+        "captured_filesystem_identity_count": 14
+      },
+      {
+        "schema": "wlr50_clean.ppo_phase_effective_entry_calibration.v1",
+        "phase": "P08",
+        "run_id": "20260904T150334893434Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe",
+        "seed": 1002,
+        "source_git_commit": "00d6cc6712e71cb12c58431beb180f0476aab4ed",
+        "files": {
+          "run_manifest": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150334893434Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/run_manifest.json",
+            "bytes": 5276,
+            "sha256": "d2c0debfe5630c955c98a4f15487e355798f5f34c06514ad27bfa4c0e6562fce"
+          },
+          "probe": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150334893434Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/phase_snapshot_live_probe.json",
+            "bytes": 95828,
+            "sha256": "75466cf871c27648b9ac03f3bca123e178ea16342b99c5f41d0b9ee6fa11e907"
+          },
+          "runtime_before": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150334893434Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/committed_runtime_identity.before.json",
+            "bytes": 50522,
+            "sha256": "342952c9433f54888ad3c4e1cb69ba6e701f3135c999ada4c7e24f673043ca57"
+          },
+          "runtime_after": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150334893434Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/committed_runtime_identity.after.json",
+            "bytes": 50522,
+            "sha256": "342952c9433f54888ad3c4e1cb69ba6e701f3135c999ada4c7e24f673043ca57"
+          },
+          "frozen_before": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150334893434Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/frozen_hashes.before.json",
+            "bytes": 9149,
+            "sha256": "5cd9f44b410778fa515c14383ffb89351ea5bc883e463194115fdd8c09eedf9f"
+          },
+          "frozen_after": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150334893434Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/frozen_hashes.after.json",
+            "bytes": 9149,
+            "sha256": "f03a7082ca36d9ebb928d6b51f2aec94dbd4b51210eedb7196563f4901d200ed"
+          }
+        },
+        "runtime_content_sha256": "06d9714a2886ee4f84517b04853e742abd604d63b2dc9d7ac16b1380e59f4b72",
+        "identity_config_sha256": "6f361829fc13e4661af91ba77f02fdec0907e5b1e11661eeccc212b8c80c25dd",
+        "phase_snapshot_bundle_sha256": "9a3b57300d500b17894cf8ca0e1dbc915d5ed3f15ca1023366053cad7dc14551",
+        "environment_lock_sha256": "602f6e0893d999e5cb078aadf75541234440a3af918dc58e0154e80ff16ea3cb",
+        "frozen_ledger_sha256": "c36ab3e603b8881c463dd72ec6a84092b892edb0ca62c35d39c1bc6ec26a18e2",
+        "fresh_attempt_index": 0,
+        "reused_attempt_index": 1,
+        "captured_filesystem_identity_count": 14
+      },
+      {
+        "schema": "wlr50_clean.ppo_phase_effective_entry_calibration.v1",
+        "phase": "P09",
+        "run_id": "20260904T150411470259Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe",
+        "seed": 1002,
+        "source_git_commit": "00d6cc6712e71cb12c58431beb180f0476aab4ed",
+        "files": {
+          "run_manifest": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150411470259Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/run_manifest.json",
+            "bytes": 5276,
+            "sha256": "79206ddb7f9a17fadd12ab1c71adbf14ee9476cbe1e33f6bace23cf492935794"
+          },
+          "probe": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150411470259Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/phase_snapshot_live_probe.json",
+            "bytes": 95206,
+            "sha256": "0c36685e837b94771a2c7148c286d224180aea00e66dcf4d26b67ec9647d5bf0"
+          },
+          "runtime_before": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150411470259Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/committed_runtime_identity.before.json",
+            "bytes": 50522,
+            "sha256": "342952c9433f54888ad3c4e1cb69ba6e701f3135c999ada4c7e24f673043ca57"
+          },
+          "runtime_after": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150411470259Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/committed_runtime_identity.after.json",
+            "bytes": 50522,
+            "sha256": "342952c9433f54888ad3c4e1cb69ba6e701f3135c999ada4c7e24f673043ca57"
+          },
+          "frozen_before": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150411470259Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/frozen_hashes.before.json",
+            "bytes": 9149,
+            "sha256": "c3ba86fe7eb13b4254af34e4dd29e7da1960e21058bb7e2e9a20e85713d56ea7"
+          },
+          "frozen_after": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150411470259Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/frozen_hashes.after.json",
+            "bytes": 9149,
+            "sha256": "9caaf993bda4067ce36fca221ac6156ffc3de0f5b7c11d70f4784dbd91df070a"
+          }
+        },
+        "runtime_content_sha256": "06d9714a2886ee4f84517b04853e742abd604d63b2dc9d7ac16b1380e59f4b72",
+        "identity_config_sha256": "6f361829fc13e4661af91ba77f02fdec0907e5b1e11661eeccc212b8c80c25dd",
+        "phase_snapshot_bundle_sha256": "9a3b57300d500b17894cf8ca0e1dbc915d5ed3f15ca1023366053cad7dc14551",
+        "environment_lock_sha256": "602f6e0893d999e5cb078aadf75541234440a3af918dc58e0154e80ff16ea3cb",
+        "frozen_ledger_sha256": "c36ab3e603b8881c463dd72ec6a84092b892edb0ca62c35d39c1bc6ec26a18e2",
+        "fresh_attempt_index": 0,
+        "reused_attempt_index": 1,
+        "captured_filesystem_identity_count": 14
+      },
+      {
+        "schema": "wlr50_clean.ppo_phase_effective_entry_calibration.v1",
+        "phase": "P10",
+        "run_id": "20260904T150448317651Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe",
+        "seed": 1002,
+        "source_git_commit": "00d6cc6712e71cb12c58431beb180f0476aab4ed",
+        "files": {
+          "run_manifest": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150448317651Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/run_manifest.json",
+            "bytes": 5276,
+            "sha256": "0f90bff8627a0c808e8bf16f6c6556aced17a0aa1520617b22ec32a62d7ca62f"
+          },
+          "probe": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150448317651Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/phase_snapshot_live_probe.json",
+            "bytes": 96060,
+            "sha256": "313ff1b132d5a4480c9d937439fcb251e2dcdc4308a6d613059f996f5ae1d62f"
+          },
+          "runtime_before": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150448317651Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/committed_runtime_identity.before.json",
+            "bytes": 50522,
+            "sha256": "342952c9433f54888ad3c4e1cb69ba6e701f3135c999ada4c7e24f673043ca57"
+          },
+          "runtime_after": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150448317651Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/committed_runtime_identity.after.json",
+            "bytes": 50522,
+            "sha256": "342952c9433f54888ad3c4e1cb69ba6e701f3135c999ada4c7e24f673043ca57"
+          },
+          "frozen_before": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150448317651Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/frozen_hashes.before.json",
+            "bytes": 9149,
+            "sha256": "9a1b6883314081aaff510c580299246335ccaa4c4a464335cec525153cb4496b"
+          },
+          "frozen_after": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150448317651Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/frozen_hashes.after.json",
+            "bytes": 9149,
+            "sha256": "9b5e011df26f7adf561e5c047f0b972f1abf14825c37e3a5bc86d81b325f0bd5"
+          }
+        },
+        "runtime_content_sha256": "06d9714a2886ee4f84517b04853e742abd604d63b2dc9d7ac16b1380e59f4b72",
+        "identity_config_sha256": "6f361829fc13e4661af91ba77f02fdec0907e5b1e11661eeccc212b8c80c25dd",
+        "phase_snapshot_bundle_sha256": "9a3b57300d500b17894cf8ca0e1dbc915d5ed3f15ca1023366053cad7dc14551",
+        "environment_lock_sha256": "602f6e0893d999e5cb078aadf75541234440a3af918dc58e0154e80ff16ea3cb",
+        "frozen_ledger_sha256": "c36ab3e603b8881c463dd72ec6a84092b892edb0ca62c35d39c1bc6ec26a18e2",
+        "fresh_attempt_index": 0,
+        "reused_attempt_index": 1,
+        "captured_filesystem_identity_count": 14
+      },
+      {
+        "schema": "wlr50_clean.ppo_phase_effective_entry_calibration.v1",
+        "phase": "P11",
+        "run_id": "20260904T150524364315Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe",
+        "seed": 1002,
+        "source_git_commit": "00d6cc6712e71cb12c58431beb180f0476aab4ed",
+        "files": {
+          "run_manifest": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150524364315Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/run_manifest.json",
+            "bytes": 5276,
+            "sha256": "8f681a29794642509012f7dc37c7116176927c7970c01c4589512f64ea4b6ba7"
+          },
+          "probe": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150524364315Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/phase_snapshot_live_probe.json",
+            "bytes": 95972,
+            "sha256": "1fc75ce0e8d37a782cd145cde7104e571c21b5bbad72817b669a1dc21dabde6f"
+          },
+          "runtime_before": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150524364315Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/committed_runtime_identity.before.json",
+            "bytes": 50522,
+            "sha256": "342952c9433f54888ad3c4e1cb69ba6e701f3135c999ada4c7e24f673043ca57"
+          },
+          "runtime_after": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150524364315Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/committed_runtime_identity.after.json",
+            "bytes": 50522,
+            "sha256": "342952c9433f54888ad3c4e1cb69ba6e701f3135c999ada4c7e24f673043ca57"
+          },
+          "frozen_before": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150524364315Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/frozen_hashes.before.json",
+            "bytes": 9149,
+            "sha256": "dec2ce52c3b284ab9ba04b4c0cef298486264a292218c93b22da80d60cdfbc86"
+          },
+          "frozen_after": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150524364315Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/frozen_hashes.after.json",
+            "bytes": 9149,
+            "sha256": "00bd65f5018806127259ffa92279102745a041be4857674ed0844dcccd16a5cf"
+          }
+        },
+        "runtime_content_sha256": "06d9714a2886ee4f84517b04853e742abd604d63b2dc9d7ac16b1380e59f4b72",
+        "identity_config_sha256": "6f361829fc13e4661af91ba77f02fdec0907e5b1e11661eeccc212b8c80c25dd",
+        "phase_snapshot_bundle_sha256": "9a3b57300d500b17894cf8ca0e1dbc915d5ed3f15ca1023366053cad7dc14551",
+        "environment_lock_sha256": "602f6e0893d999e5cb078aadf75541234440a3af918dc58e0154e80ff16ea3cb",
+        "frozen_ledger_sha256": "c36ab3e603b8881c463dd72ec6a84092b892edb0ca62c35d39c1bc6ec26a18e2",
+        "fresh_attempt_index": 0,
+        "reused_attempt_index": 1,
+        "captured_filesystem_identity_count": 14
+      },
+      {
+        "schema": "wlr50_clean.ppo_phase_effective_entry_calibration.v1",
+        "phase": "P12",
+        "run_id": "20260904T150602062612Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe",
+        "seed": 1002,
+        "source_git_commit": "00d6cc6712e71cb12c58431beb180f0476aab4ed",
+        "files": {
+          "run_manifest": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150602062612Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/run_manifest.json",
+            "bytes": 5276,
+            "sha256": "0de593e9524d545ecc5b5c9a044da3759f80663f7243b9e7f1d1933e9951ca10"
+          },
+          "probe": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150602062612Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/phase_snapshot_live_probe.json",
+            "bytes": 95234,
+            "sha256": "14119ab05af45cbe60863edf81b269c115e39bd25cf841c0f3a79cdbd30f471f"
+          },
+          "runtime_before": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150602062612Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/committed_runtime_identity.before.json",
+            "bytes": 50522,
+            "sha256": "342952c9433f54888ad3c4e1cb69ba6e701f3135c999ada4c7e24f673043ca57"
+          },
+          "runtime_after": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150602062612Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/committed_runtime_identity.after.json",
+            "bytes": 50522,
+            "sha256": "342952c9433f54888ad3c4e1cb69ba6e701f3135c999ada4c7e24f673043ca57"
+          },
+          "frozen_before": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150602062612Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/frozen_hashes.before.json",
+            "bytes": 9149,
+            "sha256": "89544e2717c68bc71433e4c16edc49a7d046588a3407f164e24428f0832a9991"
+          },
+          "frozen_after": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150602062612Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/frozen_hashes.after.json",
+            "bytes": 9149,
+            "sha256": "31ec3fba007540c90ba84503c5e81541e00a262729490f9c49aaa4d997b2e8bb"
+          }
+        },
+        "runtime_content_sha256": "06d9714a2886ee4f84517b04853e742abd604d63b2dc9d7ac16b1380e59f4b72",
+        "identity_config_sha256": "6f361829fc13e4661af91ba77f02fdec0907e5b1e11661eeccc212b8c80c25dd",
+        "phase_snapshot_bundle_sha256": "9a3b57300d500b17894cf8ca0e1dbc915d5ed3f15ca1023366053cad7dc14551",
+        "environment_lock_sha256": "602f6e0893d999e5cb078aadf75541234440a3af918dc58e0154e80ff16ea3cb",
+        "frozen_ledger_sha256": "c36ab3e603b8881c463dd72ec6a84092b892edb0ca62c35d39c1bc6ec26a18e2",
+        "fresh_attempt_index": 0,
+        "reused_attempt_index": 1,
+        "captured_filesystem_identity_count": 14
+      },
+      {
+        "schema": "wlr50_clean.ppo_phase_effective_entry_calibration.v1",
+        "phase": "P13",
+        "run_id": "20260904T150639270357Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe",
+        "seed": 1002,
+        "source_git_commit": "00d6cc6712e71cb12c58431beb180f0476aab4ed",
+        "files": {
+          "run_manifest": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150639270357Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/run_manifest.json",
+            "bytes": 5276,
+            "sha256": "30d3384bc32646fd2cadab263d91ac6ffee9ed33396c5cd345b81fb0045f4ed1"
+          },
+          "probe": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150639270357Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/phase_snapshot_live_probe.json",
+            "bytes": 96096,
+            "sha256": "9be7178edcd93f22f65386ff30f378ee1ca9e4d902a350071021c64befbcd05f"
+          },
+          "runtime_before": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150639270357Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/committed_runtime_identity.before.json",
+            "bytes": 50522,
+            "sha256": "342952c9433f54888ad3c4e1cb69ba6e701f3135c999ada4c7e24f673043ca57"
+          },
+          "runtime_after": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150639270357Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/committed_runtime_identity.after.json",
+            "bytes": 50522,
+            "sha256": "342952c9433f54888ad3c4e1cb69ba6e701f3135c999ada4c7e24f673043ca57"
+          },
+          "frozen_before": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150639270357Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/frozen_hashes.before.json",
+            "bytes": 9149,
+            "sha256": "e35857800a593811f5e373359c82c64f34f38d39b3ebb1a26b0dce8f4c7bbe34"
+          },
+          "frozen_after": {
+            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150639270357Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/frozen_hashes.after.json",
+            "bytes": 9149,
+            "sha256": "03a07f1f358cc7cde3ff4e875ab3c6125d8549c9b0af4917b51594d166c3bffc"
+          }
+        },
+        "runtime_content_sha256": "06d9714a2886ee4f84517b04853e742abd604d63b2dc9d7ac16b1380e59f4b72",
+        "identity_config_sha256": "6f361829fc13e4661af91ba77f02fdec0907e5b1e11661eeccc212b8c80c25dd",
+        "phase_snapshot_bundle_sha256": "9a3b57300d500b17894cf8ca0e1dbc915d5ed3f15ca1023366053cad7dc14551",
+        "environment_lock_sha256": "602f6e0893d999e5cb078aadf75541234440a3af918dc58e0154e80ff16ea3cb",
+        "frozen_ledger_sha256": "c36ab3e603b8881c463dd72ec6a84092b892edb0ca62c35d39c1bc6ec26a18e2",
+        "fresh_attempt_index": 0,
+        "reused_attempt_index": 1,
+        "captured_filesystem_identity_count": 14
+      }
+    ]
+  },
+  "portability_scope": "same_locked_host_runtime_only",
+  "calibration_status": "provisional_pending_independent_fresh_holdout",
+  "effective_entry_semantics": "source_snapshot_plus_one_real_physx_tick_no_rewind",
+  "physics_dt_s": 0.008333333333333333,
+  "fingerprint_fields": [
+    "root_position_m",
+    "root_orientation",
+    "root_linear_velocity_m_s",
+    "root_angular_velocity_rad_s",
+    "servo_position_deg",
+    "servo_velocity_deg_s",
+    "wheel_velocity_rad_s",
+    "wheel_center_m",
+    "wheel_bottom_m"
+  ],
+  "fingerprint_max_ulp_distance": 1,
+  "contact_contract": {
+    "force_on_n": 0.25,
+    "force_off_n": 0.12,
+    "source": "isaaclab.ContactSensor.force_matrix_w",
+    "active_rule": "force_norm_n >= force_on_n",
+    "inactive_rule": "force_norm_n < force_off_n",
+    "hysteresis_gap_forbidden": true,
+    "classifier_must_equal_raw": true,
+    "double_active_forbidden": true
+  },
+  "phase_count": 12,
+  "phases": {
+    "P02": {
+      "schema": "wlr50_clean.ppo_phase_effective_entry.v1",
+      "phase": "P02",
+      "source_tick": 1600,
+      "effective_entry_offset_s": 0.008333333333333333,
+      "calibration_probe_file_sha256": "e95b0e61f9be5d7f01e864598def5d3c1e6be97d07749d6fc09cd4c1800bfd78",
+      "post_prime_fingerprint": {
+        "root_position_m": 0.000254020094871521,
+        "root_orientation": 0.0017856368828694142,
+        "root_linear_velocity_m_s": 0.02646624483168125,
+        "root_angular_velocity_rad_s": 0.0689087058417499,
+        "servo_position_deg": 0.08491129759579857,
+        "servo_velocity_deg_s": 15.922790723989221,
+        "wheel_velocity_rad_s": 0.20008452609181404,
+        "wheel_center_m": 0.0013223327696323395,
+        "wheel_bottom_m": 0.0013182387094044373
+      },
+      "post_prime_fingerprint_binary64_hex": {
+        "root_position_m": "3f30a5c000000000",
+        "root_orientation": "3f5d418100ecd6d5",
+        "root_linear_velocity_m_s": "3f9b19f7a0000000",
+        "root_angular_velocity_rad_s": "3fb1a4003e000000",
+        "servo_position_deg": "3fb5bcbf2e3c20fc",
+        "servo_velocity_deg_s": "402fd87806992bf7",
+        "wheel_velocity_rad_s": "3fc99c5ea8000000",
+        "wheel_center_m": "3f55aa4400000000",
+        "wheel_bottom_m": "3f559918094b2cc0"
+      },
+      "raw_contacts": {
+        "front_left_ankle": {
+          "body_name": "front_left_wheel",
+          "classification": "GROUND",
+          "ground": {
+            "active": true,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              1.419626073584368e-06,
+              0.0,
+              10.56592845916748
+            ],
+            "force_w_n_binary64_hex": [
+              "3eb7d13f60000000",
+              "0000000000000000",
+              "402521c160000000"
+            ],
+            "force_norm_n": 10.565928459167576,
+            "force_norm_n_binary64_hex": "402521c160000036"
+          },
+          "obstacle": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          }
+        },
+        "front_right_ankle": {
+          "body_name": "front_right_wheel",
+          "classification": "AIR",
+          "ground": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          },
+          "obstacle": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          }
+        },
+        "rear_left_ankle": {
+          "body_name": "rear_left_wheel",
+          "classification": "AIR",
+          "ground": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          },
+          "obstacle": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          }
+        },
+        "rear_right_ankle": {
+          "body_name": "rear_right_wheel",
+          "classification": "GROUND",
+          "ground": {
+            "active": true,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              2.17108208744321e-06,
+              0.0,
+              16.158832550048828
+            ],
+            "force_w_n_binary64_hex": [
+              "3ec2365d00000000",
+              "0000000000000000",
+              "403028a940000000"
+            ],
+            "force_norm_n": 16.158832550048974,
+            "force_norm_n_binary64_hex": "403028a940000029"
+          },
+          "obstacle": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          }
+        },
+        "signature_sha256": "d82b75a736cb77eda542a2a3a63da434f08a24b6a561f0556999ce4ed0e6ae7a"
+      },
+      "entry_sha256": "7fc821353186db0b2f5921b1f5919d78fd2443e654fed6e60a28ec31a54a1521"
+    },
+    "P03": {
+      "schema": "wlr50_clean.ppo_phase_effective_entry.v1",
+      "phase": "P03",
+      "source_tick": 1664,
+      "effective_entry_offset_s": 0.008333333333333333,
+      "calibration_probe_file_sha256": "a9b623e852250ef583034f234988f77548acf4fea6bb26997ff2790eec451c2c",
+      "post_prime_fingerprint": {
+        "root_position_m": 0.00021553784608840942,
+        "root_orientation": 0.0019192223361766197,
+        "root_linear_velocity_m_s": 0.03724998142570257,
+        "root_angular_velocity_rad_s": 0.12359907478094101,
+        "servo_position_deg": 0.3789901215710856,
+        "servo_velocity_deg_s": 22.802793584196785,
+        "wheel_velocity_rad_s": 0.7885483354330063,
+        "wheel_center_m": 0.0014446191489696503,
+        "wheel_bottom_m": 0.0014405250887417481
+      },
+      "post_prime_fingerprint_binary64_hex": {
+        "root_position_m": "3f2c404000000000",
+        "root_orientation": "3f5f71cd4aba78a1",
+        "root_linear_velocity_m_s": "3fa3126df8000000",
+        "root_angular_velocity_rad_s": "3fbfa43060000000",
+        "servo_position_deg": "3fd8415fc869e980",
+        "servo_velocity_deg_s": "4036cd83e15d9056",
+        "wheel_velocity_rad_s": "3fe93bc9b8000000",
+        "wheel_center_m": "3f57ab2c00000000",
+        "wheel_bottom_m": "3f579a00094b2cc0"
+      },
+      "raw_contacts": {
+        "front_left_ankle": {
+          "body_name": "front_left_wheel",
+          "classification": "GROUND",
+          "ground": {
+            "active": true,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              1.8445331306793378e-06,
+              0.0,
+              13.728409767150879
+            ],
+            "force_w_n_binary64_hex": [
+              "3ebef235a0000000",
+              "0000000000000000",
+              "402b74f220000000"
+            ],
+            "force_norm_n": 13.728409767151003,
+            "force_norm_n_binary64_hex": "402b74f220000046"
+          },
+          "obstacle": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          }
+        },
+        "front_right_ankle": {
+          "body_name": "front_right_wheel",
+          "classification": "AIR",
+          "ground": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          },
+          "obstacle": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          }
+        },
+        "rear_left_ankle": {
+          "body_name": "rear_left_wheel",
+          "classification": "AIR",
+          "ground": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          },
+          "obstacle": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          }
+        },
+        "rear_right_ankle": {
+          "body_name": "rear_right_wheel",
+          "classification": "GROUND",
+          "ground": {
+            "active": true,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              2.2120341327536153e-06,
+              0.0,
+              16.4636287689209
+            ],
+            "force_w_n_binary64_hex": [
+              "3ec28e4ea0000000",
+              "0000000000000000",
+              "403076b060000000"
+            ],
+            "force_norm_n": 16.463628768921048,
+            "force_norm_n_binary64_hex": "403076b06000002a"
+          },
+          "obstacle": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          }
+        },
+        "signature_sha256": "d82b75a736cb77eda542a2a3a63da434f08a24b6a561f0556999ce4ed0e6ae7a"
+      },
+      "entry_sha256": "8528c56984459743559ef48198f458724d5fa3f211a572dba924ea3cc9fe4968"
+    },
+    "P04": {
+      "schema": "wlr50_clean.ppo_phase_effective_entry.v1",
+      "phase": "P04",
+      "source_tick": 1816,
+      "effective_entry_offset_s": 0.008333333333333333,
+      "calibration_probe_file_sha256": "9b85b5595c9fe038b3e96113de1d5889fd36df2b6503fc8018762e62f7497b38",
+      "post_prime_fingerprint": {
+        "root_position_m": 0.0004782676696777344,
+        "root_orientation": 0.00040118592413350407,
+        "root_linear_velocity_m_s": 0.011745888739824295,
+        "root_angular_velocity_rad_s": 0.04758149012923241,
+        "servo_position_deg": 0.24526526290598838,
+        "servo_velocity_deg_s": 9.559375134390407,
+        "wheel_velocity_rad_s": 0.4034578502178192,
+        "wheel_center_m": 0.0006395801901817322,
+        "wheel_bottom_m": 0.0006422364917368223
+      },
+      "post_prime_fingerprint_binary64_hex": {
+        "root_position_m": "3f3f580000000000",
+        "root_orientation": "3f3a4ac86c7c1efe",
+        "root_linear_velocity_m_s": "3f880e3a80000000",
+        "root_angular_velocity_rad_s": "3fa85c99e0000000",
+        "servo_position_deg": "3fcf64da25835600",
+        "servo_velocity_deg_s": "40231e666ae8ce08",
+        "wheel_velocity_rad_s": "3fd9d240e0000000",
+        "wheel_center_m": "3f44f53000000000",
+        "wheel_bottom_m": "3f450b785d392d80"
+      },
+      "raw_contacts": {
+        "front_left_ankle": {
+          "body_name": "front_left_wheel",
+          "classification": "GROUND",
+          "ground": {
+            "active": true,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              2.231513235528837e-06,
+              0.0,
+              16.60860824584961
+            ],
+            "force_w_n_binary64_hex": [
+              "3ec2b82360000000",
+              "0000000000000000",
+              "40309bcdc0000000"
+            ],
+            "force_norm_n": 16.60860824584976,
+            "force_norm_n_binary64_hex": "40309bcdc000002a"
+          },
+          "obstacle": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          }
+        },
+        "front_right_ankle": {
+          "body_name": "front_right_wheel",
+          "classification": "AIR",
+          "ground": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          },
+          "obstacle": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          }
+        },
+        "rear_left_ankle": {
+          "body_name": "rear_left_wheel",
+          "classification": "AIR",
+          "ground": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          },
+          "obstacle": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          }
+        },
+        "rear_right_ankle": {
+          "body_name": "rear_right_wheel",
+          "classification": "GROUND",
+          "ground": {
+            "active": true,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              2.0272773326723836e-06,
+              0.0,
+              15.088529586791992
+            ],
+            "force_w_n_binary64_hex": [
+              "3ec1018b80000000",
+              "0000000000000000",
+              "402e2d53c0000000"
+            ],
+            "force_norm_n": 15.088529586792129,
+            "force_norm_n_binary64_hex": "402e2d53c000004d"
+          },
+          "obstacle": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          }
+        },
+        "signature_sha256": "d82b75a736cb77eda542a2a3a63da434f08a24b6a561f0556999ce4ed0e6ae7a"
+      },
+      "entry_sha256": "d198b0409567b06f36842e3161bc8173132eeb6a4ae99fcc6418fda69da45a82"
+    },
+    "P05": {
+      "schema": "wlr50_clean.ppo_phase_effective_entry.v1",
+      "phase": "P05",
+      "source_tick": 2400,
+      "effective_entry_offset_s": 0.008333333333333333,
+      "calibration_probe_file_sha256": "018466a980a2e56b7730cdb6679185df8f36b5978b4b59b4ebbd1fab0bfd3e61",
+      "post_prime_fingerprint": {
+        "root_position_m": 0.0002064034342765808,
+        "root_orientation": 0.0006747134290994068,
+        "root_linear_velocity_m_s": 0.029243075288832188,
+        "root_angular_velocity_rad_s": 0.08974085189402103,
+        "servo_position_deg": 0.11511771581868757,
+        "servo_velocity_deg_s": 18.195137831544134,
+        "wheel_velocity_rad_s": 0.3143387883901596,
+        "wheel_center_m": 0.0007919147610664368,
+        "wheel_bottom_m": 0.0007960088212943389
+      },
+      "post_prime_fingerprint_binary64_hex": {
+        "root_position_m": "3f2b0dc000000000",
+        "root_orientation": "3f461be80e5b0faa",
+        "root_linear_velocity_m_s": "3f9df1e590000000",
+        "root_angular_velocity_rad_s": "3fb6f941a8000000",
+        "servo_position_deg": "3fbd785ac8a1a900",
+        "servo_velocity_deg_s": "403231f48d8cb1c5",
+        "wheel_velocity_rad_s": "3fd41e2070000000",
+        "wheel_center_m": "3f49f31000000000",
+        "wheel_bottom_m": "3f4a1567ed69a680"
+      },
+      "raw_contacts": {
+        "front_left_ankle": {
+          "body_name": "front_left_wheel",
+          "classification": "GROUND",
+          "ground": {
+            "active": true,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              1.1232258430027287e-06,
+              0.0,
+              8.359894752502441
+            ],
+            "force_w_n_binary64_hex": [
+              "3eb2d837e0000000",
+              "0000000000000000",
+              "4020b84420000000"
+            ],
+            "force_norm_n": 8.359894752502518,
+            "force_norm_n_binary64_hex": "4020b8442000002b"
+          },
+          "obstacle": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          }
+        },
+        "front_right_ankle": {
+          "body_name": "front_right_wheel",
+          "classification": "AIR",
+          "ground": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          },
+          "obstacle": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              6.21735640748966e-09,
+              -4.3963717111239475e-09,
+              0.055797118693590164
+            ],
+            "force_w_n_binary64_hex": [
+              "3e3ab40e40000000",
+              "be32e1dca0000000",
+              "3fac9170a0000000"
+            ],
+            "force_norm_n": 0.055797118693590685,
+            "force_norm_n_binary64_hex": "3fac9170a000004b"
+          }
+        },
+        "rear_left_ankle": {
+          "body_name": "rear_left_wheel",
+          "classification": "GROUND",
+          "ground": {
+            "active": true,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              9.950928188118269e-07,
+              0.0,
+              7.4062323570251465
+            ],
+            "force_w_n_binary64_hex": [
+              "3eb0b1e420000000",
+              "0000000000000000",
+              "401d9ffb60000000"
+            ],
+            "force_norm_n": 7.406232357025213,
+            "force_norm_n_binary64_hex": "401d9ffb6000004b"
+          },
+          "obstacle": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          }
+        },
+        "rear_right_ankle": {
+          "body_name": "rear_right_wheel",
+          "classification": "GROUND",
+          "ground": {
+            "active": true,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              5.421249511528003e-07,
+              0.0,
+              4.034903049468994
+            ],
+            "force_w_n_binary64_hex": [
+              "3ea230d160000000",
+              "0000000000000000",
+              "401023bda0000000"
+            ],
+            "force_norm_n": 4.034903049469031,
+            "force_norm_n_binary64_hex": "401023bda0000029"
+          },
+          "obstacle": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          }
+        },
+        "signature_sha256": "5f8a69a10315b975242b5389c7b0cdc848d731b22bd239fdc16bc161474bd589"
+      },
+      "entry_sha256": "1b21084bd4513c0a014d1aa019219fc1b2154b8f88041e8e8af2210771b9c6d4"
+    },
+    "P06": {
+      "schema": "wlr50_clean.ppo_phase_effective_entry.v1",
+      "phase": "P06",
+      "source_tick": 3576,
+      "effective_entry_offset_s": 0.008333333333333333,
+      "calibration_probe_file_sha256": "673fc395057b734b07012a7931d1a1bc04fa99f0169f8efb07cdbe030e861a8e",
+      "post_prime_fingerprint": {
+        "root_position_m": 0.00023127347230911255,
+        "root_orientation": 3.858776200951517e-05,
+        "root_linear_velocity_m_s": 0.011803558096289635,
+        "root_angular_velocity_rad_s": 0.029165018815547228,
+        "servo_position_deg": 0.33851100545500046,
+        "servo_velocity_deg_s": 5.567467765603575,
+        "wheel_velocity_rad_s": 0.3115352988243103,
+        "wheel_center_m": 0.0011573880910873413,
+        "wheel_bottom_m": 0.001157306482104617
+      },
+      "post_prime_fingerprint_binary64_hex": {
+        "root_position_m": "3f2e504000000000",
+        "root_orientation": "3f043b2968278e94",
+        "root_linear_velocity_m_s": "3f882c76c0000000",
+        "root_angular_velocity_rad_s": "3f9ddd6f48000000",
+        "servo_position_deg": "3fd5aa2a1070fac0",
+        "servo_velocity_deg_s": "40164516451b34c9",
+        "wheel_velocity_rad_s": "3fd3f031c0000000",
+        "wheel_center_m": "3f52f67000000000",
+        "wheel_bottom_m": "3f52f6185f7e5f40"
+      },
+      "raw_contacts": {
+        "front_left_ankle": {
+          "body_name": "front_left_wheel",
+          "classification": "AIR",
+          "ground": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          },
+          "obstacle": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          }
+        },
+        "front_right_ankle": {
+          "body_name": "front_right_wheel",
+          "classification": "OBSTACLE",
+          "ground": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          },
+          "obstacle": {
+            "active": true,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              1.1518369547047769e-06,
+              -2.611497393445461e-06,
+              10.502091407775879
+            ],
+            "force_w_n_binary64_hex": [
+              "3eb3531a20000000",
+              "bec5e825e0000000",
+              "4025011220000000"
+            ],
+            "force_norm_n": 10.502091407776266,
+            "force_norm_n_binary64_hex": "40250112200000da"
+          }
+        },
+        "rear_left_ankle": {
+          "body_name": "rear_left_wheel",
+          "classification": "GROUND",
+          "ground": {
+            "active": true,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              1.6415084473919705e-06,
+              0.0,
+              12.217347145080566
+            ],
+            "force_w_n_binary64_hex": [
+              "3ebb8a39a0000000",
+              "0000000000000000",
+              "40286f4820000000"
+            ],
+            "force_norm_n": 12.217347145080677,
+            "force_norm_n_binary64_hex": "40286f482000003e"
+          },
+          "obstacle": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          }
+        },
+        "rear_right_ankle": {
+          "body_name": "rear_right_wheel",
+          "classification": "GROUND",
+          "ground": {
+            "active": true,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              5.24709662386158e-07,
+              0.0,
+              3.9052858352661133
+            ],
+            "force_w_n_binary64_hex": [
+              "3ea19b38c0000000",
+              "0000000000000000",
+              "400f3e0680000000"
+            ],
+            "force_norm_n": 3.9052858352661484,
+            "force_norm_n_binary64_hex": "400f3e068000004f"
+          },
+          "obstacle": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          }
+        },
+        "signature_sha256": "75631057737394299ff54819abca8d7068208c014c53b782898680509db95544"
+      },
+      "entry_sha256": "bf66ac55f9463274ce0d04e69a28da62087139812912e8122e88c956f244d339"
+    },
+    "P07": {
+      "schema": "wlr50_clean.ppo_phase_effective_entry.v1",
+      "phase": "P07",
+      "source_tick": 6648,
+      "effective_entry_offset_s": 0.008333333333333333,
+      "calibration_probe_file_sha256": "567c6bafcabb05123579bb78556c18bee5616e533580dbab77715e1925b210a8",
+      "post_prime_fingerprint": {
+        "root_position_m": 0.000357799232006073,
+        "root_orientation": 9.660428681897646e-05,
+        "root_linear_velocity_m_s": 0.009817876969464123,
+        "root_angular_velocity_rad_s": 0.026144474744796753,
+        "servo_position_deg": 0.06735932559466562,
+        "servo_velocity_deg_s": 11.196805092256419,
+        "wheel_velocity_rad_s": 0.09141708165407181,
+        "wheel_center_m": 0.0004275292158126831,
+        "wheel_bottom_m": 0.00043162327604058526
+      },
+      "post_prime_fingerprint_binary64_hex": {
+        "root_position_m": "3f3772e000000000",
+        "root_orientation": "3f195301029a156f",
+        "root_linear_velocity_m_s": "3f841b6524000000",
+        "root_angular_velocity_rad_s": "3f9ac59e00000000",
+        "servo_position_deg": "3fb13e75f4827c00",
+        "servo_velocity_deg_s": "402664c3a315daec",
+        "wheel_velocity_rad_s": "3fb7671c20000000",
+        "wheel_center_m": "3f3c04c000000000",
+        "wheel_bottom_m": "3f3c496fdad34d00"
+      },
+      "raw_contacts": {
+        "front_left_ankle": {
+          "body_name": "front_left_wheel",
+          "classification": "AIR",
+          "ground": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          },
+          "obstacle": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          }
+        },
+        "front_right_ankle": {
+          "body_name": "front_right_wheel",
+          "classification": "OBSTACLE",
+          "ground": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          },
+          "obstacle": {
+            "active": true,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              1.4248738580135978e-06,
+              -2.020937927227351e-06,
+              13.017436027526855
+            ],
+            "force_w_n_binary64_hex": [
+              "3eb7e7c960000000",
+              "bec0f3ee60000000",
+              "402a08ed60000000"
+            ],
+            "force_norm_n": 13.01743602752709,
+            "force_norm_n_binary64_hex": "402a08ed60000084"
+          }
+        },
+        "rear_left_ankle": {
+          "body_name": "rear_left_wheel",
+          "classification": "GROUND",
+          "ground": {
+            "active": true,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              1.9418644114921335e-06,
+              0.0,
+              14.452821731567383
+            ],
+            "force_w_n_binary64_hex": [
+              "3ec04a1f40000000",
+              "0000000000000000",
+              "402ce7d840000000"
+            ],
+            "force_norm_n": 14.452821731567514,
+            "force_norm_n_binary64_hex": "402ce7d84000004a"
+          },
+          "obstacle": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          }
+        },
+        "rear_right_ankle": {
+          "body_name": "rear_right_wheel",
+          "classification": "AIR",
+          "ground": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          },
+          "obstacle": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          }
+        },
+        "signature_sha256": "e32717d4d9b7271b35b9422aa4cc5be1a2e36e33460933dbaf58caf4233110f2"
+      },
+      "entry_sha256": "19a45cac6b3f05d7cfbd413f6b36d82a4119b915bb8b6fb323e19eb23ac7f5f0"
+    },
+    "P08": {
+      "schema": "wlr50_clean.ppo_phase_effective_entry.v1",
+      "phase": "P08",
+      "source_tick": 6856,
+      "effective_entry_offset_s": 0.008333333333333333,
+      "calibration_probe_file_sha256": "75466cf871c27648b9ac03f3bca123e178ea16342b99c5f41d0b9ee6fa11e907",
+      "post_prime_fingerprint": {
+        "root_position_m": 0.00045850127935409546,
+        "root_orientation": 0.0006235369616163678,
+        "root_linear_velocity_m_s": 0.025073465891182423,
+        "root_angular_velocity_rad_s": 0.0942954458296299,
+        "servo_position_deg": 0.21937884595164547,
+        "servo_velocity_deg_s": 32.29594245734281,
+        "wheel_velocity_rad_s": 0.5866691619157791,
+        "wheel_center_m": 0.0014883503317832947,
+        "wheel_bottom_m": 0.00148896008794068
+      },
+      "post_prime_fingerprint_binary64_hex": {
+        "root_position_m": "3f3e0c6000000000",
+        "root_orientation": "3f446e9b6dd299a4",
+        "root_linear_velocity_m_s": "3f99acdbd0000000",
+        "root_angular_velocity_rad_s": "3fb823bf10000000",
+        "servo_position_deg": "3fcc149b2465f500",
+        "servo_velocity_deg_s": "404025e17143e483",
+        "wheel_velocity_rad_s": "3fe2c5fe68000000",
+        "wheel_center_m": "3f58629800000000",
+        "wheel_bottom_m": "3f586526b87f0cc0"
+      },
+      "raw_contacts": {
+        "front_left_ankle": {
+          "body_name": "front_left_wheel",
+          "classification": "AIR",
+          "ground": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          },
+          "obstacle": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          }
+        },
+        "front_right_ankle": {
+          "body_name": "front_right_wheel",
+          "classification": "OBSTACLE",
+          "ground": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          },
+          "obstacle": {
+            "active": true,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              1.9663816601678263e-06,
+              -2.3132513433665736e-06,
+              16.333080291748047
+            ],
+            "force_w_n_binary64_hex": [
+              "3ec07ec5c0000000",
+              "bec367ab60000000",
+              "40305544c0000000"
+            ],
+            "force_norm_n": 16.333080291748328,
+            "force_norm_n_binary64_hex": "40305544c000004f"
+          }
+        },
+        "rear_left_ankle": {
+          "body_name": "rear_left_wheel",
+          "classification": "GROUND",
+          "ground": {
+            "active": true,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              2.503439645806793e-06,
+              0.0,
+              18.632490158081055
+            ],
+            "force_w_n_binary64_hex": [
+              "3ec5001880000000",
+              "0000000000000000",
+              "4032a1eae0000000"
+            ],
+            "force_norm_n": 18.63249015808122,
+            "force_norm_n_binary64_hex": "4032a1eae000002f"
+          },
+          "obstacle": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          }
+        },
+        "rear_right_ankle": {
+          "body_name": "rear_right_wheel",
+          "classification": "AIR",
+          "ground": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          },
+          "obstacle": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          }
+        },
+        "signature_sha256": "e32717d4d9b7271b35b9422aa4cc5be1a2e36e33460933dbaf58caf4233110f2"
+      },
+      "entry_sha256": "8a0111d983e88243d03cfac27a0099b0aedcbd7cb26d368c2026f13721d92ee8"
+    },
+    "P09": {
+      "schema": "wlr50_clean.ppo_phase_effective_entry.v1",
+      "phase": "P09",
+      "source_tick": 6912,
+      "effective_entry_offset_s": 0.008333333333333333,
+      "calibration_probe_file_sha256": "0c36685e837b94771a2c7148c286d224180aea00e66dcf4d26b67ec9647d5bf0",
+      "post_prime_fingerprint": {
+        "root_position_m": 0.0010388121008872986,
+        "root_orientation": 0.002046658751628126,
+        "root_linear_velocity_m_s": 0.004976987838745117,
+        "root_angular_velocity_rad_s": 0.03854876756668091,
+        "servo_position_deg": 0.32004217393928514,
+        "servo_velocity_deg_s": 10.091256585932992,
+        "wheel_velocity_rad_s": 0.18832141160964966,
+        "wheel_center_m": 0.0015294551849365234,
+        "wheel_bottom_m": 0.001529373575953799
+      },
+      "post_prime_fingerprint_binary64_hex": {
+        "root_position_m": "3f51051800000000",
+        "root_orientation": "3f60c4278cf025fc",
+        "root_linear_velocity_m_s": "3f7462c000000000",
+        "root_angular_velocity_rad_s": "3fa3bcaa00000000",
+        "servo_position_deg": "3fd47b922b9a3d00",
+        "servo_velocity_deg_s": "40242eb92ee840ee",
+        "wheel_velocity_rad_s": "3fc81aea80000000",
+        "wheel_center_m": "3f590f0000000000",
+        "wheel_bottom_m": "3f590ea85f7e5f40"
+      },
+      "raw_contacts": {
+        "front_left_ankle": {
+          "body_name": "front_left_wheel",
+          "classification": "AIR",
+          "ground": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          },
+          "obstacle": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          }
+        },
+        "front_right_ankle": {
+          "body_name": "front_right_wheel",
+          "classification": "OBSTACLE",
+          "ground": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          },
+          "obstacle": {
+            "active": true,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              -3.705330584580224e-07,
+              -1.083431357074005e-06,
+              13.822052955627441
+            ],
+            "force_w_n_binary64_hex": [
+              "be98ddb5a0000000",
+              "beb22d4d60000000",
+              "402ba4e420000000"
+            ],
+            "force_norm_n": 13.82205295562749,
+            "force_norm_n_binary64_hex": "402ba4e42000001b"
+          }
+        },
+        "rear_left_ankle": {
+          "body_name": "rear_left_wheel",
+          "classification": "GROUND",
+          "ground": {
+            "active": true,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              2.0922407202306204e-06,
+              0.0,
+              15.572035789489746
+            ],
+            "force_w_n_binary64_hex": [
+              "3ec18d0d80000000",
+              "0000000000000000",
+              "402f24e1e0000000"
+            ],
+            "force_norm_n": 15.572035789489886,
+            "force_norm_n_binary64_hex": "402f24e1e000004f"
+          },
+          "obstacle": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          }
+        },
+        "rear_right_ankle": {
+          "body_name": "rear_right_wheel",
+          "classification": "AIR",
+          "ground": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          },
+          "obstacle": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          }
+        },
+        "signature_sha256": "e32717d4d9b7271b35b9422aa4cc5be1a2e36e33460933dbaf58caf4233110f2"
+      },
+      "entry_sha256": "3a4c76813d28be4cc73fb38261bbfc1b8b0068e27fa96f486c456c5e5ec5bfd9"
+    },
+    "P10": {
+      "schema": "wlr50_clean.ppo_phase_effective_entry.v1",
+      "phase": "P10",
+      "source_tick": 7794,
+      "effective_entry_offset_s": 0.008333333333333333,
+      "calibration_probe_file_sha256": "313ff1b132d5a4480c9d937439fcb251e2dcdc4308a6d613059f996f5ae1d62f",
+      "post_prime_fingerprint": {
+        "root_position_m": 0.000396728515625,
+        "root_orientation": 0.0012816765712606864,
+        "root_linear_velocity_m_s": 0.010501854121685028,
+        "root_angular_velocity_rad_s": 0.07073688507080078,
+        "servo_position_deg": 0.27040035905163506,
+        "servo_velocity_deg_s": 10.470333365529168,
+        "wheel_velocity_rad_s": 0.15356764197349548,
+        "wheel_center_m": 0.0007852166891098022,
+        "wheel_bottom_m": 0.0007858264452671876
+      },
+      "post_prime_fingerprint_binary64_hex": {
+        "root_position_m": "3f3a000000000000",
+        "root_orientation": "3f54ffbdbd498c7d",
+        "root_linear_velocity_m_s": "3f8581ff00000000",
+        "root_angular_velocity_rad_s": "3fb21bd000000000",
+        "servo_position_deg": "3fd14e3d4ebd0500",
+        "servo_velocity_deg_s": "4024f0cf88ee54ae",
+        "wheel_velocity_rad_s": "3fc3a81ac0000000",
+        "wheel_center_m": "3f49bae000000000",
+        "wheel_bottom_m": "3f49bffd70fe1980"
+      },
+      "raw_contacts": {
+        "front_left_ankle": {
+          "body_name": "front_left_wheel",
+          "classification": "OBSTACLE",
+          "ground": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          },
+          "obstacle": {
+            "active": true,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              -1.5787531992828008e-06,
+              2.6832829007616965e-06,
+              13.06476879119873
+            ],
+            "force_w_n_binary64_hex": [
+              "beba7cb180000000",
+              "3ec6824e60000000",
+              "402a212960000000"
+            ],
+            "force_norm_n": 13.064768791199102,
+            "force_norm_n_binary64_hex": "402a2129600000d1"
+          }
+        },
+        "front_right_ankle": {
+          "body_name": "front_right_wheel",
+          "classification": "AIR",
+          "ground": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          },
+          "obstacle": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          }
+        },
+        "rear_left_ankle": {
+          "body_name": "rear_left_wheel",
+          "classification": "AIR",
+          "ground": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          },
+          "obstacle": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          }
+        },
+        "rear_right_ankle": {
+          "body_name": "rear_right_wheel",
+          "classification": "OBSTACLE",
+          "ground": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          },
+          "obstacle": {
+            "active": true,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              3.7852637433388736e-06,
+              -4.329829607740976e-06,
+              14.305807113647461
+            ],
+            "force_w_n_binary64_hex": [
+              "3ecfc0cac0000000",
+              "bed2291e80000000",
+              "402c9c92c0000000"
+            ],
+            "force_norm_n": 14.305807113648617,
+            "force_norm_n_binary64_hex": "402c9c92c000028b"
+          }
+        },
+        "signature_sha256": "70a5e7e6282cd87f682505850f75ec5720f020b313fd2a0d592f84018cb41523"
+      },
+      "entry_sha256": "7d27b6e13468ac6513abfc656d6ee245174b5778570773933bd618178db67d34"
+    },
+    "P11": {
+      "schema": "wlr50_clean.ppo_phase_effective_entry.v1",
+      "phase": "P11",
+      "source_tick": 7810,
+      "effective_entry_offset_s": 0.008333333333333333,
+      "calibration_probe_file_sha256": "1fc75ce0e8d37a782cd145cde7104e571c21b5bbad72817b669a1dc21dabde6f",
+      "post_prime_fingerprint": {
+        "root_position_m": 0.00021719932556152344,
+        "root_orientation": 0.00021622410021765578,
+        "root_linear_velocity_m_s": 0.00532337580807507,
+        "root_angular_velocity_rad_s": 0.044860422844067216,
+        "servo_position_deg": 0.17843186187741367,
+        "servo_velocity_deg_s": 11.635619560107175,
+        "wheel_velocity_rad_s": 0.09985650330781937,
+        "wheel_center_m": 0.0005262196063995361,
+        "wheel_bottom_m": 0.0005268293625569215
+      },
+      "post_prime_fingerprint_binary64_hex": {
+        "root_position_m": "3f2c780000000000",
+        "root_orientation": "3f2c5746e0ca182c",
+        "root_linear_velocity_m_s": "3f75cdf6d0000000",
+        "root_angular_velocity_rad_s": "3fa6f7f202000000",
+        "servo_position_deg": "3fc6d6daf1a9f800",
+        "servo_velocity_deg_s": "4027456fed4eb769",
+        "wheel_velocity_rad_s": "3fb9903220000000",
+        "wheel_center_m": "3f413e4000000000",
+        "wheel_bottom_m": "3f41435d70fe1980"
+      },
+      "raw_contacts": {
+        "front_left_ankle": {
+          "body_name": "front_left_wheel",
+          "classification": "OBSTACLE",
+          "ground": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          },
+          "obstacle": {
+            "active": true,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              -1.8731016737660866e-08,
+              7.01356270838005e-08,
+              13.577653884887695
+            ],
+            "force_w_n_binary64_hex": [
+              "be541cbe20000000",
+              "3e72d3af00000000",
+              "402b27c240000000"
+            ],
+            "force_norm_n": 13.577653884887695,
+            "force_norm_n_binary64_hex": "402b27c240000000"
+          }
+        },
+        "front_right_ankle": {
+          "body_name": "front_right_wheel",
+          "classification": "AIR",
+          "ground": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          },
+          "obstacle": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          }
+        },
+        "rear_left_ankle": {
+          "body_name": "rear_left_wheel",
+          "classification": "AIR",
+          "ground": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          },
+          "obstacle": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          }
+        },
+        "rear_right_ankle": {
+          "body_name": "rear_right_wheel",
+          "classification": "OBSTACLE",
+          "ground": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          },
+          "obstacle": {
+            "active": true,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              9.859787724053604e-07,
+              -1.0885404435612145e-06,
+              14.1087646484375
+            ],
+            "force_w_n_binary64_hex": [
+              "3eb08abf20000000",
+              "beb2433ee0000000",
+              "402c37b000000000"
+            ],
+            "force_norm_n": 14.108764648437576,
+            "force_norm_n_binary64_hex": "402c37b00000002b"
+          }
+        },
+        "signature_sha256": "70a5e7e6282cd87f682505850f75ec5720f020b313fd2a0d592f84018cb41523"
+      },
+      "entry_sha256": "7b02e73008f79f39fe00b41e92bb30a4fc2392df2b432a52bddae6770cd19890"
+    },
+    "P12": {
+      "schema": "wlr50_clean.ppo_phase_effective_entry.v1",
+      "phase": "P12",
+      "source_tick": 7872,
+      "effective_entry_offset_s": 0.008333333333333333,
+      "calibration_probe_file_sha256": "14119ab05af45cbe60863edf81b269c115e39bd25cf841c0f3a79cdbd30f471f",
+      "post_prime_fingerprint": {
+        "root_position_m": 0.0005265846848487854,
+        "root_orientation": 0.0004450073953064425,
+        "root_linear_velocity_m_s": 0.008977546356618404,
+        "root_angular_velocity_rad_s": 0.11306033004075289,
+        "servo_position_deg": 0.1758594418812569,
+        "servo_velocity_deg_s": 19.70130371983696,
+        "wheel_velocity_rad_s": 0.4059338718652725,
+        "wheel_center_m": 0.0007769912481307983,
+        "wheel_bottom_m": 0.0007770728571135227
+      },
+      "post_prime_fingerprint_binary64_hex": {
+        "root_position_m": "3f41415000000000",
+        "root_orientation": "3f3d29fc3595f35a",
+        "root_linear_velocity_m_s": "3f8262d1e0000000",
+        "root_angular_velocity_rad_s": "3fbcf18594000000",
+        "servo_position_deg": "3fc6828febc951e0",
+        "servo_velocity_deg_s": "4033b388a3fd434d",
+        "wheel_velocity_rad_s": "3fd9fad210000000",
+        "wheel_center_m": "3f4975e000000000",
+        "wheel_bottom_m": "3f49768f41034180"
+      },
+      "raw_contacts": {
+        "front_left_ankle": {
+          "body_name": "front_left_wheel",
+          "classification": "OBSTACLE",
+          "ground": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          },
+          "obstacle": {
+            "active": true,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              -1.1420714827181655e-06,
+              2.4904400106606772e-06,
+              15.844054222106934
+            ],
+            "force_w_n_binary64_hex": [
+              "beb32928e0000000",
+              "3ec4e42de0000000",
+              "402fb027e0000000"
+            ],
+            "force_norm_n": 15.84405422210717,
+            "force_norm_n_binary64_hex": "402fb027e0000085"
+          }
+        },
+        "front_right_ankle": {
+          "body_name": "front_right_wheel",
+          "classification": "AIR",
+          "ground": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          },
+          "obstacle": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          }
+        },
+        "rear_left_ankle": {
+          "body_name": "rear_left_wheel",
+          "classification": "AIR",
+          "ground": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          },
+          "obstacle": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          }
+        },
+        "rear_right_ankle": {
+          "body_name": "rear_right_wheel",
+          "classification": "OBSTACLE",
+          "ground": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          },
+          "obstacle": {
+            "active": true,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              2.8292085971770575e-06,
+              -3.7111772144271526e-06,
+              16.315547943115234
+            ],
+            "force_w_n_binary64_hex": [
+              "3ec7bbade0000000",
+              "becf21b140000000",
+              "403050c7c0000000"
+            ],
+            "force_norm_n": 16.315547943115902,
+            "force_norm_n_binary64_hex": "403050c7c00000bc"
+          }
+        },
+        "signature_sha256": "70a5e7e6282cd87f682505850f75ec5720f020b313fd2a0d592f84018cb41523"
+      },
+      "entry_sha256": "dc2b0ea226eb6f7a2b56d6e897b4868ba0f03f0bf7e5b81a6d59b2077dcd4125"
+    },
+    "P13": {
+      "schema": "wlr50_clean.ppo_phase_effective_entry.v1",
+      "phase": "P13",
+      "source_tick": 8440,
+      "effective_entry_offset_s": 0.008333333333333333,
+      "calibration_probe_file_sha256": "9be7178edcd93f22f65386ff30f378ee1ca9e4d902a350071021c64befbcd05f",
+      "post_prime_fingerprint": {
+        "root_position_m": 0.0002866983413696289,
+        "root_orientation": 0.0010500308321658932,
+        "root_linear_velocity_m_s": 0.004156769253313541,
+        "root_angular_velocity_rad_s": 0.053829917684197426,
+        "servo_position_deg": 0.1774860140794986,
+        "servo_velocity_deg_s": 6.327281914537888,
+        "wheel_velocity_rad_s": 0.4494207501411438,
+        "wheel_center_m": 0.0007422715425491333,
+        "wheel_bottom_m": 0.0007381774823212311
+      },
+      "post_prime_fingerprint_binary64_hex": {
+        "root_position_m": "3f32ca0000000000",
+        "root_orientation": "3f513426055f5765",
+        "root_linear_velocity_m_s": "3f7106b040000000",
+        "root_angular_velocity_rad_s": "3fab8f9850000000",
+        "servo_position_deg": "3fc6b7dc98fc0304",
+        "servo_velocity_deg_s": "40194f22fd7e0ccc",
+        "wheel_velocity_rad_s": "3fdcc34f40000000",
+        "wheel_center_m": "3f4852a000000000",
+        "wheel_bottom_m": "3f48304812965980"
+      },
+      "raw_contacts": {
+        "front_left_ankle": {
+          "body_name": "front_left_wheel",
+          "classification": "AIR",
+          "ground": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          },
+          "obstacle": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          }
+        },
+        "front_right_ankle": {
+          "body_name": "front_right_wheel",
+          "classification": "OBSTACLE",
+          "ground": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          },
+          "obstacle": {
+            "active": true,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              1.180063009087462e-06,
+              -1.3482444956025574e-06,
+              10.004430770874023
+            ],
+            "force_w_n_binary64_hex": [
+              "3eb3cc5500000000",
+              "beb69eaa80000000",
+              "40240244c0000000"
+            ],
+            "force_norm_n": 10.004430770874183,
+            "force_norm_n_binary64_hex": "40240244c000005a"
+          }
+        },
+        "rear_left_ankle": {
+          "body_name": "rear_left_wheel",
+          "classification": "OBSTACLE",
+          "ground": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          },
+          "obstacle": {
+            "active": true,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              -1.6708189320979727e-07,
+              3.242016788362889e-08,
+              14.692766189575195
+            ],
+            "force_w_n_binary64_hex": [
+              "be866ce3e0000000",
+              "3e6167cb40000000",
+              "402d62b240000000"
+            ],
+            "force_norm_n": 14.692766189575197,
+            "force_norm_n_binary64_hex": "402d62b240000001"
+          }
+        },
+        "rear_right_ankle": {
+          "body_name": "rear_right_wheel",
+          "classification": "OBSTACLE",
+          "ground": {
+            "active": false,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "force_w_n_binary64_hex": [
+              "0000000000000000",
+              "0000000000000000",
+              "0000000000000000"
+            ],
+            "force_norm_n": 0.0,
+            "force_norm_n_binary64_hex": "0000000000000000"
+          },
+          "obstacle": {
+            "active": true,
+            "pair_verified": true,
+            "source": "isaaclab.ContactSensor.force_matrix_w",
+            "force_w_n": [
+              5.919171286450364e-08,
+              9.93886839495417e-09,
+              3.3753483295440674
+            ],
+            "force_w_n_binary64_hex": [
+              "3e6fc73f40000000",
+              "3e4557f360000000",
+              "400b00b6a0000000"
+            ],
+            "force_norm_n": 3.375348329544068,
+            "force_norm_n_binary64_hex": "400b00b6a0000001"
+          }
+        },
+        "signature_sha256": "7a528479e942cc1539b7f8b246f7cc050846527bd78a46f64317e78c2f466998"
+      },
+      "entry_sha256": "6c85975db49f4afb57f485660ba9f1669cbe8d00f016096ff65b46d3abc7d371"
+    }
+  },
+  "contract_sha256": "7637eef6dd926bdb1b5e1715c608fcfc00b7b8adb3ee7820036e1c5eae261433"
+}

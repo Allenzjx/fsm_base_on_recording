@@ -13,6 +13,12 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$VectorBenchmarkMatrix,
 
+    [Parameter(Mandatory = $true)]
+    [string]$PhaseEffectiveEntryHoldoutAcceptance,
+
+    [Parameter(Mandatory = $true)]
+    [string]$PhaseZeroResidualRolloutEvidence,
+
     [string[]]$PromotionDecision = @(),
 
     [int]$Seed = 1001
@@ -125,6 +131,101 @@ if ([string]$Matrix.schema -ne "wlr50_clean.vector_benchmark_matrix.v1" -or
     $Matrix.passed -ne $true -or
     $SelectedNumEnvs -notin @(8, 16, 32)) {
     throw "Vector benchmark matrix does not expose a valid selected N"
+}
+
+$HoldoutPath = [IO.Path]::GetFullPath(
+    $(if ([IO.Path]::IsPathRooted($PhaseEffectiveEntryHoldoutAcceptance)) {
+        $PhaseEffectiveEntryHoldoutAcceptance
+    } else {
+        Join-Path $ProjectRoot $PhaseEffectiveEntryHoldoutAcceptance
+    })
+)
+$HoldoutRoot = [IO.Path]::GetFullPath(
+    (Join-Path $RunsRoot "phase_effective_entry_holdout")
+).TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+$HoldoutManifestPath = Join-Path (Split-Path -Parent $HoldoutPath) "run_manifest.json"
+if (-not $HoldoutPath.StartsWith(
+        $HoldoutRoot,
+        [StringComparison]::OrdinalIgnoreCase
+    ) -or
+    [IO.Path]::GetFileName($HoldoutPath) -cne "phase_effective_entry_holdout_acceptance.json" -or
+    -not (Test-Path -LiteralPath $HoldoutPath -PathType Leaf) -or
+    -not (Test-Path -LiteralPath $HoldoutManifestPath -PathType Leaf)) {
+    throw "Phase effective-entry holdout is not a finalized managed acceptance: $HoldoutPath"
+}
+try {
+    $Holdout = Get-Content -LiteralPath $HoldoutPath -Raw |
+        ConvertFrom-Json -ErrorAction Stop
+    $HoldoutManifest = Get-Content -LiteralPath $HoldoutManifestPath -Raw |
+        ConvertFrom-Json -ErrorAction Stop
+} catch {
+    throw "Phase effective-entry holdout evidence is not valid JSON"
+}
+$HoldoutPhases = @($Holdout.phases)
+if ([string]$Holdout.schema -cne "wlr50_clean.phase_effective_entry_holdout_acceptance.v1" -or
+    [string]$Holdout.status -cne "PASSED" -or
+    $Holdout.passed -ne $true -or
+    [int]$Holdout.seed -ne 1003 -or
+    [int]$Holdout.worker_count -ne 12 -or
+    ($HoldoutPhases -join ',') -cne ((2..13 | ForEach-Object { "P{0:D2}" -f $_ }) -join ',') -or
+    [string]$HoldoutManifest.schema -cne "wlr50_clean.ppo_run_manifest.v1" -or
+    [string]$HoldoutManifest.lifecycle -cne "SUCCEEDED" -or
+    [string]$HoldoutManifest.run_kind -cne "phase_effective_entry_holdout" -or
+    [int]$HoldoutManifest.exit_code -ne 0) {
+    throw "Phase effective-entry holdout evidence is incomplete or failed"
+}
+
+$PhaseRolloutPath = [IO.Path]::GetFullPath(
+    $(if ([IO.Path]::IsPathRooted($PhaseZeroResidualRolloutEvidence)) {
+        $PhaseZeroResidualRolloutEvidence
+    } else {
+        Join-Path $ProjectRoot $PhaseZeroResidualRolloutEvidence
+    })
+)
+$PhaseRolloutRoot = [IO.Path]::GetFullPath(
+    (Join-Path $RunsRoot "phase_zero_residual_rollout")
+).TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+$PhaseRolloutManifestPath = Join-Path (
+    Split-Path -Parent $PhaseRolloutPath
+) "run_manifest.json"
+if (-not $PhaseRolloutPath.StartsWith(
+        $PhaseRolloutRoot,
+        [StringComparison]::OrdinalIgnoreCase
+    ) -or
+    [IO.Path]::GetFileName($PhaseRolloutPath) -cne "phase_zero_residual_rollout.json" -or
+    -not (Test-Path -LiteralPath $PhaseRolloutPath -PathType Leaf) -or
+    -not (Test-Path -LiteralPath $PhaseRolloutManifestPath -PathType Leaf)) {
+    throw "Phase zero-residual rollout is not finalized managed evidence: $PhaseRolloutPath"
+}
+try {
+    $PhaseRollout = Get-Content -LiteralPath $PhaseRolloutPath -Raw |
+        ConvertFrom-Json -ErrorAction Stop
+    $PhaseRolloutManifest = Get-Content -LiteralPath $PhaseRolloutManifestPath -Raw |
+        ConvertFrom-Json -ErrorAction Stop
+} catch {
+    throw "Phase zero-residual rollout evidence is not valid JSON"
+}
+$PhaseRolloutPhases = @($PhaseRollout.phases)
+$PhaseRolloutChecks = @($PhaseRollout.checks.PSObject.Properties.Value)
+if ([string]$PhaseRollout.schema -cne "wlr50_clean.phase_zero_residual_rollout.v1" -or
+    [string]$PhaseRollout.artifact_role -cne "PHASE_CURRICULUM_TRAINING_PREREQUISITE" -or
+    [string]$PhaseRollout.status -cne "PASSED" -or
+    $PhaseRollout.passed -ne $true -or
+    [int]$PhaseRollout.phase_reset_count -ne 13 -or
+    ($PhaseRolloutPhases -join ',') -cne ((1..13 | ForEach-Object { "P{0:D2}" -f $_ }) -join ',') -or
+    [int]$PhaseRollout.max_decisions_per_phase -ne 64 -or
+    [double]$PhaseRollout.physics_hz -ne 120.0 -or
+    [double]$PhaseRollout.decision_hz -ne 15.0 -or
+    [int]$PhaseRollout.physics_ticks_per_decision -ne 8 -or
+    @($PhaseRollout.phase_rollouts).Count -ne 13 -or
+    @($PhaseRollout.failure_reasons).Count -ne 0 -or
+    $PhaseRolloutChecks.Count -eq 0 -or
+    @($PhaseRolloutChecks | Where-Object { $_ -ne $true }).Count -ne 0 -or
+    [string]$PhaseRolloutManifest.schema -cne "wlr50_clean.ppo_run_manifest.v1" -or
+    [string]$PhaseRolloutManifest.lifecycle -cne "SUCCEEDED" -or
+    [string]$PhaseRolloutManifest.run_kind -cne "phase_zero_residual_rollout" -or
+    [int]$PhaseRolloutManifest.exit_code -ne 0) {
+    throw "Phase zero-residual rollout evidence is incomplete or failed"
 }
 
 $TrainingRuns = [Collections.Generic.List[string]]::new()
@@ -417,6 +518,10 @@ function Invoke-TrainingChunk {
     } else {
         $Arguments.VectorBenchmarkMatrix = $MatrixPath
     }
+    if ($Stage -ceq "phase-curriculum") {
+        $Arguments.PhaseEffectiveEntryHoldoutAcceptance = $HoldoutPath
+        $Arguments.PhaseZeroResidualRolloutEvidence = $PhaseRolloutPath
+    }
     $Output = @(& $TrainScript @Arguments)
     $RunDirectory = Confirm-SingleManagedRunDirectory $Output "training chunk"
     $Chunk = Read-TrainingChunk `
@@ -661,7 +766,7 @@ if ([string]$InitialPublication.schema -cne "wlr50_clean.initial_zero_residual_c
 $Stages = @(
     [pscustomobject]@{ Name = "smoke"; Chunks = 1; NumEnvs = $SelectedNumEnvs },
     [pscustomobject]@{ Name = "phase-curriculum"; Chunks = 10; NumEnvs = 1 },
-    [pscustomobject]@{ Name = "full-episode"; Chunks = 10; NumEnvs = 1 }
+    [pscustomobject]@{ Name = "full-episode"; Chunks = 10; NumEnvs = $SelectedNumEnvs }
 )
 
 $StopAfterPromotion = $false

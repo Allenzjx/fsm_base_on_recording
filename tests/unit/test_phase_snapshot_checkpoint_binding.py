@@ -11,6 +11,9 @@ import pytest
 
 from wlr50_clean.ppo import cli
 from wlr50_clean.ppo import isaac_fsm_backend
+from wlr50_clean.ppo.phase_effective_entry import (
+    DEFAULT_EFFECTIVE_ENTRY_CONTRACT_PATH,
+)
 from wlr50_clean.ppo.phase_snapshots import capture_validated_phase_snapshot_bundle
 
 
@@ -70,11 +73,49 @@ def _checkpoint_args(root: Path) -> SimpleNamespace:
     )
 
 
+def _install_effective_contract_for_snapshot_copy(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    root: Path,
+) -> None:
+    """Rebind the checked-in calibration payload to this test-only path copy."""
+
+    snapshot = capture_validated_phase_snapshot_bundle(root, canonical_root=root)
+    payload = json.loads(DEFAULT_EFFECTIVE_ENTRY_CONTRACT_PATH.read_text(encoding="utf-8"))
+    payload["derivation"]["phase_snapshot_bundle"] = snapshot.as_record()
+    for row in payload["derivation"]["calibration_artifacts"]:
+        row["phase_snapshot_bundle_sha256"] = snapshot.bundle_sha256
+    unhashed = dict(payload)
+    unhashed.pop("contract_sha256")
+    payload["contract_sha256"] = hashlib.sha256(
+        json.dumps(
+            unhashed,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=True,
+            allow_nan=False,
+        ).encode("utf-8")
+    ).hexdigest()
+    contract_path = (tmp_path / "ppo_phase_effective_entry_v1.json").resolve()
+    contract_bytes = (
+        json.dumps(payload, indent=2, ensure_ascii=True, allow_nan=False) + "\n"
+    ).encode("utf-8")
+    contract_path.write_bytes(contract_bytes)
+    contract_path.with_suffix(".sha256").write_bytes(
+        (
+            f"{hashlib.sha256(contract_bytes).hexdigest()}  "
+            f"{contract_path.name}\n"
+        ).encode("ascii")
+    )
+    monkeypatch.setattr(cli, "DEFAULT_EFFECTIVE_ENTRY_CONTRACT_PATH", contract_path)
+
+
 def test_checkpoint_contract_binds_manifest_bundle_and_every_snapshot_file(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     root = _copied_snapshot_bundle(tmp_path)
     monkeypatch.setattr(cli, "_live_phase_snapshot_root", lambda: root)
+    _install_effective_contract_for_snapshot_copy(monkeypatch, tmp_path, root)
 
     payload = cli._checkpoint_manifest_payload(
         _checkpoint_args(root), global_step=4096, stage="phase-curriculum"
@@ -97,6 +138,7 @@ def test_checkpoint_payload_uses_injected_pin_without_recapturing_bundle(
 ) -> None:
     root = _copied_snapshot_bundle(tmp_path)
     monkeypatch.setattr(cli, "_live_phase_snapshot_root", lambda: root)
+    _install_effective_contract_for_snapshot_copy(monkeypatch, tmp_path, root)
     args = _checkpoint_args(root)
     pinned = cli._capture_runtime_snapshot_bundle(args)
     monkeypatch.setattr(
@@ -120,6 +162,7 @@ def test_training_pin_rejects_a_to_b_to_a_byte_replacement(
 ) -> None:
     root = _copied_snapshot_bundle(tmp_path)
     monkeypatch.setattr(cli, "_live_phase_snapshot_root", lambda: root)
+    _install_effective_contract_for_snapshot_copy(monkeypatch, tmp_path, root)
     pinned = cli._capture_runtime_snapshot_bundle(_checkpoint_args(root))
     target = root / "P05" / "snapshot.json"
     original = target.read_bytes()
@@ -195,6 +238,7 @@ def test_current_runtime_contract_rejects_changed_or_missing_snapshot_bytes(
 ) -> None:
     root = _copied_snapshot_bundle(tmp_path)
     monkeypatch.setattr(cli, "_live_phase_snapshot_root", lambda: root)
+    _install_effective_contract_for_snapshot_copy(monkeypatch, tmp_path, root)
     args = _checkpoint_args(root)
     cli._current_checkpoint_runtime_contract(args)
     target = root / relative_path
@@ -203,7 +247,7 @@ def test_current_runtime_contract_rejects_changed_or_missing_snapshot_bytes(
     else:
         target.write_bytes(target.read_bytes() + b"changed")
 
-    with pytest.raises(cli.CliError, match="phase snapshot bundle validation failed"):
+    with pytest.raises(cli.CliError, match="pinned phase snapshot bundle changed"):
         cli._current_checkpoint_runtime_contract(args)
 
 
@@ -223,6 +267,7 @@ def test_checkpoint_consumer_rejects_stale_snapshot_binding(
 ) -> None:
     root = _copied_snapshot_bundle(tmp_path)
     monkeypatch.setattr(cli, "_live_phase_snapshot_root", lambda: root)
+    _install_effective_contract_for_snapshot_copy(monkeypatch, tmp_path, root)
     bundle = cli._validated_runtime_snapshot_bundle(_checkpoint_args(root))
     manifest = {
         "phase_snapshot_manifest": bundle["manifest_path"],
@@ -243,6 +288,7 @@ def test_checkpoint_consumer_requires_all_27_bound_file_hashes(
 ) -> None:
     root = _copied_snapshot_bundle(tmp_path)
     monkeypatch.setattr(cli, "_live_phase_snapshot_root", lambda: root)
+    _install_effective_contract_for_snapshot_copy(monkeypatch, tmp_path, root)
     args = _checkpoint_args(root)
     manifest = cli._checkpoint_manifest_payload(
         args, global_step=1, stage="smoke"

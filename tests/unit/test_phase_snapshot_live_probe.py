@@ -157,6 +157,33 @@ def test_attempt_gate_fails_closed_on_exception_contact_or_extra_step() -> None:
             "classifier_current_force_hysteresis_contract_verified": True,
             "fsm_clock_steps_during_priming": 0,
             "episode_clock_steps_during_priming": 0,
+            "effective_entry_contract": {
+                "schema": "wlr50_clean.ppo_phase_effective_entry_live_proof.v1",
+                "verified": True,
+                "failures": [],
+            },
+            "entry_safety_contract": {
+                "schema": "wlr50_clean.phase_effective_entry_safety.v1",
+                "verified": True,
+                "all_failure_flags_false": True,
+                "flags": {
+                    "body_collision": False,
+                    "wheel_only_climb": False,
+                    "safety_abort": False,
+                },
+            },
+            "entry_guard_contract": {
+                "schema": "wlr50_clean.phase_effective_entry_controller.v1",
+                "verified": True,
+                "phase": "P10",
+                "lifecycle": "EXECUTE_MOTION",
+                "nonterminal": True,
+                "unblocked": True,
+                "p10_signed_velocity_alignment": {
+                    "signed_positive_rebound_required": True,
+                    "actual_deg_s": 1.0,
+                },
+            },
             "priming_observation": {
                 "raw_physx_contact_sources_verified": True,
                 "current_raw_force_hysteresis_contract_matches_snapshot": True,
@@ -190,7 +217,23 @@ def test_attempt_gate_fails_closed_on_exception_contact_or_extra_step() -> None:
                 "exact_contacts_match": False,
             },
         }
-    ) is False
+    ) is True
+    # Source-t replay equality remains recorded for diagnosis, but the
+    # calibrated production entry/safety/guard proofs are authoritative.
+    assert _attempt_passed(
+        {
+            **row,
+            "snapshot_state_write": {
+                **row["snapshot_state_write"],
+                "source_actuation_match": {
+                    "all_fields_match": False,
+                    "source_target_hash_matches": False,
+                    "logical_target_fallback_used": True,
+                    "source_drive_target_full12_sha256": "0" * 64,
+                },
+            },
+        }
+    ) is True
 
 
 def test_cli_and_wrapper_bind_probe_to_one_live_environment() -> None:
@@ -328,12 +371,38 @@ def _write_managed_prechecks(run_dir: Path) -> None:
 class _FakeBundle:
     def __init__(self, root: Path) -> None:
         self.snapshot_root = root.resolve()
+        self.bundle_sha256 = "c" * 64
 
     def as_record(self) -> dict[str, object]:
         return {
             "schema": "wlr50_clean.phase_snapshot_bundle.v1",
             "snapshot_root": str(self.snapshot_root),
+            "bundle_sha256": self.bundle_sha256,
         }
+
+
+class _FakeEffectiveContract:
+    def __init__(self, bundle: _FakeBundle) -> None:
+        self.phase_snapshot_bundle_sha256 = bundle.bundle_sha256
+
+    def as_record(self) -> dict[str, object]:
+        return {
+            "schema": "wlr50_clean.ppo_phase_effective_entry_record.v1",
+            "phase_snapshot_bundle_sha256": self.phase_snapshot_bundle_sha256,
+        }
+
+
+@pytest.fixture(autouse=True)
+def _allow_fake_effective_contract_revalidation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from wlr50_clean.ppo import phase_effective_entry
+
+    monkeypatch.setattr(
+        phase_effective_entry,
+        "assert_effective_phase_entry_contract_unchanged",
+        lambda contract, *, expected_snapshot_bundle: contract,
+    )
 
 
 class _ContactRejectingBackend:
@@ -419,7 +488,11 @@ def test_probe_infrastructure_initialization_failure_is_fatal_but_sealed(
     monkeypatch.setattr(probe_subject, "_instrumented_dependencies", fail_dependencies)
     with pytest.raises(PhaseSnapshotLiveProbeError, match="integrity or infrastructure"):
         probe_subject.run_phase_snapshot_live_probe(
-            object(), run_dir=tmp_path, seed=1001, snapshot_bundle=bundle
+            object(),
+            run_dir=tmp_path,
+            seed=1001,
+            snapshot_bundle=bundle,
+            effective_entry_contract=_FakeEffectiveContract(bundle),
         )
 
     report = json.loads((tmp_path / "phase_snapshot_live_probe.json").read_text())
@@ -458,7 +531,11 @@ def test_backend_bundle_revalidation_failure_cannot_be_returnable_diagnostic(
     )
     with pytest.raises(PhaseSnapshotLiveProbeError, match="integrity or infrastructure"):
         probe_subject.run_phase_snapshot_live_probe(
-            object(), run_dir=tmp_path, seed=1001, snapshot_bundle=bundle
+            object(),
+            run_dir=tmp_path,
+            seed=1001,
+            snapshot_bundle=bundle,
+            effective_entry_contract=_FakeEffectiveContract(bundle),
         )
 
     report = json.loads((tmp_path / "phase_snapshot_live_probe.json").read_text())
@@ -528,7 +605,11 @@ def test_post_write_infrastructure_or_frozen_failure_remains_fatal(
     monkeypatch.setattr(isaac_fsm_backend, "IsaacFSMBackend", PostWriteFatalBackend)
     with pytest.raises(PhaseSnapshotLiveProbeError, match="integrity or infrastructure"):
         probe_subject.run_phase_snapshot_live_probe(
-            object(), run_dir=tmp_path, seed=1001, snapshot_bundle=bundle
+            object(),
+            run_dir=tmp_path,
+            seed=1001,
+            snapshot_bundle=bundle,
+            effective_entry_contract=_FakeEffectiveContract(bundle),
         )
 
     report = json.loads((tmp_path / "phase_snapshot_live_probe.json").read_text())
@@ -578,7 +659,11 @@ def test_final_bundle_identity_assertion_failure_is_fatal_but_sealed(
     )
     with pytest.raises(PhaseSnapshotLiveProbeError, match="integrity or infrastructure"):
         probe_subject.run_phase_snapshot_live_probe(
-            object(), run_dir=tmp_path, seed=1001, snapshot_bundle=bundle
+            object(),
+            run_dir=tmp_path,
+            seed=1001,
+            snapshot_bundle=bundle,
+            effective_entry_contract=_FakeEffectiveContract(bundle),
         )
 
     report = json.loads((tmp_path / "phase_snapshot_live_probe.json").read_text())
@@ -631,7 +716,11 @@ def test_successful_reset_with_missing_runtime_evidence_is_fatal(
     )
     with pytest.raises(PhaseSnapshotLiveProbeError, match="integrity or infrastructure"):
         probe_subject.run_phase_snapshot_live_probe(
-            object(), run_dir=tmp_path, seed=1001, snapshot_bundle=bundle
+            object(),
+            run_dir=tmp_path,
+            seed=1001,
+            snapshot_bundle=bundle,
+            effective_entry_contract=_FakeEffectiveContract(bundle),
         )
 
     report = json.loads((tmp_path / "phase_snapshot_live_probe.json").read_text())
@@ -663,13 +752,17 @@ def test_post_write_contact_rejection_remains_returnable_failed_diagnostic(
         isaac_fsm_backend, "IsaacFSMBackend", _ContactRejectingBackend
     )
     result = probe_subject.run_phase_snapshot_live_probe(
-        object(), run_dir=tmp_path, seed=1001, snapshot_bundle=bundle
+        object(),
+        run_dir=tmp_path,
+        seed=1001,
+        snapshot_bundle=bundle,
+        effective_entry_contract=_FakeEffectiveContract(bundle),
     )
 
     assert result["status"] == "FAILED"
     assert result["passed"] is False
     assert result["complete"] is True
-    assert result["failure_classification"] == "ORDINARY_POST_WRITE_RESTORE_MISMATCH"
+    assert result["failure_classification"] == "EFFECTIVE_ENTRY_ACCEPTANCE_MISMATCH"
     assert result["phases"] == list(PROBE_PHASES)
     assert result["phase_count"] == len(PROBE_PHASES)
     assert result["phase_selector_mode"] == "all_non_p01_phases"
@@ -678,7 +771,7 @@ def test_post_write_contact_rejection_remains_returnable_failed_diagnostic(
     assert result["reused_scene_attempt_count"] == len(PROBE_PHASES) * 2 - 1
     assert len(result["attempts"]) == len(PROBE_PHASES) * ATTEMPTS_PER_PHASE
     assert all(
-        row["failure_classification"] == "ORDINARY_POST_WRITE_RESTORE_MISMATCH"
+        row["failure_classification"] == "EFFECTIVE_ENTRY_ACCEPTANCE_MISMATCH"
         for row in result["attempts"]
     )
     assert result["production_reset_modified"] is True
@@ -726,6 +819,7 @@ def test_single_phase_selector_runs_fresh_then_reused_attempt(
         run_dir=tmp_path,
         seed=1001,
         snapshot_bundle=bundle,
+        effective_entry_contract=_FakeEffectiveContract(bundle),
         phases=("P09",),
     )
 

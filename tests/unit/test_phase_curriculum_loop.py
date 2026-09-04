@@ -673,8 +673,10 @@ def test_cli_wires_curriculum_only_for_phase_curriculum_stage(
     )
     assert captures[0]["phase_curriculum_occupancy_tolerance_fraction"] == 0.02
     assert backend_calls[0]["expected_phase_snapshot_bundle"] is not None
+    assert backend_calls[0]["expected_effective_entry_contract"] is not None
     assert captures[1]["training_phase_reset_schedule"] is None
-    assert backend_calls[1]["expected_phase_snapshot_bundle"] is None
+    assert backend_calls[1]["expected_phase_snapshot_bundle"] is not None
+    assert backend_calls[1]["expected_effective_entry_contract"] is not None
     assert captures[1]["end_curriculum_sample_at_phase_boundary"] is False
     assert captures[1]["phase_curriculum_max_decisions"] == 64
     assert captures[1]["phase_curriculum_target_decision_fractions"] is None

@@ -49,6 +49,12 @@ CHECKPOINT_RUNTIME_CONTRACT_FIELDS = (
     "phase_snapshot_manifest_sha256",
     "phase_snapshot_bundle_sha256",
     "phase_snapshot_bundle",
+    "phase_effective_entry_contract_path",
+    "phase_effective_entry_contract_file_sha256",
+    "phase_effective_entry_contract_sidecar_path",
+    "phase_effective_entry_contract_sidecar_sha256",
+    "phase_effective_entry_contract_sha256",
+    "phase_effective_entry_contract",
 )
 DEFAULT_TRAINING_PATH = (
     Path(__file__).resolve().parents[3] / "configs" / "ppo_training_phase_v1.yaml"

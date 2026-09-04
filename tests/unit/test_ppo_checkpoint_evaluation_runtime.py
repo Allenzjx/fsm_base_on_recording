@@ -9,10 +9,13 @@ import pytest
 
 from wlr50_clean.ppo import cli
 from wlr50_clean.ppo import checkpoint_promotion
+from wlr50_clean.ppo.phase_effective_entry import (
+    capture_validated_effective_phase_entry_contract,
+)
 from wlr50_clean.ppo.rl_library_wrapper import CHECKPOINT_RUNTIME_CONTRACT_FIELDS
 from wlr50_clean.ppo.phase_snapshots import (
+    capture_validated_phase_snapshot_bundle,
     phase_snapshot_bundle_file_hashes,
-    validated_phase_snapshot_bundle_record,
 )
 from wlr50_clean.ppo.evaluation_artifacts import (
     CANONICAL_EPISODE_FILES,
@@ -32,14 +35,22 @@ _TEST_FROZEN_HASHES = {
 def _best_validation_manifest(checkpoint: Path) -> Path:
     torch = pytest.importorskip("torch")
     path = checkpoint.with_name("checkpoint_best_validation_manifest.json")
-    snapshot_bundle = validated_phase_snapshot_bundle_record(
-        cli.DEFAULT_PHASE_SNAPSHOT_ROOT
+    snapshot_pin = capture_validated_phase_snapshot_bundle(
+        cli.DEFAULT_PHASE_SNAPSHOT_ROOT,
+        canonical_root=cli.DEFAULT_PHASE_SNAPSHOT_ROOT,
+    )
+    snapshot_bundle = snapshot_pin.as_record()
+    effective_pin = capture_validated_effective_phase_entry_contract(
+        expected_snapshot_bundle=snapshot_pin,
     )
     infos = {
         "schema": checkpoint_promotion.CHECKPOINT_MANIFEST_SCHEMA,
-        "stage": "full-episode",
+        # These evaluation-runtime tests exercise the pre-curriculum smoke
+        # checkpoint path.  Full/phase checkpoints are covered separately by
+        # the holdout and zero-rollout ancestry tests.
+        "stage": "smoke",
         "training_seed": 1001,
-        "global_policy_decisions": 100_000,
+        "global_policy_decisions": 10_000,
         "source_git_commit": "a" * 40,
         "committed_runtime_content_sha256": "b" * 64,
         "actor_observation_dimension": 125,
@@ -50,12 +61,21 @@ def _best_validation_manifest(checkpoint: Path) -> Path:
         "files": {
             "training.yaml": "f" * 64,
             **phase_snapshot_bundle_file_hashes(snapshot_bundle),
+            **effective_pin.file_hashes(),
         },
         **_TEST_FROZEN_HASHES,
         "phase_snapshot_manifest": snapshot_bundle["manifest_path"],
         "phase_snapshot_manifest_sha256": snapshot_bundle["manifest_sha256"],
         "phase_snapshot_bundle_sha256": snapshot_bundle["bundle_sha256"],
         "phase_snapshot_bundle": snapshot_bundle,
+        "phase_effective_entry_contract_path": str(effective_pin.contract_path),
+        "phase_effective_entry_contract_file_sha256": effective_pin.file_sha256,
+        "phase_effective_entry_contract_sidecar_path": str(effective_pin.sidecar_path),
+        "phase_effective_entry_contract_sidecar_sha256": (
+            effective_pin.sidecar_file_sha256
+        ),
+        "phase_effective_entry_contract_sha256": effective_pin.contract_sha256,
+        "phase_effective_entry_contract": effective_pin.as_record(),
         "publication_role": "best_validation",
         "validation_promotion_authorized": True,
         "locked_test_authorized": False,
@@ -174,7 +194,7 @@ def test_evaluate_steps_episode_directly_and_writes_canonical_streams(
     monkeypatch.setattr(
         cli,
         "_current_checkpoint_runtime_contract",
-        lambda args: {
+        lambda args, **kwargs: {
             key: manifest_payload[key] for key in CHECKPOINT_RUNTIME_CONTRACT_FIELDS
         },
     )
@@ -254,11 +274,11 @@ def test_evaluate_steps_episode_directly_and_writes_canonical_streams(
         assert cli._evaluate(args, object()) == 0
     finally:
         args._checkpoint_runtime_capture_stack.close()
-    assert construction == {
-        "max_iterations": 1,
-        "reset_seeds": (2001,),
-        "collect_trace": True,
-    }
+    assert construction["max_iterations"] == 1
+    assert construction["reset_seeds"] == (2001,)
+    assert construction["collect_trace"] is True
+    assert construction["pinned_snapshot_bundle"] is not None
+    assert construction["pinned_effective_entry_contract"] is not None
     assert vec_env.vector_step_calls == 0
     assert len(vec_env.observation_batches) == 1
     assert action_calls == [(runner, "tensor-dict")]
@@ -351,7 +371,9 @@ def test_evaluate_rejects_empty_checkpoint_infos_before_episode_execution(
         "load_checkpoint_round_trip",
         lambda runner, path, *, captured_bundle: {},
     )
-    monkeypatch.setattr(cli, "_current_checkpoint_runtime_contract", lambda args: {})
+    monkeypatch.setattr(
+        cli, "_current_checkpoint_runtime_contract", lambda args, **kwargs: {}
+    )
     monkeypatch.setattr(
         live_stream_writer,
         "LiveStreamWriter",

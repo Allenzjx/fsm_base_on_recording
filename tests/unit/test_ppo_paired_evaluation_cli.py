@@ -14,8 +14,11 @@ from wlr50_clean.ppo import (
     paired_aggregate_binding,
 )
 from wlr50_clean.ppo.phase_snapshots import (
+    capture_validated_phase_snapshot_bundle,
     phase_snapshot_bundle_file_hashes,
-    validated_phase_snapshot_bundle_record,
+)
+from wlr50_clean.ppo.phase_effective_entry import (
+    capture_validated_effective_phase_entry_contract,
 )
 
 
@@ -34,25 +37,43 @@ def _checkpoint_and_manifest(tmp_path: Path) -> tuple[Path, Path]:
         ),
         "reward_config_hash": cli.PROJECT_ROOT / "configs" / "ppo_reward_v2.yaml",
     }
-    snapshot_bundle = validated_phase_snapshot_bundle_record(
-        cli.DEFAULT_PHASE_SNAPSHOT_ROOT
+    snapshot_pin = capture_validated_phase_snapshot_bundle(
+        cli.DEFAULT_PHASE_SNAPSHOT_ROOT,
+        canonical_root=cli.DEFAULT_PHASE_SNAPSHOT_ROOT,
+    )
+    snapshot_bundle = snapshot_pin.as_record()
+    effective_pin = capture_validated_effective_phase_entry_contract(
+        expected_snapshot_bundle=snapshot_pin,
     )
     infos = {
         "schema": checkpoint_promotion.CHECKPOINT_MANIFEST_SCHEMA,
-        "stage": "full-episode",
+        # Paired-export wiring also evaluates checkpoint_smoke, which has no
+        # phase-reset holdout/rollout ancestry by design.
+        "stage": "smoke",
         "training_seed": 1001,
-        "global_policy_decisions": 100_000,
+        "global_policy_decisions": 10_000,
         "actor_observation_dimension": 125,
         "critic_observation_dimension": 125,
         "residual_dimension": 12,
         "physics_hz": 120.0,
         "decision_hz": 15.0,
-        "files": phase_snapshot_bundle_file_hashes(snapshot_bundle),
+        "files": {
+            **phase_snapshot_bundle_file_hashes(snapshot_bundle),
+            **effective_pin.file_hashes(),
+        },
         **{field: cli._sha256(path) for field, path in hash_paths.items()},
         "phase_snapshot_manifest": snapshot_bundle["manifest_path"],
         "phase_snapshot_manifest_sha256": snapshot_bundle["manifest_sha256"],
         "phase_snapshot_bundle_sha256": snapshot_bundle["bundle_sha256"],
         "phase_snapshot_bundle": snapshot_bundle,
+        "phase_effective_entry_contract_path": str(effective_pin.contract_path),
+        "phase_effective_entry_contract_file_sha256": effective_pin.file_sha256,
+        "phase_effective_entry_contract_sidecar_path": str(effective_pin.sidecar_path),
+        "phase_effective_entry_contract_sidecar_sha256": (
+            effective_pin.sidecar_file_sha256
+        ),
+        "phase_effective_entry_contract_sha256": effective_pin.contract_sha256,
+        "phase_effective_entry_contract": effective_pin.as_record(),
     }
     torch.save({"infos": infos}, checkpoint)
     manifest.write_text(

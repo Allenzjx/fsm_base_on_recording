@@ -23,8 +23,12 @@ from wlr50_clean.ppo.evaluation import (
 from wlr50_clean.ppo.phase_action_masks_v2 import DEFAULT_PHASE_ACTION_CONFIG_V2
 from wlr50_clean.ppo.phase_objectives import DENSE_FAMILIES
 from wlr50_clean.ppo.phase_snapshots import (
+    capture_validated_phase_snapshot_bundle,
     phase_snapshot_bundle_file_hashes,
     validated_phase_snapshot_bundle_record,
+)
+from wlr50_clean.ppo.phase_effective_entry import (
+    capture_validated_effective_phase_entry_contract,
 )
 from wlr50_clean.ppo.stability_metrics import LOWER_IS_BETTER, PHASE_IDS
 
@@ -787,14 +791,21 @@ def test_exported_promotion_decision_is_accepted_by_checkpoint_promotion(
     torch = pytest.importorskip("torch")
     baseline, candidate = _paired_runs(tmp_path)
     checkpoint = tmp_path / "candidate.pt"
-    snapshot_bundle = validated_phase_snapshot_bundle_record(
-        checkpoint_promotion.DEFAULT_PHASE_SNAPSHOT_ROOT
+    snapshot_pin = capture_validated_phase_snapshot_bundle(
+        checkpoint_promotion.DEFAULT_PHASE_SNAPSHOT_ROOT,
+        canonical_root=checkpoint_promotion.DEFAULT_PHASE_SNAPSHOT_ROOT,
+    )
+    snapshot_bundle = snapshot_pin.as_record()
+    effective_pin = capture_validated_effective_phase_entry_contract(
+        expected_snapshot_bundle=snapshot_pin,
     )
     infos = {
         "schema": checkpoint_promotion.CHECKPOINT_MANIFEST_SCHEMA,
-        "stage": "full-episode",
+        # This fixture deliberately represents a pre-curriculum smoke model;
+        # phase/full ancestry enforcement has dedicated promotion tests.
+        "stage": "smoke",
         "training_seed": 1001,
-        "global_policy_decisions": 100_000,
+        "global_policy_decisions": 10_000,
         "source_git_commit": "a" * 40,
         "committed_runtime_content_sha256": "b" * 64,
         "actor_observation_dimension": 125,
@@ -805,6 +816,7 @@ def test_exported_promotion_decision_is_accepted_by_checkpoint_promotion(
         "files": {
             "training.yaml": "f" * 64,
             **phase_snapshot_bundle_file_hashes(snapshot_bundle),
+            **effective_pin.file_hashes(),
         },
         "controller_hash": "a" * 64,
         "environment_hash": "b" * 64,
@@ -815,6 +827,14 @@ def test_exported_promotion_decision_is_accepted_by_checkpoint_promotion(
         "phase_snapshot_manifest_sha256": snapshot_bundle["manifest_sha256"],
         "phase_snapshot_bundle_sha256": snapshot_bundle["bundle_sha256"],
         "phase_snapshot_bundle": snapshot_bundle,
+        "phase_effective_entry_contract_path": str(effective_pin.contract_path),
+        "phase_effective_entry_contract_file_sha256": effective_pin.file_sha256,
+        "phase_effective_entry_contract_sidecar_path": str(effective_pin.sidecar_path),
+        "phase_effective_entry_contract_sidecar_sha256": (
+            effective_pin.sidecar_file_sha256
+        ),
+        "phase_effective_entry_contract_sha256": effective_pin.contract_sha256,
+        "phase_effective_entry_contract": effective_pin.as_record(),
     }
     torch.save({"infos": infos}, checkpoint)
     checkpoint_manifest = tmp_path / "candidate_manifest.json"

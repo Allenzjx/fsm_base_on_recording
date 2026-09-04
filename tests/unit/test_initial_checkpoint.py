@@ -15,6 +15,7 @@ from wlr50_clean.ppo import (
     initial_checkpoint,
     rl_library_wrapper,
 )
+from wlr50_clean.ppo.phase_snapshots import capture_validated_phase_snapshot_bundle
 
 
 def _write_json(path: Path, payload: object) -> None:
@@ -73,7 +74,10 @@ def test_live_initializer_saves_loads_and_verifies_only_inside_run(
     run_dir.mkdir()
     calls: list[str] = []
     runner = object()
-    bundle = SimpleNamespace(as_record=lambda: {"bundle": "pinned"})
+    bundle = capture_validated_phase_snapshot_bundle(
+        cli.DEFAULT_PHASE_SNAPSHOT_ROOT,
+        canonical_root=cli.DEFAULT_PHASE_SNAPSHOT_ROOT,
+    )
     profile = SimpleNamespace(seed_train=(1001, 1002))
     env = SimpleNamespace(num_envs=1)
     manifest_payload = {

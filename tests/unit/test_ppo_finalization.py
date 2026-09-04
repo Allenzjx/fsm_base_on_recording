@@ -10,6 +10,8 @@ import pytest
 from wlr50_clean.ppo import artifacts
 from wlr50_clean.ppo import checkpoint_promotion as checkpoint
 from wlr50_clean.ppo import finalization as subject
+from wlr50_clean.ppo import phase_effective_entry_holdout as holdout_subject
+from wlr50_clean.ppo import phase_zero_residual_rollout as rollout_subject
 from wlr50_clean.ppo.evaluation_artifacts import (
     BASELINE_EPISODE_FILENAME,
     BASELINE_EVALUATION_MANIFEST_FILENAME,
@@ -25,6 +27,13 @@ from wlr50_clean.ppo.evaluation_artifacts import (
     TERMINATION_SUMMARY_FILENAME,
 )
 from wlr50_clean.ppo.final_reporting import PLOT_FILENAMES, REPORT_FILENAMES
+from wlr50_clean.ppo.phase_effective_entry import (
+    capture_validated_effective_phase_entry_contract,
+)
+from wlr50_clean.ppo.phase_snapshots import (
+    capture_validated_phase_snapshot_bundle,
+    phase_snapshot_bundle_file_hashes,
+)
 from wlr50_clean.ppo.training_orchestration import TRAINING_ORCHESTRATION_SCHEMA
 from wlr50_clean.ppo.video_artifacts import (
     COMPARISON_VIDEO_NAME,
@@ -56,6 +65,62 @@ def _record(path: Path, *, relative_to: Path | None = None) -> dict:
         "path": display,
         "bytes": source.stat().st_size,
         "sha256": artifacts.sha256_file(source),
+    }
+
+
+def _holdout_evidence(tmp_path: Path, effective_pin: object) -> dict[str, object]:
+    acceptance_path = _json(
+        tmp_path / "holdout" / holdout_subject.OUTPUT_FILENAME,
+        {
+            "status": "PASSED",
+            "passed": True,
+            "source_git_commit": "a" * 40,
+            "phase_effective_entry_contract_sha256": effective_pin.contract_sha256,
+        },
+    )
+    run_manifest = _json(
+        acceptance_path.parent / "run_manifest.json", {"lifecycle": "SUCCEEDED"}
+    )
+    return {
+        "schema": holdout_subject.TRAINING_EVIDENCE_SCHEMA,
+        "path": str(acceptance_path),
+        "sha256": artifacts.sha256_file(acceptance_path),
+        "phase_effective_entry_contract_sha256": effective_pin.contract_sha256,
+        "phase_snapshot_bundle_sha256": effective_pin.phase_snapshot_bundle_sha256,
+        "source_git_commit": "a" * 40,
+        "backend_sha256": "b" * 64,
+        "config_sha256": "c" * 64,
+        "run_manifest": str(run_manifest),
+        "run_manifest_sha256": artifacts.sha256_file(run_manifest),
+        "acceptance": json.loads(acceptance_path.read_text(encoding="utf-8")),
+        "passed": True,
+    }
+
+
+def _rollout_evidence(
+    tmp_path: Path,
+    snapshot_pin: object,
+    effective_pin: object,
+    holdout: dict[str, object],
+) -> dict[str, object]:
+    evidence_path = _json(
+        tmp_path / "rollout" / rollout_subject.ARTIFACT_FILENAME,
+        {"passed": True, "seed": 1003},
+    )
+    run_manifest = _json(
+        evidence_path.parent / "run_manifest.json", {"lifecycle": "SUCCEEDED"}
+    )
+    return {
+        "schema": rollout_subject.TRAINING_EVIDENCE_SCHEMA,
+        "path": str(evidence_path),
+        "sha256": artifacts.sha256_file(evidence_path),
+        "run_manifest": str(run_manifest),
+        "run_manifest_sha256": artifacts.sha256_file(run_manifest),
+        "contract_binding": rollout_subject.build_contract_binding(
+            snapshot_pin, effective_pin, holdout
+        ),
+        "seed": 1003,
+        "passed": True,
     }
 
 
@@ -108,6 +173,14 @@ def _aggregate_binding(
 @pytest.fixture(autouse=True)
 def _bridge_prefinal_contracts(monkeypatch: pytest.MonkeyPatch) -> None:
     """Keep legacy deep fixtures focused below the newly tested strict edges."""
+
+    def load_embedded_infos(checkpoint_bytes: bytes):
+        payload = json.loads(checkpoint_bytes.decode("utf-8"))
+        return payload["infos"]
+
+    monkeypatch.setattr(
+        checkpoint, "_load_embedded_checkpoint_infos", load_embedded_infos
+    )
 
     def validate_orchestration(path, **_kwargs):
         selected = Path(path).resolve()
@@ -319,8 +392,107 @@ def _bridge_prefinal_contracts(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(subject, "_validate_finalized_run", validate_finalized_run)
     monkeypatch.setattr(subject, "verify_final_video_publication", verify_videos)
 
+    def validate_holdout(path, *, effective_entry_contract, **_kwargs):
+        selected = Path(path).resolve()
+        try:
+            acceptance = json.loads(selected.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise holdout_subject.PhaseEffectiveEntryHoldoutError(
+                "test holdout cannot be read"
+            ) from exc
+        if acceptance.get("passed") is not True or acceptance.get("status") != "PASSED":
+            raise holdout_subject.PhaseEffectiveEntryHoldoutError(
+                "test holdout did not pass"
+            )
+        run_manifest = selected.parent / "run_manifest.json"
+        return {
+            "schema": holdout_subject.TRAINING_EVIDENCE_SCHEMA,
+            "path": str(selected),
+            "sha256": artifacts.sha256_file(selected),
+            "phase_effective_entry_contract_sha256": (
+                effective_entry_contract.contract_sha256
+            ),
+            "phase_snapshot_bundle_sha256": (
+                effective_entry_contract.phase_snapshot_bundle_sha256
+            ),
+            "source_git_commit": acceptance["source_git_commit"],
+            "backend_sha256": "b" * 64,
+            "config_sha256": "c" * 64,
+            "run_manifest": str(run_manifest.resolve()),
+            "run_manifest_sha256": artifacts.sha256_file(run_manifest),
+            "acceptance": acceptance,
+            "passed": True,
+        }
+
+    monkeypatch.setattr(
+        holdout_subject,
+        "validate_phase_effective_entry_holdout_acceptance",
+        validate_holdout,
+    )
+
+    def validate_rollout(path, *, expected_contract_binding, **_kwargs):
+        selected = Path(path).resolve()
+        try:
+            payload = json.loads(selected.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise rollout_subject.PhaseZeroResidualRolloutError(
+                "test rollout cannot be read"
+            ) from exc
+        if payload.get("passed") is not True:
+            raise rollout_subject.PhaseZeroResidualRolloutError(
+                "test rollout did not pass"
+            )
+        run_manifest = selected.parent / "run_manifest.json"
+        return {
+            "schema": rollout_subject.TRAINING_EVIDENCE_SCHEMA,
+            "path": str(selected),
+            "sha256": artifacts.sha256_file(selected),
+            "run_manifest": str(run_manifest.resolve()),
+            "run_manifest_sha256": artifacts.sha256_file(run_manifest),
+            "contract_binding": dict(expected_contract_binding),
+            "seed": payload["seed"],
+            "passed": True,
+        }
+
+    monkeypatch.setattr(
+        rollout_subject,
+        "validate_phase_zero_residual_rollout_evidence",
+        validate_rollout,
+    )
+
 
 def _make_training_runs(tmp_path: Path, output: Path) -> tuple[list[Path], Path, Path]:
+    snapshot_root = subject.PROJECT_ROOT / "reference" / "ppo_phase_snapshots"
+    snapshot_pin = capture_validated_phase_snapshot_bundle(
+        snapshot_root,
+        canonical_root=snapshot_root,
+    )
+    snapshot_record = snapshot_pin.as_record()
+    effective_pin = capture_validated_effective_phase_entry_contract(
+        expected_snapshot_bundle=snapshot_pin,
+    )
+    phase_contract_fields = {
+        "phase_snapshot_manifest": snapshot_record["manifest_path"],
+        "phase_snapshot_manifest_sha256": snapshot_record["manifest_sha256"],
+        "phase_snapshot_bundle_sha256": snapshot_record["bundle_sha256"],
+        "phase_snapshot_bundle": snapshot_record,
+        "phase_effective_entry_contract_path": str(effective_pin.contract_path),
+        "phase_effective_entry_contract_file_sha256": effective_pin.file_sha256,
+        "phase_effective_entry_contract_sidecar_path": str(effective_pin.sidecar_path),
+        "phase_effective_entry_contract_sidecar_sha256": (
+            effective_pin.sidecar_file_sha256
+        ),
+        "phase_effective_entry_contract_sha256": effective_pin.contract_sha256,
+        "phase_effective_entry_contract": effective_pin.as_record(),
+    }
+    phase_contract_files = {
+        **phase_snapshot_bundle_file_hashes(snapshot_record),
+        **effective_pin.file_hashes(),
+    }
+    holdout_evidence = _holdout_evidence(tmp_path, effective_pin)
+    rollout_evidence = _rollout_evidence(
+        tmp_path, snapshot_pin, effective_pin, holdout_evidence
+    )
     config = tmp_path / "config.yaml"
     config.write_text("seed: 1001\n", encoding="utf-8")
     checkpoint_inputs = {}
@@ -333,7 +505,7 @@ def _make_training_runs(tmp_path: Path, output: Path) -> tuple[list[Path], Path,
     ):
         path = tmp_path / "checkpoint-inputs" / name
         path.parent.mkdir(exist_ok=True)
-        path.write_text(f"{name}\n", encoding="utf-8")
+        path.write_bytes((subject.PROJECT_ROOT / "configs" / name).read_bytes())
         checkpoint_inputs[name] = path
     initial = tmp_path / "checkpoint_initial.pt"
     initial.write_bytes(b"initial-zero-policy")
@@ -373,40 +545,100 @@ def _make_training_runs(tmp_path: Path, output: Path) -> tuple[list[Path], Path,
         )
 
         history = history_root / f"checkpoint_{stage}_{cumulative}.pt"
-        history.write_bytes(f"checkpoint-after-{stage}".encode("ascii"))
+        checkpoint_infos = {
+            "schema": checkpoint.CHECKPOINT_MANIFEST_SCHEMA,
+            "stage": stage,
+            "training_seed": 1001,
+            "global_policy_decisions": cumulative,
+            "actor_observation_dimension": 125,
+            "critic_observation_dimension": 125,
+            "residual_dimension": 12,
+            "physics_hz": 120.0,
+            "decision_hz": 15.0,
+            "files": {
+                str(path.resolve()): artifacts.sha256_file(path)
+                for path in (config, *checkpoint_inputs.values())
+            }
+            | phase_contract_files,
+            **phase_contract_fields,
+            "controller_hash": artifacts.sha256_file(
+                checkpoint_inputs["fsm_states.yaml"]
+            ),
+            "environment_hash": artifacts.sha256_file(
+                checkpoint_inputs["environment_lock.json"]
+            ),
+            "observation_schema_hash": artifacts.sha256_file(
+                checkpoint_inputs["ppo_observation_schema_v2.json"]
+            ),
+            "action_schema_hash": artifacts.sha256_file(
+                checkpoint_inputs["ppo_phase_action_masks_v2.yaml"]
+            ),
+            "reward_config_hash": artifacts.sha256_file(
+                checkpoint_inputs["ppo_reward_v2.yaml"]
+            ),
+            "resume_checkpoint": str(previous.resolve()),
+            "resume_checkpoint_sha256": artifacts.sha256_file(previous),
+            "resume_global_policy_decisions": cumulative - decisions,
+        }
+        if stage not in checkpoint._HOLDOUT_OPTIONAL_CHECKPOINT_STAGES:
+            checkpoint_infos.update(
+                {
+                    "phase_effective_entry_holdout_acceptance_path": (
+                        holdout_evidence["path"]
+                    ),
+                    "phase_effective_entry_holdout_acceptance_sha256": (
+                        holdout_evidence["sha256"]
+                    ),
+                    "phase_effective_entry_holdout_contract_sha256": (
+                        holdout_evidence["phase_effective_entry_contract_sha256"]
+                    ),
+                    "phase_effective_entry_holdout_source_git_commit": (
+                        holdout_evidence["source_git_commit"]
+                    ),
+                    "phase_effective_entry_holdout_acceptance": (
+                        holdout_evidence["acceptance"]
+                    ),
+                    "phase_effective_entry_holdout_evidence": holdout_evidence,
+                    "phase_effective_entry_holdout_files": {
+                        holdout_evidence["path"]: holdout_evidence["sha256"],
+                        holdout_evidence["run_manifest"]: holdout_evidence[
+                            "run_manifest_sha256"
+                        ],
+                    },
+                    "phase_zero_residual_rollout_evidence_path": rollout_evidence[
+                        "path"
+                    ],
+                    "phase_zero_residual_rollout_evidence_sha256": rollout_evidence[
+                        "sha256"
+                    ],
+                    "phase_zero_residual_rollout_run_manifest_path": rollout_evidence[
+                        "run_manifest"
+                    ],
+                    "phase_zero_residual_rollout_run_manifest_sha256": (
+                        rollout_evidence["run_manifest_sha256"]
+                    ),
+                    "phase_zero_residual_rollout_evidence": rollout_evidence,
+                    "phase_zero_residual_rollout_files": {
+                        rollout_evidence["path"]: rollout_evidence["sha256"],
+                        rollout_evidence["run_manifest"]: rollout_evidence[
+                            "run_manifest_sha256"
+                        ],
+                    },
+                }
+            )
+        history.write_text(
+            json.dumps(
+                {"infos": checkpoint_infos},
+                sort_keys=True,
+                separators=(",", ":"),
+                allow_nan=False,
+            ),
+            encoding="utf-8",
+        )
         history_manifest = _json(
             history.with_name(history.stem + "_manifest.json"),
             {
-                "schema": checkpoint.CHECKPOINT_MANIFEST_SCHEMA,
-                "stage": stage,
-                "global_policy_decisions": cumulative,
-                "actor_observation_dimension": 125,
-                "critic_observation_dimension": 125,
-                "residual_dimension": 12,
-                "physics_hz": 120.0,
-                "decision_hz": 15.0,
-                "files": {
-                    str(path.resolve()): artifacts.sha256_file(path)
-                    for path in (config, *checkpoint_inputs.values())
-                },
-                "controller_hash": artifacts.sha256_file(
-                    checkpoint_inputs["fsm_states.yaml"]
-                ),
-                "environment_hash": artifacts.sha256_file(
-                    checkpoint_inputs["environment_lock.json"]
-                ),
-                "observation_schema_hash": artifacts.sha256_file(
-                    checkpoint_inputs["ppo_observation_schema_v2.json"]
-                ),
-                "action_schema_hash": artifacts.sha256_file(
-                    checkpoint_inputs["ppo_phase_action_masks_v2.yaml"]
-                ),
-                "reward_config_hash": artifacts.sha256_file(
-                    checkpoint_inputs["ppo_reward_v2.yaml"]
-                ),
-                "resume_checkpoint": str(previous.resolve()),
-                "resume_checkpoint_sha256": artifacts.sha256_file(previous),
-                "resume_global_policy_decisions": cumulative - decisions,
+                **checkpoint_infos,
                 "checkpoint_path": str(history.resolve()),
                 "checkpoint_sha256": artifacts.sha256_file(history),
             },
@@ -460,6 +692,111 @@ def _make_training_runs(tmp_path: Path, output: Path) -> tuple[list[Path], Path,
 
     assert terminal_manifest is not None
     return run_dirs, previous.resolve(), terminal_manifest
+
+
+def test_training_checkpoint_holdout_is_required_after_smoke(tmp_path: Path) -> None:
+    runs, _, _ = _make_training_runs(tmp_path, tmp_path / "output")
+    smoke = subject._validate_training_run(runs[0])
+    assert smoke["stage"] == "smoke"
+
+    phase_run = runs[1]
+    training_path = phase_run / "training_result.json"
+    training = json.loads(training_path.read_text(encoding="utf-8"))
+    checkpoint_path = Path(training["immutable_history_checkpoint"])
+    manifest_path = checkpoint_path.with_name(
+        checkpoint_path.stem + "_manifest.json"
+    )
+    embedded = json.loads(checkpoint_path.read_text(encoding="utf-8"))
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    for field in checkpoint._PHASE_EFFECTIVE_ENTRY_HOLDOUT_FIELDS:
+        embedded["infos"].pop(field)
+        manifest.pop(field)
+    checkpoint_path.write_text(
+        json.dumps(embedded, sort_keys=True, separators=(",", ":")),
+        encoding="utf-8",
+    )
+    new_hash = artifacts.sha256_file(checkpoint_path)
+    manifest["checkpoint_sha256"] = new_hash
+    _json(manifest_path, manifest)
+    training["checkpoint_sha256"] = new_hash
+    _json(training_path, training)
+
+    with pytest.raises(subject.FinalizationError, match="holdout acceptance"):
+        subject._validate_training_run(phase_run)
+
+
+def test_training_checkpoint_revalidates_current_holdout_bytes(tmp_path: Path) -> None:
+    runs, _, _ = _make_training_runs(tmp_path, tmp_path / "output")
+    full_run = runs[2]
+    training = json.loads(
+        (full_run / "training_result.json").read_text(encoding="utf-8")
+    )
+    checkpoint_path = Path(training["immutable_history_checkpoint"])
+    manifest = json.loads(
+        checkpoint_path.with_name(checkpoint_path.stem + "_manifest.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    acceptance = Path(manifest["phase_effective_entry_holdout_acceptance_path"])
+    acceptance.write_bytes(acceptance.read_bytes() + b" ")
+
+    with pytest.raises(subject.FinalizationError, match="current validated proof"):
+        subject._validate_training_run(full_run)
+
+
+def test_training_checkpoint_rollout_is_required_after_smoke(tmp_path: Path) -> None:
+    runs, _, _ = _make_training_runs(tmp_path, tmp_path / "output")
+    smoke = subject._validate_training_run(runs[0])
+    assert smoke["stage"] == "smoke"
+
+    phase_run = runs[1]
+    training_path = phase_run / "training_result.json"
+    training = json.loads(training_path.read_text(encoding="utf-8"))
+    checkpoint_path = Path(training["immutable_history_checkpoint"])
+    manifest_path = checkpoint_path.with_name(
+        checkpoint_path.stem + "_manifest.json"
+    )
+    embedded = json.loads(checkpoint_path.read_text(encoding="utf-8"))
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    for field in checkpoint._PHASE_ZERO_RESIDUAL_ROLLOUT_FIELDS:
+        embedded["infos"].pop(field)
+        manifest.pop(field)
+    checkpoint_path.write_text(
+        json.dumps(embedded, sort_keys=True, separators=(",", ":")),
+        encoding="utf-8",
+    )
+    new_hash = artifacts.sha256_file(checkpoint_path)
+    manifest["checkpoint_sha256"] = new_hash
+    _json(manifest_path, manifest)
+    training["checkpoint_sha256"] = new_hash
+    _json(training_path, training)
+
+    with pytest.raises(
+        subject.FinalizationError, match="phase zero-residual rollout"
+    ):
+        subject._validate_training_run(phase_run)
+
+
+def test_training_checkpoint_revalidates_current_rollout_bytes(tmp_path: Path) -> None:
+    runs, _, _ = _make_training_runs(tmp_path, tmp_path / "output")
+    full_run = runs[2]
+    training = json.loads(
+        (full_run / "training_result.json").read_text(encoding="utf-8")
+    )
+    checkpoint_path = Path(training["immutable_history_checkpoint"])
+    manifest = json.loads(
+        checkpoint_path.with_name(checkpoint_path.stem + "_manifest.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    evidence = Path(manifest["phase_zero_residual_rollout_evidence_path"])
+    evidence.write_bytes(evidence.read_bytes() + b" ")
+
+    with pytest.raises(
+        subject.FinalizationError,
+        match="phase zero-residual rollout differs from the current validated proof",
+    ):
+        subject._validate_training_run(full_run)
 
 
 def _episode(seed: int, directory: Path) -> dict:
@@ -1287,6 +1624,63 @@ def test_finalization_validates_every_layer_and_is_byte_idempotent(tmp_path: Pat
     assert f"manifests/{VIDEO_CHECKSUM_NAME}" in checksum_text
     assert "manifests/training_manifest.json" in checksum_text
     assert "manifests/evaluation_manifest.json" in checksum_text
+
+
+def test_finalization_deep_validates_every_orchestrated_training_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output = tmp_path / "output"
+    output.mkdir()
+    run_dirs = tuple(
+        (tmp_path / f"run-{stage}").resolve()
+        for stage in subject.REQUIRED_TRAINING_STAGES
+    )
+    orchestration = _json(
+        tmp_path / "training_orchestration_manifest.json",
+        {
+            "schema": TRAINING_ORCHESTRATION_SCHEMA,
+            "status": "PROMOTION_FOUND",
+            "valid": True,
+            "chunks": [
+                {
+                    "stage": stage,
+                    "training": {"run_directory": str(run_dir)},
+                }
+                for stage, run_dir in zip(
+                    subject.REQUIRED_TRAINING_STAGES, run_dirs, strict=True
+                )
+            ],
+        },
+    )
+
+    def reject_missing_intermediate_provenance(paths):
+        assert tuple(Path(path).resolve() for path in paths) == run_dirs
+        raise subject.FinalizationError("intermediate checkpoint provenance is missing")
+
+    monkeypatch.setattr(
+        subject, "_validate_training_runs", reject_missing_intermediate_provenance
+    )
+    unused = tmp_path / "unused"
+    with pytest.raises(
+        subject.FinalizationError, match="intermediate checkpoint provenance is missing"
+    ):
+        subject.finalize_ppo_phase_delivery(
+            output_root=output,
+            training_orchestration_manifest_path=orchestration,
+            final_lifecycle_aggregate_paths={},
+            final_lifecycle_metric_paths=(),
+            baseline_aggregate_path=unused,
+            baseline_metric_paths=(),
+            validation_aggregate_path=unused,
+            promotion_decision_path=unused,
+            locked_test_aggregate_path=unused,
+            checkpoint_manifest_paths=(),
+            inference_actor_export_run_dir=unused,
+            video_validation_path=unused,
+            video_checksum_path=unused,
+            report_paths=(),
+            plot_paths=(),
+        )
 
 
 def test_failed_promotion_content_cannot_be_overridden_by_names(tmp_path: Path) -> None:

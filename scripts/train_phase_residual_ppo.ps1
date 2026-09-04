@@ -8,6 +8,8 @@ param(
     [string]$CheckpointManifest,
     [string]$SoftResetAcceptance,
     [string]$VectorBenchmarkMatrix,
+    [string]$PhaseEffectiveEntryHoldoutAcceptance,
+    [string]$PhaseZeroResidualRolloutEvidence,
     [Parameter(ValueFromRemainingArguments = $true)][string[]]$CliArgs = @()
 )
 
@@ -15,6 +17,8 @@ $ErrorActionPreference = "Stop"
 $Configs = @(
     "configs\ppo_training_phase_v1.yaml",
     "configs\ppo_interface_v2.yaml",
+    "configs\ppo_phase_effective_entry_v1.json",
+    "configs\ppo_phase_effective_entry_v1.sha256",
     "configs\ppo_observation_schema_v2.json",
     "configs\ppo_phase_action_masks_v2.yaml",
     "configs\ppo_phase_objectives_v2.yaml",
@@ -24,7 +28,10 @@ $Configs = @(
     "configs\frozen_successful_fsm.yaml",
     "configs\environment_lock.json",
     "configs\fsm_states.yaml",
-    "configs\recording_motion_contract.json"
+    "configs\recording_motion_contract.json",
+    "configs\ppo_action_projection.yaml",
+    "configs\ppo_observation_schema.json",
+    "configs\conformance_policy.yaml"
 )
 $BaseArgs = @(
     "--training-config", $Configs[0],
@@ -33,6 +40,26 @@ $BaseArgs = @(
 )
 if ($Stage -ne "smoke" -and [string]::IsNullOrWhiteSpace($Checkpoint)) {
     throw "$Stage training requires an explicit -Checkpoint; refusing to restart from the initial actor"
+}
+if ($Stage -eq "phase-curriculum") {
+    if ([string]::IsNullOrWhiteSpace($PhaseEffectiveEntryHoldoutAcceptance)) {
+        throw "phase-curriculum training requires -PhaseEffectiveEntryHoldoutAcceptance from aggregate_phase_effective_entry_holdout.ps1"
+    }
+    $BaseArgs += @(
+        "--phase-effective-entry-holdout-acceptance",
+        $PhaseEffectiveEntryHoldoutAcceptance
+    )
+    if ([string]::IsNullOrWhiteSpace($PhaseZeroResidualRolloutEvidence)) {
+        throw "phase-curriculum training requires -PhaseZeroResidualRolloutEvidence from run_phase_zero_residual_rollout.ps1"
+    }
+    $BaseArgs += @(
+        "--phase-zero-residual-rollout-evidence",
+        $PhaseZeroResidualRolloutEvidence
+    )
+} elseif (-not [string]::IsNullOrWhiteSpace($PhaseEffectiveEntryHoldoutAcceptance)) {
+    throw "-PhaseEffectiveEntryHoldoutAcceptance is only valid for phase-curriculum training"
+} elseif (-not [string]::IsNullOrWhiteSpace($PhaseZeroResidualRolloutEvidence)) {
+    throw "-PhaseZeroResidualRolloutEvidence is only valid for phase-curriculum training"
 }
 if (-not [string]::IsNullOrWhiteSpace($Checkpoint)) {
     $BaseArgs += @("--checkpoint", $Checkpoint)

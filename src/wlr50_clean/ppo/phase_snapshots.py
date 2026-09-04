@@ -247,6 +247,30 @@ def _same_open_path_file_identity(
     )
 
 
+def _same_path_identity(
+    expected: tuple[Any, ...], current: tuple[Any, ...]
+) -> bool:
+    """Keep directory-object checks stable across unrelated child changes."""
+
+    if expected[1] != current[1]:
+        return False
+    if expected[1] != "directory":
+        return expected == current
+    # Directory size/timestamps are namespace activity, not object identity.
+    stable_indices = (0, 1, 2, 3, 7)
+    return all(expected[index] == current[index] for index in stable_indices)
+
+
+def _same_filesystem_identity(
+    expected: tuple[tuple[Any, ...], ...],
+    current: tuple[tuple[Any, ...], ...],
+) -> bool:
+    return len(expected) == len(current) and all(
+        _same_path_identity(expected_row, current_row)
+        for expected_row, current_row in zip(expected, current)
+    )
+
+
 def _capture_source_surface(
     trial_dir: Path | str,
 ) -> tuple[Path, dict[str, Path], tuple[tuple[Any, ...], ...]]:
@@ -301,7 +325,7 @@ def _assert_source_surface_unchanged(
             label=f"captured source path {path}",
             directory=identity[1] == "directory",
         )
-        if current != identity:
+        if not _same_path_identity(identity, current):
             raise PhaseSnapshotError(
                 f"source trial path changed during immutable capture: {path}"
             )
@@ -1711,7 +1735,7 @@ def capture_validated_phase_snapshot_bundle(
             label=f"captured phase snapshot path {identity[0]}",
             directory=identity[1] == "directory",
         )
-        if current != identity:
+        if not _same_path_identity(identity, current):
             raise PhaseSnapshotError(
                 f"phase snapshot path changed during bundle capture: {identity[0]}"
             )
@@ -1754,7 +1778,9 @@ def assert_phase_snapshot_bundle_unchanged(
     )
     if (
         current.as_record() != expected.as_record()
-        or current.filesystem_identity != expected.filesystem_identity
+        or not _same_filesystem_identity(
+            expected.filesystem_identity, current.filesystem_identity
+        )
     ):
         raise PhaseSnapshotError(
             "phase snapshot bundle differs from the pinned immutable capture"

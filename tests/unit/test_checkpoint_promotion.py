@@ -11,9 +11,14 @@ import pytest
 
 from wlr50_clean.ppo import checkpoint_promotion as subject
 from wlr50_clean.ppo import cli
+from wlr50_clean.ppo import phase_effective_entry_holdout as holdout_subject
+from wlr50_clean.ppo import phase_zero_residual_rollout as rollout_subject
+from wlr50_clean.ppo.phase_effective_entry import (
+    capture_validated_effective_phase_entry_contract,
+)
 from wlr50_clean.ppo.phase_snapshots import (
+    capture_validated_phase_snapshot_bundle,
     phase_snapshot_bundle_file_hashes,
-    validated_phase_snapshot_bundle_record,
 )
 
 
@@ -23,15 +28,145 @@ def _json(path: Path, payload: dict) -> Path:
     return path
 
 
-def _checkpoint_evidence(tmp_path: Path, *, name: str = "candidate.pt") -> tuple[Path, Path]:
-    torch = pytest.importorskip("torch")
-    checkpoint = tmp_path / name
-    snapshot_bundle = validated_phase_snapshot_bundle_record(
-        cli.DEFAULT_PHASE_SNAPSHOT_ROOT
+def _holdout_evidence(tmp_path: Path, effective_pin: object) -> dict[str, object]:
+    acceptance_path = _json(
+        tmp_path / "holdout" / holdout_subject.OUTPUT_FILENAME,
+        {
+            "status": "PASSED",
+            "passed": True,
+            "source_git_commit": "a" * 40,
+            "phase_effective_entry_contract_sha256": effective_pin.contract_sha256,
+        },
+    ).resolve()
+    run_manifest = _json(
+        acceptance_path.parent / "run_manifest.json", {"lifecycle": "SUCCEEDED"}
+    ).resolve()
+    return {
+        "schema": holdout_subject.TRAINING_EVIDENCE_SCHEMA,
+        "path": str(acceptance_path),
+        "sha256": subject.sha256_file(acceptance_path),
+        "phase_effective_entry_contract_sha256": effective_pin.contract_sha256,
+        "phase_snapshot_bundle_sha256": effective_pin.phase_snapshot_bundle_sha256,
+        "source_git_commit": "a" * 40,
+        "backend_sha256": "b" * 64,
+        "config_sha256": "c" * 64,
+        "run_manifest": str(run_manifest),
+        "run_manifest_sha256": subject.sha256_file(run_manifest),
+        "acceptance": json.loads(acceptance_path.read_text(encoding="utf-8")),
+        "passed": True,
+    }
+
+
+def _rollout_evidence(
+    tmp_path: Path,
+    snapshot_pin: object,
+    effective_pin: object,
+    holdout: dict[str, object],
+) -> dict[str, object]:
+    evidence_path = _json(
+        tmp_path / "rollout" / rollout_subject.ARTIFACT_FILENAME,
+        {"passed": True, "seed": 1003},
+    ).resolve()
+    run_manifest = _json(
+        evidence_path.parent / "run_manifest.json", {"lifecycle": "SUCCEEDED"}
+    ).resolve()
+    return {
+        "schema": rollout_subject.TRAINING_EVIDENCE_SCHEMA,
+        "path": str(evidence_path),
+        "sha256": subject.sha256_file(evidence_path),
+        "run_manifest": str(run_manifest),
+        "run_manifest_sha256": subject.sha256_file(run_manifest),
+        "contract_binding": rollout_subject.build_contract_binding(
+            snapshot_pin, effective_pin, holdout
+        ),
+        "seed": 1003,
+        "passed": True,
+    }
+
+
+@pytest.fixture(autouse=True)
+def _validate_test_holdout(monkeypatch: pytest.MonkeyPatch) -> None:
+    def validate(path, *, effective_entry_contract, **_kwargs):
+        selected = Path(path).resolve()
+        try:
+            acceptance = json.loads(selected.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise holdout_subject.PhaseEffectiveEntryHoldoutError(
+                "test holdout cannot be read"
+            ) from exc
+        if acceptance.get("passed") is not True or acceptance.get("status") != "PASSED":
+            raise holdout_subject.PhaseEffectiveEntryHoldoutError(
+                "test holdout did not pass"
+            )
+        run_manifest = selected.parent / "run_manifest.json"
+        return {
+            "schema": holdout_subject.TRAINING_EVIDENCE_SCHEMA,
+            "path": str(selected),
+            "sha256": subject.sha256_file(selected),
+            "phase_effective_entry_contract_sha256": (
+                effective_entry_contract.contract_sha256
+            ),
+            "phase_snapshot_bundle_sha256": (
+                effective_entry_contract.phase_snapshot_bundle_sha256
+            ),
+            "source_git_commit": acceptance["source_git_commit"],
+            "backend_sha256": "b" * 64,
+            "config_sha256": "c" * 64,
+            "run_manifest": str(run_manifest.resolve()),
+            "run_manifest_sha256": subject.sha256_file(run_manifest),
+            "acceptance": acceptance,
+            "passed": True,
+        }
+
+    monkeypatch.setattr(
+        holdout_subject,
+        "validate_phase_effective_entry_holdout_acceptance",
+        validate,
+    )
+
+    def validate_rollout(path, *, expected_contract_binding, **_kwargs):
+        selected = Path(path).resolve()
+        try:
+            payload = json.loads(selected.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise rollout_subject.PhaseZeroResidualRolloutError(
+                "test rollout cannot be read"
+            ) from exc
+        if payload.get("passed") is not True:
+            raise rollout_subject.PhaseZeroResidualRolloutError(
+                "test rollout did not pass"
+            )
+        run_manifest = selected.parent / "run_manifest.json"
+        return {
+            "schema": rollout_subject.TRAINING_EVIDENCE_SCHEMA,
+            "path": str(selected),
+            "sha256": subject.sha256_file(selected),
+            "run_manifest": str(run_manifest.resolve()),
+            "run_manifest_sha256": subject.sha256_file(run_manifest),
+            "contract_binding": dict(expected_contract_binding),
+            "seed": payload["seed"],
+            "passed": True,
+        }
+
+    monkeypatch.setattr(
+        rollout_subject,
+        "validate_phase_zero_residual_rollout_evidence",
+        validate_rollout,
+    )
+
+
+def _checkpoint_infos(tmp_path: Path, *, stage: str = "full-episode") -> dict:
+    snapshot_pin = capture_validated_phase_snapshot_bundle(
+        cli.DEFAULT_PHASE_SNAPSHOT_ROOT,
+        canonical_root=cli.DEFAULT_PHASE_SNAPSHOT_ROOT,
+    )
+    snapshot_bundle = snapshot_pin.as_record()
+    effective_pin = capture_validated_effective_phase_entry_contract(
+        expected_snapshot_bundle=snapshot_pin,
     )
     infos = {
         "schema": subject.CHECKPOINT_MANIFEST_SCHEMA,
-        "stage": "full-episode",
+        "stage": stage,
         "training_seed": 1001,
         "global_policy_decisions": 100_000,
         "source_git_commit": "a" * 40,
@@ -44,6 +179,7 @@ def _checkpoint_evidence(tmp_path: Path, *, name: str = "candidate.pt") -> tuple
         "files": {
             "training.yaml": "f" * 64,
             **phase_snapshot_bundle_file_hashes(snapshot_bundle),
+            **effective_pin.file_hashes(),
         },
         "controller_hash": "a" * 64,
         "environment_hash": "b" * 64,
@@ -54,7 +190,65 @@ def _checkpoint_evidence(tmp_path: Path, *, name: str = "candidate.pt") -> tuple
         "phase_snapshot_manifest_sha256": snapshot_bundle["manifest_sha256"],
         "phase_snapshot_bundle_sha256": snapshot_bundle["bundle_sha256"],
         "phase_snapshot_bundle": snapshot_bundle,
+        "phase_effective_entry_contract_path": str(effective_pin.contract_path),
+        "phase_effective_entry_contract_file_sha256": effective_pin.file_sha256,
+        "phase_effective_entry_contract_sidecar_path": str(effective_pin.sidecar_path),
+        "phase_effective_entry_contract_sidecar_sha256": (
+            effective_pin.sidecar_file_sha256
+        ),
+        "phase_effective_entry_contract_sha256": effective_pin.contract_sha256,
+        "phase_effective_entry_contract": effective_pin.as_record(),
     }
+    if stage not in subject._HOLDOUT_OPTIONAL_CHECKPOINT_STAGES:
+        holdout = _holdout_evidence(tmp_path, effective_pin)
+        rollout = _rollout_evidence(
+            tmp_path, snapshot_pin, effective_pin, holdout
+        )
+        infos.update(
+            {
+                "phase_effective_entry_holdout_acceptance_path": holdout["path"],
+                "phase_effective_entry_holdout_acceptance_sha256": holdout[
+                    "sha256"
+                ],
+                "phase_effective_entry_holdout_contract_sha256": holdout[
+                    "phase_effective_entry_contract_sha256"
+                ],
+                "phase_effective_entry_holdout_source_git_commit": holdout[
+                    "source_git_commit"
+                ],
+                "phase_effective_entry_holdout_acceptance": holdout["acceptance"],
+                "phase_effective_entry_holdout_evidence": holdout,
+                "phase_effective_entry_holdout_files": {
+                    holdout["path"]: holdout["sha256"],
+                    holdout["run_manifest"]: holdout["run_manifest_sha256"],
+                },
+                "phase_zero_residual_rollout_evidence_path": rollout["path"],
+                "phase_zero_residual_rollout_evidence_sha256": rollout["sha256"],
+                "phase_zero_residual_rollout_run_manifest_path": rollout[
+                    "run_manifest"
+                ],
+                "phase_zero_residual_rollout_run_manifest_sha256": rollout[
+                    "run_manifest_sha256"
+                ],
+                "phase_zero_residual_rollout_evidence": rollout,
+                "phase_zero_residual_rollout_files": {
+                    rollout["path"]: rollout["sha256"],
+                    rollout["run_manifest"]: rollout["run_manifest_sha256"],
+                },
+            }
+        )
+    return infos
+
+
+def _checkpoint_evidence(
+    tmp_path: Path,
+    *,
+    name: str = "candidate.pt",
+    stage: str = "full-episode",
+) -> tuple[Path, Path]:
+    torch = pytest.importorskip("torch")
+    checkpoint = tmp_path / name
+    infos = _checkpoint_infos(tmp_path, stage=stage)
     torch.save({"infos": infos}, checkpoint)
     digest = subject.sha256_file(checkpoint)
     manifest = _json(
@@ -173,6 +367,90 @@ def _promotion_decision(
     )
 
 
+def test_holdout_contract_is_required_for_full_checkpoint_infos(
+    tmp_path: Path,
+) -> None:
+    infos = _checkpoint_infos(tmp_path)
+    for field in subject._PHASE_EFFECTIVE_ENTRY_HOLDOUT_FIELDS:
+        infos.pop(field)
+
+    with pytest.raises(subject.CheckpointPromotionError, match="holdout acceptance"):
+        subject._validate_checkpoint_snapshot_contract(infos, infos)
+
+
+def test_holdout_contract_matches_manifest_embedded_infos_and_current_file(
+    tmp_path: Path,
+) -> None:
+    infos = _checkpoint_infos(tmp_path)
+    subject._validate_checkpoint_snapshot_contract(infos, infos)
+
+    forged_manifest = dict(infos)
+    forged_manifest["phase_effective_entry_holdout_acceptance_sha256"] = "0" * 64
+    with pytest.raises(
+        subject.CheckpointPromotionError,
+        match="manifest and embedded infos disagree",
+    ):
+        subject._validate_checkpoint_snapshot_contract(forged_manifest, infos)
+
+    acceptance = Path(infos["phase_effective_entry_holdout_acceptance_path"])
+    acceptance.write_bytes(acceptance.read_bytes() + b" ")
+    with pytest.raises(
+        subject.CheckpointPromotionError,
+        match="current validated proof",
+    ):
+        subject._validate_checkpoint_snapshot_contract(infos, infos)
+
+
+@pytest.mark.parametrize("stage", ("smoke", "initial_zero_residual"))
+def test_holdout_contract_remains_optional_for_initial_and_smoke_checkpoint_infos(
+    tmp_path: Path, stage: str
+) -> None:
+    infos = _checkpoint_infos(tmp_path, stage=stage)
+    subject._validate_checkpoint_snapshot_contract(infos, infos)
+    assert not any(
+        field in infos for field in subject._PHASE_EFFECTIVE_ENTRY_HOLDOUT_FIELDS
+    )
+    assert not any(
+        field in infos for field in subject._PHASE_ZERO_RESIDUAL_ROLLOUT_FIELDS
+    )
+
+
+def test_zero_residual_rollout_is_required_for_full_checkpoint_infos(
+    tmp_path: Path,
+) -> None:
+    infos = _checkpoint_infos(tmp_path)
+    for field in subject._PHASE_ZERO_RESIDUAL_ROLLOUT_FIELDS:
+        infos.pop(field)
+
+    with pytest.raises(
+        subject.CheckpointPromotionError, match="phase zero-residual rollout"
+    ):
+        subject._validate_checkpoint_snapshot_contract(infos, infos)
+
+
+def test_zero_residual_rollout_matches_infos_and_current_files(
+    tmp_path: Path,
+) -> None:
+    infos = _checkpoint_infos(tmp_path)
+    subject._validate_checkpoint_snapshot_contract(infos, infos)
+
+    forged_manifest = copy.deepcopy(infos)
+    forged_manifest["phase_zero_residual_rollout_run_manifest_sha256"] = "0" * 64
+    with pytest.raises(
+        subject.CheckpointPromotionError,
+        match="manifest and embedded infos disagree on phase zero-residual rollout",
+    ):
+        subject._validate_checkpoint_snapshot_contract(forged_manifest, infos)
+
+    evidence = Path(infos["phase_zero_residual_rollout_evidence_path"])
+    evidence.write_bytes(evidence.read_bytes() + b" ")
+    with pytest.raises(
+        subject.CheckpointPromotionError,
+        match="phase zero-residual rollout differs from the current validated proof",
+    ):
+        subject._validate_checkpoint_snapshot_contract(infos, infos)
+
+
 def test_offline_checkpoint_validator_rejects_sidecar_retrofit_on_old_checkpoint(
     tmp_path: Path,
 ) -> None:
@@ -236,7 +514,52 @@ def test_offline_checkpoint_validator_requires_all_27_snapshot_file_hashes(
 
     with pytest.raises(
         subject.CheckpointPromotionError,
-        match="all 27 phase snapshot files",
+        match="phase reset contract files",
+    ):
+        subject.validate_checkpoint_artifact_provenance(checkpoint, manifest_path)
+
+
+def test_full_checkpoint_requires_holdout_in_manifest_and_embedded_infos(
+    tmp_path: Path,
+) -> None:
+    torch = pytest.importorskip("torch")
+    checkpoint, manifest_path = _checkpoint_evidence(tmp_path)
+    payload = torch.load(checkpoint, map_location="cpu", weights_only=True)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    for field in subject._PHASE_EFFECTIVE_ENTRY_HOLDOUT_FIELDS:
+        payload["infos"].pop(field)
+        manifest.pop(field)
+    torch.save(payload, checkpoint)
+    manifest["checkpoint_sha256"] = subject.sha256_file(checkpoint)
+    _json(manifest_path, manifest)
+
+    with pytest.raises(subject.CheckpointPromotionError, match="holdout acceptance"):
+        subject.validate_checkpoint_artifact_provenance(checkpoint, manifest_path)
+
+
+def test_smoke_checkpoint_remains_compatible_without_holdout(tmp_path: Path) -> None:
+    checkpoint, manifest_path = _checkpoint_evidence(tmp_path, stage="smoke")
+
+    evidence = subject.validate_checkpoint_artifact_provenance(
+        checkpoint, manifest_path
+    )
+
+    assert evidence.manifest["stage"] == "smoke"
+    assert not any(
+        field in evidence.manifest
+        for field in subject._PHASE_EFFECTIVE_ENTRY_HOLDOUT_FIELDS
+    )
+
+
+def test_checkpoint_revalidates_current_holdout_file_hash(tmp_path: Path) -> None:
+    checkpoint, manifest_path = _checkpoint_evidence(tmp_path)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    acceptance = Path(manifest["phase_effective_entry_holdout_acceptance_path"])
+    acceptance.write_bytes(acceptance.read_bytes() + b" ")
+
+    with pytest.raises(
+        subject.CheckpointPromotionError,
+        match="current validated proof",
     ):
         subject.validate_checkpoint_artifact_provenance(checkpoint, manifest_path)
 
@@ -959,7 +1282,7 @@ def test_actor_export_cli_loads_real_runner_without_stepping_episode(
     monkeypatch.setattr(
         cli,
         "_current_checkpoint_runtime_contract",
-        lambda args: {
+        lambda args, **kwargs: {
             field: manifest[field]
             for field in rl_library_wrapper.CHECKPOINT_RUNTIME_CONTRACT_FIELDS
         },

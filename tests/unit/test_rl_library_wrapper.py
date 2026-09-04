@@ -60,6 +60,21 @@ def _resume_checkpoint(tmp_path, *, step=12_345):
         "bundle_sha256": "8" * 64,
         "source_trial": "success",
     }
+    effective_entry_record = {
+        "schema": "wlr50_clean.ppo_phase_effective_entry_record.v1",
+        "contract_path": str((tmp_path / "effective_entry.json").resolve()),
+        "sidecar_path": str((tmp_path / "effective_entry.sha256").resolve()),
+        "file_sha256": "9" * 64,
+        "sidecar_file_sha256": "a" * 64,
+        "contract_sha256": "b" * 64,
+        "phase_snapshot_bundle_sha256": snapshot_bundle["bundle_sha256"],
+        "environment_lock_path": str((tmp_path / "environment_lock.json").resolve()),
+        "environment_lock_sha256": "3" * 64,
+        "frozen_ledger_path": str((tmp_path / "frozen_fsm_hashes.json").resolve()),
+        "frozen_ledger_sha256": "c" * 64,
+        "phase_count": 12,
+        "phases": [f"P{index:02d}" for index in range(2, 14)],
+    }
     infos = {
         "schema": "wlr50_clean.phase_residual_checkpoint_manifest.v1",
         "stage": "full_episode_100k",
@@ -82,6 +97,20 @@ def _resume_checkpoint(tmp_path, *, step=12_345):
         "phase_snapshot_manifest_sha256": snapshot_bundle["manifest_sha256"],
         "phase_snapshot_bundle_sha256": snapshot_bundle["bundle_sha256"],
         "phase_snapshot_bundle": snapshot_bundle,
+        "phase_effective_entry_contract_path": effective_entry_record["contract_path"],
+        "phase_effective_entry_contract_file_sha256": effective_entry_record[
+            "file_sha256"
+        ],
+        "phase_effective_entry_contract_sidecar_path": effective_entry_record[
+            "sidecar_path"
+        ],
+        "phase_effective_entry_contract_sidecar_sha256": effective_entry_record[
+            "sidecar_file_sha256"
+        ],
+        "phase_effective_entry_contract_sha256": effective_entry_record[
+            "contract_sha256"
+        ],
+        "phase_effective_entry_contract": effective_entry_record,
     }
     manifest = {
         **infos,

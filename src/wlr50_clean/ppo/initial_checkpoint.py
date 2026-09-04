@@ -277,23 +277,47 @@ def _validate_runtime_contract(
         capture_validated_phase_snapshot_bundle,
         phase_snapshot_bundle_file_hashes,
     )
+    from .phase_effective_entry import (
+        EffectivePhaseEntryError,
+        capture_validated_effective_phase_entry_contract,
+    )
     from .training_orchestration import _reject_links, _snapshot
 
     snapshot_root = project_root / "reference" / "ppo_phase_snapshots"
     try:
-        bundle = capture_validated_phase_snapshot_bundle(
+        snapshot_pin = capture_validated_phase_snapshot_bundle(
             snapshot_root, canonical_root=snapshot_root
-        ).as_record()
+        )
+        bundle = snapshot_pin.as_record()
         snapshot_hashes = phase_snapshot_bundle_file_hashes(bundle)
-    except (OSError, PhaseSnapshotError) as exc:
+        effective_pin = capture_validated_effective_phase_entry_contract(
+            project_root / "configs" / "ppo_phase_effective_entry_v1.json",
+            expected_snapshot_bundle=snapshot_pin,
+            environment_lock_path=project_root / "configs" / "environment_lock.json",
+            frozen_ledger_path=(
+                project_root
+                / "artifacts"
+                / "ppo_phase_v1_start"
+                / "frozen_fsm_hashes.json"
+            ),
+        )
+    except (OSError, PhaseSnapshotError, EffectivePhaseEntryError) as exc:
         raise InitialCheckpointError(
-            f"current phase snapshot bundle is invalid: {exc}"
+            f"current phase reset contract is invalid: {exc}"
         ) from exc
     expected_snapshot_fields = {
         "phase_snapshot_manifest": bundle["manifest_path"],
         "phase_snapshot_manifest_sha256": bundle["manifest_sha256"],
         "phase_snapshot_bundle_sha256": bundle["bundle_sha256"],
         "phase_snapshot_bundle": bundle,
+        "phase_effective_entry_contract_path": str(effective_pin.contract_path),
+        "phase_effective_entry_contract_file_sha256": effective_pin.file_sha256,
+        "phase_effective_entry_contract_sidecar_path": str(effective_pin.sidecar_path),
+        "phase_effective_entry_contract_sidecar_sha256": (
+            effective_pin.sidecar_file_sha256
+        ),
+        "phase_effective_entry_contract_sha256": effective_pin.contract_sha256,
+        "phase_effective_entry_contract": effective_pin.as_record(),
     }
     differing = [
         field
@@ -309,6 +333,8 @@ def _validate_runtime_contract(
     config_paths = (
         project_root / "configs" / "ppo_training_phase_v1.yaml",
         project_root / "configs" / "ppo_interface_v2.yaml",
+        project_root / "configs" / "ppo_phase_effective_entry_v1.json",
+        project_root / "configs" / "ppo_phase_effective_entry_v1.sha256",
         project_root / "configs" / "ppo_observation_schema_v2.json",
         project_root / "configs" / "ppo_phase_action_masks_v2.yaml",
         project_root / "configs" / "ppo_phase_objectives_v2.yaml",
@@ -322,6 +348,7 @@ def _validate_runtime_contract(
     )
     expected_files = {str(path): None for path in config_paths}
     expected_files.update(snapshot_hashes)
+    expected_files.update(effective_pin.file_hashes())
     files = manifest.get("files")
     if not isinstance(files, Mapping) or set(files) != set(expected_files):
         raise InitialCheckpointError(
@@ -517,6 +544,10 @@ def _validate_creation_run(
             is not True
             or result.get("zero_mean_actor_output_layer_verified_after_load")
             is not True
+            or result.get("phase_snapshot_bundle")
+            != manifest.get("phase_snapshot_bundle")
+            or result.get("phase_effective_entry_contract")
+            != manifest.get("phase_effective_entry_contract")
             or _absolute(str(result.get("checkpoint", "")))
             != checkpoint_record.path
             or result.get("checkpoint_sha256") != checkpoint_record.sha256
