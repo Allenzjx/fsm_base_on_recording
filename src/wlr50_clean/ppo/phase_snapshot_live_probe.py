@@ -27,6 +27,27 @@ class PhaseSnapshotLiveProbeError(RuntimeError):
     """The diagnostic probe itself could not produce trustworthy evidence."""
 
 
+def _selected_probe_phases(
+    phases: Sequence[str] | None,
+) -> tuple[str, ...]:
+    if phases is None:
+        return PROBE_PHASES
+    if isinstance(phases, (str, bytes)) or not isinstance(phases, Sequence):
+        raise PhaseSnapshotLiveProbeError(
+            "phases must select exactly one phase from P02 through P13"
+        )
+    selected = tuple(phases)
+    if (
+        len(selected) != 1
+        or type(selected[0]) is not str
+        or selected[0] not in PROBE_PHASES
+    ):
+        raise PhaseSnapshotLiveProbeError(
+            "phases must select exactly one phase from P02 through P13"
+        )
+    return selected
+
+
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as stream:
@@ -586,8 +607,9 @@ def run_phase_snapshot_live_probe(
     seed: int,
     snapshot_bundle: Any,
     prime_physics_steps: int = 1,
+    phases: Sequence[str] | None = None,
 ) -> Mapping[str, Any]:
-    """Run two diagnostic reset attempts per P02-P13 and always seal a report."""
+    """Run two resets for all P02-P13 or one explicitly selected phase."""
 
     from .isaac_fsm_backend import IsaacFSMBackend
     from .phase_snapshots import (
@@ -603,6 +625,10 @@ def run_phase_snapshot_live_probe(
         raise PhaseSnapshotLiveProbeError(
             "prime_physics_steps must be exactly one for the production reset"
         )
+    selected_phases = _selected_probe_phases(phases)
+    expected_attempt_count = len(selected_phases) * ATTEMPTS_PER_PHASE
+    expected_fresh_count = 1
+    expected_reused_count = expected_attempt_count - expected_fresh_count
     output = Path(run_dir).resolve() / PROBE_FILENAME
     runtime_before = _evidence_reference(
         Path(run_dir) / "committed_runtime_identity.before.json",
@@ -641,9 +667,15 @@ def run_phase_snapshot_live_probe(
         "status": "RUNNING",
         "passed": False,
         "seed": int(seed),
-        "phases": list(PROBE_PHASES),
+        "phases": list(selected_phases),
+        "phase_count": len(selected_phases),
+        "phase_selector_mode": (
+            "all_non_p01_phases" if phases is None else "single_phase"
+        ),
         "attempts_per_phase": ATTEMPTS_PER_PHASE,
-        "expected_attempt_count": len(PROBE_PHASES) * ATTEMPTS_PER_PHASE,
+        "expected_attempt_count": expected_attempt_count,
+        "expected_fresh_scene_attempt_count": expected_fresh_count,
+        "expected_reused_scene_attempt_count": expected_reused_count,
         "completed_attempt_count": 0,
         "production_reset_modified": True,
         "production_reset_mode": (
@@ -679,7 +711,7 @@ def run_phase_snapshot_live_probe(
             expected_phase_snapshot_bundle=snapshot_bundle,
             phase_snapshot_prime_physics_steps=prime_physics_steps,
         )
-        for phase in PROBE_PHASES:
+        for phase in selected_phases:
             snapshot, entry = load_validated_phase_snapshot_payload(
                 snapshot_bundle, phase
             )
@@ -849,7 +881,19 @@ def run_phase_snapshot_live_probe(
             None if not failures else "ORDINARY_POST_WRITE_RESTORE_MISMATCH"
         )
 
-    complete = len(attempts) == payload["expected_attempt_count"]
+    fresh_count = sum(
+        row.get("scene_lifecycle") == "fresh_scene" for row in attempts
+    )
+    reused_count = sum(
+        row.get("scene_lifecycle") == "reused_scene" for row in attempts
+    )
+    complete = bool(
+        len(attempts) == payload["expected_attempt_count"]
+        and fresh_count == payload["expected_fresh_scene_attempt_count"]
+        and reused_count == payload["expected_reused_scene_attempt_count"]
+        and attempts
+        and attempts[0].get("scene_lifecycle") == "fresh_scene"
+    )
     passed = bool(complete and all(row.get("passed") is True for row in attempts))
     payload.update(
         {
@@ -857,12 +901,8 @@ def run_phase_snapshot_live_probe(
             "passed": passed,
             "complete": complete,
             "completed_attempt_count": len(attempts),
-            "fresh_scene_attempt_count": sum(
-                row.get("scene_lifecycle") == "fresh_scene" for row in attempts
-            ),
-            "reused_scene_attempt_count": sum(
-                row.get("scene_lifecycle") == "reused_scene" for row in attempts
-            ),
+            "fresh_scene_attempt_count": fresh_count,
+            "reused_scene_attempt_count": reused_count,
         }
     )
     _write_probe(output, payload)

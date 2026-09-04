@@ -3,6 +3,9 @@ param(
     [int]$Seed = 1001,
     [ValidateSet(1)]
     [int]$PrimePhysicsSteps = 1,
+    [AllowNull()]
+    [ValidateSet("P02", "P03", "P04", "P05", "P06", "P07", "P08", "P09", "P10", "P11", "P12", "P13")]
+    [string]$Phase = $null,
     [string]$SnapshotRoot = "reference\ppo_phase_snapshots",
     [Parameter(ValueFromRemainingArguments = $true)]
     [string[]]$CliArgs = @()
@@ -34,6 +37,9 @@ $BaseArgs = @(
     "--seed-set", "train",
     "--deterministic"
 )
+if ($null -ne $Phase) {
+    $BaseArgs += @("--phase", $Phase)
+}
 
 # A failed reset is the expected useful outcome of this diagnostic.  The
 # common launcher may return exit-code 2 only after it has sealed the failure,

@@ -207,7 +207,23 @@ def test_cli_and_wrapper_bind_probe_to_one_live_environment() -> None:
     )
     assert arguments.command == "phase-snapshot-live-probe"
     assert arguments.phase_snapshot_prime_physics_steps == 1
+    assert arguments.phase is None
     assert "phase-snapshot-live-probe" in cli.LIVE_COMMANDS
+
+    selected = cli._parser().parse_args(
+        [
+            "phase-snapshot-live-probe",
+            "--run-dir",
+            str(PROJECT_ROOT),
+            "--seed",
+            "1001",
+            "--num-envs",
+            "1",
+            "--phase",
+            "P09",
+        ]
+    )
+    assert selected.phase == "P09"
 
     wrapper = (
         PROJECT_ROOT / "scripts" / "run_phase_snapshot_live_probe.ps1"
@@ -218,6 +234,9 @@ def test_cli_and_wrapper_bind_probe_to_one_live_environment() -> None:
     assert "-ReturnFinalizedEvidenceFailure" in wrapper
     assert '"--phase-snapshot-prime-physics-steps", $PrimePhysicsSteps' in wrapper
     assert "[ValidateSet(1)]" in wrapper
+    assert "[string]$Phase = $null" in wrapper
+    assert 'if ($null -ne $Phase)' in wrapper
+    assert '$BaseArgs += @("--phase", $Phase)' in wrapper
 
     with pytest.raises(SystemExit):
         cli._parser().parse_args(
@@ -231,6 +250,21 @@ def test_cli_and_wrapper_bind_probe_to_one_live_environment() -> None:
                 "1",
                 "--phase-snapshot-prime-physics-steps",
                 "2",
+            ]
+        )
+
+    with pytest.raises(SystemExit):
+        cli._parser().parse_args(
+            [
+                "phase-snapshot-live-probe",
+                "--run-dir",
+                str(PROJECT_ROOT),
+                "--seed",
+                "1001",
+                "--num-envs",
+                "1",
+                "--phase",
+                "P01",
             ]
         )
 
@@ -253,6 +287,25 @@ def test_live_probe_rejects_non_one_prime_count_before_runtime_mutation(
             snapshot_bundle=object(),
             prime_physics_steps=2,
         )
+
+
+@pytest.mark.parametrize(
+    "phases",
+    (("P01",), ("P14",), ("p09",), (), ("P02", "P03"), "P09"),
+)
+def test_live_probe_rejects_p01_or_invalid_phase_selector_before_runtime_mutation(
+    tmp_path: Path,
+    phases: object,
+) -> None:
+    with pytest.raises(PhaseSnapshotLiveProbeError, match="P02 through P13"):
+        probe_subject.run_phase_snapshot_live_probe(
+            object(),
+            run_dir=tmp_path,
+            seed=1001,
+            snapshot_bundle=object(),
+            phases=phases,
+        )
+    assert not (tmp_path / "phase_snapshot_live_probe.json").exists()
 
 
 def _write_managed_prechecks(run_dir: Path) -> None:
@@ -281,6 +334,57 @@ class _FakeBundle:
             "schema": "wlr50_clean.phase_snapshot_bundle.v1",
             "snapshot_root": str(self.snapshot_root),
         }
+
+
+class _ContactRejectingBackend:
+    """Fake one-scene backend that yields a trustworthy ordinary mismatch."""
+
+    def __init__(self, *args: object, dependencies: object, **kwargs: object) -> None:
+        self._book = dependencies
+        self._scene = None
+        self._episode_tick = 0
+        self._phase_snapshot_integrity_failed = False
+
+    def reset(self, **kwargs: object) -> object:
+        from wlr50_clean.ppo.isaac_fsm_backend import SensorContractFailure
+
+        self._scene = object()
+        self._book.current.snapshot_write_finished = True
+        self._book.current.snapshot_state_write = {
+            "root_pose_writes": 1,
+            "root_velocity_writes": 1,
+            "joint_state_writes": 1,
+            "simulation_forward_syncs": 1,
+            "physics_steps": 0,
+        }
+        self._snapshot_restoration = {
+            "physical_state": {
+                "schema": "wlr50_clean.phase_snapshot_prime_without_rewind.v1",
+                "reset_use": "TRAINING_RESET_STATE_WRITE",
+                "root_pose_writes": 1,
+                "root_velocity_writes": 1,
+                "joint_state_writes": 1,
+                "simulation_forward_syncs": 1,
+                "root_velocity_write_api": "write_root_link_velocity_to_sim",
+                "state_write_count": 1,
+                "post_prime_state_rewrite_performed": False,
+                "contact_and_state_share_solver_tick": True,
+                "prime_physics_steps": 1,
+                "prime_applied_full12": [0.0] * 12,
+                "physics_steps": 1,
+                "fsm_clock_steps_during_priming": 0,
+                "episode_clock_steps_during_priming": 0,
+                "priming_observation": {
+                    "maximum_errors": {"root_position_m": 0.0003},
+                    "raw_physx_contact_sources_verified": True,
+                    "current_raw_force_hysteresis_contract_matches_snapshot": True,
+                },
+            }
+        }
+        self._book.current.post_snapshot_observations.append(None)
+        raise SensorContractFailure(
+            "phase snapshot live restoration could not be proven: contact"
+        )
 
 
 def _patch_probe_snapshot_loader(monkeypatch: pytest.MonkeyPatch, root: Path) -> None:
@@ -555,55 +659,9 @@ def test_post_write_contact_rejection_remains_returnable_failed_diagnostic(
         lambda bundle, *, canonical_root: bundle,
     )
 
-    class ContactRejectingBackend:
-        def __init__(self, *args: object, dependencies: object, **kwargs: object) -> None:
-            self._book = dependencies
-            self._scene = None
-            self._episode_tick = 0
-            self._phase_snapshot_integrity_failed = False
-
-        def reset(self, **kwargs: object) -> object:
-            self._scene = object()
-            self._book.current.snapshot_write_finished = True
-            self._book.current.snapshot_state_write = {
-                "root_pose_writes": 1,
-                "root_velocity_writes": 1,
-                "joint_state_writes": 1,
-                "simulation_forward_syncs": 1,
-                "physics_steps": 0,
-            }
-            self._snapshot_restoration = {
-                "physical_state": {
-                    "schema": "wlr50_clean.phase_snapshot_prime_without_rewind.v1",
-                    "reset_use": "TRAINING_RESET_STATE_WRITE",
-                    "root_pose_writes": 1,
-                    "root_velocity_writes": 1,
-                    "joint_state_writes": 1,
-                    "simulation_forward_syncs": 1,
-                    "root_velocity_write_api": "write_root_link_velocity_to_sim",
-                    "state_write_count": 1,
-                    "post_prime_state_rewrite_performed": False,
-                    "contact_and_state_share_solver_tick": True,
-                    "prime_physics_steps": 1,
-                    "prime_applied_full12": [0.0] * 12,
-                    "physics_steps": 1,
-                    "fsm_clock_steps_during_priming": 0,
-                    "episode_clock_steps_during_priming": 0,
-                    "priming_observation": {
-                        "maximum_errors": {"root_position_m": 0.0003},
-                        "raw_physx_contact_sources_verified": True,
-                        "current_raw_force_hysteresis_contract_matches_snapshot": True,
-                    },
-                }
-            }
-            # A captured post-write sample is the fail-closed boundary between
-            # a useful restoration diagnostic and an infrastructure failure.
-            self._book.current.post_snapshot_observations.append(None)
-            raise isaac_fsm_backend.SensorContractFailure(
-                "phase snapshot live restoration could not be proven: contact"
-            )
-
-    monkeypatch.setattr(isaac_fsm_backend, "IsaacFSMBackend", ContactRejectingBackend)
+    monkeypatch.setattr(
+        isaac_fsm_backend, "IsaacFSMBackend", _ContactRejectingBackend
+    )
     result = probe_subject.run_phase_snapshot_live_probe(
         object(), run_dir=tmp_path, seed=1001, snapshot_bundle=bundle
     )
@@ -612,6 +670,12 @@ def test_post_write_contact_rejection_remains_returnable_failed_diagnostic(
     assert result["passed"] is False
     assert result["complete"] is True
     assert result["failure_classification"] == "ORDINARY_POST_WRITE_RESTORE_MISMATCH"
+    assert result["phases"] == list(PROBE_PHASES)
+    assert result["phase_count"] == len(PROBE_PHASES)
+    assert result["phase_selector_mode"] == "all_non_p01_phases"
+    assert result["expected_attempt_count"] == len(PROBE_PHASES) * 2
+    assert result["fresh_scene_attempt_count"] == 1
+    assert result["reused_scene_attempt_count"] == len(PROBE_PHASES) * 2 - 1
     assert len(result["attempts"]) == len(PROBE_PHASES) * ATTEMPTS_PER_PHASE
     assert all(
         row["failure_classification"] == "ORDINARY_POST_WRITE_RESTORE_MISMATCH"
@@ -636,3 +700,51 @@ def test_post_write_contact_rejection_remains_returnable_failed_diagnostic(
         is True
         for row in result["attempts"]
     )
+
+
+def test_single_phase_selector_runs_fresh_then_reused_attempt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from wlr50_clean.ppo import isaac_fsm_backend, phase_snapshots
+
+    _write_managed_prechecks(tmp_path)
+    _patch_probe_snapshot_loader(monkeypatch, tmp_path)
+    bundle = _FakeBundle(tmp_path)
+    monkeypatch.setattr(probe_subject, "_instrumented_dependencies", lambda book: book)
+    monkeypatch.setattr(
+        phase_snapshots,
+        "assert_phase_snapshot_bundle_unchanged",
+        lambda bundle, *, canonical_root: bundle,
+    )
+    monkeypatch.setattr(
+        isaac_fsm_backend, "IsaacFSMBackend", _ContactRejectingBackend
+    )
+
+    result = probe_subject.run_phase_snapshot_live_probe(
+        object(),
+        run_dir=tmp_path,
+        seed=1001,
+        snapshot_bundle=bundle,
+        phases=("P09",),
+    )
+
+    assert result["status"] == "FAILED"
+    assert result["complete"] is True
+    assert result["phases"] == ["P09"]
+    assert result["phase_count"] == 1
+    assert result["phase_selector_mode"] == "single_phase"
+    assert result["expected_attempt_count"] == 2
+    assert result["expected_fresh_scene_attempt_count"] == 1
+    assert result["expected_reused_scene_attempt_count"] == 1
+    assert result["fresh_scene_attempt_count"] == 1
+    assert result["reused_scene_attempt_count"] == 1
+    assert [row["phase"] for row in result["attempts"]] == ["P09", "P09"]
+    assert [row["attempt_kind"] for row in result["attempts"]] == [
+        "primary",
+        "reused_repeat",
+    ]
+    assert [row["scene_lifecycle"] for row in result["attempts"]] == [
+        "fresh_scene",
+        "reused_scene",
+    ]

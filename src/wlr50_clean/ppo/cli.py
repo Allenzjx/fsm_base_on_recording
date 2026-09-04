@@ -98,6 +98,11 @@ def _parser() -> argparse.ArgumentParser:
             choices=(1,),
             default=1,
         )
+        if name == "phase-snapshot-live-probe":
+            command.add_argument(
+                "--phase",
+                choices=tuple(f"P{index:02d}" for index in range(2, 14)),
+            )
         command.add_argument("--stage", choices=("smoke", "phase-curriculum", "full-episode", "mild-randomization"), default="smoke")
         command.add_argument("--checkpoint", type=Path)
         command.add_argument("--checkpoint-manifest", type=Path)
@@ -1457,6 +1462,7 @@ def _phase_snapshot_live_probe(
         seed=args.seed,
         snapshot_bundle=pinned_snapshot_bundle,
         prime_physics_steps=args.phase_snapshot_prime_physics_steps,
+        phases=None if args.phase is None else (args.phase,),
     )
     _revalidate_pinned_snapshot_bundle(pinned_snapshot_bundle)
     print(json.dumps(result, separators=(",", ":"), allow_nan=False), flush=True)
