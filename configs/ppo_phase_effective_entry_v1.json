@@ -1,121 +1,238 @@
 {
-  "schema": "wlr50_clean.ppo_phase_effective_entry_contract.v1",
+  "schema": "wlr50_clean.ppo_phase_effective_entry_contract.v2",
   "derivation": {
-    "schema": "wlr50_clean.ppo_phase_effective_entry_derivation.v1",
-    "source_git_commit": "00d6cc6712e71cb12c58431beb180f0476aab4ed",
+    "schema": "wlr50_clean.ppo_phase_effective_entry_derivation.v2",
+    "source_git_commit": "86383b14c7dba5ca30e3c1f53763e64f779b17d8",
     "phase_snapshot_bundle": {
       "schema": "wlr50_clean.ppo_phase_snapshot_bundle_record.v1",
       "snapshot_root": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots",
       "manifest_path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\manifest.json",
-      "manifest_sha256": "9669c4a50409a43b3b0fb30d5901b242a90e230efb4fed2e25460039681afd2f",
+      "manifest_sha256": "0fda5fb29e73315c2b751ee865d138566522bd40e8c3a94bb4daf34acee0557d",
       "phase_count": 13,
       "snapshots": [
         {
           "phase": "P01",
+          "source_tick": 0,
+          "source_replay_steps": 1,
+          "target_entry_tick": null,
+          "predecessor_verify_tick": null,
+          "predecessor_verify_time_s": null,
+          "controller_anchor_tick": null,
+          "controller_anchor_time_s": null,
+          "controller_restore_mode": null,
+          "source_transition_row_canonical_sha256": null,
           "snapshot_path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P01\\snapshot.json",
           "checksum_path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P01\\snapshot.sha256",
-          "file_sha256": "501c53057f2bb501796e6b4ec29a82c8dbf43a627ce667137417e0b3bb1e4ed0",
-          "state_sha256": "00b4afee4fc4df5c90aecad96877ae01b8d4965882f1f22ef0b0ca6a05bc5c76",
-          "checksum_file_sha256": "7b575273a9932aeaeedc0c0363519050ac78dac527be10866245ea2f585a9113"
+          "file_sha256": "4e5d0ef67984de1f4ee3cef533fb6a19f3f11723789f582f9e8273c8f53c6395",
+          "state_sha256": "700cb5d3cc3aeaaff4837276b314bece0ca96d3fe9ca2112e2e596548cd48cb9",
+          "checksum_file_sha256": "d64830ca720eb0a6cf5b7f39575b6ce450feb4a1ba0bdca407924c4b96727f93"
         },
         {
           "phase": "P02",
+          "source_tick": 1600,
+          "source_replay_steps": 1,
+          "target_entry_tick": null,
+          "predecessor_verify_tick": null,
+          "predecessor_verify_time_s": null,
+          "controller_anchor_tick": null,
+          "controller_anchor_time_s": null,
+          "controller_restore_mode": null,
+          "source_transition_row_canonical_sha256": null,
           "snapshot_path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P02\\snapshot.json",
           "checksum_path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P02\\snapshot.sha256",
-          "file_sha256": "90054ae9daefc221b4220a34b9911938ce92390dcead3aefabee47bea21ecc2a",
-          "state_sha256": "b7388d5972fdfded309c1af81d8bec84c79c829e94a54108b11d77f58dec29f2",
-          "checksum_file_sha256": "9fe85f6b166d73964fb569ff93da56527907dfeb030e6299d16b500aa9747c95"
+          "file_sha256": "a65528b72f1535a30efb4112fd301efa2c434c8183488dcdc437a65e5fe66f08",
+          "state_sha256": "59d96713ff9d89af522450a22bd6c69248efc6fb0cf3168c4c1d45081bce332a",
+          "checksum_file_sha256": "6ae3f476f741cec9e636b2f00af408652671ec0fabb602904dc050b436c89637"
         },
         {
           "phase": "P03",
+          "source_tick": 1664,
+          "source_replay_steps": 1,
+          "target_entry_tick": null,
+          "predecessor_verify_tick": null,
+          "predecessor_verify_time_s": null,
+          "controller_anchor_tick": null,
+          "controller_anchor_time_s": null,
+          "controller_restore_mode": null,
+          "source_transition_row_canonical_sha256": null,
           "snapshot_path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P03\\snapshot.json",
           "checksum_path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P03\\snapshot.sha256",
-          "file_sha256": "e05fbcb77c1cab858ccb9f17a0bc8ef2c684fcd81032a9db14e4e78f6815a02a",
-          "state_sha256": "af70b2596057db97876bb812f041d37889e53e3681c5e43745283df9150a2e82",
-          "checksum_file_sha256": "eef92269ac36d203a5ecd193c55dbb8dbee5fc545b06ecf3cbb823b7a4d7cd45"
+          "file_sha256": "fba6320e39530682fb0db15501a3403fe7a78e31308431ab7ca266639556e5c5",
+          "state_sha256": "92964b688d5f4f2901978f55c4edc104799c6918fdb86cd616686afcb8532025",
+          "checksum_file_sha256": "caca6786e7668cb147076315974ff749fbaeca0fcdc2049bb7ea2652f04a4a39"
         },
         {
           "phase": "P04",
+          "source_tick": 1816,
+          "source_replay_steps": 1,
+          "target_entry_tick": null,
+          "predecessor_verify_tick": null,
+          "predecessor_verify_time_s": null,
+          "controller_anchor_tick": null,
+          "controller_anchor_time_s": null,
+          "controller_restore_mode": null,
+          "source_transition_row_canonical_sha256": null,
           "snapshot_path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P04\\snapshot.json",
           "checksum_path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P04\\snapshot.sha256",
-          "file_sha256": "82ef122984fb6746ac24a48e06337e6fa1242a54b497d455f0b2bd23aa824dde",
-          "state_sha256": "7d6b475ec515fd0b75448d38c1c46a71805dff5190d224983c67a5dc4f773c41",
-          "checksum_file_sha256": "0bb026100024f2ac2ff26fd4ed6b4fa61312159beb12b1239ae0bc9cbc29c4d7"
+          "file_sha256": "ab8eb7af95f88c69f81e2a658a84e7e5c23fbf33039129229072cc632dda360f",
+          "state_sha256": "d1d40f3b4cc19261c66e7839208052de7c249f212e6d32814d177836808e20ae",
+          "checksum_file_sha256": "c315239e79bc8ec334e1f2f250a724ebdbf93cdf6acc9fce366d4ba9c52b51ea"
         },
         {
           "phase": "P05",
+          "source_tick": 2400,
+          "source_replay_steps": 1,
+          "target_entry_tick": null,
+          "predecessor_verify_tick": null,
+          "predecessor_verify_time_s": null,
+          "controller_anchor_tick": null,
+          "controller_anchor_time_s": null,
+          "controller_restore_mode": null,
+          "source_transition_row_canonical_sha256": null,
           "snapshot_path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P05\\snapshot.json",
           "checksum_path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P05\\snapshot.sha256",
-          "file_sha256": "640a171cf173e5182cc625ac22be905379816902f0023285c8dc1e9d52edbafb",
-          "state_sha256": "20c03d579a4cdf2823da4ed6f13e87df8a0ffcefe20e4018a3c44902ab2d6a06",
-          "checksum_file_sha256": "dae9ce743e9922bb0b5dd63eb74d1994c2e996216b8201aa3ca6357675376b02"
+          "file_sha256": "c9f15ae5eca864d9c805b8b36893948433f6af074353e23e154526e72e3bc08b",
+          "state_sha256": "459c265cf6efcc3a9113c52b2e59fac3cfe9f17850656772860165bbb8531182",
+          "checksum_file_sha256": "43beb620c489d01305c90775387cfd1f03933e63df2bb095d1ba8807f031e384"
         },
         {
           "phase": "P06",
+          "source_tick": 3576,
+          "source_replay_steps": 1,
+          "target_entry_tick": null,
+          "predecessor_verify_tick": null,
+          "predecessor_verify_time_s": null,
+          "controller_anchor_tick": null,
+          "controller_anchor_time_s": null,
+          "controller_restore_mode": null,
+          "source_transition_row_canonical_sha256": null,
           "snapshot_path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P06\\snapshot.json",
           "checksum_path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P06\\snapshot.sha256",
-          "file_sha256": "6cea181570b813fffb20c6368ee3819fcde059d5933b7be822f1a0f497b72218",
-          "state_sha256": "62c8d31b76899968eef17ae9c7ea00e3a6b037dcd123333d6030094ddc98cae3",
-          "checksum_file_sha256": "ef2c7dbd5ad47793f6fbfe790058788268d1d8a75a13f637f11be4ffc272f35c"
+          "file_sha256": "0f6ef8b376138e028c8a8332bf7816f2b27639a638691eb28eec5f37f58042db",
+          "state_sha256": "1ae114f0de87afca4173024b600db37294dbf21a9722e318af753232698453ab",
+          "checksum_file_sha256": "169f468325b032bfc2dae5162fe55a2f5aac70d1accd434ba22ca599bbe753a6"
         },
         {
           "phase": "P07",
+          "source_tick": 6648,
+          "source_replay_steps": 1,
+          "target_entry_tick": null,
+          "predecessor_verify_tick": null,
+          "predecessor_verify_time_s": null,
+          "controller_anchor_tick": null,
+          "controller_anchor_time_s": null,
+          "controller_restore_mode": null,
+          "source_transition_row_canonical_sha256": null,
           "snapshot_path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P07\\snapshot.json",
           "checksum_path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P07\\snapshot.sha256",
-          "file_sha256": "866c9c50a411cc9f0dc0adbddcf5361307a650d69b517d2271f7b596ba06c046",
-          "state_sha256": "f9d1063685c4374c049e9c3cfa27ab8807fc488ad437d23b0be9507e04f42163",
-          "checksum_file_sha256": "3628e713741e3e1ac9d2807c174e1f18a72644743725c52de398b0c32e127a69"
+          "file_sha256": "f6ef8d1310057817f1419969ea979ac4b1a042564322df9c5b085f2439450ac1",
+          "state_sha256": "324a5599212996c6eaf4a6acb009d9c96d90e53bd1d4771fe125272dc19d7794",
+          "checksum_file_sha256": "6357973768aaadb9d28b070dea948ec6cadd8f25bd01142fa2ea2659fb682774"
         },
         {
           "phase": "P08",
+          "source_tick": 6856,
+          "source_replay_steps": 1,
+          "target_entry_tick": null,
+          "predecessor_verify_tick": null,
+          "predecessor_verify_time_s": null,
+          "controller_anchor_tick": null,
+          "controller_anchor_time_s": null,
+          "controller_restore_mode": null,
+          "source_transition_row_canonical_sha256": null,
           "snapshot_path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P08\\snapshot.json",
           "checksum_path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P08\\snapshot.sha256",
-          "file_sha256": "6f29df73c59e4cfc1caa359f21a4100ef65fcec91246ee79222b98d0be0d2d23",
-          "state_sha256": "6c2f97c05524e7714ab00ef5fcef31637c582d80df1ea63a68fc4ba73223e61d",
-          "checksum_file_sha256": "f98230f903fd773c59b3b16cff9375469d168c2e8f85088fb7718b5fad534cc1"
+          "file_sha256": "424b25105939277a2b0331288918d78b232ed47562f3323ec4cf5a373a34047d",
+          "state_sha256": "a0d2a47d1a6093093df722ef80a049a1fab86dd2053fee901b92e8953f102556",
+          "checksum_file_sha256": "b71afdf3121f33bb273b9219b815a6437c5632e39099c4f3c98f5c598b13f68d"
         },
         {
           "phase": "P09",
+          "source_tick": 6912,
+          "source_replay_steps": 1,
+          "target_entry_tick": null,
+          "predecessor_verify_tick": null,
+          "predecessor_verify_time_s": null,
+          "controller_anchor_tick": null,
+          "controller_anchor_time_s": null,
+          "controller_restore_mode": null,
+          "source_transition_row_canonical_sha256": null,
           "snapshot_path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P09\\snapshot.json",
           "checksum_path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P09\\snapshot.sha256",
-          "file_sha256": "d75fd5c282da203721163747902031c90e3b6b90eb65b3b06eb6eb677b50873b",
-          "state_sha256": "9c16fe0f9ed4e18b21cac4a4d70fb7ef8bf83ee7044a362dc12a14d9cb33d7e2",
-          "checksum_file_sha256": "449c44d3101077f9ce115f82b11dfbd4847ae06d4db113ee86919e57253b82cd"
+          "file_sha256": "595ba423892f3588a3ec3396eda5a3b971431a3e4580fb1cf43668c85aa5c8fa",
+          "state_sha256": "9df75363f7cf69e37a932e2e94fc548b19efc3755fa9ccff4054dcf82dce9370",
+          "checksum_file_sha256": "345aab879cf3430f782bdff526ce07f46aed936805fea0c83c7ef4a9e3897e56"
         },
         {
           "phase": "P10",
+          "source_tick": 7794,
+          "source_replay_steps": 1,
+          "target_entry_tick": null,
+          "predecessor_verify_tick": null,
+          "predecessor_verify_time_s": null,
+          "controller_anchor_tick": null,
+          "controller_anchor_time_s": null,
+          "controller_restore_mode": "source_proven_execute_after_prime",
+          "source_transition_row_canonical_sha256": "904c604cb85107f92dbcb75519cd7229ad7b3307c994fa20b7cdb27e8147278e",
           "snapshot_path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P10\\snapshot.json",
           "checksum_path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P10\\snapshot.sha256",
-          "file_sha256": "6ccd27f81465cb9729abc5745ca3fc19d2fc91cb1646cba973c42acc019f631f",
-          "state_sha256": "547a0fb95168dd0daa461dd43066f7aeb65f99687651c2be20f1e23a6439ae2e",
-          "checksum_file_sha256": "9048051a8d3268067945218044872e32e43d465afd40387ad6c12555e2a905e7"
+          "file_sha256": "132784b9409fb4b8d939b0b8cdb5e6b36d38d3301fea7a021a9c9d5bd959d89b",
+          "state_sha256": "2967e27215b91989349b2ef8b9298507f1ae6bd6845146b7bf7d4a078f37dc6d",
+          "checksum_file_sha256": "e82bd200b87cbafed1efd235a8b3200fde2b83d8ffb43cfdf74429bec3751ac0"
         },
         {
           "phase": "P11",
+          "source_tick": 7810,
+          "source_replay_steps": 1,
+          "target_entry_tick": null,
+          "predecessor_verify_tick": null,
+          "predecessor_verify_time_s": null,
+          "controller_anchor_tick": null,
+          "controller_anchor_time_s": null,
+          "controller_restore_mode": null,
+          "source_transition_row_canonical_sha256": null,
           "snapshot_path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P11\\snapshot.json",
           "checksum_path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P11\\snapshot.sha256",
-          "file_sha256": "4a903d1fc486f85a1b7f7624e733031576eedda8e1f3abcf44d6c46671aacded",
-          "state_sha256": "35996ba6c91f17762e8c72177d0b229aa841b878beac945308dcd1950e74e3d0",
-          "checksum_file_sha256": "14228ffd965c76f593d77fdf8747d223b11954b7c267125a5553fcc8b6df1a02"
+          "file_sha256": "2d9676059ab8ffcbbeaf5c80f1eecc9927b5f41187fedfa8f4695d6decb5cb71",
+          "state_sha256": "da01da7ce395ced939c63cd2f6a7cea89bc29c927ec60067538561fb36c14a6f",
+          "checksum_file_sha256": "539e3ccb678db5a98c4037112261d0f8261adf6402970e046c5ba693b63ad43b"
         },
         {
           "phase": "P12",
+          "source_tick": 7872,
+          "source_replay_steps": 1,
+          "target_entry_tick": null,
+          "predecessor_verify_tick": null,
+          "predecessor_verify_time_s": null,
+          "controller_anchor_tick": null,
+          "controller_anchor_time_s": null,
+          "controller_restore_mode": null,
+          "source_transition_row_canonical_sha256": null,
           "snapshot_path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P12\\snapshot.json",
           "checksum_path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P12\\snapshot.sha256",
-          "file_sha256": "a1c7fb561c41d9191766b05e99d8b1cc4a9018b57f927cfd73d9eb534bf383b4",
-          "state_sha256": "95f5d40fac53a3b006c9b23a40e5a67153c2c55349183900e605ca7e5160beff",
-          "checksum_file_sha256": "0021c57893d804b17d3f3bb7f43c9c8e7ba3f46fd68d883254b67e11d79de9e1"
+          "file_sha256": "eb6d20833a015c0634e757f6987fcb0b168f9f76992930096cdc8f36c1ecb683",
+          "state_sha256": "70694ec7dad32f8a54f96272fd8b396dfb7ac192a1e055d8c46a247acfc15a15",
+          "checksum_file_sha256": "a0c6c2d0439b2cbfda64225a6fd9cf34ed7d769013fc28bd706ce8a277c0df9a"
         },
         {
           "phase": "P13",
+          "source_tick": 8440,
+          "source_replay_steps": 1,
+          "target_entry_tick": null,
+          "predecessor_verify_tick": null,
+          "predecessor_verify_time_s": null,
+          "controller_anchor_tick": null,
+          "controller_anchor_time_s": null,
+          "controller_restore_mode": null,
+          "source_transition_row_canonical_sha256": null,
           "snapshot_path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P13\\snapshot.json",
           "checksum_path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P13\\snapshot.sha256",
-          "file_sha256": "e1a55b77ec7f3bbb72d287f77fcc671568c272ab5399b8d6e97f2d2fc8e56e93",
-          "state_sha256": "9f87c523ff62cfbd7132652b4161243109687ee2a1a5588a7178f475d90fd034",
-          "checksum_file_sha256": "36ccac1102d4bcd9b8bea5aa54029d90175c08d6deb138e1ab77e8cc4ba41e17"
+          "file_sha256": "dc0d2c54212f001274cebb0c93a920fff54cbbf5bb84eb3683de2086a1ce16ce",
+          "state_sha256": "aeed73f16692f59061bf35c914ad9196b666c5aa6bb41bc0e21227053dc27b6c",
+          "checksum_file_sha256": "0a677542dc11d284aa90d32a78e833940508957c03149c8b1dc4f6b86d8099c8"
         }
       ],
-      "bundle_sha256": "9a3b57300d500b17894cf8ca0e1dbc915d5ed3f15ca1023366053cad7dc14551",
+      "bundle_sha256": "39e61971ed7a8a76548f6af2e1af50ecf0248781740df9aa59751565ca3cc98e",
       "source_trial": "trial_043_20260902_clean_v010"
     },
     "environment_lock": {
@@ -128,50 +245,50 @@
       "bytes": 3438,
       "sha256": "c36ab3e603b8881c463dd72ec6a84092b892edb0ca62c35d39c1bc6ec26a18e2"
     },
-    "runtime_content_sha256": "06d9714a2886ee4f84517b04853e742abd604d63b2dc9d7ac16b1380e59f4b72",
-    "identity_config_sha256": "6f361829fc13e4661af91ba77f02fdec0907e5b1e11661eeccc212b8c80c25dd",
+    "runtime_content_sha256": "37f978fb11d86de102420883cc9a5b63434f1765e0ec1f8d1789fc2f05603192",
+    "identity_config_sha256": "b6d77cdc057d557ec20e81477ba1f7a1724a0f534e4b59837cb274422605f40a",
     "calibration_artifacts": [
       {
-        "schema": "wlr50_clean.ppo_phase_effective_entry_calibration.v1",
+        "schema": "wlr50_clean.ppo_phase_effective_entry_calibration.v2",
         "phase": "P02",
-        "run_id": "20260904T145955257598Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe",
+        "run_id": "20260904T232933323267Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration",
         "seed": 1002,
-        "source_git_commit": "00d6cc6712e71cb12c58431beb180f0476aab4ed",
+        "source_git_commit": "86383b14c7dba5ca30e3c1f53763e64f779b17d8",
         "files": {
           "run_manifest": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T145955257598Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/run_manifest.json",
-            "bytes": 5276,
-            "sha256": "8c43a57766115f89de50e9802d6fbcfa7d21f2e8817011955d1f5c4bc1ed7e1f"
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T232933323267Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/run_manifest.json",
+            "bytes": 5861,
+            "sha256": "8dfbaefa50cd5814af0613014bc885ca02002b853f6125f13680dc88f4de103a"
           },
           "probe": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T145955257598Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/phase_snapshot_live_probe.json",
-            "bytes": 94890,
-            "sha256": "e95b0e61f9be5d7f01e864598def5d3c1e6be97d07749d6fc09cd4c1800bfd78"
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T232933323267Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/phase_snapshot_live_probe.json",
+            "bytes": 265433,
+            "sha256": "950d54497048e7687ce47d90856b15fbfeda1468dde63f5a1382d617c46dfd6d"
           },
           "runtime_before": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T145955257598Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/committed_runtime_identity.before.json",
-            "bytes": 50522,
-            "sha256": "342952c9433f54888ad3c4e1cb69ba6e701f3135c999ada4c7e24f673043ca57"
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T232933323267Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/committed_runtime_identity.before.json",
+            "bytes": 52901,
+            "sha256": "4bf877d7ec031bcc583b04074a6997a2f45b93e0b2c022fcc3826f63aa396754"
           },
           "runtime_after": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T145955257598Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/committed_runtime_identity.after.json",
-            "bytes": 50522,
-            "sha256": "342952c9433f54888ad3c4e1cb69ba6e701f3135c999ada4c7e24f673043ca57"
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T232933323267Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/committed_runtime_identity.after.json",
+            "bytes": 52901,
+            "sha256": "4bf877d7ec031bcc583b04074a6997a2f45b93e0b2c022fcc3826f63aa396754"
           },
           "frozen_before": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T145955257598Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/frozen_hashes.before.json",
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T232933323267Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/frozen_hashes.before.json",
             "bytes": 9149,
-            "sha256": "4bfeedafa14084f17b73a8e31dc5c4abccdee94b479f9da9beb04798180b2ff6"
+            "sha256": "5e1c0a7a76c8274adf037308a632f4b94dc7d58927af59dac6a34215e654023d"
           },
           "frozen_after": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T145955257598Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/frozen_hashes.after.json",
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T232933323267Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/frozen_hashes.after.json",
             "bytes": 9149,
-            "sha256": "224a639b8ae15e28dd9fe4fbec70fe63c13251288dc4c3088d1cdb230c6f482e"
+            "sha256": "2da1a3b01769e58336f98ab96a09b51222ab7273aa09849051fb13919eb04e41"
           }
         },
-        "runtime_content_sha256": "06d9714a2886ee4f84517b04853e742abd604d63b2dc9d7ac16b1380e59f4b72",
-        "identity_config_sha256": "6f361829fc13e4661af91ba77f02fdec0907e5b1e11661eeccc212b8c80c25dd",
-        "phase_snapshot_bundle_sha256": "9a3b57300d500b17894cf8ca0e1dbc915d5ed3f15ca1023366053cad7dc14551",
+        "runtime_content_sha256": "37f978fb11d86de102420883cc9a5b63434f1765e0ec1f8d1789fc2f05603192",
+        "identity_config_sha256": "b6d77cdc057d557ec20e81477ba1f7a1724a0f534e4b59837cb274422605f40a",
+        "phase_snapshot_bundle_sha256": "39e61971ed7a8a76548f6af2e1af50ecf0248781740df9aa59751565ca3cc98e",
         "environment_lock_sha256": "602f6e0893d999e5cb078aadf75541234440a3af918dc58e0154e80ff16ea3cb",
         "frozen_ledger_sha256": "c36ab3e603b8881c463dd72ec6a84092b892edb0ca62c35d39c1bc6ec26a18e2",
         "fresh_attempt_index": 0,
@@ -179,46 +296,46 @@
         "captured_filesystem_identity_count": 14
       },
       {
-        "schema": "wlr50_clean.ppo_phase_effective_entry_calibration.v1",
+        "schema": "wlr50_clean.ppo_phase_effective_entry_calibration.v2",
         "phase": "P03",
-        "run_id": "20260904T150033155449Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe",
+        "run_id": "20260904T233013461238Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration",
         "seed": 1002,
-        "source_git_commit": "00d6cc6712e71cb12c58431beb180f0476aab4ed",
+        "source_git_commit": "86383b14c7dba5ca30e3c1f53763e64f779b17d8",
         "files": {
           "run_manifest": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150033155449Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/run_manifest.json",
-            "bytes": 5276,
-            "sha256": "c27b059e3bac70530b06c7a7998899fe903a2aecbdb8d2b8353f9f4c671a07eb"
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T233013461238Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/run_manifest.json",
+            "bytes": 5861,
+            "sha256": "4e947be9822a7a48d4b531797ecf654147269aba5031a0d8c6b43f490dbbe3b1"
           },
           "probe": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150033155449Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/phase_snapshot_live_probe.json",
-            "bytes": 95150,
-            "sha256": "a9b623e852250ef583034f234988f77548acf4fea6bb26997ff2790eec451c2c"
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T233013461238Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/phase_snapshot_live_probe.json",
+            "bytes": 266688,
+            "sha256": "63174314def8ca188ca2ae7354c7cf18617bf0b043c17955d12e5d9e577f5acb"
           },
           "runtime_before": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150033155449Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/committed_runtime_identity.before.json",
-            "bytes": 50522,
-            "sha256": "342952c9433f54888ad3c4e1cb69ba6e701f3135c999ada4c7e24f673043ca57"
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T233013461238Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/committed_runtime_identity.before.json",
+            "bytes": 52901,
+            "sha256": "4bf877d7ec031bcc583b04074a6997a2f45b93e0b2c022fcc3826f63aa396754"
           },
           "runtime_after": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150033155449Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/committed_runtime_identity.after.json",
-            "bytes": 50522,
-            "sha256": "342952c9433f54888ad3c4e1cb69ba6e701f3135c999ada4c7e24f673043ca57"
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T233013461238Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/committed_runtime_identity.after.json",
+            "bytes": 52901,
+            "sha256": "4bf877d7ec031bcc583b04074a6997a2f45b93e0b2c022fcc3826f63aa396754"
           },
           "frozen_before": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150033155449Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/frozen_hashes.before.json",
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T233013461238Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/frozen_hashes.before.json",
             "bytes": 9149,
-            "sha256": "5c0c21f1a540db419c00dc1637e0ffd59831784808e48c4c9b82a09437943d6f"
+            "sha256": "a8ccf26585d9768945ae6260a380f12ad8501212c0b49b26c5948d2de2ed472d"
           },
           "frozen_after": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150033155449Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/frozen_hashes.after.json",
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T233013461238Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/frozen_hashes.after.json",
             "bytes": 9149,
-            "sha256": "560fa4bfa4a299c3ea77d0c5d01cb7646cb4263eec00ceea70b97d424dc691a8"
+            "sha256": "b9951b43d570bda9d0a00a3af23af1000944a2fe3361b9be6fc34753c9075aab"
           }
         },
-        "runtime_content_sha256": "06d9714a2886ee4f84517b04853e742abd604d63b2dc9d7ac16b1380e59f4b72",
-        "identity_config_sha256": "6f361829fc13e4661af91ba77f02fdec0907e5b1e11661eeccc212b8c80c25dd",
-        "phase_snapshot_bundle_sha256": "9a3b57300d500b17894cf8ca0e1dbc915d5ed3f15ca1023366053cad7dc14551",
+        "runtime_content_sha256": "37f978fb11d86de102420883cc9a5b63434f1765e0ec1f8d1789fc2f05603192",
+        "identity_config_sha256": "b6d77cdc057d557ec20e81477ba1f7a1724a0f534e4b59837cb274422605f40a",
+        "phase_snapshot_bundle_sha256": "39e61971ed7a8a76548f6af2e1af50ecf0248781740df9aa59751565ca3cc98e",
         "environment_lock_sha256": "602f6e0893d999e5cb078aadf75541234440a3af918dc58e0154e80ff16ea3cb",
         "frozen_ledger_sha256": "c36ab3e603b8881c463dd72ec6a84092b892edb0ca62c35d39c1bc6ec26a18e2",
         "fresh_attempt_index": 0,
@@ -226,46 +343,46 @@
         "captured_filesystem_identity_count": 14
       },
       {
-        "schema": "wlr50_clean.ppo_phase_effective_entry_calibration.v1",
+        "schema": "wlr50_clean.ppo_phase_effective_entry_calibration.v2",
         "phase": "P04",
-        "run_id": "20260904T150108566113Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe",
+        "run_id": "20260904T233054330391Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration",
         "seed": 1002,
-        "source_git_commit": "00d6cc6712e71cb12c58431beb180f0476aab4ed",
+        "source_git_commit": "86383b14c7dba5ca30e3c1f53763e64f779b17d8",
         "files": {
           "run_manifest": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150108566113Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/run_manifest.json",
-            "bytes": 5276,
-            "sha256": "fe452ecac6db0d6b53639148090aea1fca7dad98aa950f197fff28f618438e33"
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T233054330391Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/run_manifest.json",
+            "bytes": 5861,
+            "sha256": "ba2fa1825b824ab4fff2d3da4274c9e5d851a11f47626c4ee3c3ee60a4a5a703"
           },
           "probe": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150108566113Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/phase_snapshot_live_probe.json",
-            "bytes": 96016,
-            "sha256": "9b85b5595c9fe038b3e96113de1d5889fd36df2b6503fc8018762e62f7497b38"
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T233054330391Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/phase_snapshot_live_probe.json",
+            "bytes": 269948,
+            "sha256": "12a941cb642eb26564e3846197691e56d5b21d163aa8840f1a16624b67ea421b"
           },
           "runtime_before": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150108566113Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/committed_runtime_identity.before.json",
-            "bytes": 50522,
-            "sha256": "342952c9433f54888ad3c4e1cb69ba6e701f3135c999ada4c7e24f673043ca57"
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T233054330391Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/committed_runtime_identity.before.json",
+            "bytes": 52901,
+            "sha256": "4bf877d7ec031bcc583b04074a6997a2f45b93e0b2c022fcc3826f63aa396754"
           },
           "runtime_after": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150108566113Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/committed_runtime_identity.after.json",
-            "bytes": 50522,
-            "sha256": "342952c9433f54888ad3c4e1cb69ba6e701f3135c999ada4c7e24f673043ca57"
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T233054330391Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/committed_runtime_identity.after.json",
+            "bytes": 52901,
+            "sha256": "4bf877d7ec031bcc583b04074a6997a2f45b93e0b2c022fcc3826f63aa396754"
           },
           "frozen_before": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150108566113Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/frozen_hashes.before.json",
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T233054330391Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/frozen_hashes.before.json",
             "bytes": 9149,
-            "sha256": "07bd564304a46556e10245e0963e591b5725795cc76a10daab9786e128a2198f"
+            "sha256": "236d4b3410ae310a2ee6711cc14c3cbad598568124d7d321312764237162bcbc"
           },
           "frozen_after": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150108566113Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/frozen_hashes.after.json",
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T233054330391Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/frozen_hashes.after.json",
             "bytes": 9149,
-            "sha256": "5a693b2a23f074b9d4a8e0cdcca8ac3c5656fe8499d5616641308f5c8bcf9721"
+            "sha256": "5957a949d9e33a568e656c859ed81333bd6d5d2f6e4be8436a7398bebff4f56e"
           }
         },
-        "runtime_content_sha256": "06d9714a2886ee4f84517b04853e742abd604d63b2dc9d7ac16b1380e59f4b72",
-        "identity_config_sha256": "6f361829fc13e4661af91ba77f02fdec0907e5b1e11661eeccc212b8c80c25dd",
-        "phase_snapshot_bundle_sha256": "9a3b57300d500b17894cf8ca0e1dbc915d5ed3f15ca1023366053cad7dc14551",
+        "runtime_content_sha256": "37f978fb11d86de102420883cc9a5b63434f1765e0ec1f8d1789fc2f05603192",
+        "identity_config_sha256": "b6d77cdc057d557ec20e81477ba1f7a1724a0f534e4b59837cb274422605f40a",
+        "phase_snapshot_bundle_sha256": "39e61971ed7a8a76548f6af2e1af50ecf0248781740df9aa59751565ca3cc98e",
         "environment_lock_sha256": "602f6e0893d999e5cb078aadf75541234440a3af918dc58e0154e80ff16ea3cb",
         "frozen_ledger_sha256": "c36ab3e603b8881c463dd72ec6a84092b892edb0ca62c35d39c1bc6ec26a18e2",
         "fresh_attempt_index": 0,
@@ -273,46 +390,46 @@
         "captured_filesystem_identity_count": 14
       },
       {
-        "schema": "wlr50_clean.ppo_phase_effective_entry_calibration.v1",
+        "schema": "wlr50_clean.ppo_phase_effective_entry_calibration.v2",
         "phase": "P05",
-        "run_id": "20260904T150144775500Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe",
+        "run_id": "20260904T233134378906Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration",
         "seed": 1002,
-        "source_git_commit": "00d6cc6712e71cb12c58431beb180f0476aab4ed",
+        "source_git_commit": "86383b14c7dba5ca30e3c1f53763e64f779b17d8",
         "files": {
           "run_manifest": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150144775500Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/run_manifest.json",
-            "bytes": 5276,
-            "sha256": "bbb87eb824a030d570d6db9e5fb05bc51ec47a6494c14103bc737ddd1d0972f9"
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T233134378906Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/run_manifest.json",
+            "bytes": 5861,
+            "sha256": "5842ad6278424362580fee310e3502850b9b259016265dd9a62e3a0726f976a2"
           },
           "probe": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150144775500Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/phase_snapshot_live_probe.json",
-            "bytes": 96418,
-            "sha256": "018466a980a2e56b7730cdb6679185df8f36b5978b4b59b4ebbd1fab0bfd3e61"
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T233134378906Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/phase_snapshot_live_probe.json",
+            "bytes": 270786,
+            "sha256": "51a8475379383dad47b09af8f34624541ea27c8e05ad82d99c6d4581fea2734a"
           },
           "runtime_before": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150144775500Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/committed_runtime_identity.before.json",
-            "bytes": 50522,
-            "sha256": "342952c9433f54888ad3c4e1cb69ba6e701f3135c999ada4c7e24f673043ca57"
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T233134378906Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/committed_runtime_identity.before.json",
+            "bytes": 52901,
+            "sha256": "4bf877d7ec031bcc583b04074a6997a2f45b93e0b2c022fcc3826f63aa396754"
           },
           "runtime_after": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150144775500Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/committed_runtime_identity.after.json",
-            "bytes": 50522,
-            "sha256": "342952c9433f54888ad3c4e1cb69ba6e701f3135c999ada4c7e24f673043ca57"
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T233134378906Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/committed_runtime_identity.after.json",
+            "bytes": 52901,
+            "sha256": "4bf877d7ec031bcc583b04074a6997a2f45b93e0b2c022fcc3826f63aa396754"
           },
           "frozen_before": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150144775500Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/frozen_hashes.before.json",
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T233134378906Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/frozen_hashes.before.json",
             "bytes": 9149,
-            "sha256": "113d933ce4ca68859f881d387920f0d08dab6a973dd1c1e5c3875a22a972643c"
+            "sha256": "62f0726f87ce8499940107f0ff5a283a1aefda00406501cf52e6c4f5c48db6c3"
           },
           "frozen_after": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150144775500Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/frozen_hashes.after.json",
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T233134378906Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/frozen_hashes.after.json",
             "bytes": 9149,
-            "sha256": "ccac1e6354191f14900cfa879870f9f842bb97e8cd7bcf6e22761812956d7d34"
+            "sha256": "963a88fa95f242cd05e8c4c05f36251ff3683b66ae99e19081b559ad534d5a0d"
           }
         },
-        "runtime_content_sha256": "06d9714a2886ee4f84517b04853e742abd604d63b2dc9d7ac16b1380e59f4b72",
-        "identity_config_sha256": "6f361829fc13e4661af91ba77f02fdec0907e5b1e11661eeccc212b8c80c25dd",
-        "phase_snapshot_bundle_sha256": "9a3b57300d500b17894cf8ca0e1dbc915d5ed3f15ca1023366053cad7dc14551",
+        "runtime_content_sha256": "37f978fb11d86de102420883cc9a5b63434f1765e0ec1f8d1789fc2f05603192",
+        "identity_config_sha256": "b6d77cdc057d557ec20e81477ba1f7a1724a0f534e4b59837cb274422605f40a",
+        "phase_snapshot_bundle_sha256": "39e61971ed7a8a76548f6af2e1af50ecf0248781740df9aa59751565ca3cc98e",
         "environment_lock_sha256": "602f6e0893d999e5cb078aadf75541234440a3af918dc58e0154e80ff16ea3cb",
         "frozen_ledger_sha256": "c36ab3e603b8881c463dd72ec6a84092b892edb0ca62c35d39c1bc6ec26a18e2",
         "fresh_attempt_index": 0,
@@ -320,46 +437,46 @@
         "captured_filesystem_identity_count": 14
       },
       {
-        "schema": "wlr50_clean.ppo_phase_effective_entry_calibration.v1",
+        "schema": "wlr50_clean.ppo_phase_effective_entry_calibration.v2",
         "phase": "P06",
-        "run_id": "20260904T150221215221Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe",
+        "run_id": "20260904T233213157157Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration",
         "seed": 1002,
-        "source_git_commit": "00d6cc6712e71cb12c58431beb180f0476aab4ed",
+        "source_git_commit": "86383b14c7dba5ca30e3c1f53763e64f779b17d8",
         "files": {
           "run_manifest": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150221215221Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/run_manifest.json",
-            "bytes": 5276,
-            "sha256": "7d525ea88004fb89999b475abdad5b74fd2e1ec6fac5062640393fb6ffdff0e5"
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T233213157157Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/run_manifest.json",
+            "bytes": 5861,
+            "sha256": "dbb8130386fdf70576282072879b7b6c6afbd906917acdcef67528a3c2de4a7a"
           },
           "probe": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150221215221Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/phase_snapshot_live_probe.json",
-            "bytes": 95246,
-            "sha256": "673fc395057b734b07012a7931d1a1bc04fa99f0169f8efb07cdbe030e861a8e"
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T233213157157Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/phase_snapshot_live_probe.json",
+            "bytes": 267119,
+            "sha256": "4de1c9ddd19430eea325f4402555ad64aa34ab71014a1fbd36eb4853f9edfe3a"
           },
           "runtime_before": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150221215221Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/committed_runtime_identity.before.json",
-            "bytes": 50522,
-            "sha256": "342952c9433f54888ad3c4e1cb69ba6e701f3135c999ada4c7e24f673043ca57"
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T233213157157Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/committed_runtime_identity.before.json",
+            "bytes": 52901,
+            "sha256": "4bf877d7ec031bcc583b04074a6997a2f45b93e0b2c022fcc3826f63aa396754"
           },
           "runtime_after": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150221215221Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/committed_runtime_identity.after.json",
-            "bytes": 50522,
-            "sha256": "342952c9433f54888ad3c4e1cb69ba6e701f3135c999ada4c7e24f673043ca57"
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T233213157157Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/committed_runtime_identity.after.json",
+            "bytes": 52901,
+            "sha256": "4bf877d7ec031bcc583b04074a6997a2f45b93e0b2c022fcc3826f63aa396754"
           },
           "frozen_before": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150221215221Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/frozen_hashes.before.json",
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T233213157157Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/frozen_hashes.before.json",
             "bytes": 9149,
-            "sha256": "00e4080298c8eeaf7508e1b096f6c77de11b22b495332a4db07a930dd0687220"
+            "sha256": "12eb587ad70b96c048e5bfddd0318402088d98829744dc50dec86dcafc5a2ca4"
           },
           "frozen_after": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150221215221Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/frozen_hashes.after.json",
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T233213157157Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/frozen_hashes.after.json",
             "bytes": 9149,
-            "sha256": "d9005a53e87dd3af91b7ae030b0870b059138ba285e2c42db014f168e6f97603"
+            "sha256": "e5f1ebd4076ff7616a57e555071857b6e65f8017fcc31f6ac7f63c4e9fb211ce"
           }
         },
-        "runtime_content_sha256": "06d9714a2886ee4f84517b04853e742abd604d63b2dc9d7ac16b1380e59f4b72",
-        "identity_config_sha256": "6f361829fc13e4661af91ba77f02fdec0907e5b1e11661eeccc212b8c80c25dd",
-        "phase_snapshot_bundle_sha256": "9a3b57300d500b17894cf8ca0e1dbc915d5ed3f15ca1023366053cad7dc14551",
+        "runtime_content_sha256": "37f978fb11d86de102420883cc9a5b63434f1765e0ec1f8d1789fc2f05603192",
+        "identity_config_sha256": "b6d77cdc057d557ec20e81477ba1f7a1724a0f534e4b59837cb274422605f40a",
+        "phase_snapshot_bundle_sha256": "39e61971ed7a8a76548f6af2e1af50ecf0248781740df9aa59751565ca3cc98e",
         "environment_lock_sha256": "602f6e0893d999e5cb078aadf75541234440a3af918dc58e0154e80ff16ea3cb",
         "frozen_ledger_sha256": "c36ab3e603b8881c463dd72ec6a84092b892edb0ca62c35d39c1bc6ec26a18e2",
         "fresh_attempt_index": 0,
@@ -367,46 +484,46 @@
         "captured_filesystem_identity_count": 14
       },
       {
-        "schema": "wlr50_clean.ppo_phase_effective_entry_calibration.v1",
+        "schema": "wlr50_clean.ppo_phase_effective_entry_calibration.v2",
         "phase": "P07",
-        "run_id": "20260904T150258094110Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe",
+        "run_id": "20260904T233251437825Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration",
         "seed": 1002,
-        "source_git_commit": "00d6cc6712e71cb12c58431beb180f0476aab4ed",
+        "source_git_commit": "86383b14c7dba5ca30e3c1f53763e64f779b17d8",
         "files": {
           "run_manifest": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150258094110Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/run_manifest.json",
-            "bytes": 5276,
-            "sha256": "9c0d5352c6ee162fb53fbd518f842bf76aa8dd2853382bd3604e4002cb80b4b9"
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T233251437825Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/run_manifest.json",
+            "bytes": 5861,
+            "sha256": "cc10083748629d3b81ebee5d3eeb5e3ba7c167c29c75baacdaca90dba8ef7682"
           },
           "probe": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150258094110Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/phase_snapshot_live_probe.json",
-            "bytes": 96456,
-            "sha256": "567c6bafcabb05123579bb78556c18bee5616e533580dbab77715e1925b210a8"
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T233251437825Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/phase_snapshot_live_probe.json",
+            "bytes": 270044,
+            "sha256": "15bcbc0c6ebc45b9c5af6b5aaa614492eed6f95c6e523be9a434825752b53b5d"
           },
           "runtime_before": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150258094110Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/committed_runtime_identity.before.json",
-            "bytes": 50522,
-            "sha256": "342952c9433f54888ad3c4e1cb69ba6e701f3135c999ada4c7e24f673043ca57"
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T233251437825Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/committed_runtime_identity.before.json",
+            "bytes": 52901,
+            "sha256": "4bf877d7ec031bcc583b04074a6997a2f45b93e0b2c022fcc3826f63aa396754"
           },
           "runtime_after": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150258094110Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/committed_runtime_identity.after.json",
-            "bytes": 50522,
-            "sha256": "342952c9433f54888ad3c4e1cb69ba6e701f3135c999ada4c7e24f673043ca57"
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T233251437825Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/committed_runtime_identity.after.json",
+            "bytes": 52901,
+            "sha256": "4bf877d7ec031bcc583b04074a6997a2f45b93e0b2c022fcc3826f63aa396754"
           },
           "frozen_before": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150258094110Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/frozen_hashes.before.json",
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T233251437825Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/frozen_hashes.before.json",
             "bytes": 9149,
-            "sha256": "7f89f040053976900a8a8850b228b8dfae296dc43493ec5a3802e84406666e03"
+            "sha256": "e6a1daf48c22a3882838d3cc148b0d7308374444164554934a342b96661d2c60"
           },
           "frozen_after": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150258094110Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/frozen_hashes.after.json",
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T233251437825Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/frozen_hashes.after.json",
             "bytes": 9149,
-            "sha256": "96fa9b6ba0e648e9fb7a129460b81494f9566a3e354cdb818c5b1c1f75d59587"
+            "sha256": "0df745679d165c08cbda6502a3fe4087565649107b6a0ce5403941b89d4ec314"
           }
         },
-        "runtime_content_sha256": "06d9714a2886ee4f84517b04853e742abd604d63b2dc9d7ac16b1380e59f4b72",
-        "identity_config_sha256": "6f361829fc13e4661af91ba77f02fdec0907e5b1e11661eeccc212b8c80c25dd",
-        "phase_snapshot_bundle_sha256": "9a3b57300d500b17894cf8ca0e1dbc915d5ed3f15ca1023366053cad7dc14551",
+        "runtime_content_sha256": "37f978fb11d86de102420883cc9a5b63434f1765e0ec1f8d1789fc2f05603192",
+        "identity_config_sha256": "b6d77cdc057d557ec20e81477ba1f7a1724a0f534e4b59837cb274422605f40a",
+        "phase_snapshot_bundle_sha256": "39e61971ed7a8a76548f6af2e1af50ecf0248781740df9aa59751565ca3cc98e",
         "environment_lock_sha256": "602f6e0893d999e5cb078aadf75541234440a3af918dc58e0154e80ff16ea3cb",
         "frozen_ledger_sha256": "c36ab3e603b8881c463dd72ec6a84092b892edb0ca62c35d39c1bc6ec26a18e2",
         "fresh_attempt_index": 0,
@@ -414,46 +531,46 @@
         "captured_filesystem_identity_count": 14
       },
       {
-        "schema": "wlr50_clean.ppo_phase_effective_entry_calibration.v1",
+        "schema": "wlr50_clean.ppo_phase_effective_entry_calibration.v2",
         "phase": "P08",
-        "run_id": "20260904T150334893434Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe",
+        "run_id": "20260904T233330000740Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration",
         "seed": 1002,
-        "source_git_commit": "00d6cc6712e71cb12c58431beb180f0476aab4ed",
+        "source_git_commit": "86383b14c7dba5ca30e3c1f53763e64f779b17d8",
         "files": {
           "run_manifest": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150334893434Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/run_manifest.json",
-            "bytes": 5276,
-            "sha256": "d2c0debfe5630c955c98a4f15487e355798f5f34c06514ad27bfa4c0e6562fce"
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T233330000740Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/run_manifest.json",
+            "bytes": 5861,
+            "sha256": "30073b9778bfe0a697ad1b0d546441ce7cc79940e7e97abded6d5e85c6fee444"
           },
           "probe": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150334893434Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/phase_snapshot_live_probe.json",
-            "bytes": 95828,
-            "sha256": "75466cf871c27648b9ac03f3bca123e178ea16342b99c5f41d0b9ee6fa11e907"
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T233330000740Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/phase_snapshot_live_probe.json",
+            "bytes": 268982,
+            "sha256": "92021e0c9e47f02461b9f1264fc9dc5d4a488578bff71d86ee87dbb89ce2adc5"
           },
           "runtime_before": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150334893434Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/committed_runtime_identity.before.json",
-            "bytes": 50522,
-            "sha256": "342952c9433f54888ad3c4e1cb69ba6e701f3135c999ada4c7e24f673043ca57"
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T233330000740Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/committed_runtime_identity.before.json",
+            "bytes": 52901,
+            "sha256": "4bf877d7ec031bcc583b04074a6997a2f45b93e0b2c022fcc3826f63aa396754"
           },
           "runtime_after": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150334893434Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/committed_runtime_identity.after.json",
-            "bytes": 50522,
-            "sha256": "342952c9433f54888ad3c4e1cb69ba6e701f3135c999ada4c7e24f673043ca57"
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T233330000740Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/committed_runtime_identity.after.json",
+            "bytes": 52901,
+            "sha256": "4bf877d7ec031bcc583b04074a6997a2f45b93e0b2c022fcc3826f63aa396754"
           },
           "frozen_before": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150334893434Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/frozen_hashes.before.json",
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T233330000740Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/frozen_hashes.before.json",
             "bytes": 9149,
-            "sha256": "5cd9f44b410778fa515c14383ffb89351ea5bc883e463194115fdd8c09eedf9f"
+            "sha256": "efd1d0a8d306089a89d5676e8ae4dc3a777861ba8cf16eb8f52e9aa53a334115"
           },
           "frozen_after": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150334893434Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/frozen_hashes.after.json",
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T233330000740Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/frozen_hashes.after.json",
             "bytes": 9149,
-            "sha256": "f03a7082ca36d9ebb928d6b51f2aec94dbd4b51210eedb7196563f4901d200ed"
+            "sha256": "bb11b8b50e7987e98e8e812095fc410cd835edd422cb5962dc372f5f6eb8ccea"
           }
         },
-        "runtime_content_sha256": "06d9714a2886ee4f84517b04853e742abd604d63b2dc9d7ac16b1380e59f4b72",
-        "identity_config_sha256": "6f361829fc13e4661af91ba77f02fdec0907e5b1e11661eeccc212b8c80c25dd",
-        "phase_snapshot_bundle_sha256": "9a3b57300d500b17894cf8ca0e1dbc915d5ed3f15ca1023366053cad7dc14551",
+        "runtime_content_sha256": "37f978fb11d86de102420883cc9a5b63434f1765e0ec1f8d1789fc2f05603192",
+        "identity_config_sha256": "b6d77cdc057d557ec20e81477ba1f7a1724a0f534e4b59837cb274422605f40a",
+        "phase_snapshot_bundle_sha256": "39e61971ed7a8a76548f6af2e1af50ecf0248781740df9aa59751565ca3cc98e",
         "environment_lock_sha256": "602f6e0893d999e5cb078aadf75541234440a3af918dc58e0154e80ff16ea3cb",
         "frozen_ledger_sha256": "c36ab3e603b8881c463dd72ec6a84092b892edb0ca62c35d39c1bc6ec26a18e2",
         "fresh_attempt_index": 0,
@@ -461,46 +578,46 @@
         "captured_filesystem_identity_count": 14
       },
       {
-        "schema": "wlr50_clean.ppo_phase_effective_entry_calibration.v1",
+        "schema": "wlr50_clean.ppo_phase_effective_entry_calibration.v2",
         "phase": "P09",
-        "run_id": "20260904T150411470259Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe",
+        "run_id": "20260904T233409018886Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration",
         "seed": 1002,
-        "source_git_commit": "00d6cc6712e71cb12c58431beb180f0476aab4ed",
+        "source_git_commit": "86383b14c7dba5ca30e3c1f53763e64f779b17d8",
         "files": {
           "run_manifest": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150411470259Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/run_manifest.json",
-            "bytes": 5276,
-            "sha256": "79206ddb7f9a17fadd12ab1c71adbf14ee9476cbe1e33f6bace23cf492935794"
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T233409018886Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/run_manifest.json",
+            "bytes": 5861,
+            "sha256": "bdb04d94d0afdde13581f24e66cf14587b4ff2cb25346ca752936e0972f8b602"
           },
           "probe": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150411470259Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/phase_snapshot_live_probe.json",
-            "bytes": 95206,
-            "sha256": "0c36685e837b94771a2c7148c286d224180aea00e66dcf4d26b67ec9647d5bf0"
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T233409018886Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/phase_snapshot_live_probe.json",
+            "bytes": 270343,
+            "sha256": "e9acc98285da2601a35a8782a0632a2f7c879b7ff83a3bb42d5a3176a76c2ad4"
           },
           "runtime_before": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150411470259Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/committed_runtime_identity.before.json",
-            "bytes": 50522,
-            "sha256": "342952c9433f54888ad3c4e1cb69ba6e701f3135c999ada4c7e24f673043ca57"
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T233409018886Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/committed_runtime_identity.before.json",
+            "bytes": 52901,
+            "sha256": "4bf877d7ec031bcc583b04074a6997a2f45b93e0b2c022fcc3826f63aa396754"
           },
           "runtime_after": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150411470259Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/committed_runtime_identity.after.json",
-            "bytes": 50522,
-            "sha256": "342952c9433f54888ad3c4e1cb69ba6e701f3135c999ada4c7e24f673043ca57"
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T233409018886Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/committed_runtime_identity.after.json",
+            "bytes": 52901,
+            "sha256": "4bf877d7ec031bcc583b04074a6997a2f45b93e0b2c022fcc3826f63aa396754"
           },
           "frozen_before": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150411470259Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/frozen_hashes.before.json",
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T233409018886Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/frozen_hashes.before.json",
             "bytes": 9149,
-            "sha256": "c3ba86fe7eb13b4254af34e4dd29e7da1960e21058bb7e2e9a20e85713d56ea7"
+            "sha256": "5c847012bde5bb1f17e774b420afc0f69a081b2f8dfa749e00ca0804c3151556"
           },
           "frozen_after": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150411470259Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/frozen_hashes.after.json",
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T233409018886Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/frozen_hashes.after.json",
             "bytes": 9149,
-            "sha256": "9caaf993bda4067ce36fca221ac6156ffc3de0f5b7c11d70f4784dbd91df070a"
+            "sha256": "4fa7e034a267019117c411c29208e90c3cfc293eef4080f66740c1a6e4918882"
           }
         },
-        "runtime_content_sha256": "06d9714a2886ee4f84517b04853e742abd604d63b2dc9d7ac16b1380e59f4b72",
-        "identity_config_sha256": "6f361829fc13e4661af91ba77f02fdec0907e5b1e11661eeccc212b8c80c25dd",
-        "phase_snapshot_bundle_sha256": "9a3b57300d500b17894cf8ca0e1dbc915d5ed3f15ca1023366053cad7dc14551",
+        "runtime_content_sha256": "37f978fb11d86de102420883cc9a5b63434f1765e0ec1f8d1789fc2f05603192",
+        "identity_config_sha256": "b6d77cdc057d557ec20e81477ba1f7a1724a0f534e4b59837cb274422605f40a",
+        "phase_snapshot_bundle_sha256": "39e61971ed7a8a76548f6af2e1af50ecf0248781740df9aa59751565ca3cc98e",
         "environment_lock_sha256": "602f6e0893d999e5cb078aadf75541234440a3af918dc58e0154e80ff16ea3cb",
         "frozen_ledger_sha256": "c36ab3e603b8881c463dd72ec6a84092b892edb0ca62c35d39c1bc6ec26a18e2",
         "fresh_attempt_index": 0,
@@ -508,46 +625,46 @@
         "captured_filesystem_identity_count": 14
       },
       {
-        "schema": "wlr50_clean.ppo_phase_effective_entry_calibration.v1",
+        "schema": "wlr50_clean.ppo_phase_effective_entry_calibration.v2",
         "phase": "P10",
-        "run_id": "20260904T150448317651Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe",
+        "run_id": "20260904T232822142384Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration",
         "seed": 1002,
-        "source_git_commit": "00d6cc6712e71cb12c58431beb180f0476aab4ed",
+        "source_git_commit": "86383b14c7dba5ca30e3c1f53763e64f779b17d8",
         "files": {
           "run_manifest": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150448317651Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/run_manifest.json",
-            "bytes": 5276,
-            "sha256": "0f90bff8627a0c808e8bf16f6c6556aced17a0aa1520617b22ec32a62d7ca62f"
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T232822142384Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/run_manifest.json",
+            "bytes": 5861,
+            "sha256": "d10c8adb307033a2dcb45aebb8c5393719453055b5fc079dea739aa88a4346f8"
           },
           "probe": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150448317651Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/phase_snapshot_live_probe.json",
-            "bytes": 96060,
-            "sha256": "313ff1b132d5a4480c9d937439fcb251e2dcdc4308a6d613059f996f5ae1d62f"
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T232822142384Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/phase_snapshot_live_probe.json",
+            "bytes": 367817,
+            "sha256": "c205374ccf4a041ffc8582486548f425bb0d43e66d7eafee73e2eee62c4f2070"
           },
           "runtime_before": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150448317651Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/committed_runtime_identity.before.json",
-            "bytes": 50522,
-            "sha256": "342952c9433f54888ad3c4e1cb69ba6e701f3135c999ada4c7e24f673043ca57"
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T232822142384Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/committed_runtime_identity.before.json",
+            "bytes": 52901,
+            "sha256": "4bf877d7ec031bcc583b04074a6997a2f45b93e0b2c022fcc3826f63aa396754"
           },
           "runtime_after": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150448317651Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/committed_runtime_identity.after.json",
-            "bytes": 50522,
-            "sha256": "342952c9433f54888ad3c4e1cb69ba6e701f3135c999ada4c7e24f673043ca57"
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T232822142384Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/committed_runtime_identity.after.json",
+            "bytes": 52901,
+            "sha256": "4bf877d7ec031bcc583b04074a6997a2f45b93e0b2c022fcc3826f63aa396754"
           },
           "frozen_before": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150448317651Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/frozen_hashes.before.json",
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T232822142384Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/frozen_hashes.before.json",
             "bytes": 9149,
-            "sha256": "9a1b6883314081aaff510c580299246335ccaa4c4a464335cec525153cb4496b"
+            "sha256": "7b0311a9fd092ac28588f5d3a56d791fa0583ddd93ecdaae36db445e9013d7f9"
           },
           "frozen_after": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150448317651Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/frozen_hashes.after.json",
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T232822142384Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/frozen_hashes.after.json",
             "bytes": 9149,
-            "sha256": "9b5e011df26f7adf561e5c047f0b972f1abf14825c37e3a5bc86d81b325f0bd5"
+            "sha256": "209a02d856912f49f15da5a0d4d8c6f127efc4be5141eb6042c79c506ec49be1"
           }
         },
-        "runtime_content_sha256": "06d9714a2886ee4f84517b04853e742abd604d63b2dc9d7ac16b1380e59f4b72",
-        "identity_config_sha256": "6f361829fc13e4661af91ba77f02fdec0907e5b1e11661eeccc212b8c80c25dd",
-        "phase_snapshot_bundle_sha256": "9a3b57300d500b17894cf8ca0e1dbc915d5ed3f15ca1023366053cad7dc14551",
+        "runtime_content_sha256": "37f978fb11d86de102420883cc9a5b63434f1765e0ec1f8d1789fc2f05603192",
+        "identity_config_sha256": "b6d77cdc057d557ec20e81477ba1f7a1724a0f534e4b59837cb274422605f40a",
+        "phase_snapshot_bundle_sha256": "39e61971ed7a8a76548f6af2e1af50ecf0248781740df9aa59751565ca3cc98e",
         "environment_lock_sha256": "602f6e0893d999e5cb078aadf75541234440a3af918dc58e0154e80ff16ea3cb",
         "frozen_ledger_sha256": "c36ab3e603b8881c463dd72ec6a84092b892edb0ca62c35d39c1bc6ec26a18e2",
         "fresh_attempt_index": 0,
@@ -555,46 +672,46 @@
         "captured_filesystem_identity_count": 14
       },
       {
-        "schema": "wlr50_clean.ppo_phase_effective_entry_calibration.v1",
+        "schema": "wlr50_clean.ppo_phase_effective_entry_calibration.v2",
         "phase": "P11",
-        "run_id": "20260904T150524364315Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe",
+        "run_id": "20260904T233446975860Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration",
         "seed": 1002,
-        "source_git_commit": "00d6cc6712e71cb12c58431beb180f0476aab4ed",
+        "source_git_commit": "86383b14c7dba5ca30e3c1f53763e64f779b17d8",
         "files": {
           "run_manifest": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150524364315Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/run_manifest.json",
-            "bytes": 5276,
-            "sha256": "8f681a29794642509012f7dc37c7116176927c7970c01c4589512f64ea4b6ba7"
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T233446975860Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/run_manifest.json",
+            "bytes": 5861,
+            "sha256": "9d64c05fd93c118c3fddf8a66b07197b817f6f28c11f917575ec45bfa6d64f41"
           },
           "probe": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150524364315Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/phase_snapshot_live_probe.json",
-            "bytes": 95972,
-            "sha256": "1fc75ce0e8d37a782cd145cde7104e571c21b5bbad72817b669a1dc21dabde6f"
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T233446975860Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/phase_snapshot_live_probe.json",
+            "bytes": 269128,
+            "sha256": "e1d0df30ce5f213c9a70bee2058853f5e5f1c00bf79f642352402e44f3768b6c"
           },
           "runtime_before": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150524364315Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/committed_runtime_identity.before.json",
-            "bytes": 50522,
-            "sha256": "342952c9433f54888ad3c4e1cb69ba6e701f3135c999ada4c7e24f673043ca57"
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T233446975860Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/committed_runtime_identity.before.json",
+            "bytes": 52901,
+            "sha256": "4bf877d7ec031bcc583b04074a6997a2f45b93e0b2c022fcc3826f63aa396754"
           },
           "runtime_after": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150524364315Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/committed_runtime_identity.after.json",
-            "bytes": 50522,
-            "sha256": "342952c9433f54888ad3c4e1cb69ba6e701f3135c999ada4c7e24f673043ca57"
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T233446975860Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/committed_runtime_identity.after.json",
+            "bytes": 52901,
+            "sha256": "4bf877d7ec031bcc583b04074a6997a2f45b93e0b2c022fcc3826f63aa396754"
           },
           "frozen_before": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150524364315Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/frozen_hashes.before.json",
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T233446975860Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/frozen_hashes.before.json",
             "bytes": 9149,
-            "sha256": "dec2ce52c3b284ab9ba04b4c0cef298486264a292218c93b22da80d60cdfbc86"
+            "sha256": "ac27622996d5f39fefcf063f8389ae0da50ad13a7a1afc228c8ece3f3ecaad93"
           },
           "frozen_after": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150524364315Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/frozen_hashes.after.json",
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T233446975860Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/frozen_hashes.after.json",
             "bytes": 9149,
-            "sha256": "00bd65f5018806127259ffa92279102745a041be4857674ed0844dcccd16a5cf"
+            "sha256": "e6192e241762465d4842afdffc863795085316ecdb83b677ef1e3a70c9009818"
           }
         },
-        "runtime_content_sha256": "06d9714a2886ee4f84517b04853e742abd604d63b2dc9d7ac16b1380e59f4b72",
-        "identity_config_sha256": "6f361829fc13e4661af91ba77f02fdec0907e5b1e11661eeccc212b8c80c25dd",
-        "phase_snapshot_bundle_sha256": "9a3b57300d500b17894cf8ca0e1dbc915d5ed3f15ca1023366053cad7dc14551",
+        "runtime_content_sha256": "37f978fb11d86de102420883cc9a5b63434f1765e0ec1f8d1789fc2f05603192",
+        "identity_config_sha256": "b6d77cdc057d557ec20e81477ba1f7a1724a0f534e4b59837cb274422605f40a",
+        "phase_snapshot_bundle_sha256": "39e61971ed7a8a76548f6af2e1af50ecf0248781740df9aa59751565ca3cc98e",
         "environment_lock_sha256": "602f6e0893d999e5cb078aadf75541234440a3af918dc58e0154e80ff16ea3cb",
         "frozen_ledger_sha256": "c36ab3e603b8881c463dd72ec6a84092b892edb0ca62c35d39c1bc6ec26a18e2",
         "fresh_attempt_index": 0,
@@ -602,46 +719,46 @@
         "captured_filesystem_identity_count": 14
       },
       {
-        "schema": "wlr50_clean.ppo_phase_effective_entry_calibration.v1",
+        "schema": "wlr50_clean.ppo_phase_effective_entry_calibration.v2",
         "phase": "P12",
-        "run_id": "20260904T150602062612Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe",
+        "run_id": "20260904T233523275799Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration",
         "seed": 1002,
-        "source_git_commit": "00d6cc6712e71cb12c58431beb180f0476aab4ed",
+        "source_git_commit": "86383b14c7dba5ca30e3c1f53763e64f779b17d8",
         "files": {
           "run_manifest": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150602062612Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/run_manifest.json",
-            "bytes": 5276,
-            "sha256": "0de593e9524d545ecc5b5c9a044da3759f80663f7243b9e7f1d1933e9951ca10"
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T233523275799Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/run_manifest.json",
+            "bytes": 5861,
+            "sha256": "fd554169782de231dcd26186b05c505c6e15d072a95bdb083f167c07db9e46b1"
           },
           "probe": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150602062612Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/phase_snapshot_live_probe.json",
-            "bytes": 95234,
-            "sha256": "14119ab05af45cbe60863edf81b269c115e39bd25cf841c0f3a79cdbd30f471f"
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T233523275799Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/phase_snapshot_live_probe.json",
+            "bytes": 267860,
+            "sha256": "fc4c457ef73847c5c257fa7e8ec2620295a957cb49786560ca1175c358c31050"
           },
           "runtime_before": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150602062612Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/committed_runtime_identity.before.json",
-            "bytes": 50522,
-            "sha256": "342952c9433f54888ad3c4e1cb69ba6e701f3135c999ada4c7e24f673043ca57"
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T233523275799Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/committed_runtime_identity.before.json",
+            "bytes": 52901,
+            "sha256": "4bf877d7ec031bcc583b04074a6997a2f45b93e0b2c022fcc3826f63aa396754"
           },
           "runtime_after": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150602062612Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/committed_runtime_identity.after.json",
-            "bytes": 50522,
-            "sha256": "342952c9433f54888ad3c4e1cb69ba6e701f3135c999ada4c7e24f673043ca57"
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T233523275799Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/committed_runtime_identity.after.json",
+            "bytes": 52901,
+            "sha256": "4bf877d7ec031bcc583b04074a6997a2f45b93e0b2c022fcc3826f63aa396754"
           },
           "frozen_before": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150602062612Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/frozen_hashes.before.json",
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T233523275799Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/frozen_hashes.before.json",
             "bytes": 9149,
-            "sha256": "89544e2717c68bc71433e4c16edc49a7d046588a3407f164e24428f0832a9991"
+            "sha256": "16183fda236421c9ad1d3e1ca7656c7515b819f9cfaa99966082f76a892b7d81"
           },
           "frozen_after": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150602062612Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/frozen_hashes.after.json",
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T233523275799Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/frozen_hashes.after.json",
             "bytes": 9149,
-            "sha256": "31ec3fba007540c90ba84503c5e81541e00a262729490f9c49aaa4d997b2e8bb"
+            "sha256": "070cd9e59881025c8bd99743f8298b89cede0c9f092e19ea9d85cb89cd344393"
           }
         },
-        "runtime_content_sha256": "06d9714a2886ee4f84517b04853e742abd604d63b2dc9d7ac16b1380e59f4b72",
-        "identity_config_sha256": "6f361829fc13e4661af91ba77f02fdec0907e5b1e11661eeccc212b8c80c25dd",
-        "phase_snapshot_bundle_sha256": "9a3b57300d500b17894cf8ca0e1dbc915d5ed3f15ca1023366053cad7dc14551",
+        "runtime_content_sha256": "37f978fb11d86de102420883cc9a5b63434f1765e0ec1f8d1789fc2f05603192",
+        "identity_config_sha256": "b6d77cdc057d557ec20e81477ba1f7a1724a0f534e4b59837cb274422605f40a",
+        "phase_snapshot_bundle_sha256": "39e61971ed7a8a76548f6af2e1af50ecf0248781740df9aa59751565ca3cc98e",
         "environment_lock_sha256": "602f6e0893d999e5cb078aadf75541234440a3af918dc58e0154e80ff16ea3cb",
         "frozen_ledger_sha256": "c36ab3e603b8881c463dd72ec6a84092b892edb0ca62c35d39c1bc6ec26a18e2",
         "fresh_attempt_index": 0,
@@ -649,46 +766,46 @@
         "captured_filesystem_identity_count": 14
       },
       {
-        "schema": "wlr50_clean.ppo_phase_effective_entry_calibration.v1",
+        "schema": "wlr50_clean.ppo_phase_effective_entry_calibration.v2",
         "phase": "P13",
-        "run_id": "20260904T150639270357Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe",
+        "run_id": "20260904T233600294073Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration",
         "seed": 1002,
-        "source_git_commit": "00d6cc6712e71cb12c58431beb180f0476aab4ed",
+        "source_git_commit": "86383b14c7dba5ca30e3c1f53763e64f779b17d8",
         "files": {
           "run_manifest": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150639270357Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/run_manifest.json",
-            "bytes": 5276,
-            "sha256": "30d3384bc32646fd2cadab263d91ac6ffee9ed33396c5cd345b81fb0045f4ed1"
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T233600294073Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/run_manifest.json",
+            "bytes": 5861,
+            "sha256": "31aa389ed09425224742426a531a5b1deaec42ebf56cbcc04343474924e0ed54"
           },
           "probe": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150639270357Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/phase_snapshot_live_probe.json",
-            "bytes": 96096,
-            "sha256": "9be7178edcd93f22f65386ff30f378ee1ca9e4d902a350071021c64befbcd05f"
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T233600294073Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/phase_snapshot_live_probe.json",
+            "bytes": 271938,
+            "sha256": "33dc092bc8c6735a7d990ddd76becb5254ad135bdd11a59cbec8e24875f8807a"
           },
           "runtime_before": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150639270357Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/committed_runtime_identity.before.json",
-            "bytes": 50522,
-            "sha256": "342952c9433f54888ad3c4e1cb69ba6e701f3135c999ada4c7e24f673043ca57"
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T233600294073Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/committed_runtime_identity.before.json",
+            "bytes": 52901,
+            "sha256": "4bf877d7ec031bcc583b04074a6997a2f45b93e0b2c022fcc3826f63aa396754"
           },
           "runtime_after": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150639270357Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/committed_runtime_identity.after.json",
-            "bytes": 50522,
-            "sha256": "342952c9433f54888ad3c4e1cb69ba6e701f3135c999ada4c7e24f673043ca57"
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T233600294073Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/committed_runtime_identity.after.json",
+            "bytes": 52901,
+            "sha256": "4bf877d7ec031bcc583b04074a6997a2f45b93e0b2c022fcc3826f63aa396754"
           },
           "frozen_before": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150639270357Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/frozen_hashes.before.json",
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T233600294073Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/frozen_hashes.before.json",
             "bytes": 9149,
-            "sha256": "e35857800a593811f5e373359c82c64f34f38d39b3ebb1a26b0dce8f4c7bbe34"
+            "sha256": "e8d8a51d0b08409b93a795f0518a667f85053d87f28b8132cb0800dddd4a77ae"
           },
           "frozen_after": {
-            "path": "runs/ppo_phase_v1/phase-snapshot-live-probe/20260904T150639270357Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe/frozen_hashes.after.json",
+            "path": "runs/ppo_phase_v1/phase-effective-entry-calibration/20260904T233600294073Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration/frozen_hashes.after.json",
             "bytes": 9149,
-            "sha256": "03a07f1f358cc7cde3ff4e875ab3c6125d8549c9b0af4917b51594d166c3bffc"
+            "sha256": "a9077b4732e45d41171aadef63da20c587cf62fba61ff288fc81ea3cd845afc9"
           }
         },
-        "runtime_content_sha256": "06d9714a2886ee4f84517b04853e742abd604d63b2dc9d7ac16b1380e59f4b72",
-        "identity_config_sha256": "6f361829fc13e4661af91ba77f02fdec0907e5b1e11661eeccc212b8c80c25dd",
-        "phase_snapshot_bundle_sha256": "9a3b57300d500b17894cf8ca0e1dbc915d5ed3f15ca1023366053cad7dc14551",
+        "runtime_content_sha256": "37f978fb11d86de102420883cc9a5b63434f1765e0ec1f8d1789fc2f05603192",
+        "identity_config_sha256": "b6d77cdc057d557ec20e81477ba1f7a1724a0f534e4b59837cb274422605f40a",
+        "phase_snapshot_bundle_sha256": "39e61971ed7a8a76548f6af2e1af50ecf0248781740df9aa59751565ca3cc98e",
         "environment_lock_sha256": "602f6e0893d999e5cb078aadf75541234440a3af918dc58e0154e80ff16ea3cb",
         "frozen_ledger_sha256": "c36ab3e603b8881c463dd72ec6a84092b892edb0ca62c35d39c1bc6ec26a18e2",
         "fresh_attempt_index": 0,
@@ -699,7 +816,7 @@
   },
   "portability_scope": "same_locked_host_runtime_only",
   "calibration_status": "provisional_pending_independent_fresh_holdout",
-  "effective_entry_semantics": "source_snapshot_plus_one_real_physx_tick_no_rewind",
+  "effective_entry_semantics": "source_snapshot_plus_validated_replay_steps_no_rewind",
   "physics_dt_s": 0.008333333333333333,
   "fingerprint_fields": [
     "root_position_m",
@@ -713,6 +830,8 @@
     "wheel_bottom_m"
   ],
   "fingerprint_max_ulp_distance": 1,
+  "component_state_schema": "wlr50_clean.phase_effective_entry_component_state.v1",
+  "component_state_max_ulp_distance": 1,
   "contact_contract": {
     "force_on_n": 0.25,
     "force_off_n": 0.12,
@@ -726,11 +845,17 @@
   "phase_count": 12,
   "phases": {
     "P02": {
-      "schema": "wlr50_clean.ppo_phase_effective_entry.v1",
+      "schema": "wlr50_clean.ppo_phase_effective_entry.v2",
       "phase": "P02",
       "source_tick": 1600,
+      "predecessor_verify_tick": null,
+      "predecessor_verify_time_s": null,
+      "controller_anchor_tick": null,
+      "controller_anchor_time_s": null,
+      "target_entry_tick": 1601,
+      "source_replay_steps": 1,
       "effective_entry_offset_s": 0.008333333333333333,
-      "calibration_probe_file_sha256": "e95b0e61f9be5d7f01e864598def5d3c1e6be97d07749d6fc09cd4c1800bfd78",
+      "calibration_probe_file_sha256": "950d54497048e7687ce47d90856b15fbfeda1468dde63f5a1382d617c46dfd6d",
       "post_prime_fingerprint": {
         "root_position_m": 0.000254020094871521,
         "root_orientation": 0.0017856368828694142,
@@ -752,6 +877,221 @@
         "wheel_velocity_rad_s": "3fc99c5ea8000000",
         "wheel_center_m": "3f55aa4400000000",
         "wheel_bottom_m": "3f559918094b2cc0"
+      },
+      "effective_component_state": {
+        "schema": "wlr50_clean.phase_effective_entry_component_state.v1",
+        "units": {
+          "root_position_w_m": "m",
+          "root_orientation_wxyz": "unit_quaternion",
+          "root_linear_velocity_w_m_s": "m/s",
+          "root_angular_velocity_w_rad_s": "rad/s",
+          "servo_logical_position_deg": "deg",
+          "servo_logical_velocity_deg_s": "deg/s",
+          "wheel_logical_velocity_rad_s": "rad/s",
+          "wheel_centers_w_m": "m",
+          "wheel_bottoms_w_m": "m"
+        },
+        "root_position_w_m": [
+          0.16370271146297455,
+          0.01678232103586197,
+          0.0725020170211792
+        ],
+        "root_orientation_wxyz": [
+          0.988381747782195,
+          -0.11875040910388884,
+          -0.09486533916151837,
+          -0.0006545337598876381
+        ],
+        "root_linear_velocity_w_m_s": [
+          0.009614737704396248,
+          0.030385714024305344,
+          -0.006367294117808342
+        ],
+        "root_angular_velocity_w_rad_s": [
+          -0.08672606945037842,
+          -0.021448874846100807,
+          0.07583525776863098
+        ],
+        "servo_logical_position_deg": [
+          0.6405108344953041,
+          -0.15293524261837824,
+          -0.3205513148496177,
+          0.11197276055144031,
+          38.917160455574496,
+          0.09887979484062835,
+          0.5509606511740901,
+          -0.7055154523736079
+        ],
+        "servo_logical_velocity_deg_s": [
+          -1.559470925731427,
+          9.501225998726387,
+          3.1108790265910655,
+          15.280690456449287,
+          2.300661923563466,
+          2.7584581274479207,
+          -4.170880629877674,
+          14.69188204621729
+        ],
+        "wheel_logical_velocity_rad_s": [
+          -0.23429802060127258,
+          0.0019452060805633664,
+          -0.006138327065855265,
+          0.12122043967247009
+        ],
+        "servo_order": [
+          "front_left_hip",
+          "front_left_knee",
+          "front_right_hip",
+          "front_right_knee",
+          "rear_left_hip",
+          "rear_left_knee",
+          "rear_right_hip",
+          "rear_right_knee"
+        ],
+        "wheel_order": [
+          "front_left_ankle",
+          "front_right_ankle",
+          "rear_left_ankle",
+          "rear_right_ankle"
+        ],
+        "wheel_centers_w_m": {
+          "front_left_ankle": [
+            0.42567306756973267,
+            0.08744926750659943,
+            0.052073221653699875
+          ],
+          "front_right_ankle": [
+            0.41705211997032166,
+            -0.3000211715698242,
+            0.1439361274242401
+          ],
+          "rear_left_ankle": [
+            -0.21130549907684326,
+            0.09833480417728424,
+            0.05293796584010124
+          ],
+          "rear_right_ankle": [
+            -0.13451102375984192,
+            -0.31248486042022705,
+            0.04823526740074158
+          ]
+        },
+        "wheel_bottoms_w_m": {
+          "front_left_ankle": [
+            0.42567306756973267,
+            0.08744926750659943,
+            0.002073031139510309
+          ],
+          "front_right_ankle": [
+            0.41705211997032166,
+            -0.3000211715698242,
+            0.09394201715964402
+          ],
+          "rear_left_ankle": [
+            -0.21130549907684326,
+            0.09833480417728424,
+            0.002941643377074754
+          ],
+          "rear_right_ankle": [
+            -0.13451102375984192,
+            -0.31248486042022705,
+            -0.001759029478124119
+          ]
+        },
+        "sha256": "3bcd7fcb793d7e6be0a07e113129ca99b0a326ba13e0b1a2a8403c1291534ada"
+      },
+      "effective_component_state_binary64_hex": {
+        "root_position_w_m": [
+          "3fc4f435e0000000",
+          "3f912f6280000000",
+          "3fb28f7e00000000"
+        ],
+        "root_orientation_wxyz": [
+          "3fefa0d2c25602da",
+          "bfbe666d437ce1fc",
+          "bfb84918493900de",
+          "bf4572a08be25b03"
+        ],
+        "root_linear_velocity_w_m_s": [
+          "3f83b0e440000000",
+          "3f9f1d6ec0000000",
+          "bf7a149780000000"
+        ],
+        "root_angular_velocity_w_rad_s": [
+          "bfb633ae00000000",
+          "bf95f6b1a0000000",
+          "3fb369f080000000"
+        ],
+        "servo_logical_position_deg": [
+          "3fe47f1093dc8312",
+          "bfc39361ccb9d345",
+          "bfd483e9a97e0293",
+          "3fbcaa3f309c7c86",
+          "404375658388f03f",
+          "3fb9502fad13604f",
+          "3fe1a1783b459e5c",
+          "bfe6939524588da7"
+        ],
+        "servo_logical_velocity_deg_s": [
+          "bff8f397c91144e9",
+          "402300a0b1b0de9a",
+          "4008e3148b082ae3",
+          "402e8fb6a8d57f7d",
+          "400267c17046dc3d",
+          "400611527ea6319a",
+          "c010aefb54f360c2",
+          "402d623e5d1262b9"
+        ],
+        "wheel_logical_velocity_rad_s": [
+          "bfcdfd7a40000000",
+          "3f5fdec920000000",
+          "bf792480a0000000",
+          "3fbf084d80000000"
+        ],
+        "wheel_centers_w_m": {
+          "front_left_ankle": [
+            "3fdb3e3a40000000",
+            "3fb6631340000000",
+            "3faaa95760000000"
+          ],
+          "front_right_ankle": [
+            "3fdab0fb60000000",
+            "bfd3338c00000000",
+            "3fc26c7fc0000000"
+          ],
+          "rear_left_ankle": [
+            "bfcb0c0f00000000",
+            "3fb92c7840000000",
+            "3fab1aaf60000000"
+          ],
+          "rear_right_ankle": [
+            "bfc137a840000000",
+            "bfd3ffc080000000",
+            "3fa8b24b00000000"
+          ]
+        },
+        "wheel_bottoms_w_m": {
+          "front_left_ankle": [
+            "3fdb3e3a40000000",
+            "3fb6631340000000",
+            "3f60fb761e544420"
+          ],
+          "front_right_ankle": [
+            "3fdab0fb60000000",
+            "bfd3338c00000000",
+            "3fb80c95836bc2d9"
+          ],
+          "rear_left_ankle": [
+            "bfcb0c0f00000000",
+            "3fb92c7840000000",
+            "3f681912c33ba580"
+          ],
+          "rear_right_ankle": [
+            "bfc137a840000000",
+            "bfd3ffc080000000",
+            "bf5cd1e785331600"
+          ]
+        }
       },
       "raw_contacts": {
         "front_left_ankle": {
@@ -908,17 +1248,23 @@
         },
         "signature_sha256": "d82b75a736cb77eda542a2a3a63da434f08a24b6a561f0556999ce4ed0e6ae7a"
       },
-      "entry_sha256": "7fc821353186db0b2f5921b1f5919d78fd2443e654fed6e60a28ec31a54a1521"
+      "entry_sha256": "1d093f5c19c9a7840b87b9b2cf16c230dc1bf17b7a25485dfd36a6e182e24d44"
     },
     "P03": {
-      "schema": "wlr50_clean.ppo_phase_effective_entry.v1",
+      "schema": "wlr50_clean.ppo_phase_effective_entry.v2",
       "phase": "P03",
       "source_tick": 1664,
+      "predecessor_verify_tick": null,
+      "predecessor_verify_time_s": null,
+      "controller_anchor_tick": null,
+      "controller_anchor_time_s": null,
+      "target_entry_tick": 1665,
+      "source_replay_steps": 1,
       "effective_entry_offset_s": 0.008333333333333333,
-      "calibration_probe_file_sha256": "a9b623e852250ef583034f234988f77548acf4fea6bb26997ff2790eec451c2c",
+      "calibration_probe_file_sha256": "63174314def8ca188ca2ae7354c7cf18617bf0b043c17955d12e5d9e577f5acb",
       "post_prime_fingerprint": {
         "root_position_m": 0.00021553784608840942,
-        "root_orientation": 0.0019192223361766197,
+        "root_orientation": 0.0019192223361766227,
         "root_linear_velocity_m_s": 0.03724998142570257,
         "root_angular_velocity_rad_s": 0.12359907478094101,
         "servo_position_deg": 0.3789901215710856,
@@ -929,7 +1275,7 @@
       },
       "post_prime_fingerprint_binary64_hex": {
         "root_position_m": "3f2c404000000000",
-        "root_orientation": "3f5f71cd4aba78a1",
+        "root_orientation": "3f5f71cd4aba78af",
         "root_linear_velocity_m_s": "3fa3126df8000000",
         "root_angular_velocity_rad_s": "3fbfa43060000000",
         "servo_position_deg": "3fd8415fc869e980",
@@ -937,6 +1283,221 @@
         "wheel_velocity_rad_s": "3fe93bc9b8000000",
         "wheel_center_m": "3f57ab2c00000000",
         "wheel_bottom_m": "3f579a00094b2cc0"
+      },
+      "effective_component_state": {
+        "schema": "wlr50_clean.phase_effective_entry_component_state.v1",
+        "units": {
+          "root_position_w_m": "m",
+          "root_orientation_wxyz": "unit_quaternion",
+          "root_linear_velocity_w_m_s": "m/s",
+          "root_angular_velocity_w_rad_s": "rad/s",
+          "servo_logical_position_deg": "deg",
+          "servo_logical_velocity_deg_s": "deg/s",
+          "wheel_logical_velocity_rad_s": "rad/s",
+          "wheel_centers_w_m": "m",
+          "wheel_bottoms_w_m": "m"
+        },
+        "root_position_w_m": [
+          0.16374026238918304,
+          0.0167466402053833,
+          0.07260295748710632
+        ],
+        "root_orientation_wxyz": [
+          0.9884648164771705,
+          -0.11850809891643564,
+          -0.09430150713103155,
+          -0.0006023543659992236
+        ],
+        "root_linear_velocity_w_m_s": [
+          0.035291220992803574,
+          0.025473222136497498,
+          0.011075508780777454
+        ],
+        "root_angular_velocity_w_rad_s": [
+          -0.01891409233212471,
+          0.004520969465374947,
+          -0.10112602263689041
+        ],
+        "servo_logical_position_deg": [
+          0.7117538696850625,
+          -0.14972896239094646,
+          -0.32323315127462615,
+          43.840807639761586,
+          38.76998695443365,
+          0.03781747677389122,
+          0.5036602571504294,
+          -0.5046300372908654
+        ],
+        "servo_logical_velocity_deg_s": [
+          -5.993709562739629,
+          -18.487040800041733,
+          16.404762008914965,
+          52.3775071408233,
+          -6.182687236695542,
+          0.7434746288923505,
+          -22.714195358491143,
+          26.640645716088862
+        ],
+        "wheel_logical_velocity_rad_s": [
+          -0.8290504217147827,
+          0.0033613000996410847,
+          0.5065070986747742,
+          0.13469986617565155
+        ],
+        "servo_order": [
+          "front_left_hip",
+          "front_left_knee",
+          "front_right_hip",
+          "front_right_knee",
+          "rear_left_hip",
+          "rear_left_knee",
+          "rear_right_hip",
+          "rear_right_knee"
+        ],
+        "wheel_order": [
+          "front_left_ankle",
+          "front_right_ankle",
+          "rear_left_ankle",
+          "rear_right_ankle"
+        ],
+        "wheel_centers_w_m": {
+          "front_left_ankle": [
+            0.4258643388748169,
+            0.08746954053640366,
+            0.05210160091519356
+          ],
+          "front_right_ankle": [
+            0.522230327129364,
+            -0.29041096568107605,
+            0.19431792199611664
+          ],
+          "rear_left_ankle": [
+            -0.210940420627594,
+            0.09816645085811615,
+            0.052976399660110474
+          ],
+          "rear_right_ankle": [
+            -0.13488058745861053,
+            -0.31255924701690674,
+            0.04828663915395737
+          ]
+        },
+        "wheel_bottoms_w_m": {
+          "front_left_ankle": [
+            0.4258643388748169,
+            0.08746954053640366,
+            0.002101410401003992
+          ],
+          "front_right_ankle": [
+            0.522230327129364,
+            -0.29041096568107605,
+            0.14432381173152053
+          ],
+          "rear_left_ankle": [
+            -0.210940420627594,
+            0.09816645085811615,
+            0.0029800771970839857
+          ],
+          "rear_right_ankle": [
+            -0.13488058745861053,
+            -0.31255924701690674,
+            -0.0017076577249083291
+          ]
+        },
+        "sha256": "f4307a54a88f28215c0039724fdf5f510063e470e40da0a0e2777f2085a20f31"
+      },
+      "effective_component_state_binary64_hex": {
+        "root_position_w_m": [
+          "3fc4f570e0000000",
+          "3f91260800000000",
+          "3fb2961b80000000"
+        ],
+        "root_orientation_wxyz": [
+          "3fefa180f78083ce",
+          "bfbe568bf9283fd7",
+          "bfb82424c1175ede",
+          "bf43bcea26ba98c2"
+        ],
+        "root_linear_velocity_w_m_s": [
+          "3fa211b0e0000000",
+          "3f9a15a700000000",
+          "3f86aec1a0000000"
+        ],
+        "root_angular_velocity_w_rad_s": [
+          "bf935e3740000000",
+          "3f72849480000000",
+          "bfb9e36520000000"
+        ],
+        "servo_logical_position_deg": [
+          "3fe6c6b00d232948",
+          "bfc32a51925dd72c",
+          "bfd4afda196d4856",
+          "4045eb9f95b18061",
+          "4043628eeeb9d1d0",
+          "3fa35ccff3ec159c",
+          "3fe01dfc1d983184",
+          "bfe025ede457cafa"
+        ],
+        "servo_logical_velocity_deg_s": [
+          "c017f98effe6c1b5",
+          "c0327caeb4b3ff36",
+          "4030679e7ba6f3fa",
+          "404a3052276bebd8",
+          "c018bb125cec040f",
+          "3fe7ca8b4e0ff2bf",
+          "c036b6d581cbaca9",
+          "403aa4015b8eec96"
+        ],
+        "wheel_logical_velocity_rad_s": [
+          "bfea8794c0000000",
+          "3f6b892840000000",
+          "3fe0354e60000000",
+          "3fc13dd860000000"
+        ],
+        "wheel_centers_w_m": {
+          "front_left_ankle": [
+            "3fdb415c80000000",
+            "3fb6646760000000",
+            "3faaad0fa0000000"
+          ],
+          "front_right_ankle": [
+            "3fe0b61c60000000",
+            "bfd29617e0000000",
+            "3fc8df68e0000000"
+          ],
+          "rear_left_ankle": [
+            "bfcb001880000000",
+            "3fb9216fc0000000",
+            "3fab1fb900000000"
+          ],
+          "rear_right_ankle": [
+            "bfc143c460000000",
+            "bfd400f880000000",
+            "3fa8b906c0000000"
+          ]
+        },
+        "wheel_bottoms_w_m": {
+          "front_left_ankle": [
+            "3fdb415c80000000",
+            "3fb6646760000000",
+            "3f6136fa1e544420"
+          ],
+          "front_right_ankle": [
+            "3fe0b61c60000000",
+            "bfd29617e0000000",
+            "3fc27933e1b5e16c"
+          ],
+          "rear_left_ankle": [
+            "bfcb001880000000",
+            "3fb9216fc0000000",
+            "3f6869acc33ba580"
+          ],
+          "rear_right_ankle": [
+            "bfc143c460000000",
+            "bfd400f880000000",
+            "bf5bfa6f85331600"
+          ]
+        }
       },
       "raw_contacts": {
         "front_left_ankle": {
@@ -1093,14 +1654,20 @@
         },
         "signature_sha256": "d82b75a736cb77eda542a2a3a63da434f08a24b6a561f0556999ce4ed0e6ae7a"
       },
-      "entry_sha256": "8528c56984459743559ef48198f458724d5fa3f211a572dba924ea3cc9fe4968"
+      "entry_sha256": "74c63a9bf4e378f8256ecacb086c0a72e828f33898bfabac8f2c34968878e06f"
     },
     "P04": {
-      "schema": "wlr50_clean.ppo_phase_effective_entry.v1",
+      "schema": "wlr50_clean.ppo_phase_effective_entry.v2",
       "phase": "P04",
       "source_tick": 1816,
+      "predecessor_verify_tick": null,
+      "predecessor_verify_time_s": null,
+      "controller_anchor_tick": null,
+      "controller_anchor_time_s": null,
+      "target_entry_tick": 1817,
+      "source_replay_steps": 1,
       "effective_entry_offset_s": 0.008333333333333333,
-      "calibration_probe_file_sha256": "9b85b5595c9fe038b3e96113de1d5889fd36df2b6503fc8018762e62f7497b38",
+      "calibration_probe_file_sha256": "12a941cb642eb26564e3846197691e56d5b21d163aa8840f1a16624b67ea421b",
       "post_prime_fingerprint": {
         "root_position_m": 0.0004782676696777344,
         "root_orientation": 0.00040118592413350407,
@@ -1122,6 +1689,221 @@
         "wheel_velocity_rad_s": "3fd9d240e0000000",
         "wheel_center_m": "3f44f53000000000",
         "wheel_bottom_m": "3f450b785d392d80"
+      },
+      "effective_component_state": {
+        "schema": "wlr50_clean.phase_effective_entry_component_state.v1",
+        "units": {
+          "root_position_w_m": "m",
+          "root_orientation_wxyz": "unit_quaternion",
+          "root_linear_velocity_w_m_s": "m/s",
+          "root_angular_velocity_w_rad_s": "rad/s",
+          "servo_logical_position_deg": "deg",
+          "servo_logical_velocity_deg_s": "deg/s",
+          "wheel_logical_velocity_rad_s": "rad/s",
+          "wheel_centers_w_m": "m",
+          "wheel_bottoms_w_m": "m"
+        },
+        "root_position_w_m": [
+          0.16480925679206848,
+          -0.0022167935967445374,
+          0.0843261256814003
+        ],
+        "root_orientation_wxyz": [
+          0.9992241130491694,
+          -0.03570084385902831,
+          -0.01635755106686015,
+          -0.003008682759784292
+        ],
+        "root_linear_velocity_w_m_s": [
+          -0.04874701797962189,
+          0.0017236084677278996,
+          0.03630144149065018
+        ],
+        "root_angular_velocity_w_rad_s": [
+          0.0652977004647255,
+          0.09235040098428726,
+          -0.05439421534538269
+        ],
+        "servo_logical_position_deg": [
+          -0.5017839828410857,
+          -22.630904266476826,
+          -0.4130462168376064,
+          45.74816187114974,
+          17.10804883192738,
+          0.3874254185362615,
+          -1.066482625715731,
+          -0.4572953855996491
+        ],
+        "servo_logical_velocity_deg_s": [
+          -0.751737130075656,
+          20.45416601685667,
+          -0.15886902615573298,
+          -1.9158023216178153,
+          3.0144975868827806,
+          2.484684081833123,
+          -19.90025475064156,
+          -0.2599085481562605
+        ],
+        "wheel_logical_velocity_rad_s": [
+          0.45545536279678345,
+          0.29998233914375305,
+          0.29639020562171936,
+          0.05604850873351097
+        ],
+        "servo_order": [
+          "front_left_hip",
+          "front_left_knee",
+          "front_right_hip",
+          "front_right_knee",
+          "rear_left_hip",
+          "rear_left_knee",
+          "rear_right_hip",
+          "rear_right_knee"
+        ],
+        "wheel_order": [
+          "front_left_ankle",
+          "front_right_ankle",
+          "rear_left_ankle",
+          "rear_right_ankle"
+        ],
+        "wheel_centers_w_m": {
+          "front_left_ankle": [
+            0.36013263463974,
+            0.0738845244050026,
+            0.05064725503325462
+          ],
+          "front_right_ankle": [
+            0.5351858735084534,
+            -0.32320863008499146,
+            0.09953867644071579
+          ],
+          "rear_left_ankle": [
+            -0.1765207201242447,
+            0.07411432266235352,
+            0.06714879721403122
+          ],
+          "rear_right_ankle": [
+            -0.13641223311424255,
+            -0.32478538155555725,
+            0.04907539486885071
+          ]
+        },
+        "wheel_bottoms_w_m": {
+          "front_left_ankle": [
+            0.36013263463974,
+            0.0738845244050026,
+            0.0006470645190650576
+          ],
+          "front_right_ankle": [
+            0.5351858735084534,
+            -0.32320863008499146,
+            0.0495445661761197
+          ],
+          "rear_left_ankle": [
+            -0.1765207201242447,
+            0.07411432266235352,
+            0.01715247475100473
+          ],
+          "rear_right_ankle": [
+            -0.13641223311424255,
+            -0.32478538155555725,
+            -0.0009189020100149881
+          ]
+        },
+        "sha256": "cac2379cc83b1679bb548fc1c1899935f9e61fc92dbf15b5761565a9657bfb6e"
+      },
+      "effective_component_state_binary64_hex": {
+        "root_position_w_m": [
+          "3fc5187840000000",
+          "bf6228f400000000",
+          "3fb59665a0000000"
+        ],
+        "root_orientation_wxyz": [
+          "3feff9a4d8dd771b",
+          "bfa2476189a0d585",
+          "bf90c008ab7fcf4f",
+          "bf68a5aa41d58125"
+        ],
+        "root_linear_velocity_w_m_s": [
+          "bfa8f55e80000000",
+          "3f5c3d5680000000",
+          "3fa2961a40000000"
+        ],
+        "root_angular_velocity_w_rad_s": [
+          "3fb0b759a0000000",
+          "3fb7a446a0000000",
+          "bfabd98f00000000"
+        ],
+        "servo_logical_position_deg": [
+          "bfe00e9d487eb0da",
+          "c036a182f1276cc2",
+          "bfda6f5966437575",
+          "4046dfc3c4a859e5",
+          "40311ba916977fc5",
+          "3fd8cb93fb902697",
+          "bff1105015f3386a",
+          "bfdd4453dd70c7ec"
+        ],
+        "servo_logical_velocity_deg_s": [
+          "bfe80e3b069ba495",
+          "40347444395d5a9f",
+          "bfc455d1fbd7d6c5",
+          "bffea72055cf30b4",
+          "40081db0e92c427b",
+          "4003e0a20c42eba0",
+          "c033e677186812fb",
+          "bfd0a25776920bf6"
+        ],
+        "wheel_logical_velocity_rad_s": [
+          "3fdd262e40000000",
+          "3fd332e920000000",
+          "3fd2f80ea0000000",
+          "3facb263e0000000"
+        ],
+        "wheel_centers_w_m": {
+          "front_left_ankle": [
+            "3fd70c69c0000000",
+            "3fb2ea18a0000000",
+            "3fa9ee6fe0000000"
+          ],
+          "front_right_ankle": [
+            "3fe1203e20000000",
+            "bfd4af7340000000",
+            "3fb97b5de0000000"
+          ],
+          "rear_left_ankle": [
+            "bfc6983b20000000",
+            "3fb2f92800000000",
+            "3fb130a9e0000000"
+          ],
+          "rear_right_ankle": [
+            "bfc175f4c0000000",
+            "bfd4c948a0000000",
+            "3fa9206900000000"
+          ]
+        },
+        "wheel_bottoms_w_m": {
+          "front_left_ankle": [
+            "3fd70c69c0000000",
+            "3fb2ea18a0000000",
+            "3f4533f879511080"
+          ],
+          "front_right_ankle": [
+            "3fe1203e20000000",
+            "bfd4af7340000000",
+            "3fa95de7c6d785b2"
+          ],
+          "rear_left_ankle": [
+            "bfc6983b20000000",
+            "3fb2f92800000000",
+            "3f91906b186774b0"
+          ],
+          "rear_right_ankle": [
+            "bfc175f4c0000000",
+            "bfd4c948a0000000",
+            "bf4e1c4f0a662c00"
+          ]
+        }
       },
       "raw_contacts": {
         "front_left_ankle": {
@@ -1278,14 +2060,20 @@
         },
         "signature_sha256": "d82b75a736cb77eda542a2a3a63da434f08a24b6a561f0556999ce4ed0e6ae7a"
       },
-      "entry_sha256": "d198b0409567b06f36842e3161bc8173132eeb6a4ae99fcc6418fda69da45a82"
+      "entry_sha256": "1e00d8e468d82b38c2d0bbce01c757373a6ca1ee5eff5756f170ab912960bfe8"
     },
     "P05": {
-      "schema": "wlr50_clean.ppo_phase_effective_entry.v1",
+      "schema": "wlr50_clean.ppo_phase_effective_entry.v2",
       "phase": "P05",
       "source_tick": 2400,
+      "predecessor_verify_tick": null,
+      "predecessor_verify_time_s": null,
+      "controller_anchor_tick": null,
+      "controller_anchor_time_s": null,
+      "target_entry_tick": 2401,
+      "source_replay_steps": 1,
       "effective_entry_offset_s": 0.008333333333333333,
-      "calibration_probe_file_sha256": "018466a980a2e56b7730cdb6679185df8f36b5978b4b59b4ebbd1fab0bfd3e61",
+      "calibration_probe_file_sha256": "51a8475379383dad47b09af8f34624541ea27c8e05ad82d99c6d4581fea2734a",
       "post_prime_fingerprint": {
         "root_position_m": 0.0002064034342765808,
         "root_orientation": 0.0006747134290994068,
@@ -1307,6 +2095,221 @@
         "wheel_velocity_rad_s": "3fd41e2070000000",
         "wheel_center_m": "3f49f31000000000",
         "wheel_bottom_m": "3f4a1567ed69a680"
+      },
+      "effective_component_state": {
+        "schema": "wlr50_clean.phase_effective_entry_component_state.v1",
+        "units": {
+          "root_position_w_m": "m",
+          "root_orientation_wxyz": "unit_quaternion",
+          "root_linear_velocity_w_m_s": "m/s",
+          "root_angular_velocity_w_rad_s": "rad/s",
+          "servo_logical_position_deg": "deg",
+          "servo_logical_velocity_deg_s": "deg/s",
+          "wheel_logical_velocity_rad_s": "rad/s",
+          "wheel_centers_w_m": "m",
+          "wheel_bottoms_w_m": "m"
+        },
+        "root_position_w_m": [
+          0.21005958318710327,
+          -0.003689222037792206,
+          0.09102118015289307
+        ],
+        "root_orientation_wxyz": [
+          0.9995114645677134,
+          -0.026103835141236483,
+          -0.017040442406600253,
+          -0.0022461770213789154
+        ],
+        "root_linear_velocity_w_m_s": [
+          -0.027232347056269646,
+          -0.026106344535946846,
+          -0.015678759664297104
+        ],
+        "root_angular_velocity_w_rad_s": [
+          0.0686953142285347,
+          0.09783542156219482,
+          0.07759848982095718
+        ],
+        "servo_logical_position_deg": [
+          0.746042166370467,
+          -13.218077991083327,
+          -0.6710556255590595,
+          45.48550011642773,
+          8.231852590375214,
+          1.0456557380901357,
+          -0.9733375217352687,
+          0.5447297310624666
+        ],
+        "servo_logical_velocity_deg_s": [
+          17.549300223228588,
+          -4.591497339345399,
+          -6.035747669533765,
+          -1.5328417257048397,
+          -1.884195194346758,
+          22.179885027646677,
+          -2.38313368302702,
+          -13.984790981259952
+        ],
+        "wheel_logical_velocity_rad_s": [
+          -0.23195692896842957,
+          -0.013184698298573494,
+          0.5005049705505371,
+          -0.14419066905975342
+        ],
+        "servo_order": [
+          "front_left_hip",
+          "front_left_knee",
+          "front_right_hip",
+          "front_right_knee",
+          "rear_left_hip",
+          "rear_left_knee",
+          "rear_right_hip",
+          "rear_right_knee"
+        ],
+        "wheel_order": [
+          "front_left_ankle",
+          "front_right_ankle",
+          "rear_left_ankle",
+          "rear_right_ankle"
+        ],
+        "wheel_centers_w_m": {
+          "front_left_ankle": [
+            0.43223318457603455,
+            0.07283700257539749,
+            0.050878703594207764
+          ],
+          "front_right_ankle": [
+            0.5799230337142944,
+            -0.3242959976196289,
+            0.0989917442202568
+          ],
+          "rear_left_ankle": [
+            -0.11322911083698273,
+            0.07094228267669678,
+            0.0503680519759655
+          ],
+          "rear_right_ankle": [
+            -0.0934891477227211,
+            -0.32607942819595337,
+            0.049015071243047714
+          ]
+        },
+        "wheel_bottoms_w_m": {
+          "front_left_ankle": [
+            0.43223318457603455,
+            0.07283700257539749,
+            0.0008785130800181978
+          ],
+          "front_right_ankle": [
+            0.5799230337142944,
+            -0.3242959976196289,
+            0.048997633955660716
+          ],
+          "rear_left_ankle": [
+            -0.11322911083698273,
+            0.07094228267669678,
+            0.0003717295129390119
+          ],
+          "rear_right_ankle": [
+            -0.0934891477227211,
+            -0.32607942819595337,
+            -0.0009792256358179818
+          ]
+        },
+        "sha256": "944c8ad4e861ef147328b697a7295d92c22d02bf727ecb2658114945accfe517"
+      },
+      "effective_component_state_binary64_hex": {
+        "root_position_w_m": [
+          "3fcae33b80000000",
+          "bf6e38dc00000000",
+          "3fb74d2a00000000"
+        ],
+        "root_orientation_wxyz": [
+          "3feffbff778973da",
+          "bf9abaf6b8ed595f",
+          "bf91730cbb620453",
+          "bf6266931b219482"
+        ],
+        "root_linear_velocity_w_m_s": [
+          "bf9be2cbe0000000",
+          "bf9abb9f20000000",
+          "bf900e17c0000000"
+        ],
+        "root_angular_velocity_w_rad_s": [
+          "3fb1960420000000",
+          "3fb90bbe00000000",
+          "3fb3dd7ea0000000"
+        ],
+        "servo_logical_position_deg": [
+          "3fe7df93d23ff0d2",
+          "c02a6fa7eb1f5c4c",
+          "bfe57949a5b255df",
+          "4046be24de292172",
+          "402076b561fa4f11",
+          "3ff0bb0182df8ccc",
+          "bfef2594bafa534c",
+          "3fe16e6d0b824f36"
+        ],
+        "servo_logical_velocity_deg_s": [
+          "40318c9ef07e73c9",
+          "c0125db17a80a355",
+          "c018249b097e3913",
+          "bff886850b9d8b38",
+          "bffe25a9dc2ffebb",
+          "40362e0cf1f6c854",
+          "c00310a86474c6d2",
+          "c02bf8368603d082"
+        ],
+        "wheel_logical_velocity_rad_s": [
+          "bfcdb0c3c0000000",
+          "bf8b009440000000",
+          "3fe0042300000000",
+          "bfc274d700000000"
+        ],
+        "wheel_centers_w_m": {
+          "front_left_ankle": [
+            "3fdba9b560000000",
+            "3fb2a57220000000",
+            "3faa0cc600000000"
+          ],
+          "front_right_ankle": [
+            "3fe28ebac0000000",
+            "bfd4c14400000000",
+            "3fb95785e0000000"
+          ],
+          "rear_left_ankle": [
+            "bfbcfc9540000000",
+            "3fb2294600000000",
+            "3fa9c9d760000000"
+          ],
+          "rear_right_ankle": [
+            "bfb7eee7a0000000",
+            "bfd4de7c40000000",
+            "3fa91880e0000000"
+          ]
+        },
+        "wheel_bottoms_w_m": {
+          "front_left_ankle": [
+            "3fdba9b560000000",
+            "3fb2a57220000000",
+            "3f4cc98079511080"
+          ],
+          "front_right_ankle": [
+            "3fe28ebac0000000",
+            "bfd4c14400000000",
+            "3fa91637c6d785b2"
+          ],
+          "rear_left_ankle": [
+            "bfbcfc9540000000",
+            "3fb2294600000000",
+            "3f385c9619dd2c00"
+          ],
+          "rear_right_ankle": [
+            "bfb7eee7a0000000",
+            "bfd4de7c40000000",
+            "bf500b2b85331600"
+          ]
+        }
       },
       "raw_contacts": {
         "front_left_ankle": {
@@ -1463,17 +2466,23 @@
         },
         "signature_sha256": "5f8a69a10315b975242b5389c7b0cdc848d731b22bd239fdc16bc161474bd589"
       },
-      "entry_sha256": "1b21084bd4513c0a014d1aa019219fc1b2154b8f88041e8e8af2210771b9c6d4"
+      "entry_sha256": "0dd4e2fbb015b618d03c29020ff6ea416c2d1758766ffda332808773d878e347"
     },
     "P06": {
-      "schema": "wlr50_clean.ppo_phase_effective_entry.v1",
+      "schema": "wlr50_clean.ppo_phase_effective_entry.v2",
       "phase": "P06",
       "source_tick": 3576,
+      "predecessor_verify_tick": null,
+      "predecessor_verify_time_s": null,
+      "controller_anchor_tick": null,
+      "controller_anchor_time_s": null,
+      "target_entry_tick": 3577,
+      "source_replay_steps": 1,
       "effective_entry_offset_s": 0.008333333333333333,
-      "calibration_probe_file_sha256": "673fc395057b734b07012a7931d1a1bc04fa99f0169f8efb07cdbe030e861a8e",
+      "calibration_probe_file_sha256": "4de1c9ddd19430eea325f4402555ad64aa34ab71014a1fbd36eb4853f9edfe3a",
       "post_prime_fingerprint": {
         "root_position_m": 0.00023127347230911255,
-        "root_orientation": 3.858776200951517e-05,
+        "root_orientation": 3.858776200951583e-05,
         "root_linear_velocity_m_s": 0.011803558096289635,
         "root_angular_velocity_rad_s": 0.029165018815547228,
         "servo_position_deg": 0.33851100545500046,
@@ -1484,7 +2493,7 @@
       },
       "post_prime_fingerprint_binary64_hex": {
         "root_position_m": "3f2e504000000000",
-        "root_orientation": "3f043b2968278e94",
+        "root_orientation": "3f043b2968278ef6",
         "root_linear_velocity_m_s": "3f882c76c0000000",
         "root_angular_velocity_rad_s": "3f9ddd6f48000000",
         "servo_position_deg": "3fd5aa2a1070fac0",
@@ -1492,6 +2501,221 @@
         "wheel_velocity_rad_s": "3fd3f031c0000000",
         "wheel_center_m": "3f52f67000000000",
         "wheel_bottom_m": "3f52f6185f7e5f40"
+      },
+      "effective_component_state": {
+        "schema": "wlr50_clean.phase_effective_entry_component_state.v1",
+        "units": {
+          "root_position_w_m": "m",
+          "root_orientation_wxyz": "unit_quaternion",
+          "root_linear_velocity_w_m_s": "m/s",
+          "root_angular_velocity_w_rad_s": "rad/s",
+          "servo_logical_position_deg": "deg",
+          "servo_logical_velocity_deg_s": "deg/s",
+          "wheel_logical_velocity_rad_s": "rad/s",
+          "wheel_centers_w_m": "m",
+          "wheel_bottoms_w_m": "m"
+        },
+        "root_position_w_m": [
+          0.3289910554885864,
+          -0.004520036280155182,
+          0.09043711423873901
+        ],
+        "root_orientation_wxyz": [
+          0.9996247451780287,
+          -0.024498673950419738,
+          -0.012141839071721729,
+          -0.0016611882459671955
+        ],
+        "root_linear_velocity_w_m_s": [
+          0.009431499056518078,
+          0.004324536304920912,
+          0.013588549569249153
+        ],
+        "root_angular_velocity_w_rad_s": [
+          0.04476240649819374,
+          -0.003367710392922163,
+          -0.014370562508702278
+        ],
+        "servo_logical_position_deg": [
+          25.418045136349033,
+          -12.30411244899735,
+          0.34349237614200995,
+          45.830189027987004,
+          7.05335638305558,
+          0.2998404887465864,
+          -1.5315881992291571,
+          1.0635729117684525
+        ],
+        "servo_logical_velocity_deg_s": [
+          -40.425891866973245,
+          0.9116056050060323,
+          -1.8818633250754335,
+          3.3499354340981,
+          -4.518380164280413,
+          1.8248066995134973,
+          -3.8786407409549235,
+          2.139416311741686
+        ],
+        "wheel_logical_velocity_rad_s": [
+          0.29913899302482605,
+          0.15498057007789612,
+          0.263801634311676,
+          0.2874813377857208
+        ],
+        "servo_order": [
+          "front_left_hip",
+          "front_left_knee",
+          "front_right_hip",
+          "front_right_knee",
+          "rear_left_hip",
+          "rear_left_knee",
+          "rear_right_hip",
+          "rear_right_knee"
+        ],
+        "wheel_order": [
+          "front_left_ankle",
+          "front_right_ankle",
+          "rear_left_ankle",
+          "rear_right_ankle"
+        ],
+        "wheel_centers_w_m": {
+          "front_left_ankle": [
+            0.6079424023628235,
+            0.07483896613121033,
+            0.10367120057344437
+          ],
+          "front_right_ankle": [
+            0.7021393775939941,
+            -0.3245510160923004,
+            0.09878139942884445
+          ],
+          "rear_left_ankle": [
+            0.010192986577749252,
+            0.06975296884775162,
+            0.05012083053588867
+          ],
+          "rear_right_ankle": [
+            0.02552015893161297,
+            -0.3271428942680359,
+            0.04895052686333656
+          ]
+        },
+        "wheel_bottoms_w_m": {
+          "front_left_ankle": [
+            0.6079424023628235,
+            0.07483896613121033,
+            0.0536710100592548
+          ],
+          "front_right_ankle": [
+            0.7021393775939941,
+            -0.3245510160923004,
+            0.04878728916424836
+          ],
+          "rear_left_ankle": [
+            0.010192986577749252,
+            0.06975296884775162,
+            0.0001245080728621839
+          ],
+          "rear_right_ankle": [
+            0.02552015893161297,
+            -0.3271428942680359,
+            -0.001043770015529133
+          ]
+        },
+        "sha256": "99600cf2a795535df89f652251e3bc6d17b90f56d8a16211429822e18d2f3e30"
+      },
+      "effective_component_state_binary64_hex": {
+        "root_position_w_m": [
+          "3fd50e3080000000",
+          "bf72839a00000000",
+          "3fb726e300000000"
+        ],
+        "root_orientation_wxyz": [
+          "3feffced0899fba2",
+          "bf99162e2da65167",
+          "bf88ddd20dcf8b41",
+          "bf5b37874c176870"
+        ],
+        "root_linear_velocity_w_m_s": [
+          "3f8350d260000000",
+          "3f71b69ae0000000",
+          "3f8bd45040000000"
+        ],
+        "root_angular_velocity_w_rad_s": [
+          "3fa6eb1920000000",
+          "bf6b9699c0000000",
+          "bf8d6e5040000000"
+        ],
+        "servo_logical_position_deg": [
+          "40396b05018cdef7",
+          "c0289bb4a07d800b",
+          "3fd5fbc7727d2309",
+          "4046ea43a25259e2",
+          "401c36a30e4106b9",
+          "3fd33096294bba48",
+          "bff88162a0aa0f69",
+          "3ff10465078f4fdc"
+        ],
+        "servo_logical_velocity_deg_s": [
+          "c04436839fec2428",
+          "3fed2bdf848b3d0d",
+          "bffe1c1cb7cbda55",
+          "400accaaf2e94da0",
+          "c01212d23ff1eafd",
+          "3ffd3268827eea2b",
+          "c00f0774cbfaad45",
+          "40011d864c9bad05"
+        ],
+        "wheel_logical_velocity_rad_s": [
+          "3fd32517e0000000",
+          "3fc3d66740000000",
+          "3fd0e22040000000",
+          "3fd2661820000000"
+        ],
+        "wheel_centers_w_m": {
+          "front_left_ankle": [
+            "3fe37443a0000000",
+            "3fb328a580000000",
+            "3fba8a3220000000"
+          ],
+          "front_right_ankle": [
+            "3fe677ed00000000",
+            "bfd4c571a0000000",
+            "3fb949bce0000000"
+          ],
+          "rear_left_ankle": [
+            "3f84e00f80000000",
+            "3fb1db54a0000000",
+            "3fa9a97000000000"
+          ],
+          "rear_right_ankle": [
+            "3f9a21f4e0000000",
+            "bfd4efe8c0000000",
+            "3fa9100b20000000"
+          ]
+        },
+        "wheel_bottoms_w_m": {
+          "front_left_ankle": [
+            "3fe37443a0000000",
+            "3fb328a580000000",
+            "3fab7ac441e54442"
+          ],
+          "front_right_ankle": [
+            "3fe677ed00000000",
+            "bfd4c571a0000000",
+            "3fa8faa5c6d785b2"
+          ],
+          "rear_left_ankle": [
+            "3f84e00f80000000",
+            "3fb1db54a0000000",
+            "3f2051cc33ba5800"
+          ],
+          "rear_right_ankle": [
+            "3f9a21f4e0000000",
+            "bfd4efe8c0000000",
+            "bf5119e385331600"
+          ]
+        }
       },
       "raw_contacts": {
         "front_left_ankle": {
@@ -1648,14 +2872,20 @@
         },
         "signature_sha256": "75631057737394299ff54819abca8d7068208c014c53b782898680509db95544"
       },
-      "entry_sha256": "bf66ac55f9463274ce0d04e69a28da62087139812912e8122e88c956f244d339"
+      "entry_sha256": "b4262015535a84fd98a7e1c76690223f4484e02ab7fe7b73c733bc797d2e8751"
     },
     "P07": {
-      "schema": "wlr50_clean.ppo_phase_effective_entry.v1",
+      "schema": "wlr50_clean.ppo_phase_effective_entry.v2",
       "phase": "P07",
       "source_tick": 6648,
+      "predecessor_verify_tick": null,
+      "predecessor_verify_time_s": null,
+      "controller_anchor_tick": null,
+      "controller_anchor_time_s": null,
+      "target_entry_tick": 6649,
+      "source_replay_steps": 1,
       "effective_entry_offset_s": 0.008333333333333333,
-      "calibration_probe_file_sha256": "567c6bafcabb05123579bb78556c18bee5616e533580dbab77715e1925b210a8",
+      "calibration_probe_file_sha256": "15bcbc0c6ebc45b9c5af6b5aaa614492eed6f95c6e523be9a434825752b53b5d",
       "post_prime_fingerprint": {
         "root_position_m": 0.000357799232006073,
         "root_orientation": 9.660428681897646e-05,
@@ -1677,6 +2907,221 @@
         "wheel_velocity_rad_s": "3fb7671c20000000",
         "wheel_center_m": "3f3c04c000000000",
         "wheel_bottom_m": "3f3c496fdad34d00"
+      },
+      "effective_component_state": {
+        "schema": "wlr50_clean.phase_effective_entry_component_state.v1",
+        "units": {
+          "root_position_w_m": "m",
+          "root_orientation_wxyz": "unit_quaternion",
+          "root_linear_velocity_w_m_s": "m/s",
+          "root_angular_velocity_w_rad_s": "rad/s",
+          "servo_logical_position_deg": "deg",
+          "servo_logical_velocity_deg_s": "deg/s",
+          "wheel_logical_velocity_rad_s": "rad/s",
+          "wheel_centers_w_m": "m",
+          "wheel_bottoms_w_m": "m"
+        },
+        "root_position_w_m": [
+          0.7028673887252808,
+          -0.006116464734077454,
+          0.09373348951339722
+        ],
+        "root_orientation_wxyz": [
+          0.9996571386322041,
+          -0.02096022633103787,
+          -0.015692360456630215,
+          -0.0001546516263004225
+        ],
+        "root_linear_velocity_w_m_s": [
+          -0.008557915687561035,
+          0.0038716669660061598,
+          0.003104815725237131
+        ],
+        "root_angular_velocity_w_rad_s": [
+          0.03439706563949585,
+          -0.003403548151254654,
+          -0.009368729777634144
+        ],
+        "servo_logical_position_deg": [
+          21.931336017895074,
+          -12.205577578709807,
+          -0.35878820792723,
+          45.555506140325775,
+          6.318684587342907,
+          0.48951612265830985,
+          -0.9252107281828894,
+          0.7891663799643408
+        ],
+        "servo_logical_velocity_deg_s": [
+          8.025781340824926,
+          0.07293975022912484,
+          1.292621197831141,
+          1.3535049704841058,
+          -1.8786204793235584,
+          -1.0735642245441384,
+          -5.782255016885674,
+          2.0059915545132485
+        ],
+        "wheel_logical_velocity_rad_s": [
+          0.0003080982423853129,
+          -0.04605773091316223,
+          -0.049896448850631714,
+          0.00044851889833807945
+        ],
+        "servo_order": [
+          "front_left_hip",
+          "front_left_knee",
+          "front_right_hip",
+          "front_right_knee",
+          "rear_left_hip",
+          "rear_left_knee",
+          "rear_right_hip",
+          "rear_right_knee"
+        ],
+        "wheel_order": [
+          "front_left_ankle",
+          "front_right_ankle",
+          "rear_left_ankle",
+          "rear_right_ankle"
+        ],
+        "wheel_centers_w_m": {
+          "front_left_ankle": [
+            0.9755813479423523,
+            0.07366814464330673,
+            0.10018002241849899
+          ],
+          "front_right_ankle": [
+            1.0749412775039673,
+            -0.3251327574253082,
+            0.09888694435358047
+          ],
+          "rear_left_ankle": [
+            0.3854493796825409,
+            0.06732350587844849,
+            0.049832478165626526
+          ],
+          "rear_right_ankle": [
+            0.399779736995697,
+            -0.3293611705303192,
+            0.04929850623011589
+          ]
+        },
+        "wheel_bottoms_w_m": {
+          "front_left_ankle": [
+            0.9755813479423523,
+            0.07366814464330673,
+            0.05017983190430943
+          ],
+          "front_right_ankle": [
+            1.0749412775039673,
+            -0.3251327574253082,
+            0.048892834088984385
+          ],
+          "rear_left_ankle": [
+            0.3854493796825409,
+            0.06732350587844849,
+            -0.0001638442973999621
+          ],
+          "rear_right_ankle": [
+            0.399779736995697,
+            -0.3293611705303192,
+            -0.0006957906487498056
+          ]
+        },
+        "sha256": "ec9ca0648f412f0d2bd949b21381588c79885f89c14d8e4a2add7b01774ae163"
+      },
+      "effective_component_state_binary64_hex": {
+        "root_position_w_m": [
+          "3fe67de3c0000000",
+          "bf790d9400000000",
+          "3fb7feeb00000000"
+        ],
+        "root_orientation_wxyz": [
+          "3feffd30f7b46c95",
+          "bf957698fa6f2bda",
+          "bf9011a87bd544d6",
+          "bf24453f5abe5a5e"
+        ],
+        "root_linear_velocity_w_m_s": [
+          "bf8186d000000000",
+          "3f6fb77960000000",
+          "3f696f4540000000"
+        ],
+        "root_angular_velocity_w_rad_s": [
+          "3fa19c7e00000000",
+          "bf6be1c200000000",
+          "bf832fe9a0000000"
+        ],
+        "servo_logical_position_deg": [
+          "4035ee6c098a723b",
+          "c028694176e2b2f0",
+          "bfd6f662d0cf39c4",
+          "4046c71ad340b694",
+          "4019465540a18217",
+          "3fdf543b6e6ba899",
+          "bfed9b53876e85fc",
+          "3fe940d9da2195f1"
+        ],
+        "servo_logical_velocity_deg_s": [
+          "40200d33363f6153",
+          "3fb2ac2df1cffffb",
+          "3ff4ae9390acd14b",
+          "3ff5a7f4d3f33e2d",
+          "bffe0ed45904a600",
+          "bff12d51ae2929ad",
+          "c0172107758a9fa4",
+          "40000c454cd57e2a"
+        ],
+        "wheel_logical_velocity_rad_s": [
+          "3f343107e0000000",
+          "bfa794e100000000",
+          "bfa98c0700000000",
+          "3f3d64e600000000"
+        ],
+        "wheel_centers_w_m": {
+          "front_left_ankle": [
+            "3fef37f660000000",
+            "3fb2dbea60000000",
+            "3fb9a565e0000000"
+          ],
+          "front_right_ankle": [
+            "3ff132f5a0000000",
+            "bfd4cef9a0000000",
+            "3fb950a7a0000000"
+          ],
+          "rear_left_ankle": [
+            "3fd8ab33e0000000",
+            "3fb13c1d00000000",
+            "3fa983a480000000"
+          ],
+          "rear_right_ankle": [
+            "3fd995fdc0000000",
+            "bfd51440e0000000",
+            "3fa93da760000000"
+          ]
+        },
+        "wheel_bottoms_w_m": {
+          "front_left_ankle": [
+            "3fef37f660000000",
+            "3fb2dbea60000000",
+            "3fa9b12bc1e54442"
+          ],
+          "front_right_ankle": [
+            "3ff132f5a0000000",
+            "bfd4cef9a0000000",
+            "3fa9087b46d785b2"
+          ],
+          "rear_left_ankle": [
+            "3fd8ab33e0000000",
+            "3fb13c1d00000000",
+            "bf2579b3cc45a800"
+          ],
+          "rear_right_ankle": [
+            "3fd995fdc0000000",
+            "bfd51440e0000000",
+            "bf46ccb70a662c00"
+          ]
+        }
       },
       "raw_contacts": {
         "front_left_ankle": {
@@ -1833,14 +3278,20 @@
         },
         "signature_sha256": "e32717d4d9b7271b35b9422aa4cc5be1a2e36e33460933dbaf58caf4233110f2"
       },
-      "entry_sha256": "19a45cac6b3f05d7cfbd413f6b36d82a4119b915bb8b6fb323e19eb23ac7f5f0"
+      "entry_sha256": "b60a496c5cc2e5ae057156bdd71e916365d781e4a329d1f4cf71334d05862c56"
     },
     "P08": {
-      "schema": "wlr50_clean.ppo_phase_effective_entry.v1",
+      "schema": "wlr50_clean.ppo_phase_effective_entry.v2",
       "phase": "P08",
       "source_tick": 6856,
+      "predecessor_verify_tick": null,
+      "predecessor_verify_time_s": null,
+      "controller_anchor_tick": null,
+      "controller_anchor_time_s": null,
+      "target_entry_tick": 6857,
+      "source_replay_steps": 1,
       "effective_entry_offset_s": 0.008333333333333333,
-      "calibration_probe_file_sha256": "75466cf871c27648b9ac03f3bca123e178ea16342b99c5f41d0b9ee6fa11e907",
+      "calibration_probe_file_sha256": "92021e0c9e47f02461b9f1264fc9dc5d4a488578bff71d86ee87dbb89ce2adc5",
       "post_prime_fingerprint": {
         "root_position_m": 0.00045850127935409546,
         "root_orientation": 0.0006235369616163678,
@@ -1862,6 +3313,221 @@
         "wheel_velocity_rad_s": "3fe2c5fe68000000",
         "wheel_center_m": "3f58629800000000",
         "wheel_bottom_m": "3f586526b87f0cc0"
+      },
+      "effective_component_state": {
+        "schema": "wlr50_clean.phase_effective_entry_component_state.v1",
+        "units": {
+          "root_position_w_m": "m",
+          "root_orientation_wxyz": "unit_quaternion",
+          "root_linear_velocity_w_m_s": "m/s",
+          "root_angular_velocity_w_rad_s": "rad/s",
+          "servo_logical_position_deg": "deg",
+          "servo_logical_velocity_deg_s": "deg/s",
+          "wheel_logical_velocity_rad_s": "rad/s",
+          "wheel_centers_w_m": "m",
+          "wheel_bottoms_w_m": "m"
+        },
+        "root_position_w_m": [
+          0.7015331983566284,
+          -0.0059722065925598145,
+          0.0948808491230011
+        ],
+        "root_orientation_wxyz": [
+          0.9995980922153644,
+          -0.02149279801757827,
+          -0.018485220266311955,
+          -0.00010151101078677966
+        ],
+        "root_linear_velocity_w_m_s": [
+          -0.009192133322358131,
+          -0.00639066519215703,
+          0.030795488506555557
+        ],
+        "root_angular_velocity_w_rad_s": [
+          0.051130156964063644,
+          -0.03995877504348755,
+          -0.00030400147079490125
+        ],
+        "servo_logical_position_deg": [
+          39.78259890432992,
+          -12.781795388980532,
+          4.863074520314212,
+          30.42494665692795,
+          6.6290283195476,
+          0.5924650026969733,
+          -0.5923897238737577,
+          0.5903731105213115
+        ],
+        "servo_logical_velocity_deg_s": [
+          -21.702038163123415,
+          -0.33170194718273394,
+          -21.07118310836082,
+          16.975837540514316,
+          -14.375683561233428,
+          11.165701264549828,
+          7.621226674964132,
+          -1.5165550329072386
+        ],
+        "wheel_logical_velocity_rad_s": [
+          0.0010950971627607942,
+          -0.5648117661476135,
+          0.1497322916984558,
+          -0.0031577828340232372
+        ],
+        "servo_order": [
+          "front_left_hip",
+          "front_left_knee",
+          "front_right_hip",
+          "front_right_knee",
+          "rear_left_hip",
+          "rear_left_knee",
+          "rear_right_hip",
+          "rear_right_knee"
+        ],
+        "wheel_order": [
+          "front_left_ankle",
+          "front_right_ankle",
+          "rear_left_ankle",
+          "rear_right_ankle"
+        ],
+        "wheel_centers_w_m": {
+          "front_left_ankle": [
+            0.9975553750991821,
+            0.07603517174720764,
+            0.15350665152072906
+          ],
+          "front_right_ankle": [
+            1.0514276027679443,
+            -0.32499179244041443,
+            0.09991607815027237
+          ],
+          "rear_left_ankle": [
+            0.3832782208919525,
+            0.06738848239183426,
+            0.04990043491125107
+          ],
+          "rear_right_ankle": [
+            0.39835935831069946,
+            -0.3292924463748932,
+            0.04991243779659271
+          ]
+        },
+        "wheel_bottoms_w_m": {
+          "front_left_ankle": [
+            0.9975553750991821,
+            0.07603517174720764,
+            0.1035064610065395
+          ],
+          "front_right_ankle": [
+            1.0514276027679443,
+            -0.32499179244041443,
+            0.04992196788567628
+          ],
+          "rear_left_ankle": [
+            0.3832782208919525,
+            0.06738848239183426,
+            -9.588755177541985e-05
+          ],
+          "rear_right_ankle": [
+            0.39835935831069946,
+            -0.3292924463748932,
+            -8.185908227298366e-05
+          ]
+        },
+        "sha256": "1276d97859fb248cbfa1dc254495945ec8bee6e3b6028aa58fe16aec03efb8e4"
+      },
+      "effective_component_state_binary64_hex": {
+        "root_position_w_m": [
+          "3fe672f5c0000000",
+          "bf78765000000000",
+          "3fb84a1c80000000"
+        ],
+        "root_orientation_wxyz": [
+          "3feffcb52366affc",
+          "bf960235425712b5",
+          "bf92edca22033e04",
+          "bf1a9c49e2d455f8"
+        ],
+        "root_linear_velocity_w_m_s": [
+          "bf82d35340000000",
+          "bf7a2d1920000000",
+          "3f9f88da40000000"
+        ],
+        "root_angular_velocity_w_rad_s": [
+          "3faa2dbb60000000",
+          "bfa4757a00000000",
+          "bf33ec4c60000000"
+        ],
+        "servo_logical_position_deg": [
+          "4043e42c336dfdc1",
+          "c02990477c37ab83",
+          "401373c9ce9b0aae",
+          "403e6cc94dda0cd2",
+          "401a841ffff2dbef",
+          "3fe2f5792a53752a",
+          "bfe2f4db4b50c6bc",
+          "3fe2e45626440ef6"
+        ],
+        "servo_logical_velocity_deg_s": [
+          "c035b3b8c5e728b3",
+          "bfd53a9acdcad6d2",
+          "c03512390e626ff6",
+          "4030f9d07d32b7d3",
+          "c02cc059988248e7",
+          "402654d6cbd04b72",
+          "401e7c22d8717ebd",
+          "bff843cf35cebb92"
+        ],
+        "wheel_logical_velocity_rad_s": [
+          "3f51f12ba0000000",
+          "bfe212f020000000",
+          "3fc32a6d80000000",
+          "bf69de59c0000000"
+        ],
+        "wheel_centers_w_m": {
+          "front_left_ankle": [
+            "3fefebf940000000",
+            "3fb3770a80000000",
+            "3fc3a61b20000000"
+          ],
+          "front_right_ankle": [
+            "3ff0d2a5c0000000",
+            "bfd4ccaa60000000",
+            "3fb99419a0000000"
+          ],
+          "rear_left_ankle": [
+            "3fd887a160000000",
+            "3fb1405f20000000",
+            "3fa98c8cc0000000"
+          ],
+          "rear_right_ankle": [
+            "3fd97eb840000000",
+            "bfd51320a0000000",
+            "3fa98e1f80000000"
+          ]
+        },
+        "wheel_bottoms_w_m": {
+          "front_left_ankle": [
+            "3fefebf940000000",
+            "3fb3770a80000000",
+            "3fba7f6640f2a221"
+          ],
+          "front_right_ankle": [
+            "3ff0d2a5c0000000",
+            "bfd4ccaa60000000",
+            "3fa98f5f46d785b2"
+          ],
+          "rear_left_ankle": [
+            "3fd887a160000000",
+            "3fb1405f20000000",
+            "bf1922e7988b5000"
+          ],
+          "rear_right_ankle": [
+            "3fd97eb840000000",
+            "bfd51320a0000000",
+            "bf15757853316000"
+          ]
+        }
       },
       "raw_contacts": {
         "front_left_ankle": {
@@ -2018,14 +3684,20 @@
         },
         "signature_sha256": "e32717d4d9b7271b35b9422aa4cc5be1a2e36e33460933dbaf58caf4233110f2"
       },
-      "entry_sha256": "8a0111d983e88243d03cfac27a0099b0aedcbd7cb26d368c2026f13721d92ee8"
+      "entry_sha256": "445fd26428f9d1b1cb1540394845e05a6658e29eaee54578148958f074c88ba0"
     },
     "P09": {
-      "schema": "wlr50_clean.ppo_phase_effective_entry.v1",
+      "schema": "wlr50_clean.ppo_phase_effective_entry.v2",
       "phase": "P09",
       "source_tick": 6912,
+      "predecessor_verify_tick": null,
+      "predecessor_verify_time_s": null,
+      "controller_anchor_tick": null,
+      "controller_anchor_time_s": null,
+      "target_entry_tick": 6913,
+      "source_replay_steps": 1,
       "effective_entry_offset_s": 0.008333333333333333,
-      "calibration_probe_file_sha256": "0c36685e837b94771a2c7148c286d224180aea00e66dcf4d26b67ec9647d5bf0",
+      "calibration_probe_file_sha256": "e9acc98285da2601a35a8782a0632a2f7c879b7ff83a3bb42d5a3176a76c2ad4",
       "post_prime_fingerprint": {
         "root_position_m": 0.0010388121008872986,
         "root_orientation": 0.002046658751628126,
@@ -2047,6 +3719,221 @@
         "wheel_velocity_rad_s": "3fc81aea80000000",
         "wheel_center_m": "3f590f0000000000",
         "wheel_bottom_m": "3f590ea85f7e5f40"
+      },
+      "effective_component_state": {
+        "schema": "wlr50_clean.phase_effective_entry_component_state.v1",
+        "units": {
+          "root_position_w_m": "m",
+          "root_orientation_wxyz": "unit_quaternion",
+          "root_linear_velocity_w_m_s": "m/s",
+          "root_angular_velocity_w_rad_s": "rad/s",
+          "servo_logical_position_deg": "deg",
+          "servo_logical_velocity_deg_s": "deg/s",
+          "wheel_logical_velocity_rad_s": "rad/s",
+          "wheel_centers_w_m": "m",
+          "wheel_bottoms_w_m": "m"
+        },
+        "root_position_w_m": [
+          0.7539186477661133,
+          0.0025130510330200195,
+          0.07201971858739853
+        ],
+        "root_orientation_wxyz": [
+          0.9931236071082891,
+          -0.10234940480164029,
+          -0.05656707817477859,
+          0.005501455056546988
+        ],
+        "root_linear_velocity_w_m_s": [
+          0.08139030635356903,
+          0.0045450180768966675,
+          -0.09328703582286835
+        ],
+        "root_angular_velocity_w_rad_s": [
+          -0.4729378819465637,
+          0.1245114803314209,
+          -0.005663346964865923
+        ],
+        "servo_logical_position_deg": [
+          37.316586425253504,
+          -12.772006874126257,
+          -9.815995371680602,
+          28.9086719819418,
+          29.179031906807158,
+          -0.6581854830972327,
+          -0.660191197495476,
+          0.6403466164705329
+        ],
+        "servo_logical_velocity_deg_s": [
+          3.1175145553697328,
+          0.3836575420125813,
+          -10.741273309525235,
+          16.857571107488255,
+          26.644284499369185,
+          7.059478620450079,
+          11.654358610981927,
+          -0.4283806602024728
+        ],
+        "wheel_logical_velocity_rad_s": [
+          0.0019390999805182219,
+          -0.13357976078987122,
+          -0.13624829053878784,
+          -0.0012281575473025441
+        ],
+        "servo_order": [
+          "front_left_hip",
+          "front_left_knee",
+          "front_right_hip",
+          "front_right_knee",
+          "rear_left_hip",
+          "rear_left_knee",
+          "rear_right_hip",
+          "rear_right_knee"
+        ],
+        "wheel_order": [
+          "front_left_ankle",
+          "front_right_ankle",
+          "rear_left_ankle",
+          "rear_right_ankle"
+        ],
+        "wheel_centers_w_m": {
+          "front_left_ankle": [
+            1.042400598526001,
+            0.0960618183016777,
+            0.13117796182632446
+          ],
+          "front_right_ankle": [
+            1.064828872680664,
+            -0.31773391366004944,
+            0.0978967696428299
+          ],
+          "rear_left_ankle": [
+            0.39336103200912476,
+            0.07520949840545654,
+            0.052530545741319656
+          ],
+          "rear_right_ankle": [
+            0.4563277065753937,
+            -0.32866427302360535,
+            0.05720449239015579
+          ]
+        },
+        "wheel_bottoms_w_m": {
+          "front_left_ankle": [
+            1.042400598526001,
+            0.0960618183016777,
+            0.0811777713121349
+          ],
+          "front_right_ankle": [
+            1.064828872680664,
+            -0.31773391366004944,
+            0.047902659378233806
+          ],
+          "rear_left_ankle": [
+            0.39336103200912476,
+            0.07520949840545654,
+            0.0025342232782931684
+          ],
+          "rear_right_ankle": [
+            0.4563277065753937,
+            -0.32866427302360535,
+            0.007210195511290096
+          ]
+        },
+        "sha256": "4f963c190e00f2f4d2ea7b14121e90739371c551ce0ff3f7ae1eb066bffb5f64"
+      },
+      "effective_component_state_binary64_hex": {
+        "root_position_w_m": [
+          "3fe8201a00000000",
+          "3f64964000000000",
+          "3fb26fe260000000"
+        ],
+        "root_orientation_wxyz": [
+          "3fefc7ab28ad4d0b",
+          "bfba339212635b34",
+          "bfacf65c2d94f752",
+          "3f7688b198c5c48c"
+        ],
+        "root_linear_velocity_w_m_s": [
+          "3fb4d5fec0000000",
+          "3f729dcc00000000",
+          "bfb7e1a8c0000000"
+        ],
+        "root_angular_velocity_w_rad_s": [
+          "bfde449d40000000",
+          "3fbfdffc00000000",
+          "bf77327320000000"
+        ],
+        "servo_logical_position_deg": [
+          "4042a885e76b6922",
+          "c0298b447c2951a5",
+          "c023a1ca25361c71",
+          "403ce89eba1d3b46",
+          "403d2dd508f8ad61",
+          "bfe50fdb009358ae",
+          "bfe520494a4b3466",
+          "3fe47db82ffb0bd4"
+        ],
+        "servo_logical_velocity_deg_s": [
+          "4008f0ab78a0ef95",
+          "3fd88dd85cf3b2b6",
+          "c0257b882cdb9dfd",
+          "4030db89c7b4a814",
+          "403aa4efd4361c42",
+          "401c3ce7f6a693c0",
+          "40274f0817840bf6",
+          "bfdb6a96b773be9e"
+        ],
+        "wheel_logical_velocity_rad_s": [
+          "3f5fc52cc0000000",
+          "bfc1192440000000",
+          "bfc1709580000000",
+          "bf541f4420000000"
+        ],
+        "wheel_centers_w_m": {
+          "front_left_ankle": [
+            "3ff0adac40000000",
+            "3fb89781e0000000",
+            "3fc0ca7080000000"
+          ],
+          "front_right_ankle": [
+            "3ff1098a00000000",
+            "bfd455c0a0000000",
+            "3fb90fc340000000"
+          ],
+          "rear_left_ankle": [
+            "3fd92cd3c0000000",
+            "3fb340ee00000000",
+            "3faae548a0000000"
+          ],
+          "rear_right_ankle": [
+            "3fdd347920000000",
+            "bfd508d5e0000000",
+            "3fad49e840000000"
+          ]
+        },
+        "wheel_bottoms_w_m": {
+          "front_left_ankle": [
+            "3ff0adac40000000",
+            "3fb89781e0000000",
+            "3fb4c81100f2a221"
+          ],
+          "front_right_ankle": [
+            "3ff1098a00000000",
+            "bfd455c0a0000000",
+            "3fa886b286d785b2"
+          ],
+          "rear_left_ankle": [
+            "3fd92cd3c0000000",
+            "3fb340ee00000000",
+            "3f64c2a6c33ba580"
+          ],
+          "rear_right_ankle": [
+            "3fdd347920000000",
+            "bfd508d5e0000000",
+            "3f7d88701eb33a80"
+          ]
+        }
       },
       "raw_contacts": {
         "front_left_ankle": {
@@ -2203,17 +4090,23 @@
         },
         "signature_sha256": "e32717d4d9b7271b35b9422aa4cc5be1a2e36e33460933dbaf58caf4233110f2"
       },
-      "entry_sha256": "3a4c76813d28be4cc73fb38261bbfc1b8b0068e27fa96f486c456c5e5ec5bfd9"
+      "entry_sha256": "3812db9805eb764d8ab2b3e9ac2cb9715aa18e78fbd159617be010c59e2f5897"
     },
     "P10": {
-      "schema": "wlr50_clean.ppo_phase_effective_entry.v1",
+      "schema": "wlr50_clean.ppo_phase_effective_entry.v2",
       "phase": "P10",
       "source_tick": 7794,
+      "predecessor_verify_tick": null,
+      "predecessor_verify_time_s": null,
+      "controller_anchor_tick": null,
+      "controller_anchor_time_s": null,
+      "target_entry_tick": 7795,
+      "source_replay_steps": 1,
       "effective_entry_offset_s": 0.008333333333333333,
-      "calibration_probe_file_sha256": "313ff1b132d5a4480c9d937439fcb251e2dcdc4308a6d613059f996f5ae1d62f",
+      "calibration_probe_file_sha256": "c205374ccf4a041ffc8582486548f425bb0d43e66d7eafee73e2eee62c4f2070",
       "post_prime_fingerprint": {
         "root_position_m": 0.000396728515625,
-        "root_orientation": 0.0012816765712606864,
+        "root_orientation": 0.001281676571260686,
         "root_linear_velocity_m_s": 0.010501854121685028,
         "root_angular_velocity_rad_s": 0.07073688507080078,
         "servo_position_deg": 0.27040035905163506,
@@ -2224,7 +4117,7 @@
       },
       "post_prime_fingerprint_binary64_hex": {
         "root_position_m": "3f3a000000000000",
-        "root_orientation": "3f54ffbdbd498c7d",
+        "root_orientation": "3f54ffbdbd498c7b",
         "root_linear_velocity_m_s": "3f8581ff00000000",
         "root_angular_velocity_rad_s": "3fb21bd000000000",
         "servo_position_deg": "3fd14e3d4ebd0500",
@@ -2232,6 +4125,221 @@
         "wheel_velocity_rad_s": "3fc3a81ac0000000",
         "wheel_center_m": "3f49bae000000000",
         "wheel_bottom_m": "3f49bffd70fe1980"
+      },
+      "effective_component_state": {
+        "schema": "wlr50_clean.phase_effective_entry_component_state.v1",
+        "units": {
+          "root_position_w_m": "m",
+          "root_orientation_wxyz": "unit_quaternion",
+          "root_linear_velocity_w_m_s": "m/s",
+          "root_angular_velocity_w_rad_s": "rad/s",
+          "servo_logical_position_deg": "deg",
+          "servo_logical_velocity_deg_s": "deg/s",
+          "wheel_logical_velocity_rad_s": "rad/s",
+          "wheel_centers_w_m": "m",
+          "wheel_bottoms_w_m": "m"
+        },
+        "root_position_w_m": [
+          0.8019106984138489,
+          -0.02548767626285553,
+          0.1062682569026947
+        ],
+        "root_orientation_wxyz": [
+          0.9950694653715897,
+          -0.015418986202389798,
+          -0.08687087782840686,
+          -0.04530413375080721
+        ],
+        "root_linear_velocity_w_m_s": [
+          0.048176370561122894,
+          0.007311398163437843,
+          0.005973750725388527
+        ],
+        "root_angular_velocity_w_rad_s": [
+          -0.22239528596401215,
+          -0.007550201844424009,
+          -0.017743661999702454
+        ],
+        "servo_logical_position_deg": [
+          -18.756281867883892,
+          -32.38038458964472,
+          -0.2910640008204975,
+          30.619156255788095,
+          15.832430749704752,
+          20.035535598436738,
+          -6.519525406092846,
+          -49.49254369134341
+        ],
+        "servo_logical_velocity_deg_s": [
+          -12.533322848666174,
+          1.7244562795672005,
+          4.794159297303432,
+          1.9690304127065477,
+          2.3055164805160526,
+          0.7344603266526675,
+          3.1737558270994985,
+          34.29286352063828
+        ],
+        "wheel_logical_velocity_rad_s": [
+          0.350683331489563,
+          0.0026846514083445072,
+          -0.001662636175751686,
+          -0.1876269280910492
+        ],
+        "servo_order": [
+          "front_left_hip",
+          "front_left_knee",
+          "front_right_hip",
+          "front_right_knee",
+          "rear_left_hip",
+          "rear_left_knee",
+          "rear_right_hip",
+          "rear_right_knee"
+        ],
+        "wheel_order": [
+          "front_left_ankle",
+          "front_right_ankle",
+          "rear_left_ankle",
+          "rear_right_ankle"
+        ],
+        "wheel_centers_w_m": {
+          "front_left_ankle": [
+            0.9401574730873108,
+            0.04155602306127548,
+            0.10028213262557983
+          ],
+          "front_right_ankle": [
+            1.1101630926132202,
+            -0.3737066090106964,
+            0.13197371363639832
+          ],
+          "rear_left_ankle": [
+            0.4239518940448761,
+            0.08373013138771057,
+            0.0501469224691391
+          ],
+          "rear_right_ankle": [
+            0.5927289128303528,
+            -0.3290126621723175,
+            0.09910830110311508
+          ]
+        },
+        "wheel_bottoms_w_m": {
+          "front_left_ankle": [
+            0.9401574730873108,
+            0.04155602306127548,
+            0.05028194211139027
+          ],
+          "front_right_ankle": [
+            1.1101630926132202,
+            -0.3737066090106964,
+            0.08197960337180223
+          ],
+          "rear_left_ankle": [
+            0.4239518940448761,
+            0.08373013138771057,
+            0.00015060000611261115
+          ],
+          "rear_right_ankle": [
+            0.5927289128303528,
+            -0.3290126621723175,
+            0.049114004224249386
+          ]
+        },
+        "sha256": "6e190cb26123931a3db57294bbdd484be7a821c1b46dad836886d3925df4f4af"
+      },
+      "effective_component_state_binary64_hex": {
+        "root_position_w_m": [
+          "3fe9a940a0000000",
+          "bf9a197100000000",
+          "3fbb346580000000"
+        ],
+        "root_orientation_wxyz": [
+          "3fefd79beb609d24",
+          "bf8f93fd4bd05cc2",
+          "bfb63d2b7b3f7110",
+          "bfa7321a79aaa9cf"
+        ],
+        "root_linear_velocity_w_m_s": [
+          "3fa8aa92c0000000",
+          "3f7df28e80000000",
+          "3f7877ee80000000"
+        ],
+        "root_angular_velocity_w_rad_s": [
+          "bfcc7772e0000000",
+          "bf7eecf5e0000000",
+          "bf922b6500000000"
+        ],
+        "servo_logical_position_deg": [
+          "c032c19bb0411e7e",
+          "c04030b071363696",
+          "bfd2a0cae72448f9",
+          "403e9e81063db943",
+          "402faa345cfc5556",
+          "40340918dc69212c",
+          "c01a13fe77d27088",
+          "c048bf0babf315e5"
+        ],
+        "servo_logical_velocity_deg_s": [
+          "c029110fb1427628",
+          "3ffb975f77c1f7a4",
+          "40132d381846ee2a",
+          "3fff812608b676ce",
+          "400271b29fe1a4cc",
+          "3fe780b2f165d88c",
+          "400963da18570de1",
+          "4041257c8d45aa9a"
+        ],
+        "wheel_logical_velocity_rad_s": [
+          "3fd6719880000000",
+          "3f65fe1f40000000",
+          "bf5b3d9a00000000",
+          "bfc80428c0000000"
+        ],
+        "wheel_centers_w_m": {
+          "front_left_ankle": [
+            "3fee15c520000000",
+            "3fa546d4c0000000",
+            "3fb9ac1700000000"
+          ],
+          "front_right_ankle": [
+            "3ff1c33a60000000",
+            "bfd7eacf20000000",
+            "3fc0e483c0000000"
+          ],
+          "rear_left_ankle": [
+            "3fdb220720000000",
+            "3fb56f5680000000",
+            "3fa9acdb80000000"
+          ],
+          "rear_right_ankle": [
+            "3fe2f7a2a0000000",
+            "bfd50e8b20000000",
+            "3fb95f2960000000"
+          ]
+        },
+        "wheel_bottoms_w_m": {
+          "front_left_ankle": [
+            "3fee15c520000000",
+            "3fa546d4c0000000",
+            "3fa9be8e01e54442"
+          ],
+          "front_right_ankle": [
+            "3ff1c33a60000000",
+            "bfd7eacf20000000",
+            "3fb4fc9d836bc2d9"
+          ],
+          "rear_left_ankle": [
+            "3fdb220720000000",
+            "3fb56f5680000000",
+            "3f23bd4c33ba5800"
+          ],
+          "rear_right_ankle": [
+            "3fe2f7a2a0000000",
+            "bfd50e8b20000000",
+            "3fa9257883d66750"
+          ]
+        }
       },
       "raw_contacts": {
         "front_left_ankle": {
@@ -2388,17 +4496,31 @@
         },
         "signature_sha256": "70a5e7e6282cd87f682505850f75ec5720f020b313fd2a0d592f84018cb41523"
       },
-      "entry_sha256": "7d27b6e13468ac6513abfc656d6ee245174b5778570773933bd618178db67d34"
+      "controller_restore_mode": "source_proven_execute_after_prime",
+      "source_transition_verified": true,
+      "source_transition_tick": 7794,
+      "source_transition_time_s": 64.95,
+      "source_transition_row_canonical_sha256": "904c604cb85107f92dbcb75519cd7229ad7b3307c994fa20b7cdb27e8147278e",
+      "consumed_motion_tick": 0,
+      "first_episode_motion_tick": 1,
+      "entry_guards_from_source_not_replayed": true,
+      "entry_sha256": "85b06c0d55eb7a8e4770c67902498152a4d518c13b0b9a1d351647d0075110cf"
     },
     "P11": {
-      "schema": "wlr50_clean.ppo_phase_effective_entry.v1",
+      "schema": "wlr50_clean.ppo_phase_effective_entry.v2",
       "phase": "P11",
       "source_tick": 7810,
+      "predecessor_verify_tick": null,
+      "predecessor_verify_time_s": null,
+      "controller_anchor_tick": null,
+      "controller_anchor_time_s": null,
+      "target_entry_tick": 7811,
+      "source_replay_steps": 1,
       "effective_entry_offset_s": 0.008333333333333333,
-      "calibration_probe_file_sha256": "1fc75ce0e8d37a782cd145cde7104e571c21b5bbad72817b669a1dc21dabde6f",
+      "calibration_probe_file_sha256": "e1d0df30ce5f213c9a70bee2058853f5e5f1c00bf79f642352402e44f3768b6c",
       "post_prime_fingerprint": {
         "root_position_m": 0.00021719932556152344,
-        "root_orientation": 0.00021622410021765578,
+        "root_orientation": 0.00021622410021765513,
         "root_linear_velocity_m_s": 0.00532337580807507,
         "root_angular_velocity_rad_s": 0.044860422844067216,
         "servo_position_deg": 0.17843186187741367,
@@ -2409,7 +4531,7 @@
       },
       "post_prime_fingerprint_binary64_hex": {
         "root_position_m": "3f2c780000000000",
-        "root_orientation": "3f2c5746e0ca182c",
+        "root_orientation": "3f2c5746e0ca1814",
         "root_linear_velocity_m_s": "3f75cdf6d0000000",
         "root_angular_velocity_rad_s": "3fa6f7f202000000",
         "servo_position_deg": "3fc6d6daf1a9f800",
@@ -2417,6 +4539,221 @@
         "wheel_velocity_rad_s": "3fb9903220000000",
         "wheel_center_m": "3f413e4000000000",
         "wheel_bottom_m": "3f41435d70fe1980"
+      },
+      "effective_component_state": {
+        "schema": "wlr50_clean.phase_effective_entry_component_state.v1",
+        "units": {
+          "root_position_w_m": "m",
+          "root_orientation_wxyz": "unit_quaternion",
+          "root_linear_velocity_w_m_s": "m/s",
+          "root_angular_velocity_w_rad_s": "rad/s",
+          "servo_logical_position_deg": "deg",
+          "servo_logical_velocity_deg_s": "deg/s",
+          "wheel_logical_velocity_rad_s": "rad/s",
+          "wheel_centers_w_m": "m",
+          "wheel_bottoms_w_m": "m"
+        },
+        "root_position_w_m": [
+          0.8060920834541321,
+          -0.024819418787956238,
+          0.1069692075252533
+        ],
+        "root_orientation_wxyz": [
+          0.9950600370032713,
+          -0.02446597174392574,
+          -0.085234208021768,
+          -0.04463259760058183
+        ],
+        "root_linear_velocity_w_m_s": [
+          0.016038302332162857,
+          0.0016545088728889823,
+          7.48231541365385e-05
+        ],
+        "root_angular_velocity_w_rad_s": [
+          -0.0023317409213632345,
+          -0.024023128673434258,
+          -0.004407720640301704
+        ],
+        "servo_logical_position_deg": [
+          -19.026002623113108,
+          -33.07157241289333,
+          -0.2170264310844253,
+          30.561256742193898,
+          15.830757353358099,
+          20.112598915294697,
+          -6.473802839128312,
+          -46.575926557248316
+        ],
+        "servo_logical_velocity_deg_s": [
+          -8.249815814469574,
+          7.5714952138436225,
+          15.870788064887124,
+          0.722226337271264,
+          2.0982780823706992,
+          -1.1272721364220641,
+          7.350810094213218,
+          -0.08582869071890914
+        ],
+        "wheel_logical_velocity_rad_s": [
+          0.337887704372406,
+          0.0013383415061980486,
+          6.00434432271868e-05,
+          -0.09353768080472946
+        ],
+        "servo_order": [
+          "front_left_hip",
+          "front_left_knee",
+          "front_right_hip",
+          "front_right_knee",
+          "rear_left_hip",
+          "rear_left_knee",
+          "rear_right_hip",
+          "rear_right_knee"
+        ],
+        "wheel_order": [
+          "front_left_ankle",
+          "front_right_ankle",
+          "rear_left_ankle",
+          "rear_right_ankle"
+        ],
+        "wheel_centers_w_m": {
+          "front_left_ankle": [
+            0.9424603581428528,
+            0.04228981211781502,
+            0.10051925480365753
+          ],
+          "front_right_ankle": [
+            1.1143759489059448,
+            -0.37261250615119934,
+            0.13788148760795593
+          ],
+          "rear_left_ankle": [
+            0.42773979902267456,
+            0.08351515233516693,
+            0.050507016479969025
+          ],
+          "rear_right_ankle": [
+            0.593876302242279,
+            -0.3283912241458893,
+            0.09864424169063568
+          ]
+        },
+        "wheel_bottoms_w_m": {
+          "front_left_ankle": [
+            0.9424603581428528,
+            0.04228981211781502,
+            0.050519064289467966
+          ],
+          "front_right_ankle": [
+            1.1143759489059448,
+            -0.37261250615119934,
+            0.08788737734335984
+          ],
+          "rear_left_ankle": [
+            0.42773979902267456,
+            0.08351515233516693,
+            0.0005106940169425367
+          ],
+          "rear_right_ankle": [
+            0.593876302242279,
+            -0.3283912241458893,
+            0.048649944811769985
+          ]
+        },
+        "sha256": "144ca668e04d5a233d4808a65034c493f62138c74383fcee49e1a86a2dbd51d2"
+      },
+      "effective_component_state_binary64_hex": {
+        "root_position_w_m": [
+          "3fe9cb81a0000000",
+          "bf996a4300000000",
+          "3fbb625580000000"
+        ],
+        "root_orientation_wxyz": [
+          "3fefd788258f8a09",
+          "bf990d9b92052443",
+          "bfb5d1e8b7f4365b",
+          "bfa6da15760f5fb4"
+        ],
+        "root_linear_velocity_w_m_s": [
+          "3f906c5840000000",
+          "3f5b1b8360000000",
+          "3f139d4c00000000"
+        ],
+        "root_angular_velocity_w_rad_s": [
+          "bf631a03e0000000",
+          "bf989984e0000000",
+          "bf720dd480000000"
+        ],
+        "servo_logical_position_deg": [
+          "c03306a81b9fe18a",
+          "c040892948ea561a",
+          "bfcbc785a7f006b3",
+          "403e8fae859861de",
+          "402fa959071f2b4a",
+          "40341cd34852c17c",
+          "c019e52c924b3b71",
+          "c04749b7f62023c3"
+        ],
+        "servo_logical_velocity_deg_s": [
+          "c0207fe7dbc25742",
+          "401e49360a951d94",
+          "402fbdd7eee8dfe9",
+          "3fe71c7a685c7a6d",
+          "4000c94604ed90e4",
+          "bff2094e81f9ff3f",
+          "401d673ac2e70282",
+          "bfb5f8de7bb23b0c"
+        ],
+        "wheel_logical_velocity_rad_s": [
+          "3fd59ff3c0000000",
+          "3f55ed6940000000",
+          "3f0f7ae500000000",
+          "bfb7f215e0000000"
+        ],
+        "wheel_centers_w_m": {
+          "front_left_ankle": [
+            "3fee28a2a0000000",
+            "3fa5a702a0000000",
+            "3fb9bba140000000"
+          ],
+          "front_right_ankle": [
+            "3ff1d47be0000000",
+            "bfd7d8e220000000",
+            "3fc1a619c0000000"
+          ],
+          "rear_left_ankle": [
+            "3fdb6016c0000000",
+            "3fb5613fc0000000",
+            "3fa9dc0e40000000"
+          ],
+          "rear_right_ankle": [
+            "3fe30108e0000000",
+            "bfd5045ca0000000",
+            "3fb940bfc0000000"
+          ]
+        },
+        "wheel_bottoms_w_m": {
+          "front_left_ankle": [
+            "3fee28a2a0000000",
+            "3fa5a702a0000000",
+            "3fa9dda281e54442"
+          ],
+          "front_right_ankle": [
+            "3ff1d47be0000000",
+            "bfd7d8e220000000",
+            "3fb67fc9836bc2d9"
+          ],
+          "rear_left_ankle": [
+            "3fdb6016c0000000",
+            "3fb5613fc0000000",
+            "3f40bc030cee9600"
+          ],
+          "rear_right_ankle": [
+            "3fe30108e0000000",
+            "bfd5045ca0000000",
+            "3fa8e8a543d66750"
+          ]
+        }
       },
       "raw_contacts": {
         "front_left_ankle": {
@@ -2573,14 +4910,20 @@
         },
         "signature_sha256": "70a5e7e6282cd87f682505850f75ec5720f020b313fd2a0d592f84018cb41523"
       },
-      "entry_sha256": "7b02e73008f79f39fe00b41e92bb30a4fc2392df2b432a52bddae6770cd19890"
+      "entry_sha256": "8559329c3f5ddcc57071b26afe01591eb3b2b674cef17b91a224fbff871af433"
     },
     "P12": {
-      "schema": "wlr50_clean.ppo_phase_effective_entry.v1",
+      "schema": "wlr50_clean.ppo_phase_effective_entry.v2",
       "phase": "P12",
       "source_tick": 7872,
+      "predecessor_verify_tick": null,
+      "predecessor_verify_time_s": null,
+      "controller_anchor_tick": null,
+      "controller_anchor_time_s": null,
+      "target_entry_tick": 7873,
+      "source_replay_steps": 1,
       "effective_entry_offset_s": 0.008333333333333333,
-      "calibration_probe_file_sha256": "14119ab05af45cbe60863edf81b269c115e39bd25cf841c0f3a79cdbd30f471f",
+      "calibration_probe_file_sha256": "fc4c457ef73847c5c257fa7e8ec2620295a957cb49786560ca1175c358c31050",
       "post_prime_fingerprint": {
         "root_position_m": 0.0005265846848487854,
         "root_orientation": 0.0004450073953064425,
@@ -2602,6 +4945,221 @@
         "wheel_velocity_rad_s": "3fd9fad210000000",
         "wheel_center_m": "3f4975e000000000",
         "wheel_bottom_m": "3f49768f41034180"
+      },
+      "effective_component_state": {
+        "schema": "wlr50_clean.phase_effective_entry_component_state.v1",
+        "units": {
+          "root_position_w_m": "m",
+          "root_orientation_wxyz": "unit_quaternion",
+          "root_linear_velocity_w_m_s": "m/s",
+          "root_angular_velocity_w_rad_s": "rad/s",
+          "servo_logical_position_deg": "deg",
+          "servo_logical_velocity_deg_s": "deg/s",
+          "wheel_logical_velocity_rad_s": "rad/s",
+          "wheel_centers_w_m": "m",
+          "wheel_bottoms_w_m": "m"
+        },
+        "root_position_w_m": [
+          0.8124343156814575,
+          -0.02340465784072876,
+          0.10952059179544449
+        ],
+        "root_orientation_wxyz": [
+          0.9947427727068562,
+          -0.03997187429682091,
+          -0.08349764517432479,
+          -0.04378594138553572
+        ],
+        "root_linear_velocity_w_m_s": [
+          0.020356183871626854,
+          0.010155035182833672,
+          0.01117424014955759
+        ],
+        "root_angular_velocity_w_rad_s": [
+          -0.014017465524375439,
+          -0.01800248771905899,
+          -0.1279941201210022
+        ],
+        "servo_logical_position_deg": [
+          -19.086543712368808,
+          -33.38299830319465,
+          4.387438502647919,
+          30.532908042043758,
+          15.78372467073339,
+          20.229550536905535,
+          -6.28374642217036,
+          -41.46572928440652
+        ],
+        "servo_logical_velocity_deg_s": [
+          -14.995557379357935,
+          10.346467031157342,
+          -16.3800179410993,
+          5.521373807102921,
+          14.938245262032357,
+          13.799424769827683,
+          -16.149029481105934,
+          15.075074441675223
+        ],
+        "wheel_logical_velocity_rad_s": [
+          0.4748115539550781,
+          0.0015123088378459215,
+          -0.01060762070119381,
+          -0.513149619102478
+        ],
+        "servo_order": [
+          "front_left_hip",
+          "front_left_knee",
+          "front_right_hip",
+          "front_right_knee",
+          "rear_left_hip",
+          "rear_left_knee",
+          "rear_right_hip",
+          "rear_right_knee"
+        ],
+        "wheel_order": [
+          "front_left_ankle",
+          "front_right_ankle",
+          "rear_left_ankle",
+          "rear_right_ankle"
+        ],
+        "wheel_centers_w_m": {
+          "front_left_ankle": [
+            0.9481493234634399,
+            0.04342752695083618,
+            0.1009707823395729
+          ],
+          "front_right_ankle": [
+            1.1289466619491577,
+            -0.3698387145996094,
+            0.16876493394374847
+          ],
+          "rear_left_ankle": [
+            0.43372851610183716,
+            0.0835837572813034,
+            0.05150742828845978
+          ],
+          "rear_right_ankle": [
+            0.5935391187667847,
+            -0.3271678686141968,
+            0.09892245382070541
+          ]
+        },
+        "wheel_bottoms_w_m": {
+          "front_left_ankle": [
+            0.9481493234634399,
+            0.04342752695083618,
+            0.05097059182538334
+          ],
+          "front_right_ankle": [
+            1.1289466619491577,
+            -0.3698387145996094,
+            0.11877082367915238
+          ],
+          "rear_left_ankle": [
+            0.43372851610183716,
+            0.0835837572813034,
+            0.0015111058254332899
+          ],
+          "rear_right_ankle": [
+            0.5935391187667847,
+            -0.3271678686141968,
+            0.04892815694183972
+          ]
+        },
+        "sha256": "e0bce3bdbf07c3a7f7bb2838a30534f46107015b11fd3adbe7c66fa7e139fcf3"
+      },
+      "effective_component_state_binary64_hex": {
+        "root_position_w_m": [
+          "3fe9ff7640000000",
+          "bf97f76400000000",
+          "3fbc098aa0000000"
+        ],
+        "root_orientation_wxyz": [
+          "3fefd4eecb96aa77",
+          "bfa4773189bab5df",
+          "bfb5601a075115b0",
+          "bfa66b1c648d07a2"
+        ],
+        "root_linear_velocity_w_m_s": [
+          "3f94d84060000000",
+          "3f84cc29c0000000",
+          "3f86e28520000000"
+        ],
+        "root_angular_velocity_w_rad_s": [
+          "bf8cb53060000000",
+          "bf926f3e80000000",
+          "bfc0621c80000000"
+        ],
+        "servo_logical_position_deg": [
+          "c0331627ba8e4c68",
+          "c040b10616a1527f",
+          "40118cbcadc8560a",
+          "403e886ca9545a74",
+          "402f91445c2bbc8f",
+          "40343ac3d2f0c9dc",
+          "c019228e6c0e5098",
+          "c044bb9d0466a862"
+        ],
+        "servo_logical_velocity_deg_s": [
+          "c02dfdb9b2634481",
+          "4024b164206fed0e",
+          "c0306148db14ea2d",
+          "401615e303e9fe03",
+          "402de061aed81ca2",
+          "402b994e34140b61",
+          "c0302626cbcb7d66",
+          "402e2670283f8566"
+        ],
+        "wheel_logical_velocity_rad_s": [
+          "3fde635000000000",
+          "3f58c71540000000",
+          "bf85b972c0000000",
+          "bfe06bb8c0000000"
+        ],
+        "wheel_centers_w_m": {
+          "front_left_ankle": [
+            "3fee573d40000000",
+            "3fa63c2200000000",
+            "3fb9d938a0000000"
+          ],
+          "front_right_ankle": [
+            "3ff2102a60000000",
+            "bfd7ab7000000000",
+            "3fc59a16e0000000"
+          ],
+          "rear_left_ankle": [
+            "3fdbc23540000000",
+            "3fb565bec0000000",
+            "3faa5f2e80000000"
+          ],
+          "rear_right_ankle": [
+            "3fe2fe45c0000000",
+            "bfd4f05180000000",
+            "3fb952fb60000000"
+          ]
+        },
+        "wheel_bottoms_w_m": {
+          "front_left_ankle": [
+            "3fee573d40000000",
+            "3fa63c2200000000",
+            "3faa18d141e54442"
+          ],
+          "front_right_ankle": [
+            "3ff2102a60000000",
+            "bfd7ab7000000000",
+            "3fbe67c3c36bc2d9"
+          ],
+          "rear_left_ankle": [
+            "3fdbc23540000000",
+            "3fb565bec0000000",
+            "3f58c20986774b00"
+          ],
+          "rear_right_ankle": [
+            "3fe2fe45c0000000",
+            "bfd4f05180000000",
+            "3fa90d1c83d66750"
+          ]
+        }
       },
       "raw_contacts": {
         "front_left_ankle": {
@@ -2758,14 +5316,20 @@
         },
         "signature_sha256": "70a5e7e6282cd87f682505850f75ec5720f020b313fd2a0d592f84018cb41523"
       },
-      "entry_sha256": "dc2b0ea226eb6f7a2b56d6e897b4868ba0f03f0bf7e5b81a6d59b2077dcd4125"
+      "entry_sha256": "14c90c77e8c56de9143a91408e4837a483d55996fb2c8bc0946b7c6c2f1b6356"
     },
     "P13": {
-      "schema": "wlr50_clean.ppo_phase_effective_entry.v1",
+      "schema": "wlr50_clean.ppo_phase_effective_entry.v2",
       "phase": "P13",
       "source_tick": 8440,
+      "predecessor_verify_tick": null,
+      "predecessor_verify_time_s": null,
+      "controller_anchor_tick": null,
+      "controller_anchor_time_s": null,
+      "target_entry_tick": 8441,
+      "source_replay_steps": 1,
       "effective_entry_offset_s": 0.008333333333333333,
-      "calibration_probe_file_sha256": "9be7178edcd93f22f65386ff30f378ee1ca9e4d902a350071021c64befbcd05f",
+      "calibration_probe_file_sha256": "33dc092bc8c6735a7d990ddd76becb5254ad135bdd11a59cbec8e24875f8807a",
       "post_prime_fingerprint": {
         "root_position_m": 0.0002866983413696289,
         "root_orientation": 0.0010500308321658932,
@@ -2787,6 +5351,221 @@
         "wheel_velocity_rad_s": "3fdcc34f40000000",
         "wheel_center_m": "3f4852a000000000",
         "wheel_bottom_m": "3f48304812965980"
+      },
+      "effective_component_state": {
+        "schema": "wlr50_clean.phase_effective_entry_component_state.v1",
+        "units": {
+          "root_position_w_m": "m",
+          "root_orientation_wxyz": "unit_quaternion",
+          "root_linear_velocity_w_m_s": "m/s",
+          "root_angular_velocity_w_rad_s": "rad/s",
+          "servo_logical_position_deg": "deg",
+          "servo_logical_velocity_deg_s": "deg/s",
+          "wheel_logical_velocity_rad_s": "rad/s",
+          "wheel_centers_w_m": "m",
+          "wheel_bottoms_w_m": "m"
+        },
+        "root_position_w_m": [
+          0.7943910956382751,
+          -0.02814377099275589,
+          0.12919604778289795
+        ],
+        "root_orientation_wxyz": [
+          0.999219587511877,
+          0.006390473282952804,
+          0.005035888358930325,
+          -0.03865252400880023
+        ],
+        "root_linear_velocity_w_m_s": [
+          -0.014113040640950203,
+          -0.0022561531513929367,
+          -0.006613399833440781
+        ],
+        "root_angular_velocity_w_rad_s": [
+          0.04122644662857056,
+          0.07287947833538055,
+          -5.719134605897125e-06
+        ],
+        "servo_logical_position_deg": [
+          -17.972215424754154,
+          -31.467014127790186,
+          4.599462088637101,
+          31.39203655660464,
+          -0.7577399458813849,
+          -19.24408660126829,
+          -5.8661840879221,
+          -27.95385462486273
+        ],
+        "servo_logical_velocity_deg_s": [
+          -0.002393901262810133,
+          0.2110243773383768,
+          9.408617171317475,
+          -0.46994753730473077,
+          -9.464967085743726,
+          4.746178499044563,
+          5.342100551297127,
+          0.6331446622384305
+        ],
+        "wheel_logical_velocity_rad_s": [
+          0.29941388964653015,
+          0.10934905707836151,
+          0.4625202715396881,
+          0.2079520970582962
+        ],
+        "servo_order": [
+          "front_left_hip",
+          "front_left_knee",
+          "front_right_hip",
+          "front_right_knee",
+          "rear_left_hip",
+          "rear_left_knee",
+          "rear_right_hip",
+          "rear_right_knee"
+        ],
+        "wheel_order": [
+          "front_left_ankle",
+          "front_right_ankle",
+          "rear_left_ankle",
+          "rear_right_ankle"
+        ],
+        "wheel_centers_w_m": {
+          "front_left_ankle": [
+            0.9318144917488098,
+            0.04151883348822594,
+            0.09972979128360748
+          ],
+          "front_right_ankle": [
+            1.1198416948318481,
+            -0.3725944459438324,
+            0.10020124167203903
+          ],
+          "rear_left_ankle": [
+            0.5521679520606995,
+            0.06614212691783905,
+            0.09992650896310806
+          ],
+          "rear_right_ankle": [
+            0.5507916808128357,
+            -0.33127444982528687,
+            0.1001826822757721
+          ]
+        },
+        "wheel_bottoms_w_m": {
+          "front_left_ankle": [
+            0.9318144917488098,
+            0.04151883348822594,
+            0.04972960076941792
+          ],
+          "front_right_ankle": [
+            1.1198416948318481,
+            -0.3725944459438324,
+            0.05020713140744294
+          ],
+          "rear_left_ankle": [
+            0.5521679520606995,
+            0.06614212691783905,
+            0.049930186500081575
+          ],
+          "rear_right_ankle": [
+            0.5507916808128357,
+            -0.33127444982528687,
+            0.0501883853969064
+          ]
+        },
+        "sha256": "0ce5cfd01437185f58262e1a9b0db9e46c8caf1e55408a8f487c4e475632a099"
+      },
+      "effective_component_state_binary64_hex": {
+        "root_position_w_m": [
+          "3fe96ba6e0000000",
+          "bf9cd1b880000000",
+          "3fc0897f00000000"
+        ],
+        "root_orientation_wxyz": [
+          "3feff99b5b3c5b1c",
+          "3f7a2ce59c19935c",
+          "3f74a082fced3608",
+          "bfa3ca437d0d223c"
+        ],
+        "root_linear_velocity_w_m_s": [
+          "bf8ce74c40000000",
+          "bf627b7f00000000",
+          "bf7b16a700000000"
+        ],
+        "root_angular_velocity_w_rad_s": [
+          "3fa51ba200000000",
+          "3fb2a83ac0000000",
+          "bed7fcdfc0000000"
+        ],
+        "servo_logical_position_deg": [
+          "c031f8e31c2dfc60",
+          "c03f778e3ce5a0fa",
+          "401265d963c78d85",
+          "403f645c81fd7411",
+          "bfe83f67d7cdde12",
+          "c0333e7c75a1d6cf",
+          "c01776f8f627c398",
+          "c03bf42fd112ec7c"
+        ],
+        "servo_logical_velocity_deg_s": [
+          "bf639c5ff446a2f3",
+          "3fcb02d8c7a9de26",
+          "4022d1364516c901",
+          "bfde139ed5e3cfcf",
+          "c022ee102a75f8b2",
+          "4012fc1637697fc2",
+          "40155e4f9b5f0f16",
+          "3fe442b8983e6ecc"
+        ],
+        "wheel_logical_velocity_rad_s": [
+          "3fd32998e0000000",
+          "3fbbfe4cc0000000",
+          "3fdd99eea0000000",
+          "3fca9e2ca0000000"
+        ],
+        "wheel_centers_w_m": {
+          "front_left_ankle": [
+            "3fedd16ca0000000",
+            "3fa541f4e0000000",
+            "3fb987e440000000"
+          ],
+          "front_right_ankle": [
+            "3ff1eadf20000000",
+            "bfd7d89660000000",
+            "3fb9a6c9e0000000"
+          ],
+          "rear_left_ankle": [
+            "3fe1ab5c20000000",
+            "3fb0eeb0c0000000",
+            "3fb994c8a0000000"
+          ],
+          "rear_right_ankle": [
+            "3fe1a015e0000000",
+            "bfd53399c0000000",
+            "3fb9a59280000000"
+          ]
+        },
+        "wheel_bottoms_w_m": {
+          "front_left_ankle": [
+            "3fedd16ca0000000",
+            "3fa541f4e0000000",
+            "3fa9762881e54442"
+          ],
+          "front_right_ankle": [
+            "3ff1eadf20000000",
+            "bfd7d89660000000",
+            "3fa9b4bfc6d785b2"
+          ],
+          "rear_left_ankle": [
+            "3fe1ab5c20000000",
+            "3fb0eeb0c0000000",
+            "3fa990730c33ba58"
+          ],
+          "rear_right_ankle": [
+            "3fe1a015e0000000",
+            "bfd53399c0000000",
+            "3fa9b24ac3d66750"
+          ]
+        }
       },
       "raw_contacts": {
         "front_left_ankle": {
@@ -2943,8 +5722,8 @@
         },
         "signature_sha256": "7a528479e942cc1539b7f8b246f7cc050846527bd78a46f64317e78c2f466998"
       },
-      "entry_sha256": "6c85975db49f4afb57f485660ba9f1669cbe8d00f016096ff65b46d3abc7d371"
+      "entry_sha256": "0c3349dd0aad787f62f0d403648384597883b2fa2750026385efb38598c048f5"
     }
   },
-  "contract_sha256": "7637eef6dd926bdb1b5e1715c608fcfc00b7b8adb3ee7820036e1c5eae261433"
+  "contract_sha256": "efe5bae44d67d0aa4e92735bd0718e5606b04faea35756aa3444c4de2c8a0701"
 }

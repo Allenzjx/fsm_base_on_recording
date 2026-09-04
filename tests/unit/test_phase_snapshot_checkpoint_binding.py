@@ -11,6 +11,7 @@ import pytest
 
 from wlr50_clean.ppo import cli
 from wlr50_clean.ppo import isaac_fsm_backend
+from wlr50_clean.ppo import phase_effective_entry
 from wlr50_clean.ppo.phase_effective_entry import (
     DEFAULT_EFFECTIVE_ENTRY_CONTRACT_PATH,
 )
@@ -78,9 +79,48 @@ def _install_effective_contract_for_snapshot_copy(
     tmp_path: Path,
     root: Path,
 ) -> None:
-    """Rebind the checked-in calibration payload to this test-only path copy."""
+    """Isolate snapshot relocation from calibration provenance in these tests.
+
+    V2 revalidates every calibration run, whose probe binds the original
+    canonical snapshot paths.  Preserve that validation against the real
+    canonical bundle, then adapt only its returned bundle binding for the
+    temporary path copy under test.  No calibration evidence is rewritten;
+    snapshot pinning and all contract/file revalidation remain active.
+    """
 
     snapshot = capture_validated_phase_snapshot_bundle(root, canonical_root=root)
+    canonical_snapshot = capture_validated_phase_snapshot_bundle(
+        cli.DEFAULT_PHASE_SNAPSHOT_ROOT,
+        canonical_root=cli.DEFAULT_PHASE_SNAPSHOT_ROOT,
+    )
+    capture_calibration_run = phase_effective_entry._capture_calibration_run
+
+    def capture_canonical_calibration_for_copy(
+        run_dir: Path,
+        *,
+        phase_snapshot_bundle,
+        environment_lock_bytes: bytes,
+        frozen_ledger_bytes: bytes,
+        expected_git_commit: str,
+    ):
+        assert phase_snapshot_bundle.as_record() == snapshot.as_record()
+        phase, entry, record = capture_calibration_run(
+            run_dir,
+            phase_snapshot_bundle=canonical_snapshot,
+            environment_lock_bytes=environment_lock_bytes,
+            frozen_ledger_bytes=frozen_ledger_bytes,
+            expected_git_commit=expected_git_commit,
+        )
+        return phase, entry, {
+            **record,
+            "phase_snapshot_bundle_sha256": snapshot.bundle_sha256,
+        }
+
+    monkeypatch.setattr(
+        phase_effective_entry,
+        "_capture_calibration_run",
+        capture_canonical_calibration_for_copy,
+    )
     payload = json.loads(DEFAULT_EFFECTIVE_ENTRY_CONTRACT_PATH.read_text(encoding="utf-8"))
     payload["derivation"]["phase_snapshot_bundle"] = snapshot.as_record()
     for row in payload["derivation"]["calibration_artifacts"]:

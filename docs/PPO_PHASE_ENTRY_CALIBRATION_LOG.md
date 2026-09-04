@@ -113,3 +113,22 @@ currently blocked by tests loading the obsolete effective-entry contract;
 that contract must be mechanically replaced from twelve real calibration runs
 before checkpoint-dependent tests and training can qualify. No new physical
 calibration or PPO training success is claimed by these software checks.
+
+### Real calibration result
+
+All P02--P13 calibrations on commit `86383b14c7db` passed on train seed 1002.
+Each of the twelve independently launched runs contains one fresh-scene and
+one reused-scene attempt, both successful, with unchanged frozen/runtime
+identities. The P10 run is
+`20260904T232822142384Z_g86383b14c7db_cb6d77cdc057d_s1002_n1_phase-effective-entry-calibration`.
+The remaining phases were run under the same commit and configuration from
+`20260904T232933323267Z` through `20260904T233600294073Z`.
+
+The effective-entry builder validated all twelve runs and published the v2
+contract with semantic SHA-256
+`efe5bae44d67d0aa4e92735bd0718e5606b04faea35756aa3444c4de2c8a0701`
+and file SHA-256
+`bcd6900bd648698aa2fc44f53fe56607a23d0060d9f2dc4d5d3e2eb4f10c0393`.
+It remains provisional until the independent seed-1003 holdout passes.
+The old JSON and checksum are recoverable under
+`C:\robotics_sim\wlr_robot\ppo_effective_entry_pre_source_proven_20260904`.

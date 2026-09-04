@@ -44,7 +44,7 @@ for ($EpisodeIndex = 0; $EpisodeIndex -lt $EpisodeCount; $EpisodeIndex++) {
     $BaseArgs = @(
         "--training-config", $Configs[0],
         "--interface-config", $Configs[1],
-        "--fsm-config", $Configs[5],
+        "--fsm-config", "configs\frozen_successful_fsm.yaml",
         "--episode-count", "1",
         "--seed-set", "validation",
         "--residual-mode", "zero",
