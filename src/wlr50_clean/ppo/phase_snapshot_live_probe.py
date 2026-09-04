@@ -1,10 +1,9 @@
-"""Diagnostic-only live proof for scalar phase-snapshot reset readiness.
+"""Diagnostic live proof for one-tick, no-rewind phase-snapshot entry.
 
-The production reset remains deliberately untouched.  This probe wraps its
-normal Isaac-facing dependencies so that a rejected reset still leaves enough
-evidence to distinguish stale contacts, physical-state drift, or clock
-advancement.  It never takes an extra physics step and never advances the FSM
-outside the production reset call.
+The probe wraps production Isaac-facing dependencies so that a strict reset
+rejection still records real PhysX contacts, one-tick drift, and clock
+non-advancement.  Priming belongs to ``TRAINING_RESET_STATE_WRITE`` and never
+advances the frozen controller or episode clock.
 """
 
 from __future__ import annotations
@@ -17,7 +16,7 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 
-PROBE_SCHEMA = "wlr50_clean.phase_snapshot_live_probe.v1"
+PROBE_SCHEMA = "wlr50_clean.phase_snapshot_live_probe.v2"
 PROBE_FILENAME = "phase_snapshot_live_probe.json"
 PROBE_PHASES = tuple(f"P{index:02d}" for index in range(2, 14))
 ATTEMPTS_PER_PHASE = 2
@@ -359,9 +358,14 @@ def _instrumented_dependencies(book: _CaptureBook) -> Any:
         return result
 
     def write_phase_snapshot(
-        scene: Any, adapter: Any, snapshot: Mapping[str, Any]
+        scene: Any,
+        adapter: Any,
+        snapshot: Mapping[str, Any],
+        **kwargs: Any,
     ) -> Mapping[str, Any]:
-        result = dict(base.write_phase_snapshot(scene, adapter, snapshot))
+        result = dict(
+            base.write_phase_snapshot(scene, adapter, snapshot, **kwargs)
+        )
         if book.current is not None:
             book.current.snapshot_state_write = result
             book.current.snapshot_write_finished = True
@@ -422,6 +426,18 @@ def _attempt_passed(row: Mapping[str, Any]) -> bool:
     snapshot_write = row.get("snapshot_state_write")
     if not all(isinstance(value, Mapping) for value in (diagnostic, clocks, snapshot_write)):
         return False
+    prime_steps = row.get("extra_physics_priming_steps")
+    if isinstance(prime_steps, bool) or not isinstance(prime_steps, int):
+        return False
+    priming_observation = snapshot_write.get("priming_observation")
+    if not isinstance(priming_observation, Mapping):
+        return False
+    source_match = snapshot_write.get("source_actuation_match")
+    if not isinstance(source_match, Mapping):
+        return False
+    pre_prime_root = snapshot_write.get("pre_prime_root_link_readback")
+    if not isinstance(pre_prime_root, Mapping):
+        return False
     return bool(
         row.get("reset_completed") is True
         and diagnostic.get("exact_contacts_match") is True
@@ -435,8 +451,42 @@ def _attempt_passed(row: Mapping[str, Any]) -> bool:
         and snapshot_write.get("root_velocity_writes") == 1
         and snapshot_write.get("joint_state_writes") == 1
         and snapshot_write.get("simulation_forward_syncs") == 1
-        and snapshot_write.get("physics_steps") == 0
-        and row.get("physics_steps_during_reset") == 180
+        and snapshot_write.get("pre_prime_state_verified") is True
+        and snapshot_write.get("pre_prime_joint_state_verified") is True
+        and pre_prime_root.get("verified") is True
+        and pre_prime_root.get("all_values_finite") is True
+        and pre_prime_root.get("all_fields_within_production_tolerances") is True
+        and pre_prime_root.get("physics_steps_before_readback") == 0
+        and pre_prime_root.get("contact_sensor_reads_before_readback") == 0
+        and snapshot_write.get("physics_steps") == prime_steps
+        and snapshot_write.get("state_write_count") == 1
+        and snapshot_write.get("post_prime_state_rewrite_performed") is False
+        and snapshot_write.get("contact_and_state_share_solver_tick") is True
+        and snapshot_write.get("prime_physics_steps") == prime_steps
+        and snapshot_write.get("prime_atomic_full12_writes") == 1
+        and snapshot_write.get("logical_target_fallback_used") is False
+        and source_match.get("all_fields_match") is True
+        and source_match.get("source_target_hash_matches") is True
+        and source_match.get("logical_target_fallback_used") is False
+        and source_match.get("source_drive_target_full12_sha256")
+        == row.get("source_drive_target_full12_sha256")
+        and snapshot_write.get("current_contact_force_provenance")
+        == "current_final_solver_force_only"
+        and snapshot_write.get("sensor_history_samples_after_reset") == 1
+        and snapshot_write.get("contact_sensor_reads_after_prime") == 1
+        and snapshot_write.get(
+            "classifier_current_force_hysteresis_contract_verified"
+        )
+        is True
+        and priming_observation.get("raw_physx_contact_sources_verified") is True
+        and priming_observation.get(
+            "current_raw_force_hysteresis_contract_matches_snapshot"
+        )
+        is True
+        and snapshot_write.get("fsm_clock_steps_during_priming") == 0
+        and snapshot_write.get("episode_clock_steps_during_priming") == 0
+        and row.get("physics_steps_during_reset") == 180 + prime_steps
+        and row.get("post_prime_contact_sensor_read_count") == 1
     )
 
 
@@ -535,6 +585,7 @@ def run_phase_snapshot_live_probe(
     run_dir: Path,
     seed: int,
     snapshot_bundle: Any,
+    prime_physics_steps: int = 1,
 ) -> Mapping[str, Any]:
     """Run two diagnostic reset attempts per P02-P13 and always seal a report."""
 
@@ -544,6 +595,14 @@ def run_phase_snapshot_live_probe(
         load_validated_phase_snapshot_payload,
     )
 
+    if (
+        isinstance(prime_physics_steps, bool)
+        or not isinstance(prime_physics_steps, int)
+        or prime_physics_steps != 1
+    ):
+        raise PhaseSnapshotLiveProbeError(
+            "prime_physics_steps must be exactly one for the production reset"
+        )
     output = Path(run_dir).resolve() / PROBE_FILENAME
     runtime_before = _evidence_reference(
         Path(run_dir) / "committed_runtime_identity.before.json",
@@ -586,8 +645,11 @@ def run_phase_snapshot_live_probe(
         "attempts_per_phase": ATTEMPTS_PER_PHASE,
         "expected_attempt_count": len(PROBE_PHASES) * ATTEMPTS_PER_PHASE,
         "completed_attempt_count": 0,
-        "production_reset_modified": False,
-        "extra_physics_priming_steps": 0,
+        "production_reset_modified": True,
+        "production_reset_mode": (
+            "one_source_command_atomic_write_then_physx_prime_without_rewind"
+        ),
+        "extra_physics_priming_steps": prime_physics_steps,
         "runtime_identity_before": runtime_before,
         "frozen_hashes_before": frozen_before,
         "managed_post_checks": {
@@ -615,6 +677,7 @@ def run_phase_snapshot_live_probe(
             simulation_app,
             dependencies=dependencies,
             expected_phase_snapshot_bundle=snapshot_bundle,
+            phase_snapshot_prime_physics_steps=prime_physics_steps,
         )
         for phase in PROBE_PHASES:
             snapshot, entry = load_validated_phase_snapshot_payload(
@@ -658,6 +721,24 @@ def run_phase_snapshot_live_probe(
                     "snapshot_path": str(entry.snapshot_path),
                     "snapshot_file_sha256": entry.file_sha256,
                     "snapshot_state_sha256": entry.state_sha256,
+                    "source_command_file_sha256": snapshot["source_artifacts"][
+                        "command"
+                    ]["sha256"],
+                    "source_observation_file_sha256": snapshot[
+                        "source_artifacts"
+                    ]["observation"]["sha256"],
+                    "source_command_row_canonical_sha256": snapshot[
+                        "source_command"
+                    ]["source_command_row_canonical_sha256"],
+                    "source_observation_row_canonical_sha256": snapshot[
+                        "source_command"
+                    ]["source_observation_row_canonical_sha256"],
+                    "source_drive_target_full12_sha256": snapshot[
+                        "source_command"
+                    ]["drive_target_full12_sha256"],
+                    "source_actuation_contract_sha256": snapshot[
+                        "source_command"
+                    ]["actuation_contract_sha256"],
                     "attempt_index_for_phase": repeat,
                     "attempt_kind": capture.attempt_kind,
                     "scene_lifecycle": (
@@ -684,14 +765,32 @@ def run_phase_snapshot_live_probe(
                     "simulation_forwards_during_reset": capture.simulation_forwards,
                     "simulation_resets_during_reset": capture.simulation_resets,
                     "simulation_stops_during_reset": capture.simulation_stops,
-                    "extra_physics_priming_steps": 0,
+                    "extra_physics_priming_steps": prime_physics_steps,
+                    "post_prime_contact_sensor_read_count": len(
+                        capture.post_snapshot_observations
+                    ),
                     "fsm_or_episode_advanced_for_probe": False,
                     "reset_writes": None
                     if capture.reset_writes is None
                     else dict(capture.reset_writes),
-                    "snapshot_state_write": None
-                    if capture.snapshot_state_write is None
-                    else dict(capture.snapshot_state_write),
+                    "snapshot_state_write": (
+                        dict(
+                            getattr(backend, "_snapshot_restoration", {}).get(
+                                "physical_state", {}
+                            )
+                        )
+                        if isinstance(
+                            getattr(backend, "_snapshot_restoration", {}).get(
+                                "physical_state"
+                            ),
+                            Mapping,
+                        )
+                        else (
+                            None
+                            if capture.snapshot_state_write is None
+                            else dict(capture.snapshot_state_write)
+                        )
+                    ),
                     "observation_diagnostics": diagnostic,
                     "clocks": {
                         **_controller_clocks(controller, frame),

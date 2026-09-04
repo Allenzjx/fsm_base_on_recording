@@ -1,100 +1,179 @@
 {
-  "schema": "wlr50_clean.ppo_phase_snapshot_manifest.v1",
+  "schema": "wlr50_clean.ppo_phase_snapshot_manifest.v2",
   "source_trial": "trial_043_20260902_clean_v010",
   "source_trial_path": "C:\\robotics_sim\\wlr_robot\\fsm_50mm_recording_shaped_clean_v1\\runs\\trial_043_20260902_clean_v010",
+  "source_artifacts": {
+    "trial_manifest": {
+      "name": "trial_manifest.json",
+      "bytes": 21506,
+      "sha256": "ac3a3e613edf21e92abd06b7daa0c66437c4a323ba3ae4616fcb03b5b67988cb"
+    },
+    "command": {
+      "name": "full12_commands_120hz.jsonl",
+      "bytes": 68670243,
+      "sha256": "9c333ee79712ade21784d05be81aeb08506901c2ed3c907fc066e95e711d633a"
+    },
+    "observation": {
+      "name": "observation_120hz.jsonl",
+      "bytes": 471808699,
+      "sha256": "b046ae0a9d90c68d142ac8b82638d7d06316be24c75e792ff4a4ea3bbffba440"
+    },
+    "transition": {
+      "name": "state_transitions.jsonl",
+      "bytes": 47581,
+      "sha256": "b5d8dcec90274275c31f71552a4325f4e63500d28eeff3e5927c4ba95edcde29"
+    },
+    "leg_crossing": {
+      "name": "leg_crossing_events.jsonl",
+      "bytes": 4820,
+      "sha256": "6b526e7be58e92c85278654d6c32523605eeeb016fbc2e3cd04c050f4962b028"
+    }
+  },
   "physics_hz": 120.0,
   "phase_count": 13,
   "snapshots": [
     {
       "phase": "P01",
       "source_tick": 0,
-      "state_sha256": "5770b3b05e6246d6f51681d33b04dcd60413a30345e9b1a78c9d6a43bece6f93",
-      "file_sha256": "6eaeb2a7291c8802880f73cfa555a8264a072adcb666f3fc34432958d4c08507",
-      "path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P01\\snapshot.json"
+      "state_sha256": "00b4afee4fc4df5c90aecad96877ae01b8d4965882f1f22ef0b0ca6a05bc5c76",
+      "file_sha256": "501c53057f2bb501796e6b4ec29a82c8dbf43a627ce667137417e0b3bb1e4ed0",
+      "path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P01\\snapshot.json",
+      "source_command_row_canonical_sha256": "cd6342fdab2b878184e482bf183468ea59655ec06739d1cbe802fbc3fbd44343",
+      "source_observation_row_canonical_sha256": "77df9155f375c4124fc4590107e756947492788f5cd3d0d3a7a110d7af52e4d2",
+      "drive_target_full12_sha256": "f2097b14ccf53950dc37743c65671d46e09bc3a487db7096fcb4ff5b5f070364",
+      "actuation_contract_sha256": "9dd942bc2d6d70d7bc61c1a80191177f606991966fcb6bf61580ab798d032663"
     },
     {
       "phase": "P02",
       "source_tick": 1600,
-      "state_sha256": "0fe5ff26ba246cf8bac70a6d271d042ff5e09e103f1a12fd30fa463b4099ead2",
-      "file_sha256": "2b54c8bae2015c9b2b93d1723642da86fda6d686515a7ab010c75810288ee769",
-      "path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P02\\snapshot.json"
+      "state_sha256": "b7388d5972fdfded309c1af81d8bec84c79c829e94a54108b11d77f58dec29f2",
+      "file_sha256": "90054ae9daefc221b4220a34b9911938ce92390dcead3aefabee47bea21ecc2a",
+      "path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P02\\snapshot.json",
+      "source_command_row_canonical_sha256": "082441bf55868cc1398c075ae0118912cdb1ac4dfd94b4604d96d018b316120b",
+      "source_observation_row_canonical_sha256": "b69d8741d8d0dd863527086101fff9b09231b3513e1316a47a5803bfc0a72340",
+      "drive_target_full12_sha256": "4b5f80ae9b4a4b16c53d42c7854d2a3a16784283302ed513b698e95bceb42c2c",
+      "actuation_contract_sha256": "6591adba8ae276b49618b615e84cb5096d12f8d6f556434ac6af96d8db1a85ef"
     },
     {
       "phase": "P03",
       "source_tick": 1664,
-      "state_sha256": "04255942f9727fd663d0e0025058e58abdc987feb9b263a645b8a0982c48a051",
-      "file_sha256": "5cb7359961f1ec0fcd656a698ed1463f53fdbc2b0cf16a19de2fcb90b42958ee",
-      "path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P03\\snapshot.json"
+      "state_sha256": "af70b2596057db97876bb812f041d37889e53e3681c5e43745283df9150a2e82",
+      "file_sha256": "e05fbcb77c1cab858ccb9f17a0bc8ef2c684fcd81032a9db14e4e78f6815a02a",
+      "path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P03\\snapshot.json",
+      "source_command_row_canonical_sha256": "d268f2be2b666d119f0d7b178d2ba55efe7ea2fddd36723b962d9293628c8bc1",
+      "source_observation_row_canonical_sha256": "98ec081615f206bd567071333752c76798cf767a6a0a5d5732f97461795c75f4",
+      "drive_target_full12_sha256": "fc3676f1e764338142ecbe2b0aff13cf50341cd814c04e92440ab8eb93026441",
+      "actuation_contract_sha256": "ded9c7cb66e3eed31686012b707a78994431a9ec192dbffd312aa898fada6a41"
     },
     {
       "phase": "P04",
       "source_tick": 1816,
-      "state_sha256": "8602294b6b150ca1891e26858aadc4eb5655d0f932cf57136bc177e602f72f08",
-      "file_sha256": "46927cc582ac066d035f463cc5a3ca4c93bb6b1c4b659a30c2c0a5dbb594b41c",
-      "path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P04\\snapshot.json"
+      "state_sha256": "7d6b475ec515fd0b75448d38c1c46a71805dff5190d224983c67a5dc4f773c41",
+      "file_sha256": "82ef122984fb6746ac24a48e06337e6fa1242a54b497d455f0b2bd23aa824dde",
+      "path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P04\\snapshot.json",
+      "source_command_row_canonical_sha256": "9aa0935813cfed5004cb0eda2817b563fe972ead2f707b3ee0b88d5ad556d332",
+      "source_observation_row_canonical_sha256": "8a0292be30bd5a9379fab06308f970cb121cb74180e51c828ad20a44a441e41f",
+      "drive_target_full12_sha256": "06d12f6b8c1ab5326ad568e3d8ba717e0439b28cf3bb8473323f6f310c5f8813",
+      "actuation_contract_sha256": "d0d426723f0bd1209f7ab8e1a6b69369ea534e679d767fd3deeb7e95a6e8b480"
     },
     {
       "phase": "P05",
       "source_tick": 2400,
-      "state_sha256": "998f9f7e0887cf2b9762869dfa2febc71859768a4d2beafd397137ef11d6f57c",
-      "file_sha256": "6247f582a70bb95e76cbd39b1c01f65ccd98d44107c7f91f1bdec841174da876",
-      "path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P05\\snapshot.json"
+      "state_sha256": "20c03d579a4cdf2823da4ed6f13e87df8a0ffcefe20e4018a3c44902ab2d6a06",
+      "file_sha256": "640a171cf173e5182cc625ac22be905379816902f0023285c8dc1e9d52edbafb",
+      "path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P05\\snapshot.json",
+      "source_command_row_canonical_sha256": "011e0fa2ce4fce605310f71f2c21a4da654de4fa6cf507ddb8ec8ff1c668a24c",
+      "source_observation_row_canonical_sha256": "ce0cf7790f3b0949542c5963fee41025c0afb9ba9a6925ac7b91d015aa9e86d5",
+      "drive_target_full12_sha256": "68b32750faae9a86cf83046571bd1e0cc2148f0cff3d8289fa05c8384b38f748",
+      "actuation_contract_sha256": "6b7903ef8dcbd911778dcbf49c8d2801f9a18ef712fabb06af10cca263a1d99b"
     },
     {
       "phase": "P06",
       "source_tick": 3576,
-      "state_sha256": "5965555241838401952709a3f208ef5a5b25456458734b88a10529698fdc3f2a",
-      "file_sha256": "08c7a6482266ba7ac2607133abae9bbfc6e81450b88ab12f07b9750645a5eb74",
-      "path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P06\\snapshot.json"
+      "state_sha256": "62c8d31b76899968eef17ae9c7ea00e3a6b037dcd123333d6030094ddc98cae3",
+      "file_sha256": "6cea181570b813fffb20c6368ee3819fcde059d5933b7be822f1a0f497b72218",
+      "path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P06\\snapshot.json",
+      "source_command_row_canonical_sha256": "ef8afd00192b830181256fc03845399e9646cddc5cbefe938b5e8617776a2cfd",
+      "source_observation_row_canonical_sha256": "6df0bdad8262cc27db7ad0fd32a0a6280263ea81fbc68d9d48037788b91783b8",
+      "drive_target_full12_sha256": "da7623024606ba196c65eab28ea9de3c32ebb663d5c8b7733ba0411dcbbd7f2d",
+      "actuation_contract_sha256": "ed15212858272128e61934d780557cb8b3f9a62728c285b2e969cfb87e182694"
     },
     {
       "phase": "P07",
       "source_tick": 6648,
-      "state_sha256": "d3353a43b874131df3e2f81521b70a0459396071f28d7a04f91da088ab69b55b",
-      "file_sha256": "1554e0fbf5b006c59f06b0543f5ea054299630cd8d3803483bd0a66c6dd79523",
-      "path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P07\\snapshot.json"
+      "state_sha256": "f9d1063685c4374c049e9c3cfa27ab8807fc488ad437d23b0be9507e04f42163",
+      "file_sha256": "866c9c50a411cc9f0dc0adbddcf5361307a650d69b517d2271f7b596ba06c046",
+      "path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P07\\snapshot.json",
+      "source_command_row_canonical_sha256": "2bdf26b7e0be757240294f755d548f6212a5c8d547be3bf0f9ec0f8e9d088796",
+      "source_observation_row_canonical_sha256": "f8d555bb7462b362bdbfd9fd1c1b2fac7bea94fce09bf8412af808ea5ccaf1ac",
+      "drive_target_full12_sha256": "1ecb91e1cdefcf06c201ec1bb3d704e74694c0ba5aa6887dc8799b5622674cdf",
+      "actuation_contract_sha256": "d3f5fa99151a955c197da0770669603347417dc25e0eb377c788a1c4c0e0b27e"
     },
     {
       "phase": "P08",
       "source_tick": 6856,
-      "state_sha256": "46dd78d7f7ebdae7cd80858fe82c9a2ee5b23e7c219dbcc49514c7781396e077",
-      "file_sha256": "6a6a6140d8ef3e1a4eb4e8f2d7af16ae0ffb3472a3f53feb95595f9ac32f7498",
-      "path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P08\\snapshot.json"
+      "state_sha256": "6c2f97c05524e7714ab00ef5fcef31637c582d80df1ea63a68fc4ba73223e61d",
+      "file_sha256": "6f29df73c59e4cfc1caa359f21a4100ef65fcec91246ee79222b98d0be0d2d23",
+      "path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P08\\snapshot.json",
+      "source_command_row_canonical_sha256": "ecc202c05754f8c53c3178d743f4b20e1870baf7833f0987c92cf0af638fe1b2",
+      "source_observation_row_canonical_sha256": "6fd1e6f7d7ffaf880d62a3bd1349f7723831b895591284d8854c9343a6a5152a",
+      "drive_target_full12_sha256": "392ebf91e61a90aef8bfd92079730f003660a946cb450ca8bccac9c00a0955ee",
+      "actuation_contract_sha256": "c4c3431af02035c844df83a6674473def1efe23fddca2af868aa4a051f7fcf1a"
     },
     {
       "phase": "P09",
       "source_tick": 6912,
-      "state_sha256": "33df7839c2b2da24ea32d6fda2411c730cf9665cf38612bb89a060828040c3ea",
-      "file_sha256": "fda4a8205d6a739b421d31bd723d97c76a20bfb6ad50ada69c4edf76f8cad391",
-      "path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P09\\snapshot.json"
+      "state_sha256": "9c16fe0f9ed4e18b21cac4a4d70fb7ef8bf83ee7044a362dc12a14d9cb33d7e2",
+      "file_sha256": "d75fd5c282da203721163747902031c90e3b6b90eb65b3b06eb6eb677b50873b",
+      "path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P09\\snapshot.json",
+      "source_command_row_canonical_sha256": "5c266d078d19cb478ede5b201be0bfffd8805f4947bb5fa47ac014a39fc7d39f",
+      "source_observation_row_canonical_sha256": "cefb0307c1c563f129d971d22256c374d04804d627dac570e9b0f2da9b89e4ca",
+      "drive_target_full12_sha256": "6200344db291fe5852c20fbde3b0c4be0cf47a47568aa2a8aa5aa08aeca9634a",
+      "actuation_contract_sha256": "21ee198c67994cf1bdd5f8899b0a69f74955b34b2b011dc5b6e5321696ef5d0e"
     },
     {
       "phase": "P10",
       "source_tick": 7794,
-      "state_sha256": "fb7c0e550b984c0c1cb8541fe3b6ebb2f8db56dc17403e3b32c639ee4cb3b1f7",
-      "file_sha256": "8ecca61735808baebdbbb3a4a34e19384cbeb752c0d45d8309028a123dfd77af",
-      "path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P10\\snapshot.json"
+      "state_sha256": "547a0fb95168dd0daa461dd43066f7aeb65f99687651c2be20f1e23a6439ae2e",
+      "file_sha256": "6ccd27f81465cb9729abc5745ca3fc19d2fc91cb1646cba973c42acc019f631f",
+      "path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P10\\snapshot.json",
+      "source_command_row_canonical_sha256": "b36583e8622e9a882d2371f21fc200ed7813b40e249623f7705ed86513dad711",
+      "source_observation_row_canonical_sha256": "e6af88a281f784d9a609704628ea569b4dd94429a52ce8402041d95c3d445220",
+      "drive_target_full12_sha256": "6e17d0bcac0bf4d96d821b7654e3c3666e5493720dde7a079f33812e90f7c1ef",
+      "actuation_contract_sha256": "a492968cf9947fb8fa311bdca3a9678e0b810eda669f3ef8c34a9d44f808d4e5"
     },
     {
       "phase": "P11",
       "source_tick": 7810,
-      "state_sha256": "2a933b2815686a562dfffedab91099e9d7db7e399d6068159b5e9522e9fa187a",
-      "file_sha256": "5e98d6039978924ffcbb344bbba8c2dd2b6de08c1b3940b35a63f78c6fc3f3e5",
-      "path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P11\\snapshot.json"
+      "state_sha256": "35996ba6c91f17762e8c72177d0b229aa841b878beac945308dcd1950e74e3d0",
+      "file_sha256": "4a903d1fc486f85a1b7f7624e733031576eedda8e1f3abcf44d6c46671aacded",
+      "path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P11\\snapshot.json",
+      "source_command_row_canonical_sha256": "5fc87e3733d2fe5b8810e8c8462aac86c9a39e85f2a7916a2f8e936fbaa5bdeb",
+      "source_observation_row_canonical_sha256": "ad0fd65e9b3f61c9a7f9cad883e8196135ec924d8ef02d7fc7d2c80c454e6dd6",
+      "drive_target_full12_sha256": "a462deab0fcd6e23a43db0078cd34543484775d5de7bf3398381b80fee60e30c",
+      "actuation_contract_sha256": "25685b7a1057daff72e7479711d4948e757f2fb66e15f7fac0695084a4dd38d5"
     },
     {
       "phase": "P12",
       "source_tick": 7872,
-      "state_sha256": "a3bd0d77d14f6f1b613c37ad7854fc259accaa235bf97d1a9053c6e8942171d7",
-      "file_sha256": "c6abf4dfd07102369ab17890a13d5de537d9cda18dd29a986429784250eea5d2",
-      "path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P12\\snapshot.json"
+      "state_sha256": "95f5d40fac53a3b006c9b23a40e5a67153c2c55349183900e605ca7e5160beff",
+      "file_sha256": "a1c7fb561c41d9191766b05e99d8b1cc4a9018b57f927cfd73d9eb534bf383b4",
+      "path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P12\\snapshot.json",
+      "source_command_row_canonical_sha256": "c20efa05130f139b262e2c6468226da7d9f247fdedf8638d445b709a990961f9",
+      "source_observation_row_canonical_sha256": "e5fdd71c62dbdeec6e00a8c24f8f348f9144dd68107838d780b23a73994d8ecc",
+      "drive_target_full12_sha256": "84f1db27e83a1dca21851eb64da959bac183bdf9a32978e91c9a6ee2b52c14d3",
+      "actuation_contract_sha256": "6a92b666a36e0c410c1476649cf96df19aee4875d650f821bab71e4299cac9b3"
     },
     {
       "phase": "P13",
       "source_tick": 8440,
-      "state_sha256": "976c3e637450e5dd7d6da357ab508b9dda5083d95b4b1dcf4f1bb6366a89aa7f",
-      "file_sha256": "60bbee3a4ed6c5269e52f79c5e696e08f828f21c0e22155cc7e53b53ee111884",
-      "path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P13\\snapshot.json"
+      "state_sha256": "9f87c523ff62cfbd7132652b4161243109687ee2a1a5588a7178f475d90fd034",
+      "file_sha256": "e1a55b77ec7f3bbb72d287f77fcc671568c272ab5399b8d6e97f2d2fc8e56e93",
+      "path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P13\\snapshot.json",
+      "source_command_row_canonical_sha256": "c1d0155ef412a8d33a08457336b58b690de6ffeeaeda1c15035865cbe5cf8f46",
+      "source_observation_row_canonical_sha256": "a5cd0e85dfea479ccd43c5edcc76fee0374d8df83fc7e22619e13e59e30fe149",
+      "drive_target_full12_sha256": "842725cd7dad80cc0c042f6b38dbbbabdcf93cc91564027a8ca0944c9b611a05",
+      "actuation_contract_sha256": "47bf1e3ce3be4bcb1faee183a608d5e05ec543931fa89c8ca846c058b12d5f87"
     }
   ]
 }

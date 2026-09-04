@@ -25,9 +25,9 @@ successful_fsm_attitude_envelope:
     command_stream_name: full12_commands_120hz.jsonl
     command_stream_sha256: 9c333ee79712ade21784d05be81aeb08506901c2ed3c907fc066e95e711d633a
     snapshot_manifest_path: reference/ppo_phase_snapshots/manifest.json
-    snapshot_manifest_sha256: dc79db3e81dd753d962493c03b6e8590a4b78a69099b3b0c8b9b5e93a45dd391
+    snapshot_manifest_sha256: 9669c4a50409a43b3b0fb30d5901b242a90e230efb4fed2e25460039681afd2f
     level_reference_snapshot_path: reference/ppo_phase_snapshots/P01/snapshot.json
-    level_reference_snapshot_sha256: 6eaeb2a7291c8802880f73cfa555a8264a072adcb666f3fc34432958d4c08507
+    level_reference_snapshot_sha256: 501c53057f2bb501796e6b4ec29a82c8dbf43a627ce667137417e0b3bb1e4ed0
   derivation:
     phase_assignment: full12_commands_120hz.state_id_joined_on_physics_tick
     level_reference: P01_snapshot_tick_0_level_reference_orientation_wxyz
@@ -42,7 +42,7 @@ successful_fsm_attitude_envelope:
     P08: {sample_count: 56, max_attitude_error_rad: 0.22242370433007352}
     P10: {sample_count: 26, max_attitude_error_rad: 0.16588650991003867}
     P11: {sample_count: 62, max_attitude_error_rad: 0.17444540287005458}
-  derivation_sha256: ec769118f304e3b33635b37497c9d0e041793d3f3ce443d07b20443bddfbc7bc
+  derivation_sha256: 82b87d1f96fd786dd2ea35c778ca2e8b54a6fab39ffc92451abdf5eaa4f6dc07
 
 phases:
   P01:

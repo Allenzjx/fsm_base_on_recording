@@ -11,16 +11,64 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
+from wlr50_clean.infrastructure.command_batch import (
+    FULL12_ORDER,
+    PHYSICS_DT_S,
+    SERVO_COMMAND_SIGN,
+    SERVO_ORDER,
+    WHEEL_ORDER,
+    WHEEL_VELOCITY_LIMIT_RAD_S,
+    Full12Command,
+    build_physical_batch,
+    servo_limits_deg,
+)
+from wlr50_clean.infrastructure.robot_adapter import bounded_drive_feedback_step
+from wlr50_clean.infrastructure.servo_target_mapper import ServoTargetMapper
 
-SNAPSHOT_SCHEMA = "wlr50_clean.ppo_phase_entry_snapshot.v1"
-MANIFEST_SCHEMA = "wlr50_clean.ppo_phase_snapshot_manifest.v1"
+SNAPSHOT_SCHEMA = "wlr50_clean.ppo_phase_entry_snapshot.v2"
+MANIFEST_SCHEMA = "wlr50_clean.ppo_phase_snapshot_manifest.v2"
 BUNDLE_RECORD_SCHEMA = "wlr50_clean.ppo_phase_snapshot_bundle_record.v1"
 BUNDLE_HASH_SCHEMA = "wlr50_clean.ppo_phase_snapshot_bundle_hash.v1"
+SOURCE_COMMAND_SCHEMA = "wlr50_clean.ppo_phase_snapshot_source_command.v1"
+SOURCE_MAPPER_STATE_SCHEMA = "wlr50_clean.ppo_phase_snapshot_mapper_state.v1"
 PHASE_IDS = tuple(f"P{i:02d}" for i in range(1, 14))
 PHYSICS_HZ = 120.0
+SOURCE_SETTLE_TICKS = 180
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_PHASE_SNAPSHOT_ROOT = PROJECT_ROOT / "reference" / "ppo_phase_snapshots"
 _SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
+SOURCE_COMMAND_FILE = "full12_commands_120hz.jsonl"
+SOURCE_OBSERVATION_FILE = "observation_120hz.jsonl"
+SOURCE_TRANSITION_FILE = "state_transitions.jsonl"
+SOURCE_LEG_CROSSING_FILE = "leg_crossing_events.jsonl"
+SOURCE_TRIAL_MANIFEST_FILE = "trial_manifest.json"
+SOURCE_ACK_MATCH_FIELDS = (
+    "schema",
+    "physics_dt_s",
+    "articulation_writes_this_call",
+    "canonical_order",
+    "requested_full12",
+    "applied_full12",
+    "drive_target_full12",
+    "native_drive_target_full12",
+    "drive_feedback_bias_requested_full12",
+    "drive_feedback_bias_realized_full12",
+    "drive_feedback_final_slew_limit_deg_per_tick",
+    "command_was_clamped",
+    "servo_applied_drive_command_deg",
+    "servo_native_drive_command_deg",
+    "servo_tracking_compensation_deg",
+    "servo_nominal_target_reached",
+    "servo_tracking_active",
+    "tracking_servo_names",
+    "servo_tracking_feedback_sample_tick",
+    "servo_tracking_feedback_sampled",
+    "servo_joint_ids",
+    "wheel_joint_ids",
+    "servo_target_physical_rad",
+    "wheel_target_physical_rad_s",
+    "motion_start_skew_s",
+)
 
 
 class PhaseSnapshotError(ValueError):
@@ -97,6 +145,14 @@ def _canonical_bytes(payload: Mapping[str, Any]) -> bytes:
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
 
 
+def _indented_json_lf_bytes(payload: Mapping[str, Any]) -> bytes:
+    """Serialize generated JSON with platform-independent Git-stable LF bytes."""
+
+    return (json.dumps(payload, indent=2, ensure_ascii=True) + "\n").encode(
+        "utf-8"
+    )
+
+
 def _sha256_bytes(payload: bytes) -> str:
     return hashlib.sha256(payload).hexdigest()
 
@@ -158,6 +214,213 @@ def _path_identity(path: Path, *, label: str, directory: bool) -> tuple[Any, ...
     )
 
 
+def _handle_identity(path: Path, stream: Any) -> tuple[Any, ...]:
+    """Return the same identity shape as ``_path_identity`` for an open file."""
+
+    try:
+        status = os.fstat(stream.fileno())
+    except (OSError, ValueError) as exc:
+        raise PhaseSnapshotError(
+            f"source file handle identity is unavailable: {path}"
+        ) from exc
+    return (
+        str(path),
+        "file",
+        int(status.st_dev),
+        int(status.st_ino),
+        int(status.st_size),
+        int(status.st_mtime_ns),
+        int(status.st_ctime_ns),
+        int(getattr(status, "st_file_attributes", 0)),
+    )
+
+
+def _same_open_path_file_identity(
+    path_identity: tuple[Any, ...], handle_identity: tuple[Any, ...]
+) -> bool:
+    """Compare stable Windows path/handle fields (``st_ctime`` differs by API)."""
+
+    stable_indices = (0, 1, 2, 3, 4, 5, 7)
+    return all(
+        path_identity[index] == handle_identity[index]
+        for index in stable_indices
+    )
+
+
+def _capture_source_surface(
+    trial_dir: Path | str,
+) -> tuple[Path, dict[str, Path], tuple[tuple[Any, ...], ...]]:
+    """Pin the unresolved trial ancestry and five non-reparse source files."""
+
+    trial = Path(os.path.abspath(os.fspath(Path(trial_dir))))
+    directory_surface = tuple(reversed(trial.parents)) + (trial,)
+    identities: list[tuple[Any, ...]] = []
+    for index, directory in enumerate(directory_surface):
+        identities.append(
+            _path_identity(
+                directory,
+                label=(
+                    "source trial root"
+                    if directory == trial
+                    else f"source trial ancestor {index}"
+                ),
+                directory=True,
+            )
+        )
+    if trial.resolve() != trial:
+        raise PhaseSnapshotError(
+            "source trial root must not traverse a symlink or reparse redirect"
+        )
+    paths = {
+        "trial_manifest": trial / SOURCE_TRIAL_MANIFEST_FILE,
+        "command": trial / SOURCE_COMMAND_FILE,
+        "observation": trial / SOURCE_OBSERVATION_FILE,
+        "transition": trial / SOURCE_TRANSITION_FILE,
+        "leg_crossing": trial / SOURCE_LEG_CROSSING_FILE,
+    }
+    for role, path in paths.items():
+        identities.append(
+            _path_identity(path, label=f"source {role} file", directory=False)
+        )
+        if path.resolve() != path:
+            raise PhaseSnapshotError(
+                f"source {role} file must not traverse a symlink or reparse redirect"
+            )
+    return trial, paths, tuple(identities)
+
+
+def _assert_source_surface_unchanged(
+    identities: Iterable[tuple[Any, ...]],
+) -> None:
+    """Recheck every captured ancestor, root, and source-file identity."""
+
+    for identity in identities:
+        path = Path(identity[0])
+        current = _path_identity(
+            path,
+            label=f"captured source path {path}",
+            directory=identity[1] == "directory",
+        )
+        if current != identity:
+            raise PhaseSnapshotError(
+                f"source trial path changed during immutable capture: {path}"
+            )
+
+
+def _capture_source_bytes_once(
+    path: Path,
+    *,
+    label: str,
+    expected_identity: tuple[Any, ...],
+) -> bytes:
+    """Read one small source file from one identity-checked binary handle."""
+
+    try:
+        with path.open("rb") as stream:
+            before = _handle_identity(path, stream)
+            if not _same_open_path_file_identity(expected_identity, before):
+                raise PhaseSnapshotError(
+                    f"{label} changed before its immutable read"
+                )
+            payload = stream.read()
+            if _handle_identity(path, stream) != before:
+                raise PhaseSnapshotError(f"{label} changed while it was read")
+    except PhaseSnapshotError:
+        raise
+    except OSError as exc:
+        raise PhaseSnapshotError(f"failed to read {label}: {path}: {exc}") from exc
+    return payload
+
+
+class _SingleReadJsonlCapture:
+    """One binary JSONL handle whose raw bytes are parsed and hashed once."""
+
+    def __init__(
+        self,
+        path: Path,
+        *,
+        label: str,
+        expected_identity: tuple[Any, ...],
+    ) -> None:
+        self.path = path
+        self.label = label
+        self._expected_identity = expected_identity
+        try:
+            self._stream = path.open("rb")
+        except OSError as exc:
+            raise PhaseSnapshotError(f"failed to open {label}: {path}: {exc}") from exc
+        self._handle_identity = _handle_identity(path, self._stream)
+        if not _same_open_path_file_identity(
+            expected_identity, self._handle_identity
+        ):
+            self._stream.close()
+            raise PhaseSnapshotError(f"{label} changed before its immutable read")
+        self._digest = hashlib.sha256()
+        self._byte_count = 0
+        self._line_number = 0
+        self._finished = False
+
+    def __enter__(self) -> "_SingleReadJsonlCapture":
+        return self
+
+    def __exit__(self, exc_type: Any, exc: Any, traceback: Any) -> None:
+        self._stream.close()
+
+    def __iter__(self) -> "_SingleReadJsonlCapture":
+        return self
+
+    def __next__(self) -> dict[str, Any]:
+        while True:
+            raw = self._stream.readline()
+            if not raw:
+                self._finish()
+                raise StopIteration
+            self._digest.update(raw)
+            self._byte_count += len(raw)
+            self._line_number += 1
+            if not raw.strip():
+                continue
+            try:
+                row = json.loads(raw)
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                raise PhaseSnapshotError(
+                    f"invalid JSONL at {self.path}:{self._line_number}"
+                ) from exc
+            if not isinstance(row, dict):
+                raise PhaseSnapshotError(
+                    f"non-object JSONL row at {self.path}:{self._line_number}"
+                )
+            return row
+
+    def drain(self) -> None:
+        """Hash the unparsed tail without reopening or retaining the large file."""
+
+        if self._finished:
+            return
+        for block in iter(lambda: self._stream.read(1024 * 1024), b""):
+            self._digest.update(block)
+            self._byte_count += len(block)
+        self._finish()
+
+    def _finish(self) -> None:
+        if self._finished:
+            return
+        if _handle_identity(self.path, self._stream) != self._handle_identity:
+            raise PhaseSnapshotError(f"{self.label} changed while it was read")
+        self._finished = True
+
+    def artifact_record(self, expected_name: str) -> dict[str, Any]:
+        if not self._finished:
+            raise PhaseSnapshotError(
+                f"{self.label} hash is unavailable before its immutable read completes"
+            )
+        return {
+            "name": expected_name,
+            "bytes": self._byte_count,
+            "sha256": self._digest.hexdigest(),
+        }
+
+
 def _require_within(path: Path, root: Path, *, label: str) -> None:
     if path != root and root not in path.parents:
         raise PhaseSnapshotError(f"{label} resolves outside canonical snapshot root")
@@ -177,13 +440,430 @@ def _read_jsonl(path: Path) -> Iterable[dict[str, Any]]:
             yield row
 
 
-def phase_entry_ticks(trial_dir: Path | str) -> dict[str, int]:
-    trial = Path(trial_dir).resolve()
-    transitions = trial / "state_transitions.jsonl"
-    if not transitions.is_file():
-        raise FileNotFoundError(transitions)
+def _read_jsonl_bytes(payload: bytes, path: Path) -> tuple[dict[str, Any], ...]:
+    """Parse JSONL solely from already captured immutable bytes."""
+
+    rows: list[dict[str, Any]] = []
+    for line_number, raw in enumerate(payload.splitlines(), 1):
+        if not raw.strip():
+            continue
+        try:
+            row = json.loads(raw)
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise PhaseSnapshotError(f"invalid JSONL at {path}:{line_number}") from exc
+        if not isinstance(row, dict):
+            raise PhaseSnapshotError(f"non-object JSONL row at {path}:{line_number}")
+        rows.append(row)
+    return tuple(rows)
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def phase_snapshot_drive_target_sha256(values: Iterable[Any]) -> str:
+    """Hash one authoritative physical-drive target in canonical Full12 order."""
+
+    target = _finite_values(values, len(FULL12_ORDER), "drive_target_full12")
+    return _sha256_bytes(
+        _canonical_bytes(
+            {
+                "canonical_order": list(FULL12_ORDER),
+                "drive_target_full12": list(target),
+            }
+        )
+    )
+
+
+def phase_snapshot_actuation_contract_sha256(
+    expected_atomic_ack: Mapping[str, Any],
+) -> str:
+    """Hash every source-ack field that the reset-only adapter must reproduce."""
+
+    missing = [name for name in SOURCE_ACK_MATCH_FIELDS if name not in expected_atomic_ack]
+    if missing:
+        raise PhaseSnapshotError(
+            f"source atomic ack lacks replay fields: {missing}"
+        )
+    return _sha256_bytes(
+        _canonical_bytes(
+            {name: expected_atomic_ack[name] for name in SOURCE_ACK_MATCH_FIELDS}
+        )
+    )
+
+
+def _finite_values(values: Iterable[Any], size: int, label: str) -> tuple[float, ...]:
+    try:
+        result = tuple(float(value) for value in values)
+    except (TypeError, ValueError) as exc:
+        raise PhaseSnapshotError(f"{label} must be a numeric sequence") from exc
+    if len(result) != size or any(not math.isfinite(value) for value in result):
+        raise PhaseSnapshotError(f"{label} must contain {size} finite values")
+    return result
+
+
+def _bool_values(values: Iterable[Any], size: int, label: str) -> tuple[bool, ...]:
+    try:
+        result = tuple(values)
+    except TypeError as exc:
+        raise PhaseSnapshotError(f"{label} must be a boolean sequence") from exc
+    if len(result) != size or any(type(value) is not bool for value in result):
+        raise PhaseSnapshotError(f"{label} must contain {size} booleans")
+    return tuple(bool(value) for value in result)
+
+
+def _equivalent(left: Any, right: Any, *, abs_tol: float = 1.0e-12) -> bool:
+    if type(left) is bool or type(right) is bool:
+        return type(left) is bool and type(right) is bool and left is right
+    if isinstance(left, (int, float)) and isinstance(right, (int, float)):
+        return math.isfinite(float(left)) and math.isfinite(float(right)) and math.isclose(
+            float(left), float(right), rel_tol=0.0, abs_tol=abs_tol
+        )
+    if isinstance(left, (list, tuple)) and isinstance(right, (list, tuple)):
+        return len(left) == len(right) and all(
+            _equivalent(a, b, abs_tol=abs_tol) for a, b in zip(left, right, strict=True)
+        )
+    return left == right
+
+
+def _source_artifact_record(
+    trial_manifest: Mapping[str, Any],
+    *,
+    artifact_key: str,
+    expected_name: str,
+    captured: Mapping[str, Any],
+) -> dict[str, Any]:
+    artifacts = trial_manifest.get("artifact_files")
+    declared = artifacts.get(artifact_key) if isinstance(artifacts, Mapping) else None
+    if not isinstance(declared, Mapping):
+        raise PhaseSnapshotError(
+            f"trial manifest lacks the {artifact_key} source artifact binding"
+        )
+    if declared.get("path") != expected_name:
+        raise PhaseSnapshotError(
+            f"trial manifest {artifact_key} path is not {expected_name}"
+        )
+    if captured.get("name") != expected_name:
+        raise PhaseSnapshotError(
+            f"captured {artifact_key} file is not {expected_name}"
+        )
+    byte_count = captured.get("bytes")
+    digest = captured.get("sha256")
+    if declared.get("bytes") != byte_count or declared.get("sha256") != digest:
+        raise PhaseSnapshotError(
+            f"trial manifest {artifact_key} hash/size does not match source bytes"
+        )
+    return {"name": expected_name, "bytes": byte_count, "sha256": digest}
+
+
+def _source_standing_pose(
+    trial_manifest: Mapping[str, Any],
+) -> dict[str, float]:
+    initialization = trial_manifest.get("environment_initialization")
+    records = initialization.get("records") if isinstance(initialization, Mapping) else None
+    if not isinstance(records, list) or len(records) != len(SERVO_ORDER):
+        raise PhaseSnapshotError(
+            "trial manifest lacks all eight authoritative standing-pose records"
+        )
+    by_name: dict[str, float] = {}
+    for row in records:
+        if not isinstance(row, Mapping):
+            raise PhaseSnapshotError("standing-pose record is not an object")
+        name = row.get("joint_name")
+        if name not in SERVO_ORDER or name in by_name:
+            raise PhaseSnapshotError("standing-pose records are duplicate or noncanonical")
+        value = _finite_values(
+            (row.get("standing_pose_deg"),), 1, f"standing pose {name}"
+        )[0]
+        by_name[str(name)] = value
+    if set(by_name) != set(SERVO_ORDER):
+        raise PhaseSnapshotError("standing-pose records do not cover canonical servos")
+    return {name: by_name[name] for name in SERVO_ORDER}
+
+
+def _mapper_configuration(
+    mapper: ServoTargetMapper,
+) -> dict[str, Any]:
+    return {
+        "physics_dt_s": mapper.physics_dt_s,
+        "servo_rate_deg_s": mapper.servo_rate_deg_s,
+        "maximum_delta_deg": mapper.maximum_delta_deg,
+        "tracking_gain": mapper.tracking_gain,
+        "tracking_limit_deg": mapper.tracking_limit_deg,
+        "feedback_interval_ticks": mapper.feedback_interval_ticks,
+        "standing_pose_deg": [mapper.standing_pose_deg[name] for name in SERVO_ORDER],
+    }
+
+
+def _mapper_state_payload(
+    mapper: ServoTargetMapper,
+    final_drive_servo_deg: Mapping[str, float],
+    *,
+    source_control_physics_tick: int | None,
+) -> dict[str, Any]:
+    return {
+        "schema": SOURCE_MAPPER_STATE_SCHEMA,
+        "source_control_physics_tick": source_control_physics_tick,
+        "requested_servo_deg": [mapper._requested[name] for name in SERVO_ORDER],
+        "applied_drive_command_deg": [mapper._applied[name] for name in SERVO_ORDER],
+        "nominal_target_reached": [mapper._nominal_reached[name] for name in SERVO_ORDER],
+        "tracking_compensation_deg": [mapper._compensation[name] for name in SERVO_ORDER],
+        "tracking_active": [mapper._tracking_active[name] for name in SERVO_ORDER],
+        "retiring_stale_bias": [mapper._retiring_stale_bias[name] for name in SERVO_ORDER],
+        "feedback_tick": mapper._feedback_tick,
+        "final_drive_servo_deg": [final_drive_servo_deg[name] for name in SERVO_ORDER],
+    }
+
+
+def _expected_source_ack(
+    *,
+    source_ack: Mapping[str, Any],
+    requested: Full12Command,
+    applied: Full12Command,
+    native_drive: Full12Command,
+    drive_target: Full12Command,
+    requested_bias: tuple[float, ...],
+    realized_bias: tuple[float, ...],
+    mapping: Any,
+    tracking_servo_names: tuple[str, ...],
+    physical: Any,
+) -> dict[str, Any]:
+    return {
+        "schema": "wlr50_clean.atomic_full12_ack.v1",
+        "physics_dt_s": PHYSICS_DT_S,
+        "articulation_writes_this_call": 1,
+        "canonical_order": list(FULL12_ORDER),
+        "requested_full12": list(requested.to_full12()),
+        "applied_full12": list(applied.to_full12()),
+        "drive_target_full12": list(drive_target.to_full12()),
+        "native_drive_target_full12": list(native_drive.to_full12()),
+        "drive_feedback_bias_requested_full12": list(requested_bias),
+        "drive_feedback_bias_realized_full12": list(realized_bias),
+        "drive_feedback_final_slew_limit_deg_per_tick": mapping.maximum_delta_deg
+        if hasattr(mapping, "maximum_delta_deg")
+        else 1.25,
+        "command_was_clamped": requested != applied,
+        "servo_applied_drive_command_deg": list(drive_target.servo_deg),
+        "servo_native_drive_command_deg": list(native_drive.servo_deg),
+        "servo_tracking_compensation_deg": list(mapping.tracking_compensation_deg),
+        "servo_nominal_target_reached": list(mapping.nominal_target_reached),
+        "servo_tracking_active": list(mapping.tracking_active),
+        "tracking_servo_names": list(tracking_servo_names),
+        "servo_tracking_feedback_sample_tick": mapping.feedback_sample_tick,
+        "servo_tracking_feedback_sampled": mapping.feedback_sampled,
+        "servo_joint_ids": list(source_ack.get("servo_joint_ids", ())),
+        "wheel_joint_ids": list(source_ack.get("wheel_joint_ids", ())),
+        "servo_target_physical_rad": list(physical.servo_target_rad),
+        "wheel_target_physical_rad_s": list(physical.wheel_target_rad_s),
+        "motion_start_skew_s": 0.0,
+    }
+
+
+def _source_replay_at_phase_ticks(
+    trial_manifest: Mapping[str, Any],
+    ticks: set[int],
+    *,
+    command_rows: Iterable[dict[str, Any]],
+    observation_rows: Iterable[dict[str, Any]],
+) -> dict[int, dict[str, Any]]:
+    """Replay the Isaac-free mapper ledger and retain t-1/t state at entries."""
+
+    if trial_manifest.get("settle_ticks") != SOURCE_SETTLE_TICKS:
+        raise PhaseSnapshotError(
+            f"source trial settle_ticks must be {SOURCE_SETTLE_TICKS}"
+        )
+    if float(trial_manifest.get("physics_hz", math.nan)) != PHYSICS_HZ:
+        raise PhaseSnapshotError(f"source trial physics_hz must be {PHYSICS_HZ:g}")
+    standing_pose = _source_standing_pose(trial_manifest)
+    mapper = ServoTargetMapper(standing_pose, physics_dt_s=PHYSICS_DT_S)
+    mapper._feedback_tick = SOURCE_SETTLE_TICKS
+    final_drive = {name: 0.0 for name in SERVO_ORDER}
+    maximum = max(ticks)
+    result: dict[int, dict[str, Any]] = {}
+    command_rows = iter(command_rows)
+    observation_rows = iter(observation_rows)
+    for tick in range(maximum + 1):
+        try:
+            command = next(command_rows)
+            observation = next(observation_rows)
+        except StopIteration as exc:
+            raise PhaseSnapshotError(
+                f"source command/observation streams end before tick {tick}"
+            ) from exc
+        if command.get("control_physics_tick") != tick:
+            raise PhaseSnapshotError(f"source command stream is not contiguous at tick {tick}")
+        if observation.get("physics_tick") != tick:
+            raise PhaseSnapshotError(
+                f"source observation stream is not contiguous at tick {tick}"
+            )
+        source_ack = command.get("atomic_ack")
+        if not isinstance(source_ack, Mapping):
+            raise PhaseSnapshotError(f"source command tick {tick} lacks atomic_ack")
+        pre_state = _mapper_state_payload(
+            mapper,
+            final_drive,
+            source_control_physics_tick=(None if tick == 0 else tick - 1),
+        )
+        requested = Full12Command.from_full12(source_ack.get("requested_full12", ()))
+        applied = requested.clamped()
+        command_applied = _finite_values(
+            command.get("applied_full12", ()), len(FULL12_ORDER),
+            f"source command applied_full12 at tick {tick}",
+        )
+        if not _equivalent(applied.to_full12(), command_applied):
+            raise PhaseSnapshotError(
+                f"source command applied_full12 is inconsistent at tick {tick}"
+            )
+        tracking_names = tuple(str(name) for name in command.get("tracking_servo_names", ()))
+        if len(set(tracking_names)) != len(tracking_names) or any(
+            name not in SERVO_ORDER for name in tracking_names
+        ):
+            raise PhaseSnapshotError(f"source tracking set is invalid at tick {tick}")
+        joints = observation.get("joints")
+        if not isinstance(joints, Mapping) or set(SERVO_ORDER) - set(joints):
+            raise PhaseSnapshotError(f"source observation joints are incomplete at tick {tick}")
+        measured_physical_rad = tuple(
+            math.radians(
+                standing_pose[name]
+                + SERVO_COMMAND_SIGN[name] * float(joints[name]["position_deg"])
+            )
+            for name in SERVO_ORDER
+        )
+        mapping = mapper.advance(
+            applied.servo_deg,
+            measured_physical_rad,
+            tracking_servo_names=tracking_names,
+        )
+        native_drive = Full12Command(mapping.applied_drive_command_deg, applied.wheel_rad_s)
+        requested_bias = _finite_values(
+            command.get("drive_feedback_bias_requested_full12", ()),
+            len(FULL12_ORDER),
+            f"source requested drive bias at tick {tick}",
+        )
+        final_servo: list[float] = []
+        for index, name in enumerate(SERVO_ORDER):
+            lower, upper = servo_limits_deg(name)
+            value = bounded_drive_feedback_step(
+                previous_deg=final_drive[name],
+                native_deg=native_drive.servo_deg[index],
+                bias_deg=requested_bias[index],
+                maximum_delta_deg=mapper.maximum_delta_deg,
+                lower_deg=lower,
+                upper_deg=upper,
+            )
+            final_drive[name] = value
+            final_servo.append(value)
+        final_wheels = tuple(
+            max(
+                -WHEEL_VELOCITY_LIMIT_RAD_S,
+                min(WHEEL_VELOCITY_LIMIT_RAD_S, native + bias),
+            )
+            for native, bias in zip(
+                native_drive.wheel_rad_s,
+                requested_bias[len(SERVO_ORDER) :],
+                strict=True,
+            )
+        )
+        drive_target = Full12Command(tuple(final_servo), final_wheels)
+        realized_bias = tuple(
+            final - native
+            for final, native in zip(
+                drive_target.to_full12(), native_drive.to_full12(), strict=True
+            )
+        )
+        physical = build_physical_batch(drive_target, standing_pose)
+        expected_ack = _expected_source_ack(
+            source_ack=source_ack,
+            requested=requested,
+            applied=applied,
+            native_drive=native_drive,
+            drive_target=drive_target,
+            requested_bias=requested_bias,
+            realized_bias=realized_bias,
+            mapping=mapping,
+            tracking_servo_names=tracking_names,
+            physical=physical,
+        )
+        expected_ack["drive_feedback_final_slew_limit_deg_per_tick"] = (
+            mapper.maximum_delta_deg
+        )
+        for field in SOURCE_ACK_MATCH_FIELDS:
+            if field not in source_ack or not _equivalent(
+                source_ack[field], expected_ack[field]
+            ):
+                raise PhaseSnapshotError(
+                    f"source mapper replay mismatch at tick {tick}: {field}"
+                )
+        for field in (
+            "applied_full12",
+            "drive_target_full12",
+            "native_drive_target_full12",
+            "drive_feedback_bias_requested_full12",
+            "drive_feedback_bias_realized_full12",
+            "tracking_servo_names",
+        ):
+            if field not in command or not _equivalent(command[field], source_ack[field]):
+                raise PhaseSnapshotError(
+                    f"source command/atomic_ack mismatch at tick {tick}: {field}"
+                )
+        if (
+            source_ack.get("physics_tick") != SOURCE_SETTLE_TICKS + tick
+            or source_ack.get("write_count") != SOURCE_SETTLE_TICKS + tick + 1
+        ):
+            raise PhaseSnapshotError(
+                f"source atomic clock/write count is inconsistent at tick {tick}"
+            )
+        post_state = _mapper_state_payload(
+            mapper, final_drive, source_control_physics_tick=tick
+        )
+        if tick in ticks:
+            authoritative_ack = {
+                field: source_ack[field] for field in SOURCE_ACK_MATCH_FIELDS
+            }
+            command_row_hash = _sha256_bytes(_canonical_bytes(command))
+            observation_row_hash = _sha256_bytes(_canonical_bytes(observation))
+            source_command = {
+                "schema": SOURCE_COMMAND_SCHEMA,
+                "control_physics_tick": tick,
+                "source_atomic_physics_tick": int(source_ack["physics_tick"]),
+                "source_atomic_write_count": int(source_ack["write_count"]),
+                "adapter_input": {
+                    "requested_full12": list(requested.to_full12()),
+                    "tracking_servo_names": list(tracking_names),
+                    "drive_feedback_bias_requested_full12": list(requested_bias),
+                },
+                "mapper_configuration": _mapper_configuration(mapper),
+                "mapper_pre_state": pre_state,
+                "mapper_post_state": post_state,
+                "expected_atomic_ack": authoritative_ack,
+                "source_command_row_canonical_sha256": command_row_hash,
+                "source_observation_row_canonical_sha256": observation_row_hash,
+                "drive_target_full12_sha256": phase_snapshot_drive_target_sha256(
+                    authoritative_ack["drive_target_full12"]
+                ),
+                "actuation_contract_sha256": phase_snapshot_actuation_contract_sha256(
+                    authoritative_ack
+                ),
+            }
+            result[tick] = {
+                "command": command,
+                "observation": observation,
+                "source_command": source_command,
+            }
+    if set(result) != ticks:
+        raise PhaseSnapshotError("source mapper replay did not retain every phase tick")
+    return result
+
+
+def _phase_entry_ticks_from_rows(
+    rows: Iterable[Mapping[str, Any]],
+) -> dict[str, int]:
     result: dict[str, int] = {"P01": 0}
-    for row in _read_jsonl(transitions):
+    for row in rows:
         phase = str(row.get("state_id"))
         if phase in PHASE_IDS and row.get("to_lifecycle") == "EXECUTE_MOTION" and phase not in result:
             time_s = float(row["sim_time_s"])
@@ -195,6 +875,14 @@ def phase_entry_ticks(trial_dir: Path | str) -> dict[str, int]:
         missing = [phase for phase in PHASE_IDS if phase not in result]
         raise PhaseSnapshotError(f"trial lacks phase-entry transitions: {missing}")
     return result
+
+
+def phase_entry_ticks(trial_dir: Path | str) -> dict[str, int]:
+    trial = Path(trial_dir).resolve()
+    transitions = trial / SOURCE_TRANSITION_FILE
+    if not transitions.is_file():
+        raise FileNotFoundError(transitions)
+    return _phase_entry_ticks_from_rows(_read_jsonl(transitions))
 
 
 def _rows_at_ticks(path: Path, ticks: set[int], key: str) -> dict[int, dict[str, Any]]:
@@ -212,7 +900,9 @@ def _rows_at_ticks(path: Path, ticks: set[int], key: str) -> dict[int, dict[str,
     return result
 
 
-def _event_latches(trial: Path, entry_tick: int) -> dict[str, dict[str, int | bool | None]]:
+def _event_latches(
+    rows: Iterable[Mapping[str, Any]], entry_tick: int
+) -> dict[str, dict[str, int | bool | None]]:
     state = {
         leg: {
             "active_lift": False,
@@ -224,15 +914,12 @@ def _event_latches(trial: Path, entry_tick: int) -> dict[str, dict[str, int | bo
         }
         for leg in ("FL", "FR", "RL", "RR")
     }
-    source = trial / "leg_crossing_events.jsonl"
-    if not source.is_file():
-        raise FileNotFoundError(source)
     names = {
         "ACTIVE_LIFT": ("active_lift", "active_lift_tick"),
         "FRONT_FACE_CROSSED": ("front_face_crossed", "front_face_crossed_tick"),
         "TOP_LOADED": ("top_loaded", "top_loaded_tick"),
     }
-    for row in _read_jsonl(source):
+    for row in rows:
         tick = int(row["physics_tick"])
         if tick > entry_tick:
             break
@@ -253,6 +940,9 @@ def _snapshot_payload(
     tick: int,
     observation: Mapping[str, Any],
     command: Mapping[str, Any],
+    source_artifacts: Mapping[str, Any],
+    source_command: Mapping[str, Any],
+    contact_event_latches: Mapping[str, Any],
     level_reference_orientation_wxyz: list[float],
 ) -> dict[str, Any]:
     base = observation["base"]
@@ -274,6 +964,8 @@ def _snapshot_payload(
         "source_trial_path": str(trial),
         "source_tick": tick,
         "source_time_s": tick / PHYSICS_HZ,
+        "source_artifacts": dict(source_artifacts),
+        "source_command": dict(source_command),
         "fsm_state": phase,
         "fsm_lifecycle": "EXECUTE_MOTION",
         "phase_history": completed,
@@ -298,7 +990,7 @@ def _snapshot_payload(
             "completed_phases": completed,
             "recovery_count": 0,
         },
-        "contact_event_latches": _event_latches(trial, tick),
+        "contact_event_latches": dict(contact_event_latches),
         "obstacle_relative_geometry": {
             "obstacle": observation["obstacle"],
             "wheel_centers_w_m": {
@@ -325,16 +1017,113 @@ def build_phase_snapshots(
     trial_dir: Path | str,
     output_root: Path | str,
 ) -> dict[str, Any]:
-    trial = Path(trial_dir).resolve()
     output = Path(output_root).resolve()
     if output.exists():
         raise FileExistsError(f"snapshot output already exists: {output}")
-    manifest_source = json.loads((trial / "trial_manifest.json").read_text(encoding="utf-8"))
-    trial_id = str(manifest_source.get("trial_id", trial.name))
-    ticks_by_phase = phase_entry_ticks(trial)
+    trial, source_paths, source_identities = _capture_source_surface(trial_dir)
+    identity_by_path = {
+        Path(identity[0]): identity
+        for identity in source_identities
+        if identity[1] == "file"
+    }
+    trial_manifest_path = source_paths["trial_manifest"]
+    trial_manifest_bytes = _capture_source_bytes_once(
+        trial_manifest_path,
+        label="source trial manifest",
+        expected_identity=identity_by_path[trial_manifest_path],
+    )
+    manifest_source = _decode_json_object(
+        trial_manifest_bytes,
+        label="source trial manifest",
+        path=trial_manifest_path,
+    )
+    trial_id_value = manifest_source.get("trial_id")
+    if not isinstance(trial_id_value, str) or not trial_id_value:
+        raise PhaseSnapshotError("source trial manifest trial_id is invalid")
+    trial_id = trial_id_value
+    transition_bytes = _capture_source_bytes_once(
+        source_paths["transition"],
+        label="source transition stream",
+        expected_identity=identity_by_path[source_paths["transition"]],
+    )
+    leg_crossing_bytes = _capture_source_bytes_once(
+        source_paths["leg_crossing"],
+        label="source leg-crossing stream",
+        expected_identity=identity_by_path[source_paths["leg_crossing"]],
+    )
+    transition_rows = _read_jsonl_bytes(
+        transition_bytes, source_paths["transition"]
+    )
+    leg_crossing_rows = _read_jsonl_bytes(
+        leg_crossing_bytes, source_paths["leg_crossing"]
+    )
+    ticks_by_phase = _phase_entry_ticks_from_rows(transition_rows)
     ticks = set(ticks_by_phase.values())
-    observations = _rows_at_ticks(trial / "observation_120hz.jsonl", ticks, "physics_tick")
-    commands = _rows_at_ticks(trial / "full12_commands_120hz.jsonl", ticks, "control_physics_tick")
+    with _SingleReadJsonlCapture(
+        source_paths["command"],
+        label="source command stream",
+        expected_identity=identity_by_path[source_paths["command"]],
+    ) as command_capture, _SingleReadJsonlCapture(
+        source_paths["observation"],
+        label="source observation stream",
+        expected_identity=identity_by_path[source_paths["observation"]],
+    ) as observation_capture:
+        replay_rows = _source_replay_at_phase_ticks(
+            manifest_source,
+            ticks,
+            command_rows=command_capture,
+            observation_rows=observation_capture,
+        )
+        command_capture.drain()
+        observation_capture.drain()
+        command_artifact = command_capture.artifact_record(SOURCE_COMMAND_FILE)
+        observation_artifact = observation_capture.artifact_record(
+            SOURCE_OBSERVATION_FILE
+        )
+    transition_artifact = {
+        "name": SOURCE_TRANSITION_FILE,
+        "bytes": len(transition_bytes),
+        "sha256": _sha256_bytes(transition_bytes),
+    }
+    leg_crossing_artifact = {
+        "name": SOURCE_LEG_CROSSING_FILE,
+        "bytes": len(leg_crossing_bytes),
+        "sha256": _sha256_bytes(leg_crossing_bytes),
+    }
+    source_artifacts = {
+        "trial_manifest": {
+            "name": SOURCE_TRIAL_MANIFEST_FILE,
+            "bytes": len(trial_manifest_bytes),
+            "sha256": _sha256_bytes(trial_manifest_bytes),
+        },
+        "command": _source_artifact_record(
+            manifest_source,
+            artifact_key="command",
+            expected_name=SOURCE_COMMAND_FILE,
+            captured=command_artifact,
+        ),
+        "observation": _source_artifact_record(
+            manifest_source,
+            artifact_key="observation",
+            expected_name=SOURCE_OBSERVATION_FILE,
+            captured=observation_artifact,
+        ),
+        "transition": _source_artifact_record(
+            manifest_source,
+            artifact_key="transition",
+            expected_name=SOURCE_TRANSITION_FILE,
+            captured=transition_artifact,
+        ),
+        "leg_crossing": _source_artifact_record(
+            manifest_source,
+            artifact_key="leg_crossing",
+            expected_name=SOURCE_LEG_CROSSING_FILE,
+            captured=leg_crossing_artifact,
+        ),
+    }
+    _assert_source_surface_unchanged(source_identities)
+    observations = {tick: row["observation"] for tick, row in replay_rows.items()}
+    commands = {tick: row["command"] for tick, row in replay_rows.items()}
     level_reference_orientation = list(observations[0]["base"]["orientation_wxyz"])
     output.mkdir(parents=True, exist_ok=False)
     rows = []
@@ -346,6 +1135,9 @@ def build_phase_snapshots(
             tick=tick,
             observation=observations[tick],
             command=commands[tick],
+            source_artifacts=source_artifacts,
+            source_command=replay_rows[tick]["source_command"],
+            contact_event_latches=_event_latches(leg_crossing_rows, tick),
             level_reference_orientation_wxyz=level_reference_orientation,
         )
         state_hash = _sha256_bytes(_canonical_bytes(payload))
@@ -353,9 +1145,11 @@ def build_phase_snapshots(
         phase_dir = output / phase
         phase_dir.mkdir()
         snapshot_path = phase_dir / "snapshot.json"
-        snapshot_path.write_text(json.dumps(complete, indent=2) + "\n", encoding="utf-8")
+        snapshot_path.write_bytes(_indented_json_lf_bytes(complete))
         file_hash = hashlib.sha256(snapshot_path.read_bytes()).hexdigest()
-        (phase_dir / "snapshot.sha256").write_text(f"{file_hash}  snapshot.json\n", encoding="ascii")
+        (phase_dir / "snapshot.sha256").write_bytes(
+            f"{file_hash}  snapshot.json\n".encode("ascii")
+        )
         rows.append(
             {
                 "phase": phase,
@@ -363,19 +1157,352 @@ def build_phase_snapshots(
                 "state_sha256": state_hash,
                 "file_sha256": file_hash,
                 "path": str(snapshot_path),
+                "source_command_row_canonical_sha256": replay_rows[tick][
+                    "source_command"
+                ]["source_command_row_canonical_sha256"],
+                "source_observation_row_canonical_sha256": replay_rows[tick][
+                    "source_command"
+                ]["source_observation_row_canonical_sha256"],
+                "drive_target_full12_sha256": replay_rows[tick]["source_command"][
+                    "drive_target_full12_sha256"
+                ],
+                "actuation_contract_sha256": replay_rows[tick]["source_command"][
+                    "actuation_contract_sha256"
+                ],
             }
         )
     manifest = {
         "schema": MANIFEST_SCHEMA,
         "source_trial": trial_id,
         "source_trial_path": str(trial),
+        "source_artifacts": source_artifacts,
         "physics_hz": PHYSICS_HZ,
         "phase_count": len(rows),
         "snapshots": rows,
     }
-    (output / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    (output / "manifest.json").write_bytes(_indented_json_lf_bytes(manifest))
     validate_phase_snapshots(output, canonical_root=output)
     return manifest
+
+
+def _validate_source_artifacts(value: Any, *, label: str) -> Mapping[str, Any]:
+    expected_files = {
+        "trial_manifest": SOURCE_TRIAL_MANIFEST_FILE,
+        "command": SOURCE_COMMAND_FILE,
+        "observation": SOURCE_OBSERVATION_FILE,
+        "transition": SOURCE_TRANSITION_FILE,
+        "leg_crossing": SOURCE_LEG_CROSSING_FILE,
+    }
+    if not isinstance(value, Mapping) or set(value) != set(expected_files):
+        raise PhaseSnapshotError(
+            f"{label} must bind every source file used by the builder"
+        )
+    for role, expected_name in expected_files.items():
+        row = value[role]
+        if not isinstance(row, Mapping) or set(row) != {"name", "bytes", "sha256"}:
+            raise PhaseSnapshotError(f"{label}.{role} binding is incomplete")
+        if row.get("name") != expected_name:
+            raise PhaseSnapshotError(f"{label}.{role} has the wrong file name")
+        byte_count = row.get("bytes")
+        if type(byte_count) is not int or byte_count < 0:
+            raise PhaseSnapshotError(f"{label}.{role}.bytes must be nonnegative")
+        _require_sha256(row.get("sha256"), label=f"{label}.{role}.sha256")
+    return value
+
+
+def _validate_mapper_state(
+    value: Any,
+    *,
+    label: str,
+    expected_source_tick: int | None,
+) -> Mapping[str, Any]:
+    expected_keys = {
+        "schema",
+        "source_control_physics_tick",
+        "requested_servo_deg",
+        "applied_drive_command_deg",
+        "nominal_target_reached",
+        "tracking_compensation_deg",
+        "tracking_active",
+        "retiring_stale_bias",
+        "feedback_tick",
+        "final_drive_servo_deg",
+    }
+    if not isinstance(value, Mapping) or set(value) != expected_keys:
+        raise PhaseSnapshotError(f"{label} fields are incomplete or unexpected")
+    if value.get("schema") != SOURCE_MAPPER_STATE_SCHEMA:
+        raise PhaseSnapshotError(f"{label} schema is invalid")
+    if value.get("source_control_physics_tick") != expected_source_tick:
+        raise PhaseSnapshotError(f"{label} source tick is invalid")
+    for field in (
+        "requested_servo_deg",
+        "applied_drive_command_deg",
+        "tracking_compensation_deg",
+        "final_drive_servo_deg",
+    ):
+        _finite_values(value.get(field, ()), len(SERVO_ORDER), f"{label}.{field}")
+    for field in (
+        "nominal_target_reached",
+        "tracking_active",
+        "retiring_stale_bias",
+    ):
+        _bool_values(value.get(field, ()), len(SERVO_ORDER), f"{label}.{field}")
+    feedback_tick = value.get("feedback_tick")
+    if type(feedback_tick) is not int or feedback_tick < 0:
+        raise PhaseSnapshotError(f"{label}.feedback_tick must be nonnegative")
+    return value
+
+
+def validate_phase_snapshot_payload_contract(
+    payload: Mapping[str, Any],
+    phase: str,
+    *,
+    manifest_row: Mapping[str, Any] | None = None,
+    manifest_source_artifacts: Mapping[str, Any] | None = None,
+) -> None:
+    """Fail closed on every v2 source-command replay field and digest."""
+
+    if payload.get("schema") != SNAPSHOT_SCHEMA or payload.get("fsm_state") != phase:
+        raise PhaseSnapshotError(f"invalid snapshot {phase}")
+    source_tick = payload.get("source_tick")
+    if type(source_tick) is not int or source_tick < 0:
+        raise PhaseSnapshotError(f"snapshot source tick is invalid for {phase}")
+    artifacts = _validate_source_artifacts(
+        payload.get("source_artifacts"), label=f"snapshot {phase}.source_artifacts"
+    )
+    if manifest_source_artifacts is not None and artifacts != manifest_source_artifacts:
+        raise PhaseSnapshotError(
+            f"snapshot source-file binding differs from manifest for {phase}"
+        )
+    source = payload.get("source_command")
+    expected_source_keys = {
+        "schema",
+        "control_physics_tick",
+        "source_atomic_physics_tick",
+        "source_atomic_write_count",
+        "adapter_input",
+        "mapper_configuration",
+        "mapper_pre_state",
+        "mapper_post_state",
+        "expected_atomic_ack",
+        "source_command_row_canonical_sha256",
+        "source_observation_row_canonical_sha256",
+        "drive_target_full12_sha256",
+        "actuation_contract_sha256",
+    }
+    if not isinstance(source, Mapping) or set(source) != expected_source_keys:
+        raise PhaseSnapshotError(
+            f"snapshot source-command replay fields are incomplete for {phase}"
+        )
+    if source.get("schema") != SOURCE_COMMAND_SCHEMA:
+        raise PhaseSnapshotError(f"snapshot source-command schema is invalid for {phase}")
+    if source.get("control_physics_tick") != source_tick:
+        raise PhaseSnapshotError(f"snapshot source-command tick mismatch for {phase}")
+    if source.get("source_atomic_physics_tick") != SOURCE_SETTLE_TICKS + source_tick:
+        raise PhaseSnapshotError(f"snapshot source atomic tick mismatch for {phase}")
+    if source.get("source_atomic_write_count") != SOURCE_SETTLE_TICKS + source_tick + 1:
+        raise PhaseSnapshotError(f"snapshot source atomic write count mismatch for {phase}")
+
+    for name in (
+        "source_command_row_canonical_sha256",
+        "source_observation_row_canonical_sha256",
+        "drive_target_full12_sha256",
+        "actuation_contract_sha256",
+    ):
+        _require_sha256(source.get(name), label=f"snapshot {phase}.{name}")
+
+    configuration = source.get("mapper_configuration")
+    expected_configuration_keys = {
+        "physics_dt_s",
+        "servo_rate_deg_s",
+        "maximum_delta_deg",
+        "tracking_gain",
+        "tracking_limit_deg",
+        "feedback_interval_ticks",
+        "standing_pose_deg",
+    }
+    if not isinstance(configuration, Mapping) or set(configuration) != expected_configuration_keys:
+        raise PhaseSnapshotError(f"snapshot mapper configuration is invalid for {phase}")
+    numeric_configuration = {
+        name: _finite_values((configuration.get(name),), 1, f"{phase}.{name}")[0]
+        for name in (
+            "physics_dt_s",
+            "servo_rate_deg_s",
+            "maximum_delta_deg",
+            "tracking_gain",
+            "tracking_limit_deg",
+        )
+    }
+    if (
+        not math.isclose(
+            numeric_configuration["physics_dt_s"], PHYSICS_DT_S, rel_tol=0.0, abs_tol=1.0e-15
+        )
+        or numeric_configuration["servo_rate_deg_s"] <= 0.0
+        or not math.isclose(
+            numeric_configuration["maximum_delta_deg"],
+            numeric_configuration["physics_dt_s"]
+            * numeric_configuration["servo_rate_deg_s"],
+            rel_tol=0.0,
+            abs_tol=1.0e-12,
+        )
+        or numeric_configuration["tracking_gain"] < 0.0
+        or numeric_configuration["tracking_limit_deg"] < 0.0
+    ):
+        raise PhaseSnapshotError(f"snapshot mapper numeric configuration is invalid for {phase}")
+    interval = configuration.get("feedback_interval_ticks")
+    if type(interval) is not int or interval <= 0:
+        raise PhaseSnapshotError(f"snapshot mapper feedback interval is invalid for {phase}")
+    _finite_values(
+        configuration.get("standing_pose_deg", ()),
+        len(SERVO_ORDER),
+        f"snapshot {phase} standing pose",
+    )
+
+    pre_state = _validate_mapper_state(
+        source.get("mapper_pre_state"),
+        label=f"snapshot {phase}.mapper_pre_state",
+        expected_source_tick=(None if source_tick == 0 else source_tick - 1),
+    )
+    post_state = _validate_mapper_state(
+        source.get("mapper_post_state"),
+        label=f"snapshot {phase}.mapper_post_state",
+        expected_source_tick=source_tick,
+    )
+    if pre_state.get("feedback_tick") != SOURCE_SETTLE_TICKS + source_tick:
+        raise PhaseSnapshotError(f"snapshot mapper pre-state clock mismatch for {phase}")
+    if post_state.get("feedback_tick") != SOURCE_SETTLE_TICKS + source_tick + 1:
+        raise PhaseSnapshotError(f"snapshot mapper post-state clock mismatch for {phase}")
+
+    expected_ack = source.get("expected_atomic_ack")
+    if not isinstance(expected_ack, Mapping) or set(expected_ack) != set(
+        SOURCE_ACK_MATCH_FIELDS
+    ):
+        raise PhaseSnapshotError(f"snapshot expected atomic ack is incomplete for {phase}")
+    if expected_ack.get("schema") != "wlr50_clean.atomic_full12_ack.v1":
+        raise PhaseSnapshotError(f"snapshot expected atomic ack schema is invalid for {phase}")
+    if not _equivalent(expected_ack.get("physics_dt_s"), PHYSICS_DT_S):
+        raise PhaseSnapshotError(f"snapshot expected atomic dt is invalid for {phase}")
+    if expected_ack.get("articulation_writes_this_call") != 1:
+        raise PhaseSnapshotError(f"snapshot expected atomic write count is invalid for {phase}")
+    if expected_ack.get("canonical_order") != list(FULL12_ORDER):
+        raise PhaseSnapshotError(f"snapshot atomic canonical order is invalid for {phase}")
+    for field in (
+        "requested_full12",
+        "applied_full12",
+        "drive_target_full12",
+        "native_drive_target_full12",
+        "drive_feedback_bias_requested_full12",
+        "drive_feedback_bias_realized_full12",
+    ):
+        _finite_values(
+            expected_ack.get(field, ()), len(FULL12_ORDER), f"{phase}.{field}"
+        )
+    for field in (
+        "servo_applied_drive_command_deg",
+        "servo_native_drive_command_deg",
+        "servo_tracking_compensation_deg",
+        "servo_target_physical_rad",
+    ):
+        _finite_values(expected_ack.get(field, ()), len(SERVO_ORDER), f"{phase}.{field}")
+    _finite_values(
+        expected_ack.get("wheel_target_physical_rad_s", ()),
+        len(WHEEL_ORDER),
+        f"{phase}.wheel_target_physical_rad_s",
+    )
+    for field in ("servo_nominal_target_reached", "servo_tracking_active"):
+        _bool_values(expected_ack.get(field, ()), len(SERVO_ORDER), f"{phase}.{field}")
+    for field in ("command_was_clamped", "servo_tracking_feedback_sampled"):
+        if type(expected_ack.get(field)) is not bool:
+            raise PhaseSnapshotError(f"{phase}.{field} must be boolean")
+    scalar_fields = (
+        "drive_feedback_final_slew_limit_deg_per_tick",
+        "motion_start_skew_s",
+    )
+    for field in scalar_fields:
+        _finite_values((expected_ack.get(field),), 1, f"{phase}.{field}")
+    if not _equivalent(expected_ack.get("motion_start_skew_s"), 0.0):
+        raise PhaseSnapshotError(f"snapshot source motion skew is nonzero for {phase}")
+    sample_tick = expected_ack.get("servo_tracking_feedback_sample_tick")
+    if type(sample_tick) is not int or sample_tick != SOURCE_SETTLE_TICKS + source_tick:
+        raise PhaseSnapshotError(f"snapshot source mapper sample tick is invalid for {phase}")
+    tracking_names = expected_ack.get("tracking_servo_names")
+    if (
+        not isinstance(tracking_names, list)
+        or len(set(tracking_names)) != len(tracking_names)
+        or any(name not in SERVO_ORDER for name in tracking_names)
+    ):
+        raise PhaseSnapshotError(f"snapshot source tracking names are invalid for {phase}")
+    servo_ids = expected_ack.get("servo_joint_ids")
+    wheel_ids = expected_ack.get("wheel_joint_ids")
+    if (
+        not isinstance(servo_ids, list)
+        or not isinstance(wheel_ids, list)
+        or len(servo_ids) != len(SERVO_ORDER)
+        or len(wheel_ids) != len(WHEEL_ORDER)
+        or any(type(value) is not int or value < 0 for value in servo_ids + wheel_ids)
+        or len(set(servo_ids + wheel_ids)) != len(FULL12_ORDER)
+    ):
+        raise PhaseSnapshotError(f"snapshot source joint ids are invalid for {phase}")
+
+    adapter_input = source.get("adapter_input")
+    if not isinstance(adapter_input, Mapping) or set(adapter_input) != {
+        "requested_full12",
+        "tracking_servo_names",
+        "drive_feedback_bias_requested_full12",
+    }:
+        raise PhaseSnapshotError(f"snapshot adapter input is incomplete for {phase}")
+    for field in adapter_input:
+        if not _equivalent(adapter_input[field], expected_ack[field]):
+            raise PhaseSnapshotError(f"snapshot adapter input differs from source ack: {field}")
+    post_field_bindings = {
+        "requested_servo_deg": expected_ack["applied_full12"][: len(SERVO_ORDER)],
+        "applied_drive_command_deg": expected_ack["native_drive_target_full12"][: len(SERVO_ORDER)],
+        "nominal_target_reached": expected_ack["servo_nominal_target_reached"],
+        "tracking_compensation_deg": expected_ack["servo_tracking_compensation_deg"],
+        "tracking_active": expected_ack["servo_tracking_active"],
+        "final_drive_servo_deg": expected_ack["drive_target_full12"][: len(SERVO_ORDER)],
+    }
+    for field, expected in post_field_bindings.items():
+        if not _equivalent(post_state[field], expected):
+            raise PhaseSnapshotError(
+                f"snapshot mapper post-state differs from source ack: {field}"
+            )
+    for field in ("nominal_full12", "applied_full12"):
+        if not _equivalent(payload.get(field), expected_ack.get("requested_full12")):
+            raise PhaseSnapshotError(
+                f"snapshot {field} differs from authoritative source request for {phase}"
+            )
+    if not _equivalent(
+        expected_ack.get("requested_full12"), expected_ack.get("applied_full12")
+    ):
+        raise PhaseSnapshotError(
+            f"snapshot source request was clamped at phase entry for {phase}"
+        )
+    target_hash = phase_snapshot_drive_target_sha256(
+        expected_ack["drive_target_full12"]
+    )
+    if source.get("drive_target_full12_sha256") != target_hash:
+        raise PhaseSnapshotError(f"snapshot drive-target hash mismatch for {phase}")
+    actuation_hash = phase_snapshot_actuation_contract_sha256(expected_ack)
+    if source.get("actuation_contract_sha256") != actuation_hash:
+        raise PhaseSnapshotError(f"snapshot actuation-contract hash mismatch for {phase}")
+
+    if manifest_row is not None:
+        bindings = {
+            "source_command_row_canonical_sha256": source[
+                "source_command_row_canonical_sha256"
+            ],
+            "source_observation_row_canonical_sha256": source[
+                "source_observation_row_canonical_sha256"
+            ],
+            "drive_target_full12_sha256": target_hash,
+            "actuation_contract_sha256": actuation_hash,
+        }
+        for field, expected in bindings.items():
+            if manifest_row.get(field) != expected:
+                raise PhaseSnapshotError(
+                    f"manifest source-command binding mismatch for {phase}: {field}"
+                )
 
 
 def capture_validated_phase_snapshot_bundle(
@@ -419,6 +1546,22 @@ def capture_validated_phase_snapshot_bundle(
     )
     if manifest.get("schema") != MANIFEST_SCHEMA:
         raise PhaseSnapshotError("invalid phase snapshot manifest schema")
+    if set(manifest) != {
+        "schema",
+        "source_trial",
+        "source_trial_path",
+        "source_artifacts",
+        "physics_hz",
+        "phase_count",
+        "snapshots",
+    }:
+        raise PhaseSnapshotError("phase snapshot manifest fields are incomplete or unexpected")
+    if not isinstance(manifest.get("source_trial"), str) or not manifest["source_trial"]:
+        raise PhaseSnapshotError("phase snapshot manifest source_trial is invalid")
+    if not isinstance(manifest.get("source_trial_path"), str) or not manifest[
+        "source_trial_path"
+    ]:
+        raise PhaseSnapshotError("phase snapshot manifest source_trial_path is invalid")
     if type(manifest.get("phase_count")) is not int or manifest["phase_count"] != len(PHASE_IDS):
         raise PhaseSnapshotError("phase snapshot manifest must declare exactly 13 phases")
     physics_hz = manifest.get("physics_hz")
@@ -426,11 +1569,30 @@ def capture_validated_phase_snapshot_bundle(
         raise PhaseSnapshotError("phase snapshot manifest physics_hz must be numeric")
     if float(physics_hz) != PHYSICS_HZ:
         raise PhaseSnapshotError(f"phase snapshot manifest physics_hz must be {PHYSICS_HZ:g}")
+    manifest_source_artifacts = _validate_source_artifacts(
+        manifest.get("source_artifacts"),
+        label="phase snapshot manifest source_artifacts",
+    )
     rows = manifest.get("snapshots")
     if not isinstance(rows, list) or len(rows) != len(PHASE_IDS):
         raise PhaseSnapshotError("phase snapshot manifest must contain exactly 13 entries")
     if any(not isinstance(row, Mapping) for row in rows):
         raise PhaseSnapshotError("phase snapshot manifest entries must be JSON objects")
+    expected_row_fields = {
+        "phase",
+        "source_tick",
+        "state_sha256",
+        "file_sha256",
+        "path",
+        "source_command_row_canonical_sha256",
+        "source_observation_row_canonical_sha256",
+        "drive_target_full12_sha256",
+        "actuation_contract_sha256",
+    }
+    if any(set(row) != expected_row_fields for row in rows):
+        raise PhaseSnapshotError(
+            "phase snapshot manifest entry fields are incomplete or unexpected"
+        )
     if tuple(row.get("phase") for row in rows) != PHASE_IDS:
         raise PhaseSnapshotError("phase snapshot order must be P01-P13")
 
@@ -494,6 +1656,17 @@ def capture_validated_phase_snapshot_bundle(
             raise PhaseSnapshotError(f"invalid snapshot {phase}")
         if payload.get("source_tick") != source_tick:
             raise PhaseSnapshotError(f"source tick mismatch for {phase}")
+        if (
+            payload.get("source_trial") != manifest["source_trial"]
+            or payload.get("source_trial_path") != manifest["source_trial_path"]
+        ):
+            raise PhaseSnapshotError(f"source trial binding mismatch for {phase}")
+        validate_phase_snapshot_payload_contract(
+            payload,
+            expected_phase,
+            manifest_row=row,
+            manifest_source_artifacts=manifest_source_artifacts,
+        )
         state_hash = _require_sha256(
             payload.pop("state_sha256", None), label=f"snapshot state hash for {phase}"
         )
@@ -610,6 +1783,24 @@ def load_validated_phase_snapshot_payload(
         raise PhaseSnapshotError(f"invalid pinned snapshot {phase}")
     if payload.get("source_tick") != entry.source_tick:
         raise PhaseSnapshotError(f"pinned source tick mismatch for {phase}")
+    manifest = bundle.manifest_payload()
+    rows = manifest.get("snapshots")
+    manifest_row = next(
+        (
+            row
+            for row in rows
+            if isinstance(row, Mapping) and row.get("phase") == phase
+        ),
+        None,
+    ) if isinstance(rows, list) else None
+    if manifest_row is None:
+        raise PhaseSnapshotError(f"manifest lacks pinned snapshot row for {phase}")
+    validate_phase_snapshot_payload_contract(
+        payload,
+        phase,
+        manifest_row=manifest_row,
+        manifest_source_artifacts=manifest.get("source_artifacts"),
+    )
     state_hash = _require_sha256(
         payload.pop("state_sha256", None), label=f"pinned snapshot state hash for {phase}"
     )

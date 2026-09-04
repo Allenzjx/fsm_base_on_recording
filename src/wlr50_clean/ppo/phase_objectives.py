@@ -18,6 +18,9 @@ from typing import Any, Iterator, Mapping
 
 import yaml
 
+from .phase_snapshots import MANIFEST_SCHEMA as PHASE_SNAPSHOT_MANIFEST_SCHEMA
+from .phase_snapshots import SNAPSHOT_SCHEMA as PHASE_SNAPSHOT_SCHEMA
+
 
 PHASE_OBJECTIVES_SCHEMA = "wlr50_clean.ppo_phase_objectives.v2"
 SUCCESSFUL_FSM_ATTITUDE_ENVELOPE_SCHEMA = (
@@ -27,7 +30,7 @@ SUCCESSFUL_FSM_ATTITUDE_ENVELOPE_SCHEMA = (
 # caller cannot relabel arbitrary numbers as a successful-FSM envelope merely
 # by editing both the values and the self-declared digest in the config.
 SUCCESSFUL_FSM_ATTITUDE_ENVELOPE_DERIVATION_SHA256 = (
-    "ec769118f304e3b33635b37497c9d0e041793d3f3ce443d07b20443bddfbc7bc"
+    "82b87d1f96fd786dd2ea35c778ca2e8b54a6fab39ffc92451abdf5eaa4f6dc07"
 )
 STATE_IDS = tuple(f"P{index:02d}" for index in range(1, 14))
 DENSE_FAMILIES = (
@@ -691,7 +694,7 @@ def _load_successful_fsm_attitude_envelope(
     )
     if (
         snapshot_manifest.get("schema")
-        != "wlr50_clean.ppo_phase_snapshot_manifest.v1"
+        != PHASE_SNAPSHOT_MANIFEST_SCHEMA
         or snapshot_manifest.get("source_trial") != source["selected_trial_id"]
         or len(p01_rows) != 1
         or p01_rows[0].get("source_tick") != 0
@@ -709,7 +712,7 @@ def _load_successful_fsm_attitude_envelope(
     root_state = level_snapshot.get("root_state")
     if (
         level_snapshot.get("schema")
-        != "wlr50_clean.ppo_phase_entry_snapshot.v1"
+        != PHASE_SNAPSHOT_SCHEMA
         or level_snapshot.get("source_trial") != source["selected_trial_id"]
         or level_snapshot.get("source_tick") != 0
         or level_snapshot.get("fsm_state") != "P01"

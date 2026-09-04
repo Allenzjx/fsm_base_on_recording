@@ -28,7 +28,16 @@ from typing import Any, Callable, Mapping, Sequence
 from .action_projection import SafetyProjection
 from .observation_schema import NonFiniteObservationError, PPOObservationFrame
 from .ppo_env_adapter import AuthoritativeFrame
-from .phase_snapshots import ValidatedPhaseSnapshotBundle
+from .phase_snapshots import (
+    SNAPSHOT_SCHEMA,
+    SOURCE_ACK_MATCH_FIELDS,
+    SOURCE_MAPPER_STATE_SCHEMA,
+    PhaseSnapshotError,
+    ValidatedPhaseSnapshotBundle,
+    phase_snapshot_actuation_contract_sha256,
+    phase_snapshot_drive_target_sha256,
+    validate_phase_snapshot_payload_contract,
+)
 from .reward_terms import RewardSignals
 from .termination import TerminationSignals
 
@@ -47,6 +56,7 @@ SETTLE_SECONDS = 1.5
 SETTLE_TICKS = round(SETTLE_SECONDS * PHYSICS_HZ)
 LEVEL_CALIBRATION_SECONDS = 0.25
 LEVEL_CALIBRATION_TICKS = round(LEVEL_CALIBRATION_SECONDS * PHYSICS_HZ)
+PHASE_SNAPSHOT_PRIME_PHYSICS_STEPS = 1
 FULL12_SIZE = 12
 ZERO_FULL12 = (0.0,) * FULL12_SIZE
 PHASE_IDS = tuple(f"P{index:02d}" for index in range(1, 14))
@@ -276,6 +286,7 @@ class IsaacFSMBackend:
         motion_contract_path: Path | str = DEFAULT_MOTION_CONTRACT_PATH,
         dependencies: BackendDependencies | None = None,
         expected_phase_snapshot_bundle: ValidatedPhaseSnapshotBundle | None = None,
+        phase_snapshot_prime_physics_steps: int = PHASE_SNAPSHOT_PRIME_PHYSICS_STEPS,
     ) -> None:
         self.simulation_app = simulation_app
         self.fsm_path = Path(fsm_path).resolve()
@@ -290,6 +301,18 @@ class IsaacFSMBackend:
                 "injected phase snapshot bundle does not use the production loader root"
             )
         self._expected_phase_snapshot_bundle = expected_phase_snapshot_bundle
+        if (
+            isinstance(phase_snapshot_prime_physics_steps, bool)
+            or not isinstance(phase_snapshot_prime_physics_steps, int)
+            or phase_snapshot_prime_physics_steps
+            != PHASE_SNAPSHOT_PRIME_PHYSICS_STEPS
+        ):
+            raise IsaacFSMBackendError(
+                "phase snapshot priming must use exactly one real physics step"
+            )
+        self._phase_snapshot_prime_physics_steps = (
+            phase_snapshot_prime_physics_steps
+        )
         self._phase_snapshot_integrity_failed = False
         self._scene: Any | None = None
         self._adapter: Any | None = None
@@ -305,7 +328,9 @@ class IsaacFSMBackend:
         self._reset_metadata: dict[str, Any] = {}
         self._snapshot_restoration: dict[str, Any] = {}
         self._previous_action_full12 = ZERO_FULL12
+        self._reset_prime_tick_count = 0
         self._episode_tick = 0
+        self._first_episode_physical_command_tick_actual: int | None = None
         self._video_pre_action_tick_count = 0
         self._video_post_terminal_tick_count = 0
         self._reset_count = 0
@@ -361,6 +386,8 @@ class IsaacFSMBackend:
         reset_seed = _non_negative_seed(seed)
         reset_options = dict(options)
         _validate_reset_options(reset_options)
+        self._reset_prime_tick_count = 0
+        self._first_episode_physical_command_tick_actual = None
         dependencies = self._dependencies or _load_live_dependencies()
         self._dependencies = dependencies
         snapshot_phase = _snapshot_phase_option(reset_options)
@@ -641,10 +668,121 @@ class IsaacFSMBackend:
             )
         if loaded_snapshot is not None and snapshot_phase != "P01":
             assert dependencies.write_phase_snapshot is not None
-            physical_proof = dict(
+            initial_command = _full12(
+                loaded_snapshot.payload["applied_full12"],
+                "phase snapshot applied_full12",
+            )
+            initial_state_write = dict(
                 dependencies.write_phase_snapshot(
-                    scene, adapter, loaded_snapshot.payload
+                    scene,
+                    adapter,
+                    loaded_snapshot.payload,
+                    reset_contact_backend=True,
+                    state_write_index=1,
                 )
+            )
+            source_command = loaded_snapshot.payload["source_command"]
+            adapter_input = source_command["adapter_input"]
+            _require_running(scene, "phase snapshot reset contact priming")
+            physical_tick = SETTLE_TICKS + self._reset_prime_tick_count
+            prime_ack = dict(
+                self._atomic_apply(
+                    adapter,
+                    adapter_input["requested_full12"],
+                    physics_tick=physical_tick,
+                    tracking_servo_names=adapter_input["tracking_servo_names"],
+                    drive_feedback_bias_full12=adapter_input[
+                        "drive_feedback_bias_requested_full12"
+                    ],
+                )
+            )
+            source_actuation_match = dict(
+                _verify_source_prime_ack(loaded_snapshot.payload, prime_ack)
+            )
+            source_mapper_post_state = dict(
+                _verify_source_mapper_post_state(adapter, loaded_snapshot.payload)
+            )
+            scene.sim.step(render=False)
+            adapter.update_readback()
+            self._reset_prime_tick_count += 1
+            prime_drive_target = _full12(
+                prime_ack["drive_target_full12"],
+                "phase snapshot prime drive_target_full12",
+            )
+            prime_acks: list[dict[str, Any]] = [
+                {
+                    "physics_tick": int(prime_ack["physics_tick"]),
+                    "write_count": int(prime_ack["write_count"]),
+                    "articulation_writes_this_call": int(
+                        prime_ack["articulation_writes_this_call"]
+                    ),
+                    "applied_full12": list(
+                        _full12(
+                            prime_ack["applied_full12"],
+                            "phase snapshot prime applied_full12",
+                        )
+                    ),
+                    "native_drive_target_full12": list(
+                        _full12(
+                            prime_ack["native_drive_target_full12"],
+                            "phase snapshot prime native_drive_target_full12",
+                        )
+                    ),
+                    "drive_target_full12": list(prime_drive_target),
+                    "source_actuation_match": source_actuation_match,
+                }
+            ]
+            latest_settle_ack = prime_ack
+
+            mapper = getattr(adapter, "servo_target_mapper", None)
+            mapper_requested = tuple(
+                float(mapper._requested[name]) for name in SERVO_ORDER
+            )
+            mapper_applied = tuple(
+                float(mapper._applied[name]) for name in SERVO_ORDER
+            )
+
+            physical_proof = dict(initial_state_write)
+            physical_proof.update(
+                {
+                    "schema": "wlr50_clean.phase_snapshot_prime_without_rewind.v1",
+                    "reset_use": "TRAINING_RESET_STATE_WRITE",
+                    "state_write_count": 1,
+                    "initial_state_write": initial_state_write,
+                    "post_prime_state_rewrite_performed": False,
+                    "contact_and_state_share_solver_tick": True,
+                    "prime_physics_steps": self._reset_prime_tick_count,
+                    "prime_atomic_full12_writes": len(prime_acks),
+                    "prime_atomic_writes": prime_acks,
+                    "prime_applied_full12": list(initial_command),
+                    "prime_native_drive_target_full12": list(
+                        prime_ack["native_drive_target_full12"]
+                    ),
+                    "prime_drive_target_full12": list(prime_drive_target),
+                    "source_actuation_match": source_actuation_match,
+                    "source_mapper_post_state": source_mapper_post_state,
+                    "source_target_sha256": source_command[
+                        "drive_target_full12_sha256"
+                    ],
+                    "logical_target_fallback_used": False,
+                    "mapper_state_after_prime": {
+                        "requested_servo_deg": list(mapper_requested),
+                        "applied_servo_deg": list(mapper_applied),
+                        "feedback_tick": int(mapper._feedback_tick),
+                        "matches_source_post_command_state": True,
+                    },
+                    "physics_steps": self._reset_prime_tick_count,
+                    "articulation_update_dt_s_per_prime_step": PHYSICS_DT_S,
+                    "effective_entry_state": "snapshot_plus_one_physics_tick",
+                    "effective_entry_offset_s": PHYSICS_DT_S,
+                    "fsm_clock_steps_during_priming": 0,
+                    "episode_clock_steps_during_priming": 0,
+                    "current_contact_force_provenance": (
+                        "current_final_solver_force_only"
+                    ),
+                    "sensor_history_samples_after_reset": 1,
+                    "root_state_writes_confined_before_first_episode_tick": True,
+                }
             )
             reset_writes = _merge_reset_writes(reset_writes, physical_proof)
             self._snapshot_restoration.update(
@@ -656,50 +794,104 @@ class IsaacFSMBackend:
             self._level_reference_orientation = _normalized_quaternion(
                 loaded_snapshot.payload["level_reference_orientation_wxyz"]
             )
-            initial_command = _full12(
-                loaded_snapshot.payload["applied_full12"],
-                "phase snapshot applied_full12",
-            )
 
-        reader = dependencies.reader_from_scene(scene, adapter, backends)
         controller = dependencies.controller_from_paths(
             self.fsm_path, self.motion_contract_path
         )
         _validate_rate_contract(adapter, controller)
         if loaded_snapshot is not None and snapshot_phase != "P01":
+            # This is the sole ContactSensor read after the real prime.  The
+            # reader first receives the artifact's historical guard state so
+            # the same observation can safely become the controller's episode
+            # frame.  Verification independently checks the *current* raw
+            # PhysX force against the real hysteresis threshold: off for an
+            # artifact-active pair, on for an artifact-inactive pair.  Sensor
+            # force history is intentionally re-warmed, never claimed restored.
+            reader = dependencies.reader_from_scene(scene, adapter, backends)
             assert dependencies.restore_guard_snapshot is not None
             assert dependencies.restore_controller_snapshot is not None
             guard_proof = dict(
-                dependencies.restore_guard_snapshot(
-                    reader, loaded_snapshot.payload
-                )
+                dependencies.restore_guard_snapshot(reader, loaded_snapshot.payload)
             )
             controller_proof = dict(
                 dependencies.restore_controller_snapshot(
                     controller, loaded_snapshot.payload
                 )
             )
+            classifier = getattr(reader, "contact_classifier", None)
+            contact_force_on_n = float(getattr(classifier, "force_on_n", math.nan))
+            contact_force_off_n = float(getattr(classifier, "force_off_n", math.nan))
+            if (
+                not math.isfinite(contact_force_on_n)
+                or not math.isfinite(contact_force_off_n)
+                or contact_force_on_n <= 0.0
+                or contact_force_off_n < 0.0
+                or contact_force_off_n >= contact_force_on_n
+            ):
+                raise SensorContractFailure(
+                    "phase snapshot live restoration could not be proven: "
+                    "classifier raw-force hysteresis thresholds are unavailable"
+                )
+            observation = reader.read(
+                physics_tick=0,
+                simulation_time_s=0.0,
+                commanded_full12=prime_acks[-1]["drive_target_full12"],
+            )
+            _validate_sensor_contract(
+                observation,
+                dependencies.expected_contact_bodies,
+                require_finite=True,
+            )
+            priming_comparison = _compare_phase_snapshot_observation(
+                observation,
+                loaded_snapshot.payload,
+                contact_force_on_n=contact_force_on_n,
+                contact_force_off_n=contact_force_off_n,
+            )
+            physical_proof.update(
+                {
+                    "priming_observation": priming_comparison,
+                    "contact_sensor_reads_after_prime": 1,
+                    "classifier_restored_before_only_episode_read": True,
+                    "classifier_current_force_hysteresis_contract_verified": True,
+                    "classifier_history_equivalence_claimed": False,
+                    "raw_sensor_history_rewarmed_from_prime": True,
+                    "restored_classifier_state_used": "hysteresis_active_state_only",
+                    "restored_guard_state_used": "cumulative_event_latches",
+                    "contact_backend_reset_after_prime": False,
+                }
+            )
+            observation_proof = _verify_phase_snapshot_observation(
+                observation,
+                loaded_snapshot.payload,
+                contact_force_on_n=contact_force_on_n,
+                contact_force_off_n=contact_force_off_n,
+            )
+            physical_proof.update(
+                {
+                    "episode_live_observation": observation_proof,
+                    "episode_verification_followed_classifier_restore": True,
+                }
+            )
             self._snapshot_restoration.update(
                 {
                     "guard_state": guard_proof,
                     "controller_state": controller_proof,
+                    "live_observation": observation_proof,
                 }
             )
-        observation = reader.read(
-            physics_tick=0,
-            simulation_time_s=0.0,
-            commanded_full12=initial_command,
-        )
-        _validate_sensor_contract(
-            observation,
-            dependencies.expected_contact_bodies,
-            require_finite=True,
-        )
-        if loaded_snapshot is not None and snapshot_phase != "P01":
-            observation_proof = _verify_phase_snapshot_observation(
-                observation, loaded_snapshot.payload
+        else:
+            reader = dependencies.reader_from_scene(scene, adapter, backends)
+            observation = reader.read(
+                physics_tick=0,
+                simulation_time_s=0.0,
+                commanded_full12=initial_command,
             )
-            self._snapshot_restoration["live_observation"] = observation_proof
+            _validate_sensor_contract(
+                observation,
+                dependencies.expected_contact_bodies,
+                require_finite=True,
+            )
         controller_frame = controller.step(observation, sim_time_s=0.0)
         _validate_controller_clock(controller_frame, physics_tick=0, sim_time_s=0.0)
         expected_state = snapshot_phase or "P01"
@@ -778,7 +970,10 @@ class IsaacFSMBackend:
             ),
         )
         physical_tick = (
-            SETTLE_TICKS + self._video_pre_action_tick_count + self._episode_tick
+            SETTLE_TICKS
+            + self._reset_prime_tick_count
+            + self._video_pre_action_tick_count
+            + self._episode_tick
         )
         raw_ack = self._atomic_apply(
             self._adapter,
@@ -791,6 +986,12 @@ class IsaacFSMBackend:
                 actuation.combined_post_mapper_bias_full12
             ),
         )
+        if self._episode_tick == 0:
+            if self._first_episode_physical_command_tick_actual is not None:
+                raise IsaacFSMBackendError(
+                    "first episode physical command tick was already recorded"
+                )
+            self._first_episode_physical_command_tick_actual = physical_tick
         if (
             _full12(raw_ack["applied_full12"], "atomic ack applied_full12")
             != actuation.frozen_nominal_full12
@@ -871,7 +1072,11 @@ class IsaacFSMBackend:
                 "video pre-roll is allowed only before the first episode tick"
             )
         _require_running(self._scene, "viewport pre-action hold")
-        physical_tick = SETTLE_TICKS + self._video_pre_action_tick_count
+        physical_tick = (
+            SETTLE_TICKS
+            + self._reset_prime_tick_count
+            + self._video_pre_action_tick_count
+        )
         ack = self._atomic_apply(
             self._adapter,
             ZERO_FULL12,
@@ -1030,6 +1235,7 @@ class IsaacFSMBackend:
         _require_running(self._scene, "viewport post-success hold")
         physical_tick = (
             SETTLE_TICKS
+            + self._reset_prime_tick_count
             + self._video_pre_action_tick_count
             + self._episode_tick
             + self._video_post_terminal_tick_count
@@ -1319,6 +1525,9 @@ class IsaacFSMBackend:
                 if ack is None
                 else list(ack["drive_feedback_bias_requested_full12"])
             ),
+            "first_episode_physical_command_tick_actual": (
+                self._first_episode_physical_command_tick_actual
+            ),
             "actor_observation_fallback_due_to_nonfinite": actor_fallback,
             "in_episode_root_pose_writes": 0,
             "in_episode_root_velocity_writes": 0,
@@ -1489,6 +1698,20 @@ class IsaacFSMBackend:
                 "RobotAdapter standing-pose reset evidence is unavailable"
             )
         limit_evidence = self._adapter.joint_limit_initialization_evidence()
+        restoration_mode = self._snapshot_restoration.get("mode")
+        if self._reset_prime_tick_count > 0:
+            if self._reset_prime_tick_count != PHASE_SNAPSHOT_PRIME_PHYSICS_STEPS:
+                raise IsaacFSMBackendError(
+                    "phase snapshot reset prime tick count is not exactly one"
+                )
+            effective_entry_semantics = "snapshot_plus_one_physics_tick"
+        elif (
+            restoration_mode == "normal_p01_reset"
+            and self._snapshot_restoration.get("snapshot_validated") is True
+        ):
+            effective_entry_semantics = "validated_p01_natural_post_settle"
+        else:
+            effective_entry_semantics = "natural_p01_post_settle"
         return {
             "environment_hash": environment_hash,
             "robot_asset_hash": self._dependencies.robot_asset_hash,
@@ -1602,6 +1825,13 @@ class IsaacFSMBackend:
             "settle_seconds": SETTLE_SECONDS,
             "settle_ticks": SETTLE_TICKS,
             "settle_atomic_full12_writes": SETTLE_TICKS,
+            "reset_prime_tick_count": self._reset_prime_tick_count,
+            "reset_prime_duration_s": self._reset_prime_tick_count * PHYSICS_DT_S,
+            "next_post_reset_command_tick": (
+                SETTLE_TICKS + self._reset_prime_tick_count
+            ),
+            "effective_phase_entry_semantics": effective_entry_semantics,
+            "fsm_and_episode_clock_at_effective_entry": 0,
             "level_calibration_window_s": LEVEL_CALIBRATION_SECONDS,
             "level_calibration_sample_count": LEVEL_CALIBRATION_TICKS,
             "level_reference_orientation_wxyz": list(
@@ -1691,8 +1921,12 @@ def _validate_phase_snapshot_payload(
     payload: Mapping[str, Any], phase_id: str
 ) -> None:
     failures: list[str] = []
+    try:
+        validate_phase_snapshot_payload_contract(payload, phase_id)
+    except PhaseSnapshotError as exc:
+        failures.append(str(exc))
     expected_history = list(PHASE_IDS[: PHASE_IDS.index(phase_id)])
-    if payload.get("schema") != "wlr50_clean.ppo_phase_entry_snapshot.v1":
+    if payload.get("schema") != SNAPSHOT_SCHEMA:
         failures.append("snapshot schema is invalid")
     if payload.get("reset_use") != "TRAINING_RESET_STATE_WRITE":
         failures.append("reset_use is not TRAINING_RESET_STATE_WRITE")
@@ -1779,16 +2013,381 @@ def _validate_phase_snapshot_payload(
         )
 
 
-def _write_phase_snapshot_state(
-    scene: Any, adapter: Any, snapshot: Mapping[str, Any]
+def _source_replay_values_match(left: Any, right: Any) -> bool:
+    if type(left) is bool or type(right) is bool:
+        return type(left) is bool and type(right) is bool and left is right
+    if type(left) is int and type(right) is int:
+        return left == right
+    if isinstance(left, (int, float)) and isinstance(right, (int, float)):
+        return math.isfinite(float(left)) and math.isfinite(float(right)) and math.isclose(
+            float(left), float(right), rel_tol=0.0, abs_tol=1.0e-9
+        )
+    if isinstance(left, (list, tuple)) and isinstance(right, (list, tuple)):
+        return len(left) == len(right) and all(
+            _source_replay_values_match(a, b)
+            for a, b in zip(left, right, strict=True)
+        )
+    return left == right
+
+
+def _source_replay_numeric_error(left: Any, right: Any) -> float:
+    if type(left) is bool or type(right) is bool:
+        return 0.0
+    if isinstance(left, (int, float)) and isinstance(right, (int, float)):
+        return abs(float(left) - float(right))
+    if isinstance(left, (list, tuple)) and isinstance(right, (list, tuple)):
+        if len(left) != len(right):
+            return math.inf
+        return max(
+            (_source_replay_numeric_error(a, b) for a, b in zip(left, right, strict=True)),
+            default=0.0,
+        )
+    return 0.0
+
+
+def _live_source_mapper_state(
+    adapter: Any,
+    *,
+    source_control_physics_tick: int | None,
+) -> dict[str, Any]:
+    mapper = getattr(adapter, "servo_target_mapper", None)
+    required = (
+        "_requested",
+        "_applied",
+        "_nominal_reached",
+        "_compensation",
+        "_tracking_active",
+        "_retiring_stale_bias",
+        "_feedback_tick",
+    )
+    if mapper is None or any(not hasattr(mapper, name) for name in required):
+        raise IsaacFSMBackendError(
+            "cannot prove source mapper replay state on RobotAdapter"
+        )
+    final_drive = getattr(adapter, "_final_drive_servo_deg", None)
+    if not isinstance(final_drive, Mapping) or set(final_drive) != set(SERVO_ORDER):
+        raise IsaacFSMBackendError(
+            "cannot prove source final-drive replay state on RobotAdapter"
+        )
+    return {
+        "schema": SOURCE_MAPPER_STATE_SCHEMA,
+        "source_control_physics_tick": source_control_physics_tick,
+        "requested_servo_deg": [mapper._requested[name] for name in SERVO_ORDER],
+        "applied_drive_command_deg": [mapper._applied[name] for name in SERVO_ORDER],
+        "nominal_target_reached": [mapper._nominal_reached[name] for name in SERVO_ORDER],
+        "tracking_compensation_deg": [mapper._compensation[name] for name in SERVO_ORDER],
+        "tracking_active": [mapper._tracking_active[name] for name in SERVO_ORDER],
+        "retiring_stale_bias": [mapper._retiring_stale_bias[name] for name in SERVO_ORDER],
+        "feedback_tick": int(mapper._feedback_tick),
+        "final_drive_servo_deg": [final_drive[name] for name in SERVO_ORDER],
+    }
+
+
+def _install_source_mapper_pre_state(
+    adapter: Any,
+    snapshot: Mapping[str, Any],
 ) -> Mapping[str, Any]:
-    """Write one validated phase state at reset, then synchronize without a step."""
+    """Load source t-1 state only; articulation targets remain untouched."""
+
+    source = snapshot["source_command"]
+    configuration = source["mapper_configuration"]
+    expected = source["mapper_pre_state"]
+    mapper = getattr(adapter, "servo_target_mapper", None)
+    config_fields = {
+        "physics_dt_s": getattr(mapper, "physics_dt_s", None),
+        "servo_rate_deg_s": getattr(mapper, "servo_rate_deg_s", None),
+        "maximum_delta_deg": getattr(mapper, "maximum_delta_deg", None),
+        "tracking_gain": getattr(mapper, "tracking_gain", None),
+        "tracking_limit_deg": getattr(mapper, "tracking_limit_deg", None),
+        "feedback_interval_ticks": getattr(mapper, "feedback_interval_ticks", None),
+        "standing_pose_deg": [
+            getattr(mapper, "standing_pose_deg", {}).get(name) for name in SERVO_ORDER
+        ],
+    }
+    config_matches = {
+        name: _source_replay_values_match(configuration[name], config_fields[name])
+        for name in configuration
+    }
+    if not all(config_matches.values()):
+        mismatched = [name for name, match in config_matches.items() if not match]
+        raise IsaacFSMBackendError(
+            "live RobotAdapter mapper configuration differs from snapshot source: "
+            + ", ".join(mismatched)
+        )
+    for index, name in enumerate(SERVO_ORDER):
+        mapper._requested[name] = float(expected["requested_servo_deg"][index])
+        mapper._applied[name] = float(expected["applied_drive_command_deg"][index])
+        mapper._nominal_reached[name] = bool(expected["nominal_target_reached"][index])
+        mapper._compensation[name] = float(expected["tracking_compensation_deg"][index])
+        mapper._tracking_active[name] = bool(expected["tracking_active"][index])
+        mapper._retiring_stale_bias[name] = bool(expected["retiring_stale_bias"][index])
+        adapter._final_drive_servo_deg[name] = float(
+            expected["final_drive_servo_deg"][index]
+        )
+    mapper._feedback_tick = int(expected["feedback_tick"])
+    observed = _live_source_mapper_state(
+        adapter,
+        source_control_physics_tick=expected["source_control_physics_tick"],
+    )
+    state_matches = {
+        field: _source_replay_values_match(expected[field], observed[field])
+        for field in expected
+    }
+    if not all(state_matches.values()):
+        raise IsaacFSMBackendError(
+            "RobotAdapter did not retain the source mapper pre-state"
+        )
+    return {
+        "schema": "wlr50_clean.phase_snapshot_source_mapper_pre_state.v1",
+        "source_transition": "source_tick_t_minus_1_to_t",
+        "configuration_matches": config_matches,
+        "all_configuration_fields_match": True,
+        "pre_state_sha256": _canonical_hash(expected),
+        "all_pre_state_fields_match": True,
+        "articulation_writes": 0,
+    }
+
+
+def _verify_source_mapper_post_state(
+    adapter: Any,
+    snapshot: Mapping[str, Any],
+) -> Mapping[str, Any]:
+    source = snapshot["source_command"]
+    expected = source["mapper_post_state"]
+    observed = _live_source_mapper_state(
+        adapter,
+        source_control_physics_tick=int(snapshot["source_tick"]),
+    )
+    matches = {
+        field: _source_replay_values_match(expected[field], observed[field])
+        for field in expected
+    }
+    errors = {
+        field: _source_replay_numeric_error(expected[field], observed[field])
+        for field in expected
+    }
+    if not all(matches.values()):
+        mismatched = [name for name, match in matches.items() if not match]
+        raise IsaacFSMBackendError(
+            "source mapper post-state replay mismatch: " + ", ".join(mismatched)
+        )
+    return {
+        "schema": "wlr50_clean.phase_snapshot_source_mapper_post_state.v1",
+        "source_transition": "source_tick_t_minus_1_to_t",
+        "field_matches": matches,
+        "field_maximum_numeric_error": errors,
+        "all_fields_match": True,
+        "post_state_sha256": _canonical_hash(expected),
+        "restored_after_prime": False,
+        "reached_naturally_by_single_atomic_apply": True,
+    }
+
+
+def _verify_source_prime_ack(
+    snapshot: Mapping[str, Any],
+    ack: Mapping[str, Any],
+) -> Mapping[str, Any]:
+    source = snapshot["source_command"]
+    expected = source["expected_atomic_ack"]
+    missing = [field for field in SOURCE_ACK_MATCH_FIELDS if field not in ack]
+    if missing:
+        raise IsaacFSMBackendError(
+            f"phase snapshot prime ack lacks source fields: {missing}"
+        )
+    matches = {
+        field: _source_replay_values_match(expected[field], ack[field])
+        for field in SOURCE_ACK_MATCH_FIELDS
+    }
+    errors = {
+        field: _source_replay_numeric_error(expected[field], ack[field])
+        for field in SOURCE_ACK_MATCH_FIELDS
+    }
+    if not all(matches.values()):
+        mismatched = [name for name, match in matches.items() if not match]
+        raise IsaacFSMBackendError(
+            "phase snapshot prime differs from authoritative source ack: "
+            + ", ".join(mismatched)
+        )
+    source_target_sha256 = str(source["drive_target_full12_sha256"])
+    replayed_target_sha256 = phase_snapshot_drive_target_sha256(
+        ack["drive_target_full12"]
+    )
+    source_actuation_sha256 = str(source["actuation_contract_sha256"])
+    replayed_actuation_sha256 = phase_snapshot_actuation_contract_sha256(ack)
+    if (
+        replayed_target_sha256 != source_target_sha256
+        or replayed_actuation_sha256 != source_actuation_sha256
+    ):
+        raise IsaacFSMBackendError(
+            "phase snapshot prime hashes differ from authoritative source actuation"
+        )
+    artifacts = snapshot["source_artifacts"]
+    return {
+        "schema": "wlr50_clean.phase_snapshot_source_actuation_match.v1",
+        "source_transition": "source_tick_t_minus_1_to_t",
+        "source_command_file_sha256": artifacts["command"]["sha256"],
+        "source_observation_file_sha256": artifacts["observation"]["sha256"],
+        "source_command_row_canonical_sha256": source[
+            "source_command_row_canonical_sha256"
+        ],
+        "source_observation_row_canonical_sha256": source[
+            "source_observation_row_canonical_sha256"
+        ],
+        "source_drive_target_full12_sha256": source_target_sha256,
+        "replayed_drive_target_full12_sha256": replayed_target_sha256,
+        "source_actuation_contract_sha256": source_actuation_sha256,
+        "replayed_actuation_contract_sha256": replayed_actuation_sha256,
+        "field_matches": matches,
+        "field_maximum_numeric_error": errors,
+        "all_fields_match": True,
+        "source_target_hash_matches": True,
+        "logical_target_fallback_used": False,
+        "source_atomic_physics_tick": source["source_atomic_physics_tick"],
+        "reset_prime_physics_tick": int(ack["physics_tick"]),
+        "source_atomic_write_count": source["source_atomic_write_count"],
+        "reset_prime_write_count": int(ack["write_count"]),
+        "clock_and_write_count_fields_intentionally_remapped": True,
+    }
+
+
+def _verify_pre_prime_root_link_write(
+    robot: Any,
+    root: Mapping[str, Any],
+) -> Mapping[str, Any]:
+    """Read back the written ``base_link`` state without sampling sensors.
+
+    The snapshot records the source observation's base-link state, so the
+    root velocity must be checked through Isaac Lab's link-state tensors.  A
+    root-write call count alone cannot prove that the requested state reached
+    PhysX, especially because the legacy root-velocity alias addresses the
+    center-of-mass velocity instead.
+    """
+
+    body_names = tuple(str(name) for name in getattr(robot, "body_names", ()))
+    if body_names.count("base_link") != 1:
+        raise IsaacFSMBackendError(
+            "phase snapshot base_link root-state readback is unavailable"
+        )
+    base_index = body_names.index("base_link")
+    data = getattr(robot, "data", None)
+    if data is None:
+        raise IsaacFSMBackendError(
+            "phase snapshot base_link root-state readback is unavailable"
+        )
+
+    def read_vector(field: str, size: int) -> tuple[float, ...]:
+        tensor = getattr(data, field, None)
+        try:
+            current = tensor[0, base_index]
+        except (IndexError, KeyError, TypeError) as exc:
+            raise IsaacFSMBackendError(
+                f"phase snapshot base_link {field} readback is unavailable"
+            ) from exc
+        values = _flat_finite_tensor_values(
+            current, f"phase snapshot base_link {field} readback"
+        )
+        if len(values) != size:
+            raise IsaacFSMBackendError(
+                f"phase snapshot base_link {field} readback has the wrong shape"
+            )
+        return values
+
+    observed = {
+        "position_w_m": read_vector("body_link_pos_w", 3),
+        "orientation_wxyz": read_vector("body_link_quat_w", 4),
+        "linear_velocity_w_m_s": read_vector("body_link_lin_vel_w", 3),
+        "angular_velocity_w_rad_s": read_vector("body_link_ang_vel_w", 3),
+    }
+    expected = {
+        "position_w_m": tuple(float(value) for value in root["position_w_m"]),
+        "orientation_wxyz": tuple(
+            float(value) for value in root["orientation_wxyz"]
+        ),
+        "linear_velocity_w_m_s": tuple(
+            float(value) for value in root["linear_velocity_w_m_s"]
+        ),
+        "angular_velocity_w_rad_s": tuple(
+            float(value) for value in root["angular_velocity_w_rad_s"]
+        ),
+    }
+    tolerances = {
+        "root_position_m": 2.0e-4,
+        "root_orientation_quaternion_distance": 2.0e-5,
+        "root_linear_velocity_m_s": 2.0e-4,
+        "root_angular_velocity_rad_s": 2.0e-4,
+    }
+    errors = {
+        "root_position_m": _maximum_absolute_error(
+            observed["position_w_m"], expected["position_w_m"]
+        ),
+        "root_orientation_quaternion_distance": _quaternion_distance(
+            observed["orientation_wxyz"], expected["orientation_wxyz"]
+        ),
+        "root_linear_velocity_m_s": _maximum_absolute_error(
+            observed["linear_velocity_w_m_s"],
+            expected["linear_velocity_w_m_s"],
+        ),
+        "root_angular_velocity_rad_s": _maximum_absolute_error(
+            observed["angular_velocity_w_rad_s"],
+            expected["angular_velocity_w_rad_s"],
+        ),
+    }
+    within_tolerances = all(
+        errors[name] <= tolerance for name, tolerance in tolerances.items()
+    )
+    if not within_tolerances:
+        mismatched = [
+            name
+            for name, tolerance in tolerances.items()
+            if errors[name] > tolerance
+        ]
+        raise IsaacFSMBackendError(
+            "phase snapshot base_link readback differs from the reset-only write: "
+            + ", ".join(mismatched)
+        )
+    return {
+        "schema": "wlr50_clean.phase_snapshot_pre_prime_root_link_readback.v1",
+        "body_name": "base_link",
+        "snapshot_state_semantics": "base_link_link_frame_state",
+        "source_fields": {
+            "position_w_m": "robot.data.body_link_pos_w",
+            "orientation_wxyz": "robot.data.body_link_quat_w",
+            "linear_velocity_w_m_s": "robot.data.body_link_lin_vel_w",
+            "angular_velocity_w_rad_s": "robot.data.body_link_ang_vel_w",
+        },
+        "read_after_simulation_forward": True,
+        "read_after_robot_update_zero_dt": True,
+        "physics_steps_before_readback": 0,
+        "contact_sensor_reads_before_readback": 0,
+        "expected": {name: list(values) for name, values in expected.items()},
+        "observed": {name: list(values) for name, values in observed.items()},
+        "maximum_errors": errors,
+        "production_tolerances": tolerances,
+        "all_values_finite": True,
+        "all_fields_within_production_tolerances": True,
+        "verified": True,
+    }
+
+
+def _write_phase_snapshot_state(
+    scene: Any,
+    adapter: Any,
+    snapshot: Mapping[str, Any],
+    *,
+    reset_contact_backend: bool = True,
+    state_write_index: int = 1,
+) -> Mapping[str, Any]:
+    """Write one validated phase state before its reset-only contact prime."""
 
     from wlr50_clean.infrastructure.command_batch import (
         SERVO_COMMAND_SIGN,
         WHEEL_FORWARD_SIGN,
     )
 
+    if reset_contact_backend is not True or state_write_index != 1:
+        raise IsaacFSMBackendError(
+            "production phase reset permits exactly one pre-prime state write"
+        )
     robot = scene.robot
     root = snapshot["root_state"]
     joint = snapshot["joint_state"]
@@ -1796,7 +2395,6 @@ def _write_phase_snapshot_state(
     position = tuple(float(value) for value in joint["logical_position_deg"])
     servo_velocity = tuple(float(value) for value in joint["logical_velocity_deg_s"])
     wheel_velocity = tuple(float(value) for value in wheel["logical_velocity_rad_s"])
-    nominal = _full12(snapshot["nominal_full12"], "snapshot nominal_full12")
     try:
         root_state = robot.data.default_root_state.clone()
         joint_position = robot.data.default_joint_pos.clone()
@@ -1827,7 +2425,14 @@ def _write_phase_snapshot_state(
             joint_velocity[:, joint_id] = WHEEL_FORWARD_SIGN[name] * wheel_velocity[local]
 
         robot.write_root_pose_to_sim(root_state[:, :7])
-        robot.write_root_velocity_to_sim(root_state[:, 7:])
+        write_root_link_velocity = getattr(
+            robot, "write_root_link_velocity_to_sim", None
+        )
+        if not callable(write_root_link_velocity):
+            raise IsaacFSMBackendError(
+                "phase snapshot requires Isaac Lab root-link velocity writes"
+            )
+        write_root_link_velocity(root_state[:, 7:])
         robot.write_joint_state_to_sim(joint_position, joint_velocity)
         robot.reset()
         contact_backend = getattr(
@@ -1851,29 +2456,13 @@ def _write_phase_snapshot_state(
             f"phase snapshot reset-only state write failed: {type(exc).__name__}: {exc}"
         ) from exc
 
-    mapper = getattr(adapter, "servo_target_mapper", None)
-    required_mapper_fields = (
-        "_requested",
-        "_applied",
-        "_nominal_reached",
-        "_compensation",
-        "_tracking_active",
-        "_retiring_stale_bias",
-        "_feedback_tick",
+    pre_prime_root_link_readback = dict(
+        _verify_pre_prime_root_link_write(robot, root)
     )
-    if mapper is None or any(not hasattr(mapper, name) for name in required_mapper_fields):
-        raise IsaacFSMBackendError(
-            "cannot prove phase-entry restoration of the frozen drive mapper"
-        )
-    for index, name in enumerate(SERVO_ORDER):
-        mapper._requested[name] = nominal[index]
-        mapper._applied[name] = nominal[index]
-        mapper._nominal_reached[name] = True
-        mapper._compensation[name] = 0.0
-        mapper._tracking_active[name] = False
-        mapper._retiring_stale_bias[name] = False
-        adapter._final_drive_servo_deg[name] = nominal[index]
-    mapper._feedback_tick = SETTLE_TICKS + int(snapshot["source_tick"])
+    source_mapper_pre_state = dict(
+        _install_source_mapper_pre_state(adapter, snapshot)
+    )
+    mapper = adapter.servo_target_mapper
 
     actual = adapter.get_actual_state()
     actual_full12 = tuple(float(value) for value in actual.full12)
@@ -1898,10 +2487,19 @@ def _write_phase_snapshot_state(
         "joint_state_writes": 1,
         "simulation_forward_syncs": 1,
         "physics_steps": 0,
+        "state_write_index": 1,
+        "contact_backend_reset": True,
+        "root_velocity_write_api": "write_root_link_velocity_to_sim",
         "adapter_mapper_restored": True,
+        "adapter_mapper_restored_to": "source tick t-1 post-command state",
+        "source_mapper_pre_state": source_mapper_pre_state,
+        "source_transition": "source_tick_t_minus_1_to_t",
         "adapter_feedback_tick": mapper._feedback_tick,
         "maximum_logical_joint_or_wheel_error": position_error,
         "maximum_physical_servo_velocity_error_rad_s": velocity_error,
+        "pre_prime_root_link_readback": pre_prime_root_link_readback,
+        "pre_prime_joint_state_verified": True,
+        "pre_prime_state_verified": True,
     }
 
 
@@ -2088,11 +2686,28 @@ def _restore_guard_tracker_from_snapshot(
     }
 
 
-def _verify_phase_snapshot_observation(
-    observation: Any, snapshot: Mapping[str, Any]
-) -> Mapping[str, Any]:
-    """Fail closed unless the post-write live sample reproduces the artifact."""
+def _compare_phase_snapshot_observation(
+    observation: Any,
+    snapshot: Mapping[str, Any],
+    *,
+    contact_force_on_n: float,
+    contact_force_off_n: float,
+) -> dict[str, Any]:
+    """Return exact production errors plus independently sourced raw contacts."""
 
+    tolerances = {
+        "root_position_m": 2.0e-4,
+        "root_orientation_quaternion_distance": 2.0e-5,
+        "root_velocity": 2.0e-4,
+        "servo_position_deg": 0.02,
+        "servo_velocity_deg_s": 0.02,
+        "wheel_velocity_rad_s": 2.0e-4,
+        "wheel_geometry_m": 0.002,
+        "wheel_contact_state": "exact",
+        "raw_contact_source": "isaaclab.ContactSensor.force_matrix_w",
+        "raw_contact_force_on_n": contact_force_on_n,
+        "raw_contact_force_off_n": contact_force_off_n,
+    }
     failures: list[str] = []
     root = snapshot["root_state"]
     base = _member(observation, "base")
@@ -2166,38 +2781,176 @@ def _verify_phase_snapshot_observation(
         failures.append("wheel geometry")
 
     contacts = _member(observation, "contacts", {})
+    exact_contacts: dict[str, Any] = {}
+    raw_contacts: dict[str, Any] = {}
     for wheel_name in WHEEL_ORDER:
         wheel = wheels[wheel_name]
-        contact = contacts[_member(wheel, "body_name")]
+        body_name = str(_member(wheel, "body_name"))
+        contact = contacts[body_name]
         expected = snapshot["contact_state"][wheel_name]
         actual_class = _enum_value(_member(contact, "contact_class"))
-        if (
+        actual_ground = bool(
+            _member(_member(contact, "ground"), "active", False)
+        )
+        actual_obstacle = bool(
+            _member(_member(contact, "obstacle"), "active", False)
+        )
+        matches = bool(
             actual_class != str(expected["class"])
-            or bool(_member(_member(contact, "ground"), "active", False))
-            != bool(expected["ground_active"])
-            or bool(_member(_member(contact, "obstacle"), "active", False))
-            != bool(expected["obstacle_active"])
-        ):
+            or actual_ground != bool(expected["ground_active"])
+            or actual_obstacle != bool(expected["obstacle_active"])
+        ) is False
+        exact_contacts[wheel_name] = {
+            "body_name": body_name,
+            "expected_class": str(expected["class"]),
+            "actual_class": actual_class,
+            "expected_ground_active": bool(expected["ground_active"]),
+            "actual_ground_active": actual_ground,
+            "expected_obstacle_active": bool(expected["obstacle_active"]),
+            "actual_obstacle_active": actual_obstacle,
+            "matches": matches,
+        }
+        if not matches:
             failures.append(f"{wheel_name} exact contact state")
+
+        raw_contacts[wheel_name] = {}
+        for pair_name in ("ground", "obstacle"):
+            pair = _member(contact, pair_name)
+            pair_verified = bool(_member(pair, "pair_verified", False))
+            source = str(_member(pair, "source", ""))
+            force = _finite_vector(_member(pair, "force_w_n", ()), 3)
+            force_norm = (
+                None
+                if force is None
+                else math.sqrt(sum(value * value for value in force))
+            )
+            expected_active = bool(expected[f"{pair_name}_active"])
+            required_threshold = (
+                contact_force_off_n if expected_active else contact_force_on_n
+            )
+            hysteresis_contract_matches = bool(
+                pair_verified
+                and force_norm is not None
+                and (
+                    force_norm >= required_threshold
+                    if expected_active
+                    else force_norm < required_threshold
+                )
+            )
+            active_from_fresh_on_threshold = bool(
+                pair_verified
+                and force_norm is not None
+                and force_norm >= contact_force_on_n
+            )
+            raw_contacts[wheel_name][pair_name] = {
+                "pair_verified": pair_verified,
+                "source": source,
+                "force_w_n": None if force is None else list(force),
+                "force_norm_n": force_norm,
+                "force_on_n": contact_force_on_n,
+                "force_off_n": contact_force_off_n,
+                "expected_active": expected_active,
+                "required_current_force_threshold_n": required_threshold,
+                "required_threshold_kind": (
+                    "force_off_for_restored_active_state"
+                    if expected_active
+                    else "force_on_for_restored_inactive_state"
+                ),
+                "current_force_hysteresis_contract_matches_snapshot": (
+                    hysteresis_contract_matches
+                ),
+                "active_from_fresh_on_threshold": active_from_fresh_on_threshold,
+                "fresh_on_threshold_matches_snapshot": (
+                    active_from_fresh_on_threshold == expected_active
+                ),
+            }
+            if (
+                not pair_verified
+                or source != "isaaclab.ContactSensor.force_matrix_w"
+                or force is None
+            ):
+                failures.append(f"{wheel_name} {pair_name} raw PhysX contact source")
+            if not hysteresis_contract_matches:
+                failures.append(
+                    f"{wheel_name} {pair_name} current raw PhysX force hysteresis"
+                )
+
+    physical_ok = not any(
+        (
+            errors["root_position_m"] > 2.0e-4,
+            errors["root_orientation"] > 2.0e-5,
+            errors["root_linear_velocity_m_s"] > 2.0e-4,
+            errors["root_angular_velocity_rad_s"] > 2.0e-4,
+            errors["servo_position_deg"] > 0.02,
+            errors["servo_velocity_deg_s"] > 0.02,
+            errors["wheel_velocity_rad_s"] > 2.0e-4,
+            errors["wheel_center_m"] > 0.002,
+            errors["wheel_bottom_m"] > 0.002,
+        )
+    )
+    raw_contact_record = {
+        "schema": "wlr50_clean.phase_snapshot_raw_physx_contact.v1",
+        "pairs": raw_contacts,
+    }
+    raw_contact_record["sha256"] = _canonical_hash(raw_contact_record)
+    return {
+        "schema": "wlr50_clean.phase_snapshot_live_comparison.v1",
+        "verified": not failures,
+        "failures": list(dict.fromkeys(failures)),
+        "tolerances": tolerances,
+        "maximum_errors": errors,
+        "physical_state_within_production_tolerances": physical_ok,
+        "exact_contacts": exact_contacts,
+        "exact_contacts_match": all(
+            row["matches"] for row in exact_contacts.values()
+        ),
+        "raw_physx_contacts": raw_contact_record,
+        "raw_physx_contact_sources_verified": all(
+            row[pair]["pair_verified"]
+            and row[pair]["source"]
+            == "isaaclab.ContactSensor.force_matrix_w"
+            and row[pair]["force_w_n"] is not None
+            for row in raw_contacts.values()
+            for pair in ("ground", "obstacle")
+        ),
+        "current_raw_force_hysteresis_contract_matches_snapshot": all(
+            row[pair]["current_force_hysteresis_contract_matches_snapshot"]
+            for row in raw_contacts.values()
+            for pair in ("ground", "obstacle")
+        ),
+        "strong_fresh_on_threshold_diagnostic_matches_snapshot": all(
+            row[pair]["fresh_on_threshold_matches_snapshot"]
+            for row in raw_contacts.values()
+            for pair in ("ground", "obstacle")
+        ),
+    }
+
+
+def _verify_phase_snapshot_observation(
+    observation: Any,
+    snapshot: Mapping[str, Any],
+    *,
+    contact_force_on_n: float,
+    contact_force_off_n: float,
+) -> Mapping[str, Any]:
+    """Fail closed unless the post-prime live sample reproduces the artifact."""
+
+    comparison = _compare_phase_snapshot_observation(
+        observation,
+        snapshot,
+        contact_force_on_n=contact_force_on_n,
+        contact_force_off_n=contact_force_off_n,
+    )
+    failures = tuple(str(value) for value in comparison["failures"])
     if failures:
         raise SensorContractFailure(
             "phase snapshot live restoration could not be proven: "
-            + ", ".join(dict.fromkeys(failures))
+            + ", ".join(failures)
         )
     return {
+        **comparison,
         "schema": "wlr50_clean.phase_snapshot_live_proof.v1",
         "verified": True,
-        "tolerances": {
-            "root_position_m": 2.0e-4,
-            "root_orientation_quaternion_distance": 2.0e-5,
-            "root_velocity": 2.0e-4,
-            "servo_position_deg": 0.02,
-            "servo_velocity_deg_s": 0.02,
-            "wheel_velocity_rad_s": 2.0e-4,
-            "wheel_geometry_m": 0.002,
-            "wheel_contact_state": "exact",
-        },
-        "maximum_errors": errors,
     }
 
 

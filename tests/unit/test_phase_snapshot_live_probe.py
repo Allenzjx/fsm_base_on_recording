@@ -112,17 +112,55 @@ def test_observation_diagnostics_accepts_only_exact_contacts_and_state() -> None
 
 
 def test_attempt_gate_fails_closed_on_exception_contact_or_extra_step() -> None:
-    diagnostic = observation_diagnostics(_matching_observation(_snapshot()), _snapshot())
+    snapshot = _snapshot()
+    diagnostic = observation_diagnostics(_matching_observation(snapshot), snapshot)
+    source_target_sha256 = snapshot["source_command"][
+        "drive_target_full12_sha256"
+    ]
     row = {
         "phase": "P10",
+        "source_drive_target_full12_sha256": source_target_sha256,
         "reset_completed": True,
-        "physics_steps_during_reset": 180,
+        "physics_steps_during_reset": 181,
+        "extra_physics_priming_steps": 1,
+        "post_prime_contact_sensor_read_count": 1,
         "snapshot_state_write": {
             "root_pose_writes": 1,
             "root_velocity_writes": 1,
             "joint_state_writes": 1,
             "simulation_forward_syncs": 1,
-            "physics_steps": 0,
+            "pre_prime_state_verified": True,
+            "pre_prime_joint_state_verified": True,
+            "pre_prime_root_link_readback": {
+                "verified": True,
+                "all_values_finite": True,
+                "all_fields_within_production_tolerances": True,
+                "physics_steps_before_readback": 0,
+                "contact_sensor_reads_before_readback": 0,
+            },
+            "physics_steps": 1,
+            "state_write_count": 1,
+            "post_prime_state_rewrite_performed": False,
+            "contact_and_state_share_solver_tick": True,
+            "prime_physics_steps": 1,
+            "prime_atomic_full12_writes": 1,
+            "logical_target_fallback_used": False,
+            "current_contact_force_provenance": "current_final_solver_force_only",
+            "sensor_history_samples_after_reset": 1,
+            "source_actuation_match": {
+                "all_fields_match": True,
+                "source_target_hash_matches": True,
+                "logical_target_fallback_used": False,
+                "source_drive_target_full12_sha256": source_target_sha256,
+            },
+            "contact_sensor_reads_after_prime": 1,
+            "classifier_current_force_hysteresis_contract_verified": True,
+            "fsm_clock_steps_during_priming": 0,
+            "episode_clock_steps_during_priming": 0,
+            "priming_observation": {
+                "raw_physx_contact_sources_verified": True,
+                "current_raw_force_hysteresis_contract_matches_snapshot": True,
+            },
         },
         "observation_diagnostics": diagnostic,
         "clocks": {
@@ -134,7 +172,16 @@ def test_attempt_gate_fails_closed_on_exception_contact_or_extra_step() -> None:
     assert _attempt_passed(row) is True
 
     assert _attempt_passed({**row, "reset_completed": False}) is False
-    assert _attempt_passed({**row, "physics_steps_during_reset": 181}) is False
+    assert _attempt_passed({**row, "physics_steps_during_reset": 182}) is False
+    assert _attempt_passed(
+        {
+            **row,
+            "snapshot_state_write": {
+                **row["snapshot_state_write"],
+                "pre_prime_state_verified": False,
+            },
+        }
+    ) is False
     assert _attempt_passed(
         {
             **row,
@@ -159,6 +206,7 @@ def test_cli_and_wrapper_bind_probe_to_one_live_environment() -> None:
         ]
     )
     assert arguments.command == "phase-snapshot-live-probe"
+    assert arguments.phase_snapshot_prime_physics_steps == 1
     assert "phase-snapshot-live-probe" in cli.LIVE_COMMANDS
 
     wrapper = (
@@ -168,6 +216,23 @@ def test_cli_and_wrapper_bind_probe_to_one_live_environment() -> None:
     assert '-RunKind "phase_snapshot_live_probe"' in wrapper
     assert "-EnvironmentCount 1" in wrapper
     assert "-ReturnFinalizedEvidenceFailure" in wrapper
+    assert '"--phase-snapshot-prime-physics-steps", $PrimePhysicsSteps' in wrapper
+    assert "[ValidateSet(1)]" in wrapper
+
+    with pytest.raises(SystemExit):
+        cli._parser().parse_args(
+            [
+                "phase-snapshot-live-probe",
+                "--run-dir",
+                str(PROJECT_ROOT),
+                "--seed",
+                "1001",
+                "--num-envs",
+                "1",
+                "--phase-snapshot-prime-physics-steps",
+                "2",
+            ]
+        )
 
     common = (PROJECT_ROOT / "scripts" / "_invoke_ppo_cli.ps1").read_text(
         encoding="utf-8"
@@ -175,6 +240,19 @@ def test_cli_and_wrapper_bind_probe_to_one_live_environment() -> None:
     assert '$RunKindValue -ceq "phase_snapshot_live_probe"' in common
     assert '$SubcommandValue -ceq "phase-snapshot-live-probe"' in common
     assert "$null -ne $AuthoritativeLiveExitCode" in common
+
+
+def test_live_probe_rejects_non_one_prime_count_before_runtime_mutation(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(PhaseSnapshotLiveProbeError, match="exactly one"):
+        probe_subject.run_phase_snapshot_live_probe(
+            object(),
+            run_dir=tmp_path,
+            seed=1001,
+            snapshot_bundle=object(),
+            prime_physics_steps=2,
+        )
 
 
 def _write_managed_prechecks(run_dir: Path) -> None:
@@ -208,16 +286,20 @@ class _FakeBundle:
 def _patch_probe_snapshot_loader(monkeypatch: pytest.MonkeyPatch, root: Path) -> None:
     from wlr50_clean.ppo import phase_snapshots
 
-    entry = SimpleNamespace(
-        source_tick=1,
-        snapshot_path=root / "snapshot.json",
-        file_sha256="a" * 64,
-        state_sha256="b" * 64,
-    )
+    def load(_bundle: object, phase: str):
+        payload = _snapshot(phase)
+        entry = SimpleNamespace(
+            source_tick=payload["source_tick"],
+            snapshot_path=root / phase / "snapshot.json",
+            file_sha256="a" * 64,
+            state_sha256="b" * 64,
+        )
+        return payload, entry
+
     monkeypatch.setattr(
         phase_snapshots,
         "load_validated_phase_snapshot_payload",
-        lambda bundle, phase: ({}, entry),
+        load,
     )
 
 
@@ -490,6 +572,30 @@ def test_post_write_contact_rejection_remains_returnable_failed_diagnostic(
                 "simulation_forward_syncs": 1,
                 "physics_steps": 0,
             }
+            self._snapshot_restoration = {
+                "physical_state": {
+                    "schema": "wlr50_clean.phase_snapshot_prime_without_rewind.v1",
+                    "reset_use": "TRAINING_RESET_STATE_WRITE",
+                    "root_pose_writes": 1,
+                    "root_velocity_writes": 1,
+                    "joint_state_writes": 1,
+                    "simulation_forward_syncs": 1,
+                    "root_velocity_write_api": "write_root_link_velocity_to_sim",
+                    "state_write_count": 1,
+                    "post_prime_state_rewrite_performed": False,
+                    "contact_and_state_share_solver_tick": True,
+                    "prime_physics_steps": 1,
+                    "prime_applied_full12": [0.0] * 12,
+                    "physics_steps": 1,
+                    "fsm_clock_steps_during_priming": 0,
+                    "episode_clock_steps_during_priming": 0,
+                    "priming_observation": {
+                        "maximum_errors": {"root_position_m": 0.0003},
+                        "raw_physx_contact_sources_verified": True,
+                        "current_raw_force_hysteresis_contract_matches_snapshot": True,
+                    },
+                }
+            }
             # A captured post-write sample is the fail-closed boundary between
             # a useful restoration diagnostic and an infrastructure failure.
             self._book.current.post_snapshot_observations.append(None)
@@ -509,5 +615,24 @@ def test_post_write_contact_rejection_remains_returnable_failed_diagnostic(
     assert len(result["attempts"]) == len(PROBE_PHASES) * ATTEMPTS_PER_PHASE
     assert all(
         row["failure_classification"] == "ORDINARY_POST_WRITE_RESTORE_MISMATCH"
+        for row in result["attempts"]
+    )
+    assert result["production_reset_modified"] is True
+    assert result["extra_physics_priming_steps"] == 1
+    assert all(
+        row["snapshot_state_write"]["post_prime_state_rewrite_performed"]
+        is False
+        for row in result["attempts"]
+    )
+    assert all(
+        row["snapshot_state_write"]["priming_observation"]["maximum_errors"]
+        == {"root_position_m": 0.0003}
+        for row in result["attempts"]
+    )
+    assert all(
+        row["snapshot_state_write"]["priming_observation"][
+            "raw_physx_contact_sources_verified"
+        ]
+        is True
         for row in result["attempts"]
     )

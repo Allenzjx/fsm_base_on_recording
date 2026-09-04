@@ -1,6 +1,8 @@
 [CmdletBinding(PositionalBinding = $false)]
 param(
     [int]$Seed = 1001,
+    [ValidateSet(1)]
+    [int]$PrimePhysicsSteps = 1,
     [string]$SnapshotRoot = "reference\ppo_phase_snapshots",
     [Parameter(ValueFromRemainingArguments = $true)]
     [string[]]$CliArgs = @()
@@ -27,6 +29,7 @@ $BaseArgs = @(
     "--training-config", $Configs[0],
     "--interface-config", $Configs[1],
     "--snapshot-root", $SnapshotRoot,
+    "--phase-snapshot-prime-physics-steps", $PrimePhysicsSteps,
     "--episode-count", "1",
     "--seed-set", "train",
     "--deterministic"

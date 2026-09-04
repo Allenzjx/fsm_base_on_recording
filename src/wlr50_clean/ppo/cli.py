@@ -92,6 +92,12 @@ def _parser() -> argparse.ArgumentParser:
         command.add_argument("--fsm-config", type=Path)
         command.add_argument("--selected-trial", type=Path)
         command.add_argument("--snapshot-root", type=Path, default=DEFAULT_PHASE_SNAPSHOT_ROOT)
+        command.add_argument(
+            "--phase-snapshot-prime-physics-steps",
+            type=int,
+            choices=(1,),
+            default=1,
+        )
         command.add_argument("--stage", choices=("smoke", "phase-curriculum", "full-episode", "mild-randomization"), default="smoke")
         command.add_argument("--checkpoint", type=Path)
         command.add_argument("--checkpoint-manifest", type=Path)
@@ -197,6 +203,10 @@ def _validate_common(args: argparse.Namespace) -> None:
             raise CliError(f"reserved run directory is missing: {args.run_dir}")
     if args.seed < 0 or args.num_envs <= 0 or args.episode_count <= 0:
         raise CliError("seed/env/episode counts are invalid")
+    if args.phase_snapshot_prime_physics_steps != 1:
+        raise CliError(
+            "phase snapshot prime physics steps must be exactly one"
+        )
     args.training_config = _resolve_project_path(args.training_config)
     args.interface_config = _resolve_project_path(args.interface_config)
     args.snapshot_root = _resolve_project_path(args.snapshot_root)
@@ -1436,7 +1446,7 @@ def _reset_throughput_probe(args: argparse.Namespace, simulation_app: Any) -> in
 def _phase_snapshot_live_probe(
     args: argparse.Namespace, simulation_app: Any
 ) -> int:
-    """Capture diagnostic P02-P13 resets without changing production reset."""
+    """Capture P02-P13 one-tick no-rewind reset evidence."""
 
     from .phase_snapshot_live_probe import run_phase_snapshot_live_probe
 
@@ -1446,6 +1456,7 @@ def _phase_snapshot_live_probe(
         run_dir=args.run_dir,
         seed=args.seed,
         snapshot_bundle=pinned_snapshot_bundle,
+        prime_physics_steps=args.phase_snapshot_prime_physics_steps,
     )
     _revalidate_pinned_snapshot_bundle(pinned_snapshot_bundle)
     print(json.dumps(result, separators=(",", ":"), allow_nan=False), flush=True)

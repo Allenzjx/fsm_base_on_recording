@@ -12,6 +12,7 @@ from wlr50_clean.ppo.isaac_fsm_backend import (
     DEFAULT_FSM_PATH,
     DEFAULT_MOTION_CONTRACT_PATH,
     LEVEL_CALIBRATION_TICKS,
+    PHASE_SNAPSHOT_PRIME_PHYSICS_STEPS,
     SETTLE_TICKS,
     BackendDependencies,
     IsaacFSMBackend,
@@ -25,6 +26,14 @@ from wlr50_clean.ppo.isaac_fsm_backend import (
     _reset_physics_lifecycle,
     _restore_controller_from_snapshot,
     _restore_guard_tracker_from_snapshot,
+    _write_phase_snapshot_state,
+)
+from wlr50_clean.ppo.phase_snapshots import (
+    SNAPSHOT_SCHEMA,
+    SOURCE_COMMAND_SCHEMA,
+    SOURCE_MAPPER_STATE_SCHEMA,
+    phase_snapshot_actuation_contract_sha256,
+    phase_snapshot_drive_target_sha256,
 )
 
 
@@ -79,9 +88,17 @@ def _observation(tick: int, fault: str | None = None, *, invalid_pair=False):
             body_name=body_name,
             contact_class=_value("GROUND"),
             ground=SimpleNamespace(
-                pair_verified=not (invalid_pair and index == 0), active=True
+                pair_verified=not (invalid_pair and index == 0),
+                active=True,
+                source="isaaclab.ContactSensor.force_matrix_w",
+                force_w_n=(0.0, 0.0, 1.0),
             ),
-            obstacle=SimpleNamespace(pair_verified=True, active=False),
+            obstacle=SimpleNamespace(
+                pair_verified=True,
+                active=False,
+                source="isaaclab.ContactSensor.force_matrix_w",
+                force_w_n=(0.0, 0.0, 0.0),
+            ),
         )
     joints = {
         name: SimpleNamespace(
@@ -176,12 +193,115 @@ def _snapshot_payload(phase="P09"):
         }
     history = list(f"P{index:02d}" for index in range(1, phase_index + 1))
     pitch = 0.2
+    expected_ack = {
+        "schema": "wlr50_clean.atomic_full12_ack.v1",
+        "physics_dt_s": 1.0 / 120.0,
+        "articulation_writes_this_call": 1,
+        "canonical_order": list(SERVO_NAMES + WHEEL_NAMES),
+        "requested_full12": [0.0] * 12,
+        "applied_full12": [0.0] * 12,
+        "drive_target_full12": [0.0] * 12,
+        "native_drive_target_full12": [0.0] * 12,
+        "drive_feedback_bias_requested_full12": [0.0] * 12,
+        "drive_feedback_bias_realized_full12": [0.0] * 12,
+        "drive_feedback_final_slew_limit_deg_per_tick": 1.25,
+        "command_was_clamped": False,
+        "servo_applied_drive_command_deg": [0.0] * 8,
+        "servo_native_drive_command_deg": [0.0] * 8,
+        "servo_tracking_compensation_deg": [0.0] * 8,
+        "servo_nominal_target_reached": [True] * 8,
+        "servo_tracking_active": [False] * 8,
+        "tracking_servo_names": [],
+        "servo_tracking_feedback_sample_tick": 280,
+        "servo_tracking_feedback_sampled": False,
+        "servo_joint_ids": list(range(8)),
+        "wheel_joint_ids": list(range(8, 12)),
+        "servo_target_physical_rad": [0.0] * 8,
+        "wheel_target_physical_rad_s": [-0.0, 0.0, -0.0, 0.0],
+        "motion_start_skew_s": 0.0,
+    }
+    pre_state = {
+        "schema": SOURCE_MAPPER_STATE_SCHEMA,
+        "source_control_physics_tick": 99,
+        "requested_servo_deg": [0.0] * 8,
+        "applied_drive_command_deg": [0.0] * 8,
+        "nominal_target_reached": [True] * 8,
+        "tracking_compensation_deg": [0.0] * 8,
+        "tracking_active": [False] * 8,
+        "retiring_stale_bias": [False] * 8,
+        "feedback_tick": 280,
+        "final_drive_servo_deg": [0.0] * 8,
+    }
+    post_state = {
+        **pre_state,
+        "source_control_physics_tick": 100,
+        "feedback_tick": 281,
+    }
+    source_command = {
+        "schema": SOURCE_COMMAND_SCHEMA,
+        "control_physics_tick": 100,
+        "source_atomic_physics_tick": 280,
+        "source_atomic_write_count": 281,
+        "adapter_input": {
+            "requested_full12": [0.0] * 12,
+            "tracking_servo_names": [],
+            "drive_feedback_bias_requested_full12": [0.0] * 12,
+        },
+        "mapper_configuration": {
+            "physics_dt_s": 1.0 / 120.0,
+            "servo_rate_deg_s": 150.0,
+            "maximum_delta_deg": 1.25,
+            "tracking_gain": 8.0,
+            "tracking_limit_deg": 10.0,
+            "feedback_interval_ticks": 4,
+            "standing_pose_deg": [0.0] * 8,
+        },
+        "mapper_pre_state": pre_state,
+        "mapper_post_state": post_state,
+        "expected_atomic_ack": expected_ack,
+        "source_command_row_canonical_sha256": "c" * 64,
+        "source_observation_row_canonical_sha256": "d" * 64,
+        "drive_target_full12_sha256": phase_snapshot_drive_target_sha256(
+            expected_ack["drive_target_full12"]
+        ),
+        "actuation_contract_sha256": phase_snapshot_actuation_contract_sha256(
+            expected_ack
+        ),
+    }
     return {
-        "schema": "wlr50_clean.ppo_phase_entry_snapshot.v1",
+        "schema": SNAPSHOT_SCHEMA,
         "reset_use": "TRAINING_RESET_STATE_WRITE",
         "in_episode_root_write": "FORBIDDEN_IN_EPISODE_ROOT_WRITE",
         "source_tick": 100,
         "source_time_s": 100 / 120.0,
+        "source_artifacts": {
+            "trial_manifest": {
+                "name": "trial_manifest.json",
+                "bytes": 1,
+                "sha256": "e" * 64,
+            },
+            "command": {
+                "name": "full12_commands_120hz.jsonl",
+                "bytes": 1,
+                "sha256": "a" * 64,
+            },
+            "observation": {
+                "name": "observation_120hz.jsonl",
+                "bytes": 1,
+                "sha256": "b" * 64,
+            },
+            "transition": {
+                "name": "state_transitions.jsonl",
+                "bytes": 1,
+                "sha256": "f" * 64,
+            },
+            "leg_crossing": {
+                "name": "leg_crossing_events.jsonl",
+                "bytes": 1,
+                "sha256": "1" * 64,
+            },
+        },
+        "source_command": source_command,
         "fsm_state": phase,
         "fsm_lifecycle": "EXECUTE_MOTION",
         "phase_history": history,
@@ -307,6 +427,7 @@ class FakeReader:
         self.role = role
         self.last_command = None
         self.ticks = []
+        self.contact_classifier = SimpleNamespace(force_on_n=0.25, force_off_n=0.12)
 
     def read(self, *, physics_tick, simulation_time_s, commanded_full12):
         if self.runtime.strict_reader_clock and physics_tick != len(self.ticks):
@@ -335,8 +456,25 @@ class FakeAdapter:
     def __init__(self, runtime):
         self.runtime = runtime
         self.write_count = 0
+        self.last_physics_tick = None
         self.standing_pose_deg = {name: 0.0 for name in SERVO_NAMES}
-        self.servo_target_mapper = SimpleNamespace(servo_rate_deg_s=150.0)
+        self.servo_target_mapper = SimpleNamespace(
+            physics_dt_s=1.0 / 120.0,
+            servo_rate_deg_s=150.0,
+            maximum_delta_deg=1.25,
+            tracking_gain=8.0,
+            tracking_limit_deg=10.0,
+            feedback_interval_ticks=4,
+            standing_pose_deg=dict(self.standing_pose_deg),
+            _requested={name: 0.0 for name in SERVO_NAMES},
+            _applied={name: 0.0 for name in SERVO_NAMES},
+            _nominal_reached={name: True for name in SERVO_NAMES},
+            _compensation={name: 0.0 for name in SERVO_NAMES},
+            _tracking_active={name: False for name in SERVO_NAMES},
+            _retiring_stale_bias={name: False for name in SERVO_NAMES},
+            _feedback_tick=0,
+        )
+        self._final_drive_servo_deg = {name: 0.0 for name in SERVO_NAMES}
 
     def apply_full12(
         self,
@@ -348,10 +486,25 @@ class FakeAdapter:
     ):
         action = tuple(float(value) for value in command)
         bias = tuple(float(value) for value in drive_feedback_bias_full12)
+        if self.last_physics_tick is not None:
+            assert physics_tick > self.last_physics_tick
+        self.last_physics_tick = physics_tick
+        sample_tick = self.servo_target_mapper._feedback_tick
+        tracking = tuple(tracking_servo_names)
+        for name, value in zip(SERVO_NAMES, action[:8], strict=True):
+            self.servo_target_mapper._requested[name] = value
+            self.servo_target_mapper._applied[name] = value
+            self.servo_target_mapper._nominal_reached[name] = True
+            self.servo_target_mapper._compensation[name] = 0.0
+            self.servo_target_mapper._tracking_active[name] = name in tracking
+            self.servo_target_mapper._retiring_stale_bias[name] = False
+        self.servo_target_mapper._feedback_tick += 1
         self.write_count += 1
         drive_target = tuple(
             value + offset for value, offset in zip(action, bias, strict=True)
         )
+        for name, value in zip(SERVO_NAMES, drive_target[:8], strict=True):
+            self._final_drive_servo_deg[name] = value
         self.runtime.events.append(
             (
                 "adapter.apply",
@@ -362,13 +515,38 @@ class FakeAdapter:
             )
         )
         return {
+            "schema": "wlr50_clean.atomic_full12_ack.v1",
             "physics_tick": physics_tick,
+            "physics_dt_s": 1.0 / 120.0,
             "write_count": self.write_count,
             "articulation_writes_this_call": 1,
             "motion_start_skew_s": 0.0,
+            "canonical_order": list(SERVO_NAMES + WHEEL_NAMES),
+            "requested_full12": action,
             "applied_full12": action,
             "drive_target_full12": drive_target,
+            "native_drive_target_full12": action,
             "drive_feedback_bias_requested_full12": bias,
+            "drive_feedback_bias_realized_full12": bias,
+            "drive_feedback_final_slew_limit_deg_per_tick": 1.25,
+            "command_was_clamped": False,
+            "servo_applied_drive_command_deg": drive_target[:8],
+            "servo_native_drive_command_deg": action[:8],
+            "servo_tracking_compensation_deg": (0.0,) * 8,
+            "servo_nominal_target_reached": (True,) * 8,
+            "servo_tracking_active": tuple(name in tracking for name in SERVO_NAMES),
+            "tracking_servo_names": tracking,
+            "servo_tracking_feedback_sample_tick": sample_tick,
+            "servo_tracking_feedback_sampled": bool(tracking and sample_tick % 4 == 0),
+            "servo_joint_ids": tuple(range(8)),
+            "wheel_joint_ids": tuple(range(8, 12)),
+            "servo_target_physical_rad": tuple(math.radians(value) for value in drive_target[:8]),
+            "wheel_target_physical_rad_s": (
+                -drive_target[8],
+                drive_target[9],
+                -drive_target[10],
+                drive_target[11],
+            ),
         }
 
     def update_readback(self):
@@ -406,6 +584,7 @@ class FakeRuntime:
         self.strict_reader_clock = strict_reader_clock
         self.events = []
         self.reader_count = 0
+        self.reader_count_this_reset = 0
         self.reset_scene_count = 0
         self.adapter_create_count = 0
         self.sim = FakeSimulation(self)
@@ -440,8 +619,9 @@ class FakeRuntime:
             return self.adapter
 
         def reader_from_scene(scene, adapter, backends):
-            role = "calibration" if self.reader_count % 2 == 0 else "live"
+            role = "calibration" if self.reader_count_this_reset == 0 else "live"
             self.reader_count += 1
+            self.reader_count_this_reset += 1
             reader = FakeReader(self, role)
             self.all_readers.append(reader)
             if role == "live":
@@ -464,6 +644,7 @@ class FakeRuntime:
         def reset_scene(scene, reset_state):
             assert reset_state is None or reset_state is canonical_reset_state
             self.reset_scene_count += 1
+            self.reader_count_this_reset = 0
             self.events.append(("reset_scene", reset_state))
             fresh = reset_state is None
             return {
@@ -523,8 +704,26 @@ class FakeRuntime:
                 snapshot_path=Path("fake/snapshot.json"),
             )
 
-        def write_phase_snapshot(scene, adapter, snapshot):
-            self.events.append(("write_phase_snapshot", snapshot["fsm_state"]))
+        def write_phase_snapshot(
+            scene,
+            adapter,
+            snapshot,
+            *,
+            reset_contact_backend,
+            state_write_index,
+        ):
+            self.events.append(
+                (
+                    "write_phase_snapshot",
+                    snapshot["fsm_state"],
+                    reset_contact_backend,
+                    state_write_index,
+                )
+            )
+            pre_state = backend_module._install_source_mapper_pre_state(
+                adapter, snapshot
+            )
+            root = snapshot["root_state"]
             return {
                 "root_pose_writes": 1,
                 "root_velocity_writes": 1,
@@ -532,6 +731,31 @@ class FakeRuntime:
                 "global_simulation_resets": 0,
                 "simulation_forward_syncs": 1,
                 "physics_steps": 0,
+                "state_write_index": state_write_index,
+                "contact_backend_reset": reset_contact_backend,
+                "root_velocity_write_api": "write_root_link_velocity_to_sim",
+                "source_mapper_pre_state": pre_state,
+                "pre_prime_root_link_readback": {
+                    "schema": (
+                        "wlr50_clean.phase_snapshot_pre_prime_root_link_readback.v1"
+                    ),
+                    "body_name": "base_link",
+                    "expected": dict(root),
+                    "observed": dict(root),
+                    "maximum_errors": {
+                        "root_position_m": 0.0,
+                        "root_orientation_quaternion_distance": 0.0,
+                        "root_linear_velocity_m_s": 0.0,
+                        "root_angular_velocity_rad_s": 0.0,
+                    },
+                    "physics_steps_before_readback": 0,
+                    "contact_sensor_reads_before_readback": 0,
+                    "all_values_finite": True,
+                    "all_fields_within_production_tolerances": True,
+                    "verified": True,
+                },
+                "pre_prime_joint_state_verified": True,
+                "pre_prime_state_verified": True,
                 "verified": True,
             }
 
@@ -593,6 +817,8 @@ def test_reset_settles_and_step_preserves_atomic_order_and_drive_feedback() -> N
     assert initial.sim_time_s == 0.0
     assert initial.info["settle_atomic_full12_writes"] == SETTLE_TICKS
     assert initial.info["level_calibration_sample_count"] == LEVEL_CALIBRATION_TICKS
+    assert initial.info["effective_phase_entry_semantics"] == "natural_p01_post_settle"
+    assert initial.info["next_post_reset_command_tick"] == SETTLE_TICKS
     assert initial.info["raw_observation"] is backend.raw_observation
     assert initial.info["raw_controller_frame"] is backend.controller_frame
     assert initial.info["level_calibration"]["raw_pitch_rad"] == pytest.approx(0.2)
@@ -1251,10 +1477,49 @@ def test_phase_snapshot_reset_restores_independent_phase_state_and_proves_live_s
     assert restoration["live_observation"]["verified"] is True
     assert restoration["controller_state"]["history_is_independent"] is True
     assert restoration["guard_state"]["history_is_independent"] is True
+    physical = restoration["physical_state"]
+    assert physical["schema"] == "wlr50_clean.phase_snapshot_prime_without_rewind.v1"
+    assert physical["reset_use"] == "TRAINING_RESET_STATE_WRITE"
+    assert physical["state_write_count"] == 1
+    assert physical["post_prime_state_rewrite_performed"] is False
+    assert physical["contact_and_state_share_solver_tick"] is True
+    assert physical["prime_physics_steps"] == PHASE_SNAPSHOT_PRIME_PHYSICS_STEPS
+    assert physical["prime_applied_full12"] == list(
+        _snapshot_payload("P09")["applied_full12"]
+    )
+    assert physical["prime_atomic_full12_writes"] == 1
+    assert physical["logical_target_fallback_used"] is False
+    assert physical["source_actuation_match"]["all_fields_match"] is True
+    assert physical["source_actuation_match"]["source_target_hash_matches"] is True
+    assert physical["source_mapper_post_state"]["all_fields_match"] is True
+    assert physical["source_mapper_post_state"][
+        "reached_naturally_by_single_atomic_apply"
+    ] is True
+    assert physical["fsm_clock_steps_during_priming"] == 0
+    assert physical["episode_clock_steps_during_priming"] == 0
+    assert physical["contact_sensor_reads_after_prime"] == 1
+    assert physical["classifier_restored_before_only_episode_read"] is True
+    assert physical["classifier_current_force_hysteresis_contract_verified"] is True
+    assert physical["classifier_history_equivalence_claimed"] is False
+    assert physical["raw_sensor_history_rewarmed_from_prime"] is True
+    assert physical["current_contact_force_provenance"] == (
+        "current_final_solver_force_only"
+    )
+    assert physical["sensor_history_samples_after_reset"] == 1
+    assert physical["priming_observation"][
+        "current_raw_force_hysteresis_contract_matches_snapshot"
+    ] is True
     assert frame.info["reset_root_pose_writes"] == 1
     assert frame.info["reset_root_velocity_writes"] == 1
     assert frame.info["reset_joint_state_writes"] == 1
     assert frame.info["reset_simulation_forward_syncs"] == 1
+    assert frame.info["reset_prime_tick_count"] == 1
+    assert frame.info["next_post_reset_command_tick"] == SETTLE_TICKS + 1
+    assert frame.info["first_episode_physical_command_tick_actual"] is None
+    assert frame.info["effective_phase_entry_semantics"] == "snapshot_plus_one_physics_tick"
+    applied_ticks = [row[1] for row in runtime.events if row[0] == "adapter.apply"]
+    assert applied_ticks == list(range(SETTLE_TICKS + 1))
+    assert runtime.sim.step_count == SETTLE_TICKS + 1
     event_names = [row[0] for row in runtime.events]
     assert event_names.index("write_phase_snapshot") < event_names.index(
         "restore_guard_snapshot"
@@ -1270,7 +1535,159 @@ def test_phase_snapshot_reset_restores_independent_phase_state_and_proves_live_s
     following = backend.step_physics(ZERO)
     assert following.state_id == "P09"
     assert following.info["in_episode_root_pose_writes"] == 0
+    assert next(row[1] for row in runtime.events if row[0] == "adapter.apply") == (
+        SETTLE_TICKS + 1
+    )
+    assert following.info["first_episode_physical_command_tick_actual"] == (
+        SETTLE_TICKS + 1
+    )
     assert all("snapshot" not in row[0] for row in runtime.events)
+
+
+def test_phase_snapshot_state_write_uses_root_link_velocity_api_only() -> None:
+    torch = pytest.importorskip("torch")
+    payload = _snapshot_payload("P09")
+
+    class Robot:
+        def __init__(self) -> None:
+            self.body_names = ("base_link",)
+            self.data = SimpleNamespace(
+                default_root_state=torch.zeros((1, 13), dtype=torch.float64),
+                default_joint_pos=torch.zeros((1, 12), dtype=torch.float64),
+                default_joint_vel=torch.zeros((1, 12), dtype=torch.float64),
+                body_link_pos_w=torch.zeros((1, 1, 3), dtype=torch.float64),
+                body_link_quat_w=torch.zeros((1, 1, 4), dtype=torch.float64),
+                body_link_lin_vel_w=torch.zeros((1, 1, 3), dtype=torch.float64),
+                body_link_ang_vel_w=torch.zeros((1, 1, 3), dtype=torch.float64),
+            )
+            self.link_velocity = None
+            self.com_velocity_alias_calls = 0
+
+        def write_root_pose_to_sim(self, value):
+            self.root_pose = value.clone()
+            self.data.body_link_pos_w[:, 0, :] = value[:, :3]
+            self.data.body_link_quat_w[:, 0, :] = value[:, 3:]
+
+        def write_root_link_velocity_to_sim(self, value):
+            self.link_velocity = value.clone()
+            self.data.body_link_lin_vel_w[:, 0, :] = value[:, :3]
+            self.data.body_link_ang_vel_w[:, 0, :] = value[:, 3:]
+
+        def write_root_velocity_to_sim(self, value):
+            self.com_velocity_alias_calls += 1
+
+        def write_joint_state_to_sim(self, position, velocity):
+            self.joint_position = position.clone()
+            self.joint_velocity = velocity.clone()
+
+        def reset(self):
+            return None
+
+        def update(self, dt):
+            self.update_dt = dt
+
+    robot = Robot()
+    contact_backend = SimpleNamespace(reset_calls=0)
+
+    def reset_contacts():
+        contact_backend.reset_calls += 1
+
+    contact_backend.reset = reset_contacts
+    sim = SimpleNamespace(forward_calls=0)
+
+    def forward():
+        sim.forward_calls += 1
+
+    sim.forward = forward
+    mapper = SimpleNamespace(
+        physics_dt_s=1.0 / 120.0,
+        servo_rate_deg_s=150.0,
+        maximum_delta_deg=1.25,
+        tracking_gain=8.0,
+        tracking_limit_deg=10.0,
+        feedback_interval_ticks=4,
+        standing_pose_deg={name: 0.0 for name in SERVO_NAMES},
+        _requested={name: 0.0 for name in SERVO_NAMES},
+        _applied={name: 0.0 for name in SERVO_NAMES},
+        _nominal_reached={name: True for name in SERVO_NAMES},
+        _compensation={name: 0.0 for name in SERVO_NAMES},
+        _tracking_active={name: False for name in SERVO_NAMES},
+        _retiring_stale_bias={name: False for name in SERVO_NAMES},
+        _feedback_tick=0,
+    )
+    adapter = SimpleNamespace(
+        joint_map=SimpleNamespace(
+            servo_ids=tuple(range(8)), wheel_ids=tuple(range(8, 12))
+        ),
+        standing_pose_deg={name: 0.0 for name in SERVO_NAMES},
+        servo_target_mapper=mapper,
+        _final_drive_servo_deg={name: 0.0 for name in SERVO_NAMES},
+        get_actual_state=lambda: SimpleNamespace(
+            full12=ZERO, servo_velocity_rad_s=(0.0,) * 8
+        ),
+    )
+    scene = SimpleNamespace(
+        robot=robot,
+        sim=sim,
+        instrumentation=SimpleNamespace(contact_backend=contact_backend),
+    )
+
+    proof = _write_phase_snapshot_state(scene, adapter, payload)
+
+    assert robot.link_velocity is not None
+    assert robot.link_velocity[0].tolist() == pytest.approx(
+        payload["root_state"]["linear_velocity_w_m_s"]
+        + payload["root_state"]["angular_velocity_w_rad_s"]
+    )
+    assert robot.com_velocity_alias_calls == 0
+    assert proof["root_velocity_write_api"] == "write_root_link_velocity_to_sim"
+    assert proof["pre_prime_state_verified"] is True
+    root_proof = proof["pre_prime_root_link_readback"]
+    assert root_proof["verified"] is True
+    assert root_proof["observed"]["position_w_m"] == pytest.approx(
+        payload["root_state"]["position_w_m"]
+    )
+    assert root_proof["observed"]["linear_velocity_w_m_s"] == pytest.approx(
+        payload["root_state"]["linear_velocity_w_m_s"]
+    )
+    assert contact_backend.reset_calls == 1
+    assert sim.forward_calls == 1
+
+
+def test_pre_prime_root_link_readback_fails_closed_on_link_velocity_alias_drift() -> None:
+    numpy = pytest.importorskip("numpy")
+    payload = _snapshot_payload("P09")
+    root = payload["root_state"]
+    robot = SimpleNamespace(
+        body_names=("base_link",),
+        data=SimpleNamespace(
+            body_link_pos_w=numpy.asarray([[root["position_w_m"]]], dtype=float),
+            body_link_quat_w=numpy.asarray(
+                [[root["orientation_wxyz"]]], dtype=float
+            ),
+            body_link_lin_vel_w=numpy.asarray(
+                [[[root["linear_velocity_w_m_s"][0] + 0.001, 0.0, 0.0]]],
+                dtype=float,
+            ),
+            body_link_ang_vel_w=numpy.asarray(
+                [[root["angular_velocity_w_rad_s"]]], dtype=float
+            ),
+        ),
+    )
+
+    with pytest.raises(IsaacFSMBackendError, match="root_linear_velocity_m_s"):
+        backend_module._verify_pre_prime_root_link_write(robot, root)
+
+
+@pytest.mark.parametrize("prime_steps", [0, 2, 8, True, 1.0])
+def test_phase_snapshot_backend_rejects_any_prime_count_other_than_one(
+    prime_steps,
+) -> None:
+    with pytest.raises(IsaacFSMBackendError, match="exactly one"):
+        IsaacFSMBackend(
+            dependencies=FakeRuntime().dependencies(),
+            phase_snapshot_prime_physics_steps=prime_steps,
+        )
 
 
 def test_reused_phase_snapshot_reports_hard_reset_plus_snapshot_write() -> None:
@@ -1286,6 +1703,7 @@ def test_reused_phase_snapshot_reports_hard_reset_plus_snapshot_write() -> None:
     assert frame.info["reset_root_pose_writes"] == 1
     assert frame.info["reset_root_velocity_writes"] == 1
     assert frame.info["reset_joint_state_writes"] == 1
+    assert frame.info["reset_prime_tick_count"] == 1
 
 
 def test_explicit_p01_snapshot_keeps_the_normal_p01_reset_path() -> None:
@@ -1297,6 +1715,9 @@ def test_explicit_p01_snapshot_keeps_the_normal_p01_reset_path() -> None:
     assert frame.state_id == "P01"
     assert frame.info["phase_snapshot_restoration"]["snapshot_validated"] is True
     assert frame.info["phase_snapshot_restoration"]["mode"] == "normal_p01_reset"
+    assert frame.info["effective_phase_entry_semantics"] == (
+        "validated_p01_natural_post_settle"
+    )
     assert frame.info["reset_root_pose_writes"] == 0
     assert not any(row[0] == "write_phase_snapshot" for row in runtime.events)
     assert not any(row[0] == "restore_controller_snapshot" for row in runtime.events)
@@ -1331,6 +1752,98 @@ def test_all_checked_in_phase_snapshots_pass_backend_proof_validation() -> None:
         f"P{index:02d}" for index in range(1, 14)
     )
     assert all("reference/ppo_phase_snapshots" in row.snapshot_path.as_posix() for row in loaded)
+
+
+def test_all_checked_snapshots_replay_source_drive_with_one_real_adapter_write() -> None:
+    numpy = pytest.importorskip("numpy")
+    from wlr50_clean.infrastructure.command_batch import (
+        SERVO_COMMAND_SIGN,
+        JointIndexMap,
+    )
+    from wlr50_clean.infrastructure.robot_adapter import RobotAdapter
+    from wlr50_clean.infrastructure.servo_target_mapper import ServoTargetMapper
+
+    class TargetRobot:
+        def __init__(self, joint_position):
+            self.data = SimpleNamespace(
+                joint_pos=joint_position.copy(),
+                joint_vel=numpy.zeros_like(joint_position),
+            )
+            self.articulation_write_count = 0
+
+        def set_joint_position_target(self, value, *, joint_ids):
+            self.position_target = value.copy()
+            self.position_target_ids = tuple(joint_ids)
+
+        def set_joint_velocity_target(self, value, *, joint_ids):
+            self.velocity_target = value.copy()
+            self.velocity_target_ids = tuple(joint_ids)
+
+        def write_data_to_sim(self):
+            self.articulation_write_count += 1
+
+    for phase in (f"P{index:02d}" for index in range(1, 14)):
+        snapshot = _load_validated_phase_snapshot(phase).payload
+        source = snapshot["source_command"]
+        expected = source["expected_atomic_ack"]
+        standing = dict(
+            zip(
+                SERVO_NAMES,
+                source["mapper_configuration"]["standing_pose_deg"],
+                strict=True,
+            )
+        )
+        servo_ids = tuple(expected["servo_joint_ids"])
+        wheel_ids = tuple(expected["wheel_joint_ids"])
+        joint_position = numpy.zeros((1, 12), dtype=numpy.float64)
+        for index, name in enumerate(SERVO_NAMES):
+            joint_position[:, servo_ids[index]] = math.radians(
+                standing[name]
+                + SERVO_COMMAND_SIGN[name]
+                * snapshot["joint_state"]["logical_position_deg"][index]
+            )
+        robot = TargetRobot(joint_position)
+        adapter = object.__new__(RobotAdapter)
+        adapter.robot = robot
+        adapter.physics_dt_s = 1.0 / 120.0
+        adapter.joint_map = JointIndexMap(
+            servo_ids=servo_ids,
+            wheel_ids=wheel_ids,
+            live_joint_names=SERVO_NAMES + WHEEL_NAMES,
+        )
+        adapter.standing_pose_deg = standing
+        adapter._standing_servo_tensor = numpy.asarray(
+            [[math.radians(standing[name]) for name in SERVO_NAMES]],
+            dtype=numpy.float64,
+        )
+        adapter.servo_target_mapper = ServoTargetMapper(standing)
+        adapter._final_drive_servo_deg = {name: 0.0 for name in SERVO_NAMES}
+        adapter.write_count = SETTLE_TICKS
+        adapter._last_physics_tick = SETTLE_TICKS - 1
+        adapter.last_ack = None
+        backend_module._install_source_mapper_pre_state(adapter, snapshot)
+
+        ack = adapter.apply_full12(
+            source["adapter_input"]["requested_full12"],
+            physics_tick=SETTLE_TICKS,
+            tracking_servo_names=source["adapter_input"]["tracking_servo_names"],
+            drive_feedback_bias_full12=source["adapter_input"][
+                "drive_feedback_bias_requested_full12"
+            ],
+        )
+        ack_match = backend_module._verify_source_prime_ack(snapshot, ack)
+        post_match = backend_module._verify_source_mapper_post_state(adapter, snapshot)
+
+        assert robot.articulation_write_count == 1
+        assert ack_match["all_fields_match"] is True
+        assert ack_match["source_target_hash_matches"] is True
+        assert post_match["all_fields_match"] is True
+
+    p03 = _load_validated_phase_snapshot("P03").payload["source_command"]
+    assert p03["expected_atomic_ack"]["servo_tracking_feedback_sampled"] is True
+    p10 = _load_validated_phase_snapshot("P10").payload["source_command"]
+    assert p10["expected_atomic_ack"]["drive_feedback_bias_requested_full12"][7] == pytest.approx(0.75)
+    assert p10["expected_atomic_ack"]["drive_feedback_bias_realized_full12"][7] == pytest.approx(0.75)
 
 
 def test_real_frozen_controller_and_guard_tracker_restore_from_checked_snapshot() -> None:
