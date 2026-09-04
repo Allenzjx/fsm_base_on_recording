@@ -10,12 +10,24 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from .action_projection import ZeroResidualEpisodeAuditor, full12_bytes
+from .observation_schema_v2 import OBSERVATION_DIMENSION_V2
 
 
-SOFT_RESET_ACCEPTANCE_SCHEMA = "wlr50_clean.soft_reset_equivalence.v3"
+SOFT_RESET_ACCEPTANCE_SCHEMA = "wlr50_clean.soft_reset_equivalence.v4"
 SOFT_RESET_ACCEPTANCE_FILENAME = "soft_reset_equivalence_acceptance.json"
 PHASE_IDS = tuple(f"P{index:02d}" for index in range(1, 14))
 ZERO_FULL12 = (0.0,) * 12
+FULL_RATE_TICK_AUDIT_COMPARISON_FIELDS = (
+    "nominal_sequence_sha256",
+    "applied_sequence_sha256",
+    "tick_count",
+    "phase_ids_observed",
+    "physics_tick_count_by_phase",
+)
+INITIAL_ACTOR_OBSERVATION_FIELDS = (
+    "initial_actor_observation_v2_dimension",
+    "initial_actor_observation_v2_sha256",
+)
 TRACE_FIELDS = (
     "decision_index",
     "physics_tick",
@@ -26,6 +38,8 @@ TRACE_FIELDS = (
     "physics_ticks_executed",
     "actor_observation_v2_dimension",
     "actor_observation_v2_sha256",
+    "reward_total",
+    "reward_breakdown_sha256",
     "nominal_full12",
     "residual_full12",
     "applied_full12",
@@ -41,6 +55,10 @@ ACCEPTANCE_CHECK_NAMES = (
     "both_no_safety_abort",
     "both_under_maximum_duration",
     "both_zero_residual_bitwise_all_ticks",
+    "contract_files_unchanged_during_run",
+    "full_rate_tick_audits_equal_between_episodes",
+    "initial_actor_observations_equal_between_episodes",
+    "reward_totals_match_traces_and_between_episodes",
     "decision_counts_match_compact_traces",
     "physics_tick_counts_match_audits",
     "no_runtime_recording_access",
@@ -106,15 +124,30 @@ SOFT_RESET_CONTRACT_RELATIVE_PATHS = (
     "configs/fsm_states.yaml",
     "configs/recording_motion_contract.json",
     "configs/ppo_interface_v2.yaml",
+    "configs/ppo_action_projection.yaml",
     "configs/ppo_phase_action_masks_v2.yaml",
+    "configs/ppo_phase_objectives_v2.yaml",
+    "configs/ppo_observation_schema.json",
     "configs/ppo_observation_schema_v2.json",
+    "configs/ppo_reward.yaml",
+    "configs/ppo_reward_v2.yaml",
+    "configs/ppo_termination.yaml",
     "configs/ppo_termination_v2.yaml",
     "src/wlr50_clean/ppo/action_projection.py",
+    "src/wlr50_clean/ppo/cli.py",
+    "src/wlr50_clean/ppo/episode_logger.py",
     "src/wlr50_clean/ppo/isaac_fsm_backend.py",
+    "src/wlr50_clean/ppo/observation_schema.py",
     "src/wlr50_clean/ppo/phase_action_masks_v2.py",
     "src/wlr50_clean/ppo/observation_schema_v2.py",
+    "src/wlr50_clean/ppo/phase_objectives.py",
+    "src/wlr50_clean/ppo/ppo_env_adapter.py",
     "src/wlr50_clean/ppo/residual_direct_env.py",
+    "src/wlr50_clean/ppo/reward_terms.py",
+    "src/wlr50_clean/ppo/reward_v2.py",
     "src/wlr50_clean/ppo/soft_reset_equivalence.py",
+    "src/wlr50_clean/ppo/termination.py",
+    "src/wlr50_clean/ppo/termination_v2.py",
 )
 
 
@@ -137,6 +170,179 @@ def _canonical_row_bytes(row: Mapping[str, Any]) -> bytes:
         ).encode("utf-8")
     except (TypeError, ValueError) as exc:
         raise SoftResetEquivalenceError(f"compact trace is not canonical JSON: {exc}") from exc
+
+
+def actor_observation_v2_fingerprint(
+    values: Sequence[float],
+) -> dict[str, int | str]:
+    """Hash one exact finite actor input without retaining the 125D vector."""
+
+    try:
+        vector = tuple(float(value) for value in values)
+    except (TypeError, ValueError) as exc:
+        raise SoftResetEquivalenceError(
+            "actor observation cannot be serialized as a numeric vector"
+        ) from exc
+    if len(vector) != OBSERVATION_DIMENSION_V2 or any(
+        not math.isfinite(value) for value in vector
+    ):
+        raise SoftResetEquivalenceError(
+            "actor observation must be an exact finite v2 vector"
+        )
+    payload = json.dumps(
+        vector,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    return {
+        "dimension": len(vector),
+        "sha256": hashlib.sha256(payload).hexdigest(),
+    }
+
+
+def reward_breakdown_v2_fingerprint(value: Mapping[str, Any]) -> dict[str, float | str]:
+    """Hash the exact per-decision reward evidence and expose its finite total."""
+
+    if not isinstance(value, Mapping):
+        raise SoftResetEquivalenceError("reward breakdown must be a mapping")
+    try:
+        total = float(value["total"])
+        payload = json.dumps(
+            dict(value),
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+    except (KeyError, TypeError, ValueError) as exc:
+        raise SoftResetEquivalenceError(
+            "reward breakdown must be canonical finite JSON with a numeric total"
+        ) from exc
+    if not math.isfinite(total):
+        raise SoftResetEquivalenceError("reward total must be finite")
+    return {
+        "total": total,
+        "sha256": hashlib.sha256(payload).hexdigest(),
+    }
+
+
+def compare_initial_actor_observations(
+    fresh: Mapping[str, Any], reused: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Compare the reset-return actor inputs before either episode is stepped."""
+
+    missing = [
+        name
+        for name in INITIAL_ACTOR_OBSERVATION_FIELDS
+        if name not in fresh or name not in reused
+    ]
+    if missing:
+        raise SoftResetEquivalenceError(
+            f"initial actor observation evidence is incomplete: {sorted(set(missing))}"
+        )
+    fresh_selected = {name: fresh[name] for name in INITIAL_ACTOR_OBSERVATION_FIELDS}
+    reused_selected = {name: reused[name] for name in INITIAL_ACTOR_OBSERVATION_FIELDS}
+    exactly_equal = bool(
+        fresh_selected == reused_selected
+        and fresh_selected["initial_actor_observation_v2_dimension"]
+        == OBSERVATION_DIMENSION_V2
+        and isinstance(
+            fresh_selected["initial_actor_observation_v2_sha256"], str
+        )
+        and len(fresh_selected["initial_actor_observation_v2_sha256"]) == 64
+    )
+    return {
+        "schema": "wlr50_clean.initial_actor_observation_comparison.v1",
+        "fields": list(INITIAL_ACTOR_OBSERVATION_FIELDS),
+        "expected_dimension": OBSERVATION_DIMENSION_V2,
+        "fresh": fresh_selected,
+        "reused": reused_selected,
+        "exactly_equal": exactly_equal,
+    }
+
+
+def compare_full_rate_tick_audits(
+    fresh: Mapping[str, Any], reused: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Compare compact streaming digests/counts for every 120 Hz control tick."""
+
+    missing = [
+        name
+        for name in FULL_RATE_TICK_AUDIT_COMPARISON_FIELDS
+        if name not in fresh or name not in reused
+    ]
+    if missing:
+        raise SoftResetEquivalenceError(
+            f"full-rate tick audit evidence is incomplete: {sorted(set(missing))}"
+        )
+    fresh_selected = {
+        name: fresh[name] for name in FULL_RATE_TICK_AUDIT_COMPARISON_FIELDS
+    }
+    reused_selected = {
+        name: reused[name] for name in FULL_RATE_TICK_AUDIT_COMPARISON_FIELDS
+    }
+    mismatched_fields = [
+        name
+        for name in FULL_RATE_TICK_AUDIT_COMPARISON_FIELDS
+        if fresh_selected[name] != reused_selected[name]
+    ]
+    return {
+        "schema": "wlr50_clean.full_rate_tick_audit_comparison.v1",
+        "fields": list(FULL_RATE_TICK_AUDIT_COMPARISON_FIELDS),
+        "fresh": fresh_selected,
+        "reused": reused_selected,
+        "exactly_equal": not mismatched_fields,
+        "mismatched_fields": mismatched_fields,
+    }
+
+
+def compare_reward_totals(
+    fresh_summary: Mapping[str, Any],
+    reused_summary: Mapping[str, Any],
+    fresh_trace: Sequence[Mapping[str, Any]],
+    reused_trace: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Recompute episode rewards from compact rows and compare both episodes."""
+
+    def _finite_total(value: Any, *, label: str) -> float:
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise SoftResetEquivalenceError(f"{label} must be numeric")
+        result = float(value)
+        if not math.isfinite(result):
+            raise SoftResetEquivalenceError(f"{label} must be finite")
+        return result
+
+    def _trace_total(rows: Sequence[Mapping[str, Any]], *, label: str) -> float:
+        total = 0.0
+        for index, row in enumerate(rows):
+            total += _finite_total(
+                row.get("reward_total"),
+                label=f"{label} compact trace reward {index}",
+            )
+        return total
+
+    fresh_summary_total = _finite_total(
+        fresh_summary.get("reward_total"), label="fresh summary reward"
+    )
+    reused_summary_total = _finite_total(
+        reused_summary.get("reward_total"), label="reused summary reward"
+    )
+    fresh_trace_total = _trace_total(fresh_trace, label="fresh")
+    reused_trace_total = _trace_total(reused_trace, label="reused")
+    return {
+        "schema": "wlr50_clean.reward_total_comparison.v1",
+        "fresh_summary_total": fresh_summary_total,
+        "fresh_trace_total": fresh_trace_total,
+        "fresh_summary_matches_trace": fresh_summary_total == fresh_trace_total,
+        "reused_summary_total": reused_summary_total,
+        "reused_trace_total": reused_trace_total,
+        "reused_summary_matches_trace": reused_summary_total == reused_trace_total,
+        "episode_totals_exactly_equal": fresh_summary_total == reused_summary_total,
+        "passed": bool(
+            fresh_summary_total == fresh_trace_total
+            and reused_summary_total == reused_trace_total
+            and fresh_summary_total == reused_summary_total
+        ),
+    }
 
 
 class CompactZeroResidualTickAudit:
@@ -209,21 +415,8 @@ def compact_trace_row(
 ) -> dict[str, Any]:
     """Select only deterministic controller/action fields from one decision."""
 
-    try:
-        actor_vector = tuple(float(value) for value in actor_observation_v2)
-    except (TypeError, ValueError) as exc:
-        raise SoftResetEquivalenceError(
-            "actor observation cannot be serialized as a numeric vector"
-        ) from exc
-    if not actor_vector or any(not math.isfinite(value) for value in actor_vector):
-        raise SoftResetEquivalenceError(
-            "actor observation must be a non-empty finite vector"
-        )
-    actor_bytes = json.dumps(
-        actor_vector,
-        separators=(",", ":"),
-        allow_nan=False,
-    ).encode("utf-8")
+    actor_fingerprint = actor_observation_v2_fingerprint(actor_observation_v2)
+    reward_fingerprint = reward_breakdown_v2_fingerprint(info.get("reward"))
     row = {
         "decision_index": int(info["decision_index"]),
         "physics_tick": int(frame.physics_tick),
@@ -232,8 +425,10 @@ def compact_trace_row(
         "lifecycle": str(info.get("controller_lifecycle")),
         "phase_progress": float(frame.phase_progress),
         "physics_ticks_executed": int(info["physics_ticks_executed"]),
-        "actor_observation_v2_dimension": len(actor_vector),
-        "actor_observation_v2_sha256": hashlib.sha256(actor_bytes).hexdigest(),
+        "actor_observation_v2_dimension": actor_fingerprint["dimension"],
+        "actor_observation_v2_sha256": actor_fingerprint["sha256"],
+        "reward_total": reward_fingerprint["total"],
+        "reward_breakdown_sha256": reward_fingerprint["sha256"],
         "nominal_full12": [float(value) for value in frame.nominal_action_full12],
         "residual_full12": [float(value) for value in info["projected_residual_full12"]],
         "applied_full12": [float(value) for value in info["applied_action_full12"]],
@@ -574,6 +769,28 @@ def _load_compact_trace(path: Path) -> tuple[dict[str, Any], ...]:
                         f"compact trace row {line_number} has non-canonical fields"
                     )
                 _canonical_row_bytes(selected)
+                actor_sha256 = selected.get("actor_observation_v2_sha256")
+                reward_total = selected.get("reward_total")
+                reward_sha256 = selected.get("reward_breakdown_sha256")
+                if (
+                    selected.get("actor_observation_v2_dimension")
+                    != OBSERVATION_DIMENSION_V2
+                    or not isinstance(actor_sha256, str)
+                    or len(actor_sha256) != 64
+                ):
+                    raise SoftResetEquivalenceError(
+                        f"compact trace row {line_number} has invalid actor evidence"
+                    )
+                if (
+                    isinstance(reward_total, bool)
+                    or not isinstance(reward_total, (int, float))
+                    or not math.isfinite(float(reward_total))
+                    or not isinstance(reward_sha256, str)
+                    or len(reward_sha256) != 64
+                ):
+                    raise SoftResetEquivalenceError(
+                        f"compact trace row {line_number} has invalid reward evidence"
+                    )
                 rows.append(selected)
     except (OSError, json.JSONDecodeError) as exc:
         raise SoftResetEquivalenceError("compact trace is unreadable or invalid JSONL") from exc
@@ -615,7 +832,10 @@ def validate_soft_reset_acceptance(
     ):
         raise SoftResetEquivalenceError("soft-reset acceptance run shape is invalid")
     expected_hashes = soft_reset_contract_hashes(root)
-    if payload.get("contract_file_sha256") != expected_hashes:
+    if (
+        payload.get("contract_file_sha256") != expected_hashes
+        or payload.get("contract_file_sha256_at_end") != expected_hashes
+    ):
         raise SoftResetEquivalenceError("soft-reset acceptance contract hashes are stale")
     lifecycle_path = path.parent / "run_manifest.json"
     lifecycle = _load_json_object(lifecycle_path, label="soft-reset run manifest")
@@ -730,6 +950,44 @@ def validate_soft_reset_acceptance(
     if payload.get("reset_metadata_comparison") != reset_comparison:
         raise SoftResetEquivalenceError("soft-reset metadata comparison is inconsistent")
 
+    try:
+        full_rate_tick_audit_comparison = compare_full_rate_tick_audits(
+            fresh_summary["zero_residual_tick_audit"],
+            reused_summary["zero_residual_tick_audit"],
+        )
+        initial_actor_observation_comparison = compare_initial_actor_observations(
+            fresh_summary,
+            reused_summary,
+        )
+        reward_total_comparison = compare_reward_totals(
+            fresh_summary,
+            reused_summary,
+            fresh_trace,
+            reused_trace,
+        )
+    except (KeyError, TypeError) as exc:
+        raise SoftResetEquivalenceError(
+            "soft-reset summaries omit cross-episode equivalence evidence"
+        ) from exc
+    if (
+        payload.get("full_rate_tick_audit_comparison")
+        != full_rate_tick_audit_comparison
+    ):
+        raise SoftResetEquivalenceError(
+            "soft-reset full-rate tick audit comparison is inconsistent"
+        )
+    if (
+        payload.get("initial_actor_observation_comparison")
+        != initial_actor_observation_comparison
+    ):
+        raise SoftResetEquivalenceError(
+            "soft-reset initial actor observation comparison is inconsistent"
+        )
+    if payload.get("reward_total_comparison") != reward_total_comparison:
+        raise SoftResetEquivalenceError(
+            "soft-reset reward total comparison is inconsistent"
+        )
+
     def _audit_passes(summary: Mapping[str, Any]) -> bool:
         audit = summary.get("zero_residual_tick_audit")
         if not isinstance(audit, Mapping):
@@ -791,6 +1049,20 @@ def validate_soft_reset_acceptance(
         "both_zero_residual_bitwise_all_ticks": all(
             _audit_passes(row) for row in summaries
         ),
+        "contract_files_unchanged_during_run": (
+            payload.get("contract_file_sha256")
+            == payload.get("contract_file_sha256_at_end")
+            == expected_hashes
+        ),
+        "full_rate_tick_audits_equal_between_episodes": (
+            full_rate_tick_audit_comparison["exactly_equal"] is True
+        ),
+        "initial_actor_observations_equal_between_episodes": (
+            initial_actor_observation_comparison["exactly_equal"] is True
+        ),
+        "reward_totals_match_traces_and_between_episodes": (
+            reward_total_comparison["passed"] is True
+        ),
         "decision_counts_match_compact_traces": all(
             row.get("decision_count") == len(trace)
             for row, trace in zip(summaries, (fresh_trace, reused_trace), strict=True)
@@ -831,6 +1103,8 @@ def validate_soft_reset_acceptance(
 __all__ = [
     "ACCEPTANCE_CHECK_NAMES",
     "CompactZeroResidualTickAudit",
+    "FULL_RATE_TICK_AUDIT_COMPARISON_FIELDS",
+    "INITIAL_ACTOR_OBSERVATION_FIELDS",
     "PHASE_IDS",
     "RESET_METADATA_FIELDS",
     "SOFT_RESET_ACCEPTANCE_FILENAME",
@@ -838,9 +1112,14 @@ __all__ = [
     "SOFT_RESET_CONTRACT_RELATIVE_PATHS",
     "SoftResetEquivalenceError",
     "TRACE_FIELDS",
+    "actor_observation_v2_fingerprint",
     "compact_trace_row",
     "compare_compact_traces",
+    "compare_full_rate_tick_audits",
+    "compare_initial_actor_observations",
     "compare_reset_metadata",
+    "compare_reward_totals",
+    "reward_breakdown_v2_fingerprint",
     "select_reset_metadata",
     "soft_reset_contract_hashes",
     "validate_soft_reset_acceptance",

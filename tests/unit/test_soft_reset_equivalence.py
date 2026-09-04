@@ -17,9 +17,13 @@ from wlr50_clean.ppo.soft_reset_equivalence import (
     SOFT_RESET_ACCEPTANCE_FILENAME,
     SOFT_RESET_ACCEPTANCE_SCHEMA,
     SoftResetEquivalenceError,
+    actor_observation_v2_fingerprint,
     compact_trace_row,
     compare_compact_traces,
+    compare_full_rate_tick_audits,
+    compare_initial_actor_observations,
     compare_reset_metadata,
+    compare_reward_totals,
     soft_reset_contract_hashes,
     validate_soft_reset_acceptance,
 )
@@ -45,6 +49,8 @@ def _trace_rows() -> list[dict[str, object]]:
             "physics_ticks_executed": 8,
             "actor_observation_v2_dimension": 125,
             "actor_observation_v2_sha256": f"{index:064x}",
+            "reward_total": 1.0,
+            "reward_breakdown_sha256": f"{index + 1:064x}",
             "nominal_full12": [index / 100.0] * 12,
             "residual_full12": [0.0] * 12,
             "applied_full12": [index / 100.0] * 12,
@@ -157,6 +163,8 @@ def _write_accepted_gate(root: Path) -> Path:
             "safety_abort": False,
             "under_maximum_duration": True,
             "reward_total": 13.0,
+            "initial_actor_observation_v2_dimension": 125,
+            "initial_actor_observation_v2_sha256": "b" * 64,
             "zero_residual_tick_audit": {
                 "status": "ZERO_RESIDUAL_FULL_EPISODE_EQUIVALENCE",
                 "tick_count": 104,
@@ -194,6 +202,16 @@ def _write_accepted_gate(root: Path) -> Path:
     reset_comparison = compare_reset_metadata(
         summaries[0]["reset_metadata"], summaries[1]["reset_metadata"]
     )
+    full_rate_tick_audit_comparison = compare_full_rate_tick_audits(
+        summaries[0]["zero_residual_tick_audit"],
+        summaries[1]["zero_residual_tick_audit"],
+    )
+    initial_actor_observation_comparison = compare_initial_actor_observations(
+        summaries[0], summaries[1]
+    )
+    reward_total_comparison = compare_reward_totals(
+        summaries[0], summaries[1], traces[0], traces[1]
+    )
     acceptance = root / SOFT_RESET_ACCEPTANCE_FILENAME
     acceptance.write_text(
         json.dumps(
@@ -208,8 +226,16 @@ def _write_accepted_gate(root: Path) -> Path:
                 "checks": {name: True for name in ACCEPTANCE_CHECK_NAMES},
                 "episodes": summaries,
                 "reset_metadata_comparison": reset_comparison,
+                "full_rate_tick_audit_comparison": full_rate_tick_audit_comparison,
+                "initial_actor_observation_comparison": (
+                    initial_actor_observation_comparison
+                ),
+                "reward_total_comparison": reward_total_comparison,
                 "trace_comparison": trace_comparison,
                 "contract_file_sha256": soft_reset_contract_hashes(PROJECT_ROOT),
+                "contract_file_sha256_at_end": soft_reset_contract_hashes(
+                    PROJECT_ROOT
+                ),
                 "artifacts": records,
             }
         )
@@ -285,6 +311,7 @@ def test_compact_trace_hashes_the_exact_actor_observation() -> None:
         "decision_index": 0,
         "controller_lifecycle": "EXECUTE_MOTION",
         "physics_ticks_executed": 8,
+        "reward": {"total": 1.0},
         "projected_residual_full12": ZERO12,
         "applied_action_full12": ZERO12,
         "controller_task_result": "RUNNING",
@@ -304,12 +331,53 @@ def test_compact_trace_hashes_the_exact_actor_observation() -> None:
     assert first["actor_observation_v2_sha256"] != second[
         "actor_observation_v2_sha256"
     ]
-    with pytest.raises(SoftResetEquivalenceError, match="finite vector"):
+    with pytest.raises(SoftResetEquivalenceError, match="finite v2 vector"):
         compact_trace_row(
             frame,
             info,
-            actor_observation_v2=(float("nan"),),
+            actor_observation_v2=(float("nan"),) * 125,
         )
+    with pytest.raises(SoftResetEquivalenceError, match="finite v2 vector"):
+        actor_observation_v2_fingerprint((0.0,) * 124)
+
+
+def test_cross_episode_full_rate_and_initial_actor_comparisons_are_exact() -> None:
+    phase_counts = {phase: 8 for phase in PHASE_IDS}
+    audit = {
+        "nominal_sequence_sha256": "a" * 64,
+        "applied_sequence_sha256": "a" * 64,
+        "tick_count": 104,
+        "phase_ids_observed": list(PHASE_IDS),
+        "physics_tick_count_by_phase": phase_counts,
+    }
+    same = json.loads(json.dumps(audit))
+    comparison = compare_full_rate_tick_audits(audit, same)
+    assert comparison["exactly_equal"] is True
+    assert comparison["mismatched_fields"] == []
+
+    same["physics_tick_count_by_phase"]["P10"] = 9
+    mismatch = compare_full_rate_tick_audits(audit, same)
+    assert mismatch["exactly_equal"] is False
+    assert mismatch["mismatched_fields"] == ["physics_tick_count_by_phase"]
+
+    initial = {
+        "initial_actor_observation_v2_dimension": 125,
+        "initial_actor_observation_v2_sha256": "b" * 64,
+    }
+    assert compare_initial_actor_observations(initial, dict(initial))[
+        "exactly_equal"
+    ] is True
+    changed = dict(initial)
+    changed["initial_actor_observation_v2_sha256"] = "c" * 64
+    assert compare_initial_actor_observations(initial, changed)[
+        "exactly_equal"
+    ] is False
+
+    traces = (_trace_rows(), _trace_rows())
+    summaries = ({"reward_total": 13.0}, {"reward_total": 13.0})
+    assert compare_reward_totals(*summaries, *traces)["passed"] is True
+    summaries[1]["reward_total"] = 12.0
+    assert compare_reward_totals(*summaries, *traces)["passed"] is False
 
 
 def test_compact_trace_comparison_is_exact_through_p10_and_whole_episode() -> None:
@@ -349,10 +417,43 @@ def test_acceptance_validator_rejects_stale_contract_or_tampered_evidence(
     assert evidence["passed"] is True
     assert evidence["path"] == str(acceptance.resolve())
 
+    original_acceptance = acceptance.read_text(encoding="utf-8")
+    stale = json.loads(original_acceptance)
+    first_contract_path = next(iter(stale["contract_file_sha256_at_end"]))
+    stale["contract_file_sha256_at_end"][first_contract_path] = "0" * 64
+    acceptance.write_text(json.dumps(stale) + "\n", encoding="utf-8")
+    with pytest.raises(SoftResetEquivalenceError, match="contract hashes are stale"):
+        validate_soft_reset_acceptance(acceptance, project_root=PROJECT_ROOT)
+    acceptance.write_text(original_acceptance, encoding="utf-8")
+
     artifact = acceptance.parent / "episode_1_soft_reset_reuse_summary.json"
     artifact.write_text("tampered\n", encoding="utf-8")
     with pytest.raises(SoftResetEquivalenceError, match="hash mismatch"):
         validate_soft_reset_acceptance(acceptance, project_root=PROJECT_ROOT)
+
+
+def test_acceptance_validator_recomputes_cross_episode_full_rate_audit(
+    tmp_path: Path,
+) -> None:
+    acceptance_path = _write_accepted_gate(tmp_path / "gate")
+    acceptance = json.loads(acceptance_path.read_text(encoding="utf-8"))
+    summary_path = acceptance_path.parent / "episode_1_soft_reset_reuse_summary.json"
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    summary["zero_residual_tick_audit"]["nominal_sequence_sha256"] = "c" * 64
+    summary["zero_residual_tick_audit"]["applied_sequence_sha256"] = "c" * 64
+    summary_path.write_text(json.dumps(summary) + "\n", encoding="utf-8")
+    acceptance["episodes"][1] = summary
+    for record in acceptance["artifacts"]:
+        if record["path"] == summary_path.name:
+            record["bytes"] = summary_path.stat().st_size
+            record["sha256"] = _sha256(summary_path)
+    acceptance_path.write_text(json.dumps(acceptance) + "\n", encoding="utf-8")
+
+    with pytest.raises(
+        SoftResetEquivalenceError,
+        match="full-rate tick audit comparison is inconsistent",
+    ):
+        validate_soft_reset_acceptance(acceptance_path, project_root=PROJECT_ROOT)
 
 
 def test_single_env_training_gate_fails_before_live_dispatch(
@@ -449,7 +550,7 @@ def test_soft_reset_command_uses_one_backend_and_writes_compact_acceptance(
                 termination_signals=_signals(success=False),
                 info=_reset_metadata(reused=self.reset_count == 2),
             )
-            return ZERO12, dict(self.frame.info)
+            return (0.0,) * 125, dict(self.frame.info)
 
         def step(self, action):
             assert tuple(action) == ZERO12
@@ -490,6 +591,7 @@ def test_soft_reset_command_uses_one_backend_and_writes_compact_acceptance(
                     "physics_ticks_executed": 8,
                     "projected_residual_full12": ZERO12,
                     "applied_action_full12": nominal,
+                    "reward": {"total": 1.0},
                     "controller_task_result": "SUCCESS" if terminal else "RUNNING",
                     "termination_reason": "SUCCESS" if terminal else None,
                     "recording_runtime_access_count": 0,
@@ -518,6 +620,14 @@ def test_soft_reset_command_uses_one_backend_and_writes_compact_acceptance(
     assert acceptance["full_rate_raw_streams_written"] is False
     assert acceptance["trace_comparison"]["through_p10"]["exactly_equal"] is True
     assert acceptance["trace_comparison"]["whole_episode"]["exactly_equal"] is True
+    assert acceptance["full_rate_tick_audit_comparison"]["exactly_equal"] is True
+    assert acceptance["initial_actor_observation_comparison"]["exactly_equal"] is True
+    assert acceptance["reward_total_comparison"]["passed"] is True
+    assert acceptance["checks"]["contract_files_unchanged_during_run"] is True
+    assert (
+        acceptance["contract_file_sha256"]
+        == acceptance["contract_file_sha256_at_end"]
+    )
     assert acceptance["reset_metadata_comparison"]["passed"] is True
     assert len(acceptance["artifacts"]) == 4
     assert not list(tmp_path.glob("*raw*"))

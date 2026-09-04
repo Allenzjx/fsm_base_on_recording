@@ -677,9 +677,13 @@ def _soft_reset_equivalence(args: argparse.Namespace, simulation_app: Any) -> in
         PHASE_IDS,
         SOFT_RESET_ACCEPTANCE_FILENAME,
         SOFT_RESET_ACCEPTANCE_SCHEMA,
+        actor_observation_v2_fingerprint,
         compact_trace_row,
         compare_compact_traces,
+        compare_full_rate_tick_audits,
+        compare_initial_actor_observations,
         compare_reset_metadata,
+        compare_reward_totals,
         select_reset_metadata,
         soft_reset_contract_hashes,
     )
@@ -691,13 +695,17 @@ def _soft_reset_equivalence(args: argparse.Namespace, simulation_app: Any) -> in
     if args.residual_mode != "zero" or not args.deterministic:
         raise CliError("soft-reset equivalence requires deterministic zero residuals")
 
+    contract_hashes_at_start = soft_reset_contract_hashes(PROJECT_ROOT)
     backend = IsaacFSMBackend(simulation_app)
     env = ResidualEpisodeEnv(backend, collect_trace=False)
     traces: list[tuple[Mapping[str, Any], ...]] = []
     summaries: list[dict[str, Any]] = []
     artifact_paths: list[Path] = []
     for episode_index, reset_role in enumerate(("fresh_scene", "soft_reset_reuse")):
-        env.reset(seed=args.seed)
+        initial_observation, _ = env.reset(seed=args.seed)
+        initial_actor_fingerprint = actor_observation_v2_fingerprint(
+            initial_observation
+        )
         assert env.frame is not None
         reset_metadata = select_reset_metadata(env.frame.info)
         tick_audit = CompactZeroResidualTickAudit()
@@ -750,6 +758,12 @@ def _soft_reset_equivalence(args: argparse.Namespace, simulation_app: Any) -> in
             "under_maximum_duration": float(env.frame.sim_time_s)
             <= args.maximum_duration_s,
             "reward_total": reward_total,
+            "initial_actor_observation_v2_dimension": initial_actor_fingerprint[
+                "dimension"
+            ],
+            "initial_actor_observation_v2_sha256": initial_actor_fingerprint[
+                "sha256"
+            ],
             "zero_residual_tick_audit": audit,
             "reset_metadata": reset_metadata,
             "recording_runtime_access_count": int(
@@ -776,6 +790,17 @@ def _soft_reset_equivalence(args: argparse.Namespace, simulation_app: Any) -> in
     reset_comparison = compare_reset_metadata(
         summaries[0]["reset_metadata"], summaries[1]["reset_metadata"]
     )
+    full_rate_tick_audit_comparison = compare_full_rate_tick_audits(
+        summaries[0]["zero_residual_tick_audit"],
+        summaries[1]["zero_residual_tick_audit"],
+    )
+    initial_actor_observation_comparison = compare_initial_actor_observations(
+        summaries[0], summaries[1]
+    )
+    reward_total_comparison = compare_reward_totals(
+        summaries[0], summaries[1], traces[0], traces[1]
+    )
+    contract_hashes_at_end = soft_reset_contract_hashes(PROJECT_ROOT)
     checks = {
         "one_backend_instance_two_episodes": True,
         "both_authoritative_success": all(row["task_success"] for row in summaries),
@@ -790,6 +815,18 @@ def _soft_reset_equivalence(args: argparse.Namespace, simulation_app: Any) -> in
         ),
         "both_zero_residual_bitwise_all_ticks": all(
             row["zero_residual_tick_audit"]["passed"] for row in summaries
+        ),
+        "contract_files_unchanged_during_run": (
+            contract_hashes_at_start == contract_hashes_at_end
+        ),
+        "full_rate_tick_audits_equal_between_episodes": bool(
+            full_rate_tick_audit_comparison["exactly_equal"]
+        ),
+        "initial_actor_observations_equal_between_episodes": bool(
+            initial_actor_observation_comparison["exactly_equal"]
+        ),
+        "reward_totals_match_traces_and_between_episodes": bool(
+            reward_total_comparison["passed"]
         ),
         "decision_counts_match_compact_traces": all(
             row["decision_count"] == len(trace)
@@ -832,8 +869,14 @@ def _soft_reset_equivalence(args: argparse.Namespace, simulation_app: Any) -> in
         "checks": checks,
         "episodes": summaries,
         "reset_metadata_comparison": reset_comparison,
+        "full_rate_tick_audit_comparison": full_rate_tick_audit_comparison,
+        "initial_actor_observation_comparison": (
+            initial_actor_observation_comparison
+        ),
+        "reward_total_comparison": reward_total_comparison,
         "trace_comparison": trace_comparison,
-        "contract_file_sha256": soft_reset_contract_hashes(PROJECT_ROOT),
+        "contract_file_sha256": contract_hashes_at_start,
+        "contract_file_sha256_at_end": contract_hashes_at_end,
         "artifacts": artifacts,
     }
     _json(args.run_dir / SOFT_RESET_ACCEPTANCE_FILENAME, result)
