@@ -2828,28 +2828,28 @@ def test_all_checked_non_p01_snapshots_replay_with_live_feedback_adaptation() ->
     assert p03["expected_atomic_ack"]["servo_tracking_feedback_sampled"] is True
     p10_payload = _load_validated_phase_snapshot("P10").payload
     p10 = p10_payload["source_command"]
-    assert p10_payload["source_tick"] == 7577
-    assert p10_payload["source_time_s"] == 7577 / 120.0
+    assert p10_payload["source_tick"] == 7552
+    assert p10_payload["source_time_s"] == 7552 / 120.0
     assert p10_payload["predecessor_verify_tick"] == 7776
     assert p10_payload["predecessor_verify_time_s"] == 7776 / 120.0
     assert p10_payload["controller_anchor_tick"] == 7784
     assert p10_payload["controller_anchor_time_s"] == 7784 / 120.0
-    assert p10_payload["source_replay_steps"] == 217
+    assert p10_payload["source_replay_steps"] == 242
     assert p10_payload["target_entry_tick"] == 7794
     assert [
         row["control_physics_tick"] for row in p10_payload["source_commands"]
-    ] == list(range(7577, 7794))
+    ] == list(range(7552, 7794))
     assert {
         (row["source_fsm_state"], row["source_fsm_lifecycle"])
-        for row in p10_payload["source_commands"][:199]
+        for row in p10_payload["source_commands"][:224]
     } == {("P09", "EXECUTE_MOTION")}
     assert {
         (row["source_fsm_state"], row["source_fsm_lifecycle"])
-        for row in p10_payload["source_commands"][199:207]
+        for row in p10_payload["source_commands"][224:232]
     } == {("P09", "VERIFY_RESULT")}
     assert {
         (row["source_fsm_state"], row["source_fsm_lifecycle"])
-        for row in p10_payload["source_commands"][207:]
+        for row in p10_payload["source_commands"][232:]
     } == {("P10", "WAIT_ENTRY")}
     assert p10["source_fsm_state"] == "P09"
     assert p10["source_fsm_lifecycle"] == "EXECUTE_MOTION"
@@ -2925,6 +2925,60 @@ def test_real_frozen_controller_and_guard_tracker_restore_from_checked_snapshot(
     assert reader.contact_classifier._history == {}
 
 
+def _p10_tick_7794_controller_observation(
+    *,
+    rear_right_knee_position_deg: float = -49.76294405039504,
+    rear_right_knee_velocity_deg_s: float = 23.82253015510911,
+) -> dict[str, object]:
+    """Minimal controller input bound to locked Trial043 tick 7794 readback."""
+
+    actual_full12 = (
+        -18.733320479441602,
+        -32.30337762184741,
+        -0.28214556135303265,
+        30.6261708600657,
+        15.834739353644213,
+        20.029929720675447,
+        -6.524964797993116,
+        rear_right_knee_position_deg,
+        0.1971156895160675,
+        0.0012818712275475264,
+        -0.021537598222494125,
+        -0.19164331257343292,
+    )
+    velocity_full12 = (
+        -4.715781169030244,
+        4.469165236215885,
+        4.010920160836914,
+        0.6634757180734587,
+        2.1882542987413927,
+        -0.9815176070812845,
+        3.4781184480253757,
+        rear_right_knee_velocity_deg_s,
+        0.1971156895160675,
+        0.0012818712275475264,
+        -0.021537598222494125,
+        -0.19164331257343292,
+    )
+    return {
+        "physics_tick": 7794,
+        "simulation_time_s": 7794 / 120.0,
+        "actual_full12": actual_full12,
+        "velocity_full12": velocity_full12,
+        "progress_vector": actual_full12,
+        "guards": {
+            "no_body_obstacle_collision": True,
+            "joint_hard_limits_valid": True,
+            "critical_actuators_available": True,
+            "body_collision_persistent_or_penetrating": False,
+            "wheel_only_climb_detected": False,
+            "non_finite_observation_or_command": False,
+            "joint_hard_limit_violation": False,
+            "physics_explosion_or_fall": False,
+        },
+    }
+
+
 def test_real_frozen_p10_controller_and_latches_restore_from_later_anchor() -> None:
     from wlr50_clean.fsm.controller import SensorFsmController
     from wlr50_clean.sensing.contact_classifier import ContactClassifier
@@ -2937,7 +2991,7 @@ def test_real_frozen_p10_controller_and_latches_restore_from_later_anchor() -> N
     controller_proof = _restore_controller_from_snapshot(controller, loaded.payload)
     assert controller_proof["state_id"] == "P10"
     assert controller_proof["lifecycle"] == "WAIT_ENTRY"
-    assert controller_proof["physical_anchor_tick"] == 7577
+    assert controller_proof["physical_anchor_tick"] == 7552
     assert controller_proof["predecessor_verify_tick"] == 7776
     assert controller_proof["predecessor_verify_time_s"] == 7776 / 120.0
     assert controller_proof["controller_anchor_tick"] == 7784
@@ -2951,7 +3005,7 @@ def test_real_frozen_p10_controller_and_latches_restore_from_later_anchor() -> N
         contact_classifier=ContactClassifier(),
     )
     guard_proof = _restore_guard_tracker_from_snapshot(reader, loaded.payload)
-    assert guard_proof["physical_anchor_tick"] == 7577
+    assert guard_proof["physical_anchor_tick"] == 7552
     assert guard_proof["predecessor_verify_tick"] == 7776
     assert guard_proof["predecessor_verify_time_s"] == 7776 / 120.0
     assert guard_proof["controller_anchor_tick"] == 7784
@@ -2959,6 +3013,130 @@ def test_real_frozen_p10_controller_and_latches_restore_from_later_anchor() -> N
     assert guard_proof["latch_snapshot_anchor_tick"] == 7784
     assert guard_proof["latch_snapshot_anchor_role"] == "controller_anchor"
     assert guard_proof["hybrid_physical_controller_anchor"] is True
+
+
+def test_real_frozen_p10_restored_controller_admits_tick_7794_exactly_once() -> None:
+    from wlr50_clean.fsm.controller import SensorFsmController
+
+    loaded = _load_validated_phase_snapshot("P10")
+    controller = SensorFsmController.from_paths(
+        DEFAULT_FSM_PATH, DEFAULT_MOTION_CONTRACT_PATH
+    )
+    _restore_controller_from_snapshot(controller, loaded.payload)
+
+    assert controller.state.state_id == "P10"
+    assert controller.lifecycle.value == "WAIT_ENTRY"
+    assert controller.physics_tick == 0
+    assert controller.history == []
+
+    observation = _p10_tick_7794_controller_observation()
+    frame = controller.step(observation, sim_time_s=0.0)
+
+    assert frame.physics_tick == 0
+    assert frame.state_id == "P10"
+    assert frame.lifecycle.value == "EXECUTE_MOTION"
+    assert frame.decision_tick is True
+    assert frame.termination is None
+    assert frame.first_blocker is None
+    assert controller.lifecycle.value == "EXECUTE_MOTION"
+    assert controller.physics_tick == 1
+    assert controller._pending_blocker is None
+    assert len(frame.events) == 1
+    assert controller.history == [frame.events[0]]
+    event = frame.events[0]
+    assert (
+        event.state_id,
+        event.from_lifecycle,
+        event.to_lifecycle,
+        event.reason,
+    ) == (
+        "P10",
+        "WAIT_ENTRY",
+        "EXECUTE_MOTION",
+        "all live entry guards passed",
+    )
+    expected_guard_names = (
+        "previous_state_done",
+        "no_body_obstacle_collision",
+        "joint_hard_limits_valid",
+        "reference_entry_compatible",
+        "critical_actuators_available",
+    )
+    guard_rows = tuple(event.details["guards"])
+    assert tuple(row["name"] for row in guard_rows) == expected_guard_names
+    assert all(row["passed"] is True for row in guard_rows)
+    reference = next(
+        row for row in guard_rows if row["name"] == "reference_entry_compatible"
+    )
+    assert reference["value"]["rear_right_knee"]["actual_deg"] == pytest.approx(
+        observation["actual_full12"][7]
+    )
+    assert reference["value"]["rear_right_knee_velocity"][
+        "actual_deg_s"
+    ] == pytest.approx(observation["velocity_full12"][7])
+
+    proof = backend_module._verify_effective_controller_entry(
+        controller, frame, "P10"
+    )
+    assert proof["verified"] is True
+    assert proof["authored_entry_guard_names"] == list(expected_guard_names)
+    assert proof["p10_signed_velocity_alignment"] == reference["value"][
+        "rear_right_knee_velocity"
+    ]
+
+
+def test_real_frozen_p10_restored_controller_rejects_failed_live_readback() -> None:
+    from wlr50_clean.fsm.controller import SensorFsmController
+
+    loaded = _load_validated_phase_snapshot("P10")
+    controller = SensorFsmController.from_paths(
+        DEFAULT_FSM_PATH, DEFAULT_MOTION_CONTRACT_PATH
+    )
+    _restore_controller_from_snapshot(controller, loaded.payload)
+    observation = _p10_tick_7794_controller_observation(
+        rear_right_knee_position_deg=-43.25314539396925,
+        rear_right_knee_velocity_deg_s=-7.1698425246064375,
+    )
+
+    frame = controller.step(observation, sim_time_s=0.0)
+
+    assert frame.physics_tick == 0
+    assert frame.state_id == "P10"
+    assert frame.lifecycle.value == "WAIT_ENTRY"
+    assert frame.events == ()
+    assert frame.termination is None
+    assert frame.first_blocker is None
+    assert controller.lifecycle.value == "WAIT_ENTRY"
+    assert controller.physics_tick == 1
+    assert controller.history == []
+    blocker = controller._pending_blocker
+    assert blocker is not None
+    assert blocker.name == "reference_entry_compatible"
+    assert blocker.passed is False
+    position = blocker.value["rear_right_knee"]
+    velocity = blocker.value["rear_right_knee_velocity"]
+    assert position["actual_deg"] == pytest.approx(observation["actual_full12"][7])
+    assert position["reference_actual_start_deg"] == pytest.approx(
+        -50.397598397883456
+    )
+    assert position["error_deg"] == pytest.approx(7.144453003914208)
+    assert position["limit_deg"] == pytest.approx(2.0)
+    assert velocity["actual_deg_s"] == pytest.approx(observation["velocity_full12"][7])
+    assert velocity["reference_deg_s"] == pytest.approx(23.585333053160202)
+    assert velocity["error_deg_s"] == pytest.approx(-30.75517557776664)
+    assert velocity["limit_deg_s"] == pytest.approx(3.53779995797403)
+    assert velocity["signed_positive_rebound_required"] is True
+
+    with pytest.raises(SensorContractFailure) as caught:
+        backend_module._verify_effective_controller_entry(controller, frame, "P10")
+    message = str(caught.value)
+    for fragment in (
+        "missing unique WAIT_ENTRY-to-EXECUTE entry event",
+        "entry event does not contain every authored guard in order",
+        "controller is not executing the requested phase",
+        "P10 signed velocity guard evidence is missing",
+    ):
+        assert fragment in message
 
 
 def test_source_snapshot_drift_is_diagnostic_after_effective_contract_passes() -> None:

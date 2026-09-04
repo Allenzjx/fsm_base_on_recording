@@ -147,14 +147,21 @@ def _write_source_trial(
     trial = tmp_path / "trial"
     trial.mkdir()
     p10_physical_source_tick = PHASE_IDS.index("P10")
-    p09_top_loaded_tick = p10_physical_source_tick + 2
-    p09_verify_tick = p10_physical_source_tick + 6
-    p10_wait_entry_tick = p10_physical_source_tick + 8
+    p09_top_loaded_tick = (
+        p10_physical_source_tick
+        + phase_snapshots_subject.SOURCE_CONTACT_HISTORY_SAMPLES
+        - 1
+        + phase_snapshots_subject.P10_CONTACT_DYNAMICS_PREROLL_TICKS
+    )
+    p09_verify_tick = p09_top_loaded_tick + 4
+    p10_wait_entry_tick = p09_verify_tick + 2
+    p10_entry_tick = p10_wait_entry_tick + 10
+    p10_and_later_offset = p10_entry_tick - PHASE_IDS.index("P10")
     entry_ticks = {
         phase: (
             index
             if index < PHASE_IDS.index("P10")
-            else index + 18
+            else index + p10_and_later_offset
         )
         for index, phase in enumerate(PHASE_IDS)
     }
@@ -331,39 +338,39 @@ def test_build_and_validate_all_phase_snapshots(tmp_path):
         row for row in manifest["snapshots"] if row["phase"] == "P10"
     )
     assert p10["source_tick"] == 9
-    assert p10["predecessor_verify_tick"] == 15
-    assert p10["predecessor_verify_time_s"] == 15 / 120
-    assert p10["controller_anchor_tick"] == 17
-    assert p10["controller_anchor_time_s"] == 17 / 120
-    assert p10["target_entry_tick"] == 27
-    assert p10["source_replay_steps"] == 18
-    assert len(p10["source_commands"]) == 18
+    assert p10["predecessor_verify_tick"] == 40
+    assert p10["predecessor_verify_time_s"] == 40 / 120
+    assert p10["controller_anchor_tick"] == 42
+    assert p10["controller_anchor_time_s"] == 42 / 120
+    assert p10["target_entry_tick"] == 52
+    assert p10["source_replay_steps"] == 43
+    assert len(p10["source_commands"]) == 43
     assert [
         row["control_physics_tick"] for row in p10["source_commands"]
-    ] == list(range(9, 27))
+    ] == list(range(9, 52))
     assert p10["source_command"] == p10["source_commands"][0]
     assert p10["fsm_state"] == "P10"
     assert p10["fsm_lifecycle"] == "WAIT_ENTRY"
     assert p10["source_command"]["source_fsm_state"] == "P09"
     assert p10["source_command"]["source_fsm_lifecycle"] == "EXECUTE_MOTION"
-    assert p10["source_command"]["target_entry_tick"] == 27
+    assert p10["source_command"]["target_entry_tick"] == 52
     assert all(
         row["source_fsm_state"] == "P09"
         and row["source_fsm_lifecycle"] == "EXECUTE_MOTION"
-        and row["target_entry_tick"] == 27
-        for row in p10["source_commands"][:6]
+        and row["target_entry_tick"] == 52
+        for row in p10["source_commands"][:31]
     )
     assert all(
         row["source_fsm_state"] == "P09"
         and row["source_fsm_lifecycle"] == "VERIFY_RESULT"
-        and row["target_entry_tick"] == 27
-        for row in p10["source_commands"][6:8]
+        and row["target_entry_tick"] == 52
+        for row in p10["source_commands"][31:33]
     )
     assert all(
         row["source_fsm_state"] == "P10"
         and row["source_fsm_lifecycle"] == "WAIT_ENTRY"
-        and row["target_entry_tick"] == 27
-        for row in p10["source_commands"][8:]
+        and row["target_entry_tick"] == 52
+        for row in p10["source_commands"][33:]
     )
     assert p10["root_state"]["position_w_m"][0] == 9.0
     assert p10["wheel_state"]["logical_velocity_rad_s"] == [9.0] * 4
@@ -371,20 +378,20 @@ def test_build_and_validate_all_phase_snapshots(tmp_path):
     assert p10["contact_event_latches"]["RR"]["active_lift"] is True
     assert p10["contact_event_latches"]["RR"]["active_lift_tick"] == 12
     assert p10["contact_event_latches"]["RR"]["top_loaded"] is True
-    assert p10["contact_event_latches"]["RR"]["top_loaded_tick"] == 11
+    assert p10["contact_event_latches"]["RR"]["top_loaded_tick"] == 36
     assert p10_manifest["source_tick"] == 9
-    assert p10_manifest["predecessor_verify_tick"] == 15
-    assert p10_manifest["predecessor_verify_time_s"] == 15 / 120
-    assert p10_manifest["controller_anchor_tick"] == 17
-    assert p10_manifest["controller_anchor_time_s"] == 17 / 120
-    assert p10_manifest["source_replay_steps"] == 18
-    assert p10_manifest["target_entry_tick"] == 27
+    assert p10_manifest["predecessor_verify_tick"] == 40
+    assert p10_manifest["predecessor_verify_time_s"] == 40 / 120
+    assert p10_manifest["controller_anchor_tick"] == 42
+    assert p10_manifest["controller_anchor_time_s"] == 42 / 120
+    assert p10_manifest["source_replay_steps"] == 43
+    assert p10_manifest["target_entry_tick"] == 52
 
     p11 = json.loads((out / "P11" / "snapshot.json").read_text(encoding="utf-8"))
     p11_manifest = next(
         row for row in manifest["snapshots"] if row["phase"] == "P11"
     )
-    assert p11["source_tick"] == 28
+    assert p11["source_tick"] == 53
     assert p11["source_replay_steps"] == 1
     assert p11["source_commands"] == [p11["source_command"]]
     assert p11["fsm_lifecycle"] == "EXECUTE_MOTION"
@@ -413,7 +420,7 @@ def test_signed_positive_entry_detection_is_transition_evidence_driven(tmp_path)
     p10 = json.loads((out / "P10" / "snapshot.json").read_text(encoding="utf-8"))
 
     assert manifest["causal_predecessor_phases"] == []
-    assert p10["source_tick"] == 27
+    assert p10["source_tick"] == 52
     assert p10["source_replay_steps"] == 1
     assert p10["source_commands"] == [p10["source_command"]]
     assert p10["fsm_lifecycle"] == "EXECUTE_MOTION"
@@ -424,7 +431,7 @@ def test_signed_positive_entry_detection_is_transition_evidence_driven(tmp_path)
     assert "controller_anchor_time_s" not in p10
 
 
-def test_trial043_hybrid_boundary_is_exactly_7577_7776_7784_7794() -> None:
+def test_trial043_hybrid_boundary_is_exactly_7552_7776_7784_7794() -> None:
     rows = []
     for index, phase in enumerate(PHASE_IDS[1:], 1):
         if phase == "P09":
@@ -478,11 +485,11 @@ def test_trial043_hybrid_boundary_is_exactly_7577_7776_7784_7794() -> None:
         rows, leg_crossing_rows=leg_crossing_rows
     )["P10"]
 
-    assert boundary.source_tick == 7577
+    assert boundary.source_tick == 7552
     assert boundary.predecessor_verify_tick == 7776
     assert boundary.controller_anchor_tick == 7784
     assert boundary.target_entry_tick == 7794
-    assert boundary.source_replay_steps == 217
+    assert boundary.source_replay_steps == 242
 
 
 def test_later_recovery_verify_transition_does_not_ambiguate_p10_predecessor() -> None:
@@ -554,7 +561,7 @@ def test_later_recovery_verify_transition_does_not_ambiguate_p10_predecessor() -
         ],
     )["P10"]
 
-    assert boundary.source_tick == 7577
+    assert boundary.source_tick == 7552
     assert boundary.predecessor_verify_tick == 7776
     assert boundary.controller_anchor_tick == 7784
     assert boundary.target_entry_tick == 7794
@@ -927,12 +934,12 @@ def test_validated_bundle_record_binds_manifest_and_exact_p01_p13_bytes(tmp_path
     assert p08_record["controller_anchor_time_s"] is None
     p10_record = next(row for row in record["snapshots"] if row["phase"] == "P10")
     assert p10_record["source_tick"] == 9
-    assert p10_record["source_replay_steps"] == 18
-    assert p10_record["target_entry_tick"] == 27
-    assert p10_record["predecessor_verify_tick"] == 15
-    assert p10_record["predecessor_verify_time_s"] == 15 / 120
-    assert p10_record["controller_anchor_tick"] == 17
-    assert p10_record["controller_anchor_time_s"] == 17 / 120
+    assert p10_record["source_replay_steps"] == 43
+    assert p10_record["target_entry_tick"] == 52
+    assert p10_record["predecessor_verify_tick"] == 40
+    assert p10_record["predecessor_verify_time_s"] == 40 / 120
+    assert p10_record["controller_anchor_tick"] == 42
+    assert p10_record["controller_anchor_time_s"] == 42 / 120
     assert len(record["bundle_sha256"]) == 64
     assert validated_phase_snapshot_bundle_record(out, canonical_root=out) == record
 
@@ -1034,16 +1041,16 @@ def test_pinned_loader_exposes_exact_hybrid_controller_anchor(tmp_path):
 
     assert payload["source_tick"] == 9
     assert entry.source_tick == 9
-    assert payload["predecessor_verify_tick"] == 15
-    assert entry.predecessor_verify_tick == 15
-    assert payload["predecessor_verify_time_s"] == 15 / 120
-    assert entry.predecessor_verify_time_s == 15 / 120
-    assert payload["controller_anchor_tick"] == 17
-    assert entry.controller_anchor_tick == 17
-    assert payload["controller_anchor_time_s"] == 17 / 120
-    assert entry.controller_anchor_time_s == 17 / 120
-    assert payload["target_entry_tick"] == 27
-    assert entry.target_entry_tick == 27
+    assert payload["predecessor_verify_tick"] == 40
+    assert entry.predecessor_verify_tick == 40
+    assert payload["predecessor_verify_time_s"] == 40 / 120
+    assert entry.predecessor_verify_time_s == 40 / 120
+    assert payload["controller_anchor_tick"] == 42
+    assert entry.controller_anchor_tick == 42
+    assert payload["controller_anchor_time_s"] == 42 / 120
+    assert entry.controller_anchor_time_s == 42 / 120
+    assert payload["target_entry_tick"] == 52
+    assert entry.target_entry_tick == 52
 
 
 @pytest.mark.parametrize(

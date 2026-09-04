@@ -408,21 +408,21 @@ def test_probe_covers_every_non_p01_phase_twice() -> None:
 def test_replay_window_is_derived_from_snapshot_payload_and_manifest() -> None:
     p10 = _snapshot("P10")
     p10_window = _replay_window(p10)
-    assert p10_window.source_tick == 7577
+    assert p10_window.source_tick == 7552
     assert p10_window.predecessor_verify_tick == 7776
     assert p10_window.predecessor_verify_time_s == 7776 / 120
     assert p10_window.controller_anchor_tick == 7784
     assert p10_window.controller_anchor_time_s == 7784 / 120
     assert p10_window.target_entry_tick == 7794
-    assert p10_window.source_replay_steps == 217
-    assert p10_window.predecessor_verify_tick - p10_window.source_tick == 199
+    assert p10_window.source_replay_steps == 242
+    assert p10_window.predecessor_verify_tick - p10_window.source_tick == 224
     assert (
         p10_window.controller_anchor_tick
         - p10_window.predecessor_verify_tick
         == 8
     )
     assert p10_window.target_entry_tick - p10_window.controller_anchor_tick == 10
-    assert p10_window.target_entry_tick - p10_window.source_tick == 217
+    assert p10_window.target_entry_tick - p10_window.source_tick == 242
     assert p10_window.control_ticks == tuple(
         range(p10_window.source_tick, p10_window.target_entry_tick)
     )
@@ -433,7 +433,7 @@ def test_replay_window_is_derived_from_snapshot_payload_and_manifest() -> None:
         )
         for command in p10["source_commands"]
     ) == (
-        (("P09", "EXECUTE_MOTION"),) * 199
+        (("P09", "EXECUTE_MOTION"),) * 224
         + (("P09", "VERIFY_RESULT"),) * 8
         + (("P10", "WAIT_ENTRY"),) * 10
     )
@@ -1518,7 +1518,7 @@ def test_post_write_contact_rejection_remains_returnable_failed_diagnostic(
     assert result["source_replay_policy"] == (
         "derived_only_from_validated_phase_snapshot"
     )
-    assert result["source_replay_steps_by_phase"]["P10"] == 217
+    assert result["source_replay_steps_by_phase"]["P10"] == 242
     assert all(
         steps == 1
         for phase, steps in result["source_replay_steps_by_phase"].items()
@@ -1549,7 +1549,7 @@ def test_post_write_contact_rejection_remains_returnable_failed_diagnostic(
     ]
     assert len(p10_attempts) == ATTEMPTS_PER_PHASE
     assert all(
-        row["source_tick"] == 7577
+        row["source_tick"] == 7552
         and row["predecessor_verify_tick"] == 7776
         and row["predecessor_verify_time_s"] == 7776 / 120
         and row["controller_anchor_tick"] == 7784

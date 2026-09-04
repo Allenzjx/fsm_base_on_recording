@@ -38,6 +38,15 @@ PHASE_IDS = tuple(f"P{i:02d}" for i in range(1, 14))
 PHYSICS_HZ = 120.0
 SOURCE_SETTLE_TICKS = 180
 SOURCE_CONTACT_HISTORY_SAMPLES = 3
+# P10 is the only phase whose signed entry velocity depends on replaying a
+# predecessor contact transient.  The minimum three-sample contact window
+# begins at Trial043 tick 7577, but that row is already inside the impact
+# impulse (1.07 rad/s root angular speed and 114.6 deg/s joint speed).  The
+# frozen source command ledger has an authored all-wheel stop at tick 7552,
+# followed by eight quiet solver ticks before the tracked-servo waveform at
+# tick 7560.  Retain that 25-tick pre-roll so reset replay reconstructs the
+# causal PhysX/contact dynamics instead of injecting the impulse onset.
+P10_CONTACT_DYNAMICS_PREROLL_TICKS = 25
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_PHASE_SNAPSHOT_ROOT = PROJECT_ROOT / "reference" / "ppo_phase_snapshots"
 _SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
@@ -1002,7 +1011,7 @@ def _contains_signed_positive_rebound_requirement(value: Any) -> bool:
 def _p10_contact_history_anchor_tick(
     rows: Iterable[Mapping[str, Any]],
 ) -> int:
-    """Return the first raw-history sample behind P09's RR top-load latch."""
+    """Return the stable physical pre-roll behind P09's RR top-load latch."""
 
     matches: list[int] = []
     for row in rows:
@@ -1017,7 +1026,10 @@ def _p10_contact_history_anchor_tick(
         value = evidence.get("value") if isinstance(evidence, Mapping) else None
         if (
             type(tick) is not int
-            or tick < SOURCE_CONTACT_HISTORY_SAMPLES - 1
+            or tick
+            < SOURCE_CONTACT_HISTORY_SAMPLES
+            - 1
+            + P10_CONTACT_DYNAMICS_PREROLL_TICKS
             or not isinstance(evidence, Mapping)
             or evidence.get("passed") is not True
             or not isinstance(value, Mapping)
@@ -1032,7 +1044,11 @@ def _p10_contact_history_anchor_tick(
         raise PhaseSnapshotError(
             "trial must contain exactly one successful P09 RR TOP_LOADED event"
         )
-    return matches[0] - (SOURCE_CONTACT_HISTORY_SAMPLES - 1)
+    return matches[0] - (
+        SOURCE_CONTACT_HISTORY_SAMPLES
+        - 1
+        + P10_CONTACT_DYNAMICS_PREROLL_TICKS
+    )
 
 
 def _phase_entry_boundaries_from_rows(
