@@ -23,12 +23,12 @@ def test_deterministic_small_smoke_pattern_is_sub_five_percent_and_exercises_sle
     env = SimpleNamespace(frame=SimpleNamespace(state_id="P03"))
     positive = _smoke_action(env, 0)
     negative = _smoke_action(env, 1)
-    assert positive[:3] == (0.001,) * 3
+    assert positive[:3] == (1.0e-6,) * 3
     assert positive[3] == 0.049
-    assert positive[4:] == (0.001,) * 8
-    assert negative[:3] == (-0.001,) * 3
+    assert positive[4:] == (1.0e-6,) * 8
+    assert negative[:3] == (0.0,) * 3
     assert negative[3] == -0.049
-    assert negative[4:] == (-0.001,) * 8
+    assert negative[4:] == (0.0,) * 8
     assert max(abs(value) for value in positive + negative) < 0.05
 
     projector = build_action_projector_v2()
@@ -44,10 +44,10 @@ def test_deterministic_small_smoke_pattern_is_sub_five_percent_and_exercises_sle
 
 def test_smoke_pattern_resets_its_local_counter_and_remains_nonzero_in_every_phase() -> None:
     env = SimpleNamespace(frame=SimpleNamespace(state_id="P01"))
-    assert _smoke_action(env, 0) == (0.001,) * 12
-    assert _smoke_action(env, 1) == (-0.001,) * 12
+    assert _smoke_action(env, 0) == (1.0e-6,) * 12
+    assert _smoke_action(env, 1) == (0.0,) * 12
     env.frame.state_id = "P02"
-    assert _smoke_action(env, 2) == (0.001,) * 12
+    assert _smoke_action(env, 2) == (1.0e-6,) * 12
 
 
 def _direct_project(

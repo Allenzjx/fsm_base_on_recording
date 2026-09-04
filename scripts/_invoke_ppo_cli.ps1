@@ -143,6 +143,40 @@ try {
         }
         & $IsaacPython @Invocation 1>> $StdoutPath 2>> $StderrPath
         $ExitCode = $LASTEXITCODE
+        $LiveCommands = @(
+            "baseline-eval", "zero-residual-live", "nonzero-residual-smoke",
+            "soft-reset-equivalence", "vector-benchmark", "train", "evaluate",
+            "export-inference-actor", "capture-video-source"
+        )
+        if ($Subcommand -in $LiveCommands) {
+            $LiveResultPath = Join-Path $RunDir "live_command_result.json"
+            if (-not (Test-Path -LiteralPath $LiveResultPath -PathType Leaf)) {
+                $ExitCode = 2
+                [IO.File]::AppendAllText(
+                    $StderrPath,
+                    "Live command did not publish its authoritative exit result.$([Environment]::NewLine)",
+                    [Text.UTF8Encoding]::new($false)
+                )
+            } else {
+                try {
+                    $LiveResult = Get-Content -LiteralPath $LiveResultPath -Raw |
+                        ConvertFrom-Json -ErrorAction Stop
+                    if ([string]$LiveResult.schema -ne "wlr50_clean.live_command_result.v1" -or
+                        [string]$LiveResult.command -ne $Subcommand -or
+                        [int]$LiveResult.exit_code -notin @(0, 1, 2)) {
+                        throw "invalid live command result payload"
+                    }
+                    $ExitCode = [int]$LiveResult.exit_code
+                } catch {
+                    $ExitCode = 2
+                    [IO.File]::AppendAllText(
+                        $StderrPath,
+                        "Live command result validation failed: $($_.Exception.Message)$([Environment]::NewLine)",
+                        [Text.UTF8Encoding]::new($false)
+                    )
+                }
+            }
+        }
     } catch {
         $ExitCode = 1
         [IO.File]::AppendAllText(

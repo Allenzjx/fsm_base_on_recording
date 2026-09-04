@@ -335,12 +335,12 @@ def _smoke_action(env: Any, decision_index: int) -> tuple[float, ...]:
         f"P{index:02d}" for index in range(1, 14)
     }:
         raise CliError("bounded smoke action requires an active P01-P13 frame")
-    # Keep the all-phase diagnostic perturbation at only 0.1% of each phase
-    # scale.  Alternating every decision removes a fixed directional bias while
-    # remaining small enough not to turn the projector smoke test into a task
-    # perturbation test.  A single balanced +/- pulse pair on P03's 4-degree
-    # FR-knee channel is just large enough to exercise the 0.375 deg/tick slew
-    # limiter.  The pair is early, brief, and has zero net requested bias.
+    # A single 1e-6 normalized pulse at each phase entry proves actual nonzero
+    # projection without continuously exciting the contact-rich successful
+    # trajectory.  One balanced +/- pair on P03's 4-degree FR-knee channel is
+    # just large enough to exercise the 0.375 deg/tick slew limiter.  All later
+    # decisions are exact zero, so this remains a projector gate rather than a
+    # hidden robustness or task-performance stress test.
     phase_id = str(env.frame.state_id)
     previous_phase = getattr(env, "_bounded_smoke_phase_id", None)
     if previous_phase != phase_id:
@@ -352,8 +352,7 @@ def _smoke_action(env: Any, decision_index: int) -> tuple[float, ...]:
         ) + 1
     setattr(env, "_bounded_smoke_phase_decision_index", local_decision)
 
-    direction = 1.0 if local_decision % 2 == 0 else -1.0
-    values = [direction * 0.001] * 12
+    values = [1.0e-6] * 12 if local_decision == 0 else [0.0] * 12
     if phase_id == "P03" and local_decision in (0, 1):
         values[3] = 0.049 if local_decision == 0 else -0.049
     return tuple(values)
@@ -2691,20 +2690,33 @@ def _dispatch_live(args: argparse.Namespace) -> int:
     app.update()
     try:
         if args.command in {"baseline-eval", "zero-residual-live", "nonzero-residual-smoke"}:
-            return _baseline_or_gate(args, app)
-        if args.command == "soft-reset-equivalence":
-            return _soft_reset_equivalence(args, app)
-        if args.command == "vector-benchmark":
-            return _vector_benchmark(args, app)
-        if args.command == "train":
-            return _train(args, app)
-        if args.command == "evaluate":
-            return _evaluate(args, app)
-        if args.command == "export-inference-actor":
-            return _export_inference_actor(args, app)
-        if args.command == "capture-video-source":
-            return _capture_video_source(args, app)
-        raise CliError(f"unsupported live command: {args.command}")
+            exit_code = _baseline_or_gate(args, app)
+        elif args.command == "soft-reset-equivalence":
+            exit_code = _soft_reset_equivalence(args, app)
+        elif args.command == "vector-benchmark":
+            exit_code = _vector_benchmark(args, app)
+        elif args.command == "train":
+            exit_code = _train(args, app)
+        elif args.command == "evaluate":
+            exit_code = _evaluate(args, app)
+        elif args.command == "export-inference-actor":
+            exit_code = _export_inference_actor(args, app)
+        elif args.command == "capture-video-source":
+            exit_code = _capture_video_source(args, app)
+        else:
+            raise CliError(f"unsupported live command: {args.command}")
+        # Some Kit teardown paths normalize the native process exit status on
+        # Windows. Persist the result before closing Kit so the immutable-run
+        # wrapper can propagate application failures faithfully.
+        _json(
+            args.run_dir / "live_command_result.json",
+            {
+                "schema": "wlr50_clean.live_command_result.v1",
+                "command": args.command,
+                "exit_code": int(exit_code),
+            },
+        )
+        return int(exit_code)
     finally:
         _cleanup_isaac(app)
 

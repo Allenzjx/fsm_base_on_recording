@@ -44,6 +44,8 @@ def test_common_wrapper_locks_runtime_reserves_logs_and_finalizes() -> None:
         '"stdout.log"',
         '"stderr.log"',
         "StartsWith($RunsPrefix",
+        '"live_command_result.json"',
+        "authoritative exit result",
     ):
         assert required in text
     assert "Remove-Item" not in text
