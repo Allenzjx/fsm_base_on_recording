@@ -752,6 +752,9 @@ def _soft_reset_equivalence(args: argparse.Namespace, simulation_app: Any) -> in
             "in_episode_root_write_count": int(
                 final_step.info.get("in_episode_root_write_count", 0)
             ),
+            "termination_mapping": dict(
+                final_step.info.get("termination_mapping", {}) or {}
+            ),
         }
         trace_path = args.run_dir / f"episode_{episode_index}_{reset_role}_compact_trace.jsonl"
         summary_path = args.run_dir / f"episode_{episode_index}_{reset_role}_summary.json"

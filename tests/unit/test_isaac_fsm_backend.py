@@ -405,6 +405,7 @@ class FakeRuntime:
         self.events = []
         self.reader_count = 0
         self.reset_scene_count = 0
+        self.adapter_create_count = 0
         self.sim = FakeSimulation(self)
         self.scene = SimpleNamespace(
             sim=self.sim,
@@ -431,6 +432,8 @@ class FakeRuntime:
             return SimpleNamespace(contact_backend=SimpleNamespace(initialized=True))
 
         def adapter_from_scene(scene):
+            self.adapter_create_count += 1
+            self.events.append(("adapter_from_scene", self.adapter_create_count))
             self.adapter = FakeAdapter(self)
             return self.adapter
 
@@ -457,15 +460,17 @@ class FakeRuntime:
             return canonical_reset_state
 
         def reset_scene(scene, reset_state):
-            assert reset_state is canonical_reset_state
+            assert reset_state is None or reset_state is canonical_reset_state
             self.reset_scene_count += 1
             self.events.append(("reset_scene", reset_state))
             return {
-                "root_pose_writes": 1,
-                "root_velocity_writes": 1,
-                "joint_state_writes": 1,
-                "global_simulation_resets": 0,
-                "simulation_forward_syncs": 1,
+                "root_pose_writes": 0,
+                "root_velocity_writes": 0,
+                "joint_state_writes": 0,
+                "global_simulation_resets": 1,
+                "simulation_forward_syncs": 0,
+                "physics_lifecycle_reset": "hard_stop_play",
+                "reset_contact_sensor_count": 13,
             }
 
         def restore_settled_state(scene, reset_state):
@@ -676,23 +681,128 @@ def test_authoritative_termination_sources_are_mapped(fault, field) -> None:
         backend.step_physics(ZERO)
 
 
-def test_subsequent_reset_uses_reset_boundary_state_restore_only() -> None:
+def test_each_episode_uses_the_same_hard_physics_lifecycle_reset() -> None:
     runtime = FakeRuntime()
     backend = _backend(runtime)
     first = backend.reset(seed=1, options={})
     second = backend.reset(seed=2, options={})
 
-    assert runtime.reset_scene_count == 1
+    assert runtime.reset_scene_count == 2
+    assert runtime.adapter_create_count == 3
     assert runtime.sim.step_count == 2 * SETTLE_TICKS
+    assert first.info["reset_global_simulation_resets"] == 1
+    assert second.info["reset_global_simulation_resets"] == 1
     assert first.info["reset_root_pose_writes"] == 0
-    assert second.info["reset_root_pose_writes"] == 2
-    assert second.info["reset_root_velocity_writes"] == 2
-    assert second.info["reset_joint_state_writes"] == 2
-    assert second.info["reset_simulation_forward_syncs"] == 2
-    assert second.info["canonical_settled_restore_applied"] is True
+    assert second.info["reset_root_pose_writes"] == 0
+    assert second.info["reset_root_velocity_writes"] == 0
+    assert second.info["reset_joint_state_writes"] == 0
+    assert second.info["reset_simulation_forward_syncs"] == 0
+    assert first.info["canonical_reset_restore_applied"] is False
+    assert second.info["canonical_reset_restore_applied"] is False
+    assert first.info["hard_reset_native_state_matches_canonical"] is True
+    assert second.info["hard_reset_native_state_matches_canonical"] is True
+    assert second.info["canonical_settled_restore_applied"] is False
     assert second.info["in_episode_root_pose_writes"] == 0
-    assert sum(event[0] == "capture_reset_state" for event in runtime.events) == 2
-    assert sum(event[0] == "restore_settled_state" for event in runtime.events) == 1
+    assert sum(event[0] == "capture_reset_state" for event in runtime.events) == 4
+    assert sum(event[0] == "restore_settled_state" for event in runtime.events) == 0
+
+
+@pytest.mark.parametrize("mismatch", ["sha256", "instance_count"])
+def test_reused_hard_reset_native_mismatch_fails_before_settle_step(
+    mismatch: str,
+) -> None:
+    runtime = FakeRuntime()
+    dependencies = runtime.dependencies()
+    capture_reset_state = dependencies.capture_reset_state
+    capture_count = 0
+
+    def capture_with_reuse_pre_settle_mismatch(scene):
+        nonlocal capture_count
+        capture_count += 1
+        state = capture_reset_state(scene)
+        if capture_count != 3:
+            return state
+        return SimpleNamespace(
+            instance_count=(
+                state.instance_count + 1
+                if mismatch == "instance_count"
+                else state.instance_count
+            ),
+            state_sha256=(
+                "mismatched-pre-settle-sha256"
+                if mismatch == "sha256"
+                else state.state_sha256
+            ),
+        )
+
+    backend = IsaacFSMBackend(
+        dependencies=replace(
+            dependencies,
+            capture_reset_state=capture_with_reuse_pre_settle_mismatch,
+        )
+    )
+    backend.reset(seed=1, options={})
+    steps_before_reuse = runtime.sim.step_count
+    runtime.events.clear()
+
+    with pytest.raises(
+        IsaacFSMBackendError,
+        match="did not reproduce the canonical pre-settle state",
+    ):
+        backend.reset(seed=2, options={})
+
+    assert runtime.sim.step_count == steps_before_reuse
+    assert not any(event[0] == "sim.step" for event in runtime.events)
+    assert not any(event[0] == "controller.step" for event in runtime.events)
+
+
+@pytest.mark.parametrize("mismatch", ["sha256", "level_reference"])
+def test_reused_natural_settle_mismatch_fails_before_episode_tick_zero(
+    mismatch: str,
+) -> None:
+    runtime = FakeRuntime()
+    dependencies = runtime.dependencies()
+    capture_reset_state = dependencies.capture_reset_state
+    capture_count = 0
+
+    def capture_with_reuse_natural_settle_mismatch(scene):
+        nonlocal capture_count
+        capture_count += 1
+        state = capture_reset_state(scene)
+        if mismatch != "sha256" or capture_count != 4:
+            return state
+        return SimpleNamespace(
+            instance_count=state.instance_count,
+            state_sha256="mismatched-natural-settle-sha256",
+        )
+
+    backend = IsaacFSMBackend(
+        dependencies=replace(
+            dependencies,
+            capture_reset_state=capture_with_reuse_natural_settle_mismatch,
+        )
+    )
+    backend.reset(seed=1, options={})
+    first_controller = runtime.controller
+    first_controller_tick = first_controller.physics_tick
+    if mismatch == "level_reference":
+        backend._canonical_level_reference_orientation = (1.0, 0.0, 0.0, 0.0)
+    steps_before_reuse = runtime.sim.step_count
+    runtime.events.clear()
+
+    expected = (
+        "did not reproduce the canonical natural-settle state"
+        if mismatch == "sha256"
+        else "did not reproduce the level calibration"
+    )
+    with pytest.raises(IsaacFSMBackendError, match=expected):
+        backend.reset(seed=2, options={})
+
+    assert runtime.sim.step_count == steps_before_reuse + SETTLE_TICKS
+    assert runtime.controller is first_controller
+    assert first_controller.physics_tick == first_controller_tick
+    assert not any(event[0] == "reader.live" for event in runtime.events)
+    assert not any(event[0] == "controller.step" for event in runtime.events)
 
 
 def test_canonical_reset_uses_usd_authored_live_pose_not_zero_default_cache() -> None:
@@ -794,7 +904,7 @@ def test_phase_snapshot_reset_restores_independent_phase_state_and_proves_live_s
     assert all("snapshot" not in row[0] for row in runtime.events)
 
 
-def test_reused_phase_snapshot_reports_both_step_free_forward_syncs() -> None:
+def test_reused_phase_snapshot_reports_hard_reset_plus_snapshot_write() -> None:
     runtime = FakeRuntime()
     backend = _backend(runtime)
 
@@ -802,11 +912,11 @@ def test_reused_phase_snapshot_reports_both_step_free_forward_syncs() -> None:
     frame = backend.reset(seed=92, options={"training_phase_snapshot": "P09"})
 
     assert frame.info["reset_count"] == 2
-    assert frame.info["reset_global_simulation_resets"] == 0
-    assert frame.info["reset_simulation_forward_syncs"] == 2
-    assert frame.info["reset_root_pose_writes"] == 2
-    assert frame.info["reset_root_velocity_writes"] == 2
-    assert frame.info["reset_joint_state_writes"] == 2
+    assert frame.info["reset_global_simulation_resets"] == 1
+    assert frame.info["reset_simulation_forward_syncs"] == 1
+    assert frame.info["reset_root_pose_writes"] == 1
+    assert frame.info["reset_root_velocity_writes"] == 1
+    assert frame.info["reset_joint_state_writes"] == 1
 
 
 def test_explicit_p01_snapshot_keeps_the_normal_p01_reset_path() -> None:
@@ -983,7 +1093,8 @@ def test_video_preroll_restarts_sensor_clock_without_a_second_physics_reset() ->
         "simulation_reset_performed": False,
         "fsm_step_performed": False,
     }
-    assert runtime.reset_scene_count == 0
+    # Exactly the reset that began the episode; the video refresh adds none.
+    assert runtime.reset_scene_count == 1
 
     stepped = backend.step_physics(ZERO)
     assert stepped.physics_tick == 1

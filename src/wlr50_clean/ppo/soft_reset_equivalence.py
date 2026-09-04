@@ -12,7 +12,7 @@ from typing import Any, Mapping, Sequence
 from .action_projection import ZeroResidualEpisodeAuditor, full12_bytes
 
 
-SOFT_RESET_ACCEPTANCE_SCHEMA = "wlr50_clean.soft_reset_equivalence.v1"
+SOFT_RESET_ACCEPTANCE_SCHEMA = "wlr50_clean.soft_reset_equivalence.v2"
 SOFT_RESET_ACCEPTANCE_FILENAME = "soft_reset_equivalence_acceptance.json"
 PHASE_IDS = tuple(f"P{index:02d}" for index in range(1, 14))
 ZERO_FULL12 = (0.0,) * 12
@@ -55,11 +55,17 @@ RESET_METADATA_FIELDS = (
     "canonical_reset_state_instance_count",
     "canonical_reset_restore_applied",
     "canonical_reset_applied_sha256",
+    "hard_reset_native_state_observed_sha256",
+    "hard_reset_native_state_matches_canonical",
     "adapter_standing_pose_deg",
     "canonical_settled_state_source",
     "canonical_settled_state_sha256",
     "canonical_settled_restore_applied",
     "canonical_settled_applied_sha256",
+    "observed_settled_state_sha256",
+    "physics_lifecycle_reset",
+    "reset_contact_sensor_count",
+    "environment_initialization",
     "controller_hash",
     "motion_contract_hash",
     "seed",
@@ -295,9 +301,15 @@ def compare_reset_metadata(
         "canonical_reset_state_source",
         "canonical_reset_state_sha256",
         "canonical_reset_state_instance_count",
+        "hard_reset_native_state_observed_sha256",
+        "hard_reset_native_state_matches_canonical",
         "adapter_standing_pose_deg",
         "canonical_settled_state_source",
         "canonical_settled_state_sha256",
+        "observed_settled_state_sha256",
+        "physics_lifecycle_reset",
+        "reset_contact_sensor_count",
+        "environment_initialization",
         "controller_hash",
         "motion_contract_hash",
         "seed",
@@ -314,11 +326,11 @@ def compare_reset_metadata(
     checks = {
         "fresh_reset_count_is_one": int(fresh.get("reset_count", -1)) == 1,
         "reused_reset_count_is_two": int(reused.get("reset_count", -1)) == 2,
-        "fresh_did_not_call_global_sim_reset": int(
+        "fresh_used_one_hard_physics_lifecycle_reset": int(
             fresh.get("reset_global_simulation_resets", -1)
         )
-        == 0,
-        "fresh_used_no_soft_reset_forward_sync": int(
+        == 1,
+        "fresh_used_no_step_free_forward_sync": int(
             fresh.get("reset_simulation_forward_syncs", -1)
         )
         == 0,
@@ -334,48 +346,75 @@ def compare_reset_metadata(
             fresh.get("reset_joint_state_writes", -1)
         )
         == 0,
-        "fresh_did_not_restore_canonical_state": not bool(
+        "fresh_did_not_use_indexed_canonical_restore": not bool(
             fresh.get("canonical_reset_restore_applied", True)
         )
         and fresh.get("canonical_reset_applied_sha256") is None,
-        "reused_did_not_call_global_sim_reset": int(
+        "fresh_hard_reset_reached_canonical_state": bool(
+            fresh.get("hard_reset_native_state_matches_canonical", False)
+        )
+        and fresh.get("hard_reset_native_state_observed_sha256")
+        == fresh.get("canonical_reset_state_sha256"),
+        "fresh_natural_settle_reached_canonical_state": fresh.get(
+            "observed_settled_state_sha256"
+        )
+        == fresh.get("canonical_settled_state_sha256"),
+        "fresh_reinitialized_all_contact_sensors": int(
+            fresh.get("reset_contact_sensor_count", -1)
+        )
+        == 13,
+        "reused_used_one_hard_physics_lifecycle_reset": int(
             reused.get("reset_global_simulation_resets", -1)
         )
-        == 0,
-        "reused_used_exactly_two_forward_syncs": int(
+        == 1,
+        "reused_used_no_step_free_forward_sync": int(
             reused.get("reset_simulation_forward_syncs", -1)
         )
-        == 2,
-        "reused_wrote_root_pose_twice": int(reused.get("reset_root_pose_writes", -1)) == 2,
-        "reused_wrote_root_velocity_twice": int(
+        == 0,
+        "reused_used_no_reset_root_pose_write": int(
+            reused.get("reset_root_pose_writes", -1)
+        )
+        == 0,
+        "reused_used_no_reset_root_velocity_write": int(
             reused.get("reset_root_velocity_writes", -1)
         )
-        == 2,
-        "reused_wrote_joint_state_twice": int(
+        == 0,
+        "reused_used_no_reset_joint_state_write": int(
             reused.get("reset_joint_state_writes", -1)
         )
-        == 2,
-        "reused_restored_canonical_state": bool(
-            reused.get("canonical_reset_restore_applied", False)
+        == 0,
+        "reused_did_not_use_indexed_canonical_restore": not bool(
+            reused.get("canonical_reset_restore_applied", True)
         )
-        and reused.get("canonical_reset_applied_sha256")
+        and reused.get("canonical_reset_applied_sha256") is None,
+        "reused_hard_reset_reached_canonical_state": bool(
+            reused.get("hard_reset_native_state_matches_canonical", False)
+        )
+        and reused.get("hard_reset_native_state_observed_sha256")
         == reused.get("canonical_reset_state_sha256"),
+        "reused_natural_settle_reached_canonical_state": reused.get(
+            "observed_settled_state_sha256"
+        )
+        == reused.get("canonical_settled_state_sha256"),
+        "reused_reinitialized_all_contact_sensors": int(
+            reused.get("reset_contact_sensor_count", -1)
+        )
+        == 13,
         "fresh_did_not_restore_canonical_settled_state": not bool(
             fresh.get("canonical_settled_restore_applied", True)
         )
         and fresh.get("canonical_settled_applied_sha256") is None,
-        "reused_restored_canonical_settled_state": bool(
-            reused.get("canonical_settled_restore_applied", False)
+        "reused_did_not_overwrite_natural_settled_state": not bool(
+            reused.get("canonical_settled_restore_applied", True)
         )
-        and reused.get("canonical_settled_applied_sha256")
-        == reused.get("canonical_settled_state_sha256"),
+        and reused.get("canonical_settled_applied_sha256") is None,
         **{
             f"same_{name}": fresh.get(name) == reused.get(name)
             for name in same_fields
         },
     }
     return {
-        "schema": "wlr50_clean.soft_reset_metadata_comparison.v1",
+        "schema": "wlr50_clean.soft_reset_metadata_comparison.v2",
         "backend_instance_count": 1,
         "same_backend_instance_reused": True,
         "checks": checks,

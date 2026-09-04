@@ -202,7 +202,7 @@ class BackendDependencies:
     controller_from_paths: Callable[[Path, Path], Any]
     capture_reset_state: Callable[[Any], CanonicalArticulationResetState]
     reset_scene: Callable[
-        [Any, CanonicalArticulationResetState], Mapping[str, Any]
+        [Any, CanonicalArticulationResetState | None], Mapping[str, Any]
     ]
     restore_settled_state: Callable[
         [Any, CanonicalArticulationResetState], Mapping[str, Any]
@@ -243,7 +243,7 @@ def _load_live_dependencies() -> BackendDependencies:
         capture_reset_state=lambda scene: capture_canonical_articulation_reset_state(
             scene.robot
         ),
-        reset_scene=_restore_default_articulation_state,
+        reset_scene=_reset_physics_lifecycle,
         restore_settled_state=_restore_canonical_settled_articulation_state,
         locked_scene_snapshot=locked_scene_snapshot,
         expected_contact_bodies=tuple(SENSED_BODIES),
@@ -261,7 +261,7 @@ class IsaacFSMBackend:
     ``simulation_app`` must already have been created by ``AppLauncher`` for a
     production backend.  The backend never launches or closes the application,
     records video, opens a Recording, changes gravity, or applies forces.  Root
-    and joint state restoration is confined to a subsequent ``reset`` boundary;
+    and the stop/play physics lifecycle reset is confined to ``reset``;
     :meth:`step_physics` has no state-write path other than ``apply_full12``.
     """
 
@@ -384,19 +384,15 @@ class IsaacFSMBackend:
                     sim=sim, robot=robot
                 ),
             )
-            self._canonical_reset_state = dependencies.capture_reset_state(
-                self._scene
-            )
-        else:
-            if self._canonical_reset_state is None:
-                raise IsaacFSMBackendError(
-                    "canonical pre-settle articulation state is unavailable"
-                )
-            reset_writes = dict(
-                dependencies.reset_scene(
-                    self._scene, self._canonical_reset_state
-                )
-            )
+            # RobotAdapter owns the frozen environment's authoritative live
+            # servo-limit authoring. Bootstrap those session-layer opinions
+            # before the first episode lifecycle reset so fresh and reused
+            # episodes both instantiate PhysX from the same authored stage.
+            dependencies.adapter_from_scene(self._scene)
+
+        reset_writes = dict(
+            dependencies.reset_scene(self._scene, self._canonical_reset_state)
+        )
 
         scene = self._scene
         backends = getattr(scene, "instrumentation", None)
@@ -409,6 +405,26 @@ class IsaacFSMBackend:
             )
 
         adapter = dependencies.adapter_from_scene(scene)
+        observed_reset_state = dependencies.capture_reset_state(scene)
+        if self._canonical_reset_state is None:
+            self._canonical_reset_state = observed_reset_state
+        elif (
+            observed_reset_state.instance_count
+            != self._canonical_reset_state.instance_count
+            or observed_reset_state.state_sha256
+            != self._canonical_reset_state.state_sha256
+        ):
+            raise IsaacFSMBackendError(
+                "hard physics reset did not reproduce the canonical pre-settle state"
+            )
+        reset_writes.update(
+            {
+                "hard_reset_native_state_observed_sha256": (
+                    observed_reset_state.state_sha256
+                ),
+                "hard_reset_native_state_matches_canonical": True,
+            }
+        )
         calibration_reader: Any | None = None
         calibration_samples: list[tuple[float, float, float, float]] = []
         calibration_start = SETTLE_TICKS - LEVEL_CALIBRATION_TICKS
@@ -455,33 +471,36 @@ class IsaacFSMBackend:
         self._level_reference_orientation = _mean_quaternion(calibration_samples)
 
         normal_p01_reset = loaded_snapshot is None or snapshot_phase == "P01"
+        observed_settled_state = dependencies.capture_reset_state(scene)
+        reset_writes["observed_settled_state_sha256"] = (
+            observed_settled_state.state_sha256
+        )
         if self._canonical_settled_state is None:
-            self._canonical_settled_state = dependencies.capture_reset_state(scene)
+            self._canonical_settled_state = observed_settled_state
             self._canonical_level_reference_orientation = (
                 self._level_reference_orientation
             )
         elif normal_p01_reset:
-            settled_proof = dict(
-                dependencies.restore_settled_state(
-                    scene, self._canonical_settled_state
+            if (
+                observed_settled_state.instance_count
+                != self._canonical_settled_state.instance_count
+                or observed_settled_state.state_sha256
+                != self._canonical_settled_state.state_sha256
+            ):
+                raise IsaacFSMBackendError(
+                    "hard physics reset did not reproduce the canonical natural-settle state"
                 )
-            )
-            reset_writes = _merge_reset_writes(reset_writes, settled_proof)
-            reset_writes.update(
-                {
-                    "canonical_settled_restore_applied": True,
-                    "canonical_settled_applied_sha256": (
-                        self._canonical_settled_state.state_sha256
-                    ),
-                }
-            )
             if self._canonical_level_reference_orientation is None:
                 raise IsaacFSMBackendError(
                     "canonical post-settle level reference is unavailable"
                 )
-            self._level_reference_orientation = (
-                self._canonical_level_reference_orientation
-            )
+            if (
+                self._level_reference_orientation
+                != self._canonical_level_reference_orientation
+            ):
+                raise IsaacFSMBackendError(
+                    "hard physics reset did not reproduce the level calibration"
+                )
 
         self._snapshot_restoration = {
             "requested_phase": snapshot_phase,
@@ -1351,7 +1370,7 @@ class IsaacFSMBackend:
         return {
             "environment_hash": environment_hash,
             "robot_asset_hash": self._dependencies.robot_asset_hash,
-            "canonical_reset_state_source": "fresh_scene_post_sim_reset_pre_settle",
+            "canonical_reset_state_source": "post_limit_hard_physics_reset_pre_settle",
             "canonical_reset_state_sha256": (
                 None
                 if self._canonical_reset_state is None
@@ -1368,17 +1387,34 @@ class IsaacFSMBackend:
             "canonical_reset_applied_sha256": reset_writes.get(
                 "canonical_reset_applied_sha256"
             ),
+            "hard_reset_native_state_observed_sha256": reset_writes.get(
+                "hard_reset_native_state_observed_sha256"
+            ),
+            "hard_reset_native_state_matches_canonical": bool(
+                reset_writes.get(
+                    "hard_reset_native_state_matches_canonical", False
+                )
+            ),
             "canonical_settled_state_sha256": (
                 None
                 if self._canonical_settled_state is None
                 else self._canonical_settled_state.state_sha256
             ),
-            "canonical_settled_state_source": "fresh_scene_post_settle",
+            "canonical_settled_state_source": "natural_post_hard_reset_settle",
             "canonical_settled_restore_applied": bool(
                 reset_writes.get("canonical_settled_restore_applied", False)
             ),
             "canonical_settled_applied_sha256": reset_writes.get(
                 "canonical_settled_applied_sha256"
+            ),
+            "observed_settled_state_sha256": reset_writes.get(
+                "observed_settled_state_sha256"
+            ),
+            "physics_lifecycle_reset": reset_writes.get(
+                "physics_lifecycle_reset"
+            ),
+            "reset_contact_sensor_count": int(
+                reset_writes.get("reset_contact_sensor_count", 0)
             ),
             "adapter_standing_pose_deg": [
                 float(standing_pose[name]) for name in SERVO_ORDER
@@ -2217,55 +2253,62 @@ def _restore_canonical_settled_articulation_state(
     }
 
 
-def _restore_default_articulation_state(
-    scene: Any, canonical_state: CanonicalArticulationResetState
+def _reset_physics_lifecycle(
+    scene: Any, canonical_state: CanonicalArticulationResetState | None
 ) -> Mapping[str, Any]:
-    """Soft-reset to the captured USD-authored state at an episode boundary.
+    """Rebuild PhysX episode state through the documented hard reset path.
 
-    A process-level/fresh-scene rollout and a reused scene must have the same
-    physical history.  Calling ``SimulationContext.reset()`` here proved not
-    to be equivalent on the locked Windows/PhysX runtime: after the first
-    episode it deterministically changed the P09 rebound enough to miss P10's
-    signed-velocity entry gate.  Isaac Lab's indexed state-write reset is the
-    appropriate episode reset path.  The one global reset needed to create the
-    stage remains owned by ``SceneFactory.create_scene``.
+    Indexed articulation writes restore visible q/qd but do not clear GPU
+    PhysX contact manifolds, constraint warm-starts, or actuator target state.
+    The first caller has already bootstrapped the immutable session-layer
+    servo limits, so fresh and reused episodes instantiate identical views and
+    constraints from the same authored stage.
 
-    No physics step is taken here.  State writes, sensor-history reset and a
-    ``forward()`` synchronization are confined to the reset boundary.
+    ``canonical_state`` is accepted only so the dependency seam retains one
+    reset signature. State comes from USD/session state, never indexed writes.
     """
 
-    robot = scene.robot
+    del canonical_state
     try:
-        restore_canonical_articulation_reset_state(
-            robot, canonical_state, expected_instance_count=1
-        )
+        reset = getattr(scene.sim, "reset", None)
+        if not callable(reset):
+            raise IsaacFSMBackendError(
+                "SimulationContext.reset is required for an episode lifecycle reset"
+            )
+        reset(soft=False)
+        scene.robot.reset()
+        scene.robot.update(0.0)
         instrumentation = getattr(scene, "instrumentation", None)
         contact_backend = getattr(instrumentation, "contact_backend", None)
+        if contact_backend is None or not bool(
+            getattr(contact_backend, "initialized", False)
+        ):
+            raise IsaacFSMBackendError(
+                "exact-pair sensor bank did not reinitialize after physics reset"
+            )
         reset_contacts = getattr(contact_backend, "reset", None)
         if not callable(reset_contacts):
-            raise IsaacFSMBackendError("exact-pair sensor bank cannot soft-reset")
+            raise IsaacFSMBackendError("exact-pair sensor bank cannot reset")
         reset_contacts()
-        forward = getattr(scene.sim, "forward", None)
-        if not callable(forward):
+        sensor_count = len(getattr(contact_backend, "sensors", {}))
+        if sensor_count != 13:
             raise IsaacFSMBackendError(
-                "SimulationContext.forward is required for a step-free soft reset"
+                f"hard physics reset expected 13 contact sensors; received {sensor_count}"
             )
-        forward()
-        robot.update(0.0)
+    except IsaacFSMBackendError:
+        raise
     except Exception as exc:
         raise IsaacFSMBackendError(
-            f"reset-only articulation restore failed: {type(exc).__name__}: {exc}"
+            f"physics lifecycle reset failed: {type(exc).__name__}: {exc}"
         ) from exc
     return {
-        "root_pose_writes": 1,
-        "root_velocity_writes": 1,
-        "joint_state_writes": 1,
-        "global_simulation_resets": 0,
-        "simulation_forward_syncs": 1,
-        "canonical_reset_state_sha256": canonical_state.state_sha256,
-        "canonical_reset_state_source": "fresh_scene_post_sim_reset_pre_settle",
-        "canonical_reset_restore_applied": True,
-        "canonical_reset_applied_sha256": canonical_state.state_sha256,
+        "root_pose_writes": 0,
+        "root_velocity_writes": 0,
+        "joint_state_writes": 0,
+        "global_simulation_resets": 1,
+        "simulation_forward_syncs": 0,
+        "physics_lifecycle_reset": "hard_stop_play",
+        "reset_contact_sensor_count": sensor_count,
     }
 
 

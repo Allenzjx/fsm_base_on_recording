@@ -56,20 +56,25 @@ def _reset_metadata(*, reused: bool) -> dict[str, object]:
     payload: dict[str, object] = {
         "environment_hash": "environment",
         "robot_asset_hash": "robot",
-        "canonical_reset_state_source": "fresh_scene_post_sim_reset_pre_settle",
+        "canonical_reset_state_source": "post_limit_hard_physics_reset_pre_settle",
         "canonical_reset_state_sha256": "canonical-reset-sha256",
         "canonical_reset_state_instance_count": 1,
-        "canonical_reset_restore_applied": reused,
-        "canonical_reset_applied_sha256": (
-            "canonical-reset-sha256" if reused else None
-        ),
+        "canonical_reset_restore_applied": False,
+        "canonical_reset_applied_sha256": None,
+        "hard_reset_native_state_observed_sha256": "canonical-reset-sha256",
+        "hard_reset_native_state_matches_canonical": True,
         "adapter_standing_pose_deg": [0.0] * 8,
-        "canonical_settled_state_source": "fresh_scene_post_settle",
+        "canonical_settled_state_source": "natural_post_hard_reset_settle",
         "canonical_settled_state_sha256": "canonical-settled-sha256",
-        "canonical_settled_restore_applied": reused,
-        "canonical_settled_applied_sha256": (
-            "canonical-settled-sha256" if reused else None
-        ),
+        "canonical_settled_restore_applied": False,
+        "canonical_settled_applied_sha256": None,
+        "observed_settled_state_sha256": "canonical-settled-sha256",
+        "physics_lifecycle_reset": "hard_stop_play",
+        "reset_contact_sensor_count": 13,
+        "environment_initialization": {
+            "all_eight_servo_limits_applied": True,
+            "physx_limits_verified": True,
+        },
         "controller_hash": "controller",
         "motion_contract_hash": "motion",
         "seed": 2001,
@@ -79,11 +84,11 @@ def _reset_metadata(*, reused: bool) -> dict[str, object]:
         "initial_joint_state": [0.0] * 24,
         "obstacle_pose": [1.5, 0.0, 0.025],
         "level_reference_orientation_wxyz": [1.0, 0.0, 0.0, 0.0],
-        "reset_root_pose_writes": 2 if reused else 0,
-        "reset_root_velocity_writes": 2 if reused else 0,
-        "reset_joint_state_writes": 2 if reused else 0,
-        "reset_global_simulation_resets": 0,
-        "reset_simulation_forward_syncs": 2 if reused else 0,
+        "reset_root_pose_writes": 0,
+        "reset_root_velocity_writes": 0,
+        "reset_joint_state_writes": 0,
+        "reset_global_simulation_resets": 1,
+        "reset_simulation_forward_syncs": 0,
         "settle_ticks": 180,
         "randomization_enabled": False,
         "raw_recording_access": False,
@@ -260,18 +265,18 @@ def test_compact_trace_comparison_is_exact_through_p10_and_whole_episode() -> No
     assert mismatch["through_p10"]["first_mismatch"]["fields"] == ["lifecycle"]
 
 
-def test_reset_metadata_proves_two_step_free_restores_without_global_reset() -> None:
+def test_reset_metadata_proves_symmetric_hard_lifecycle_resets() -> None:
     fresh = _reset_metadata(reused=False)
     reused = _reset_metadata(reused=True)
     comparison = compare_reset_metadata(fresh, reused)
     assert comparison["backend_instance_count"] == 1
-    assert comparison["checks"]["fresh_used_no_soft_reset_forward_sync"] is True
-    assert comparison["checks"]["reused_used_exactly_two_forward_syncs"] is True
-    assert comparison["checks"]["reused_restored_canonical_state"] is True
-    assert comparison["checks"]["reused_restored_canonical_settled_state"] is True
+    assert comparison["checks"]["fresh_used_one_hard_physics_lifecycle_reset"] is True
+    assert comparison["checks"]["reused_used_one_hard_physics_lifecycle_reset"] is True
+    assert comparison["checks"]["fresh_hard_reset_reached_canonical_state"] is True
+    assert comparison["checks"]["reused_hard_reset_reached_canonical_state"] is True
     assert comparison["passed"] is True
 
-    reused["reset_global_simulation_resets"] = 1
+    reused["reset_global_simulation_resets"] = 0
     assert compare_reset_metadata(fresh, reused)["passed"] is False
 
 
