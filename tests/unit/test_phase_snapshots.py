@@ -69,7 +69,7 @@ def _sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _command(tick: int) -> dict:
+def _command(tick: int, *, state_id: str, lifecycle: str) -> dict:
     servos = (
         "front_left_hip", "front_left_knee", "front_right_hip", "front_right_knee",
         "rear_left_hip", "rear_left_knee", "rear_right_hip", "rear_right_knee",
@@ -109,7 +109,8 @@ def _command(tick: int) -> dict:
     }
     return {
         "control_physics_tick": tick,
-        "state_id": PHASE_IDS[tick],
+        "state_id": state_id,
+        "lifecycle": lifecycle,
         "nominal_full12": zero12,
         "applied_full12": zero12,
         "drive_target_full12": zero12,
@@ -121,17 +122,60 @@ def _command(tick: int) -> dict:
     }
 
 
-def _write_source_trial(tmp_path):
+def _write_source_trial(
+    tmp_path,
+    *,
+    p10_predecessor_lifecycle: str = "WAIT_ENTRY",
+    signed_positive_rebound_required: bool = True,
+):
     trial = tmp_path / "trial"
     trial.mkdir()
+    entry_ticks = {
+        phase: index if index < PHASE_IDS.index("P10") else index + 1
+        for index, phase in enumerate(PHASE_IDS)
+    }
     transitions = []
-    for index, phase in enumerate(PHASE_IDS):
-        transitions.append({"state_id": phase, "to_lifecycle": "EXECUTE_MOTION", "sim_time_s": index / 120})
+    for phase in PHASE_IDS:
+        guards = []
+        if phase == "P10":
+            guards = [
+                {
+                    "name": "reference_entry_compatible",
+                    "passed": True,
+                    "value": {
+                        "rear_right_knee_velocity": {
+                            "actual_deg_s": 23.5,
+                            "signed_positive_rebound_required": (
+                                signed_positive_rebound_required
+                            ),
+                        }
+                    },
+                }
+            ]
+        transitions.append(
+            {
+                "state_id": phase,
+                "from_lifecycle": "WAIT_ENTRY",
+                "to_lifecycle": "EXECUTE_MOTION",
+                "sim_time_s": entry_ticks[phase] / 120,
+                "details": {"guards": guards},
+            }
+        )
     _write_jsonl(trial / "state_transitions.jsonl", transitions)
-    _write_jsonl(trial / "observation_120hz.jsonl", [_observation(i) for i in range(13)])
+    _write_jsonl(trial / "observation_120hz.jsonl", [_observation(i) for i in range(14)])
+    phase_by_entry_tick = {tick: phase for phase, tick in entry_ticks.items()}
+    commands = []
+    for tick in range(14):
+        if tick == entry_ticks["P10"] - 1:
+            state_id = "P10"
+            lifecycle = p10_predecessor_lifecycle
+        else:
+            state_id = phase_by_entry_tick[tick]
+            lifecycle = "EXECUTE_MOTION"
+        commands.append(_command(tick, state_id=state_id, lifecycle=lifecycle))
     _write_jsonl(
         trial / "full12_commands_120hz.jsonl",
-        [_command(i) for i in range(13)],
+        commands,
     )
     _write_jsonl(trial / "leg_crossing_events.jsonl", [])
     artifact_rows = {
@@ -195,6 +239,96 @@ def test_build_and_validate_all_phase_snapshots(tmp_path):
         "leg_crossing",
     }
     assert manifest["schema"] == MANIFEST_SCHEMA
+    assert manifest["causal_predecessor_phases"] == ["P10"]
+
+    p10 = json.loads((out / "P10" / "snapshot.json").read_text(encoding="utf-8"))
+    p10_manifest = next(
+        row for row in manifest["snapshots"] if row["phase"] == "P10"
+    )
+    assert p10["source_tick"] == 9
+    assert p10["target_entry_tick"] == 10
+    assert p10["fsm_lifecycle"] == "WAIT_ENTRY"
+    assert p10["source_command"]["source_fsm_state"] == "P10"
+    assert p10["source_command"]["source_fsm_lifecycle"] == "WAIT_ENTRY"
+    assert p10["source_command"]["target_entry_tick"] == 10
+    assert p10_manifest["source_tick"] == 9
+    assert p10_manifest["target_entry_tick"] == 10
+
+    p11 = json.loads((out / "P11" / "snapshot.json").read_text(encoding="utf-8"))
+    p11_manifest = next(
+        row for row in manifest["snapshots"] if row["phase"] == "P11"
+    )
+    assert p11["source_tick"] == 11
+    assert p11["fsm_lifecycle"] == "EXECUTE_MOTION"
+    assert "target_entry_tick" not in p11
+    assert "source_fsm_lifecycle" not in p11["source_command"]
+    assert "target_entry_tick" not in p11_manifest
+
+
+def test_signed_positive_entry_detection_is_transition_evidence_driven(tmp_path):
+    trial = _write_source_trial(
+        tmp_path, signed_positive_rebound_required=False
+    )
+    out = tmp_path / "snapshots"
+
+    manifest = build_phase_snapshots(trial, out)
+    p10 = json.loads((out / "P10" / "snapshot.json").read_text(encoding="utf-8"))
+
+    assert manifest["causal_predecessor_phases"] == []
+    assert p10["source_tick"] == 10
+    assert p10["fsm_lifecycle"] == "EXECUTE_MOTION"
+    assert "target_entry_tick" not in p10
+
+
+def test_causal_predecessor_requires_wait_entry_source_command(tmp_path):
+    trial = _write_source_trial(
+        tmp_path, p10_predecessor_lifecycle="EXECUTE_MOTION"
+    )
+    out = tmp_path / "snapshots"
+
+    with pytest.raises(PhaseSnapshotError, match="source command state/lifecycle"):
+        build_phase_snapshots(trial, out)
+    assert not out.exists()
+
+
+@pytest.mark.parametrize(
+    ("surface", "expected_error"),
+    (
+        ("payload_target", "causal target-entry tick"),
+        ("manifest_target", "manifest target-entry tick"),
+        ("source_lifecycle", "causal source-command context"),
+        ("snapshot_lifecycle", "FSM lifecycle"),
+    ),
+)
+def test_causal_predecessor_audit_fields_fail_closed(
+    tmp_path: Path, surface: str, expected_error: str
+) -> None:
+    out = _build_snapshot_set(tmp_path)
+    payload = json.loads(
+        (out / "P10" / "snapshot.json").read_text(encoding="utf-8")
+    )
+    manifest = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
+    manifest_row = next(
+        row for row in manifest["snapshots"] if row["phase"] == "P10"
+    )
+
+    if surface == "payload_target":
+        payload["target_entry_tick"] += 1
+    elif surface == "manifest_target":
+        manifest_row["target_entry_tick"] += 1
+    elif surface == "source_lifecycle":
+        payload["source_command"]["source_fsm_lifecycle"] = "EXECUTE_MOTION"
+    else:
+        payload["fsm_lifecycle"] = "EXECUTE_MOTION"
+
+    with pytest.raises(PhaseSnapshotError, match=expected_error):
+        validate_phase_snapshot_payload_contract(
+            payload,
+            "P10",
+            manifest_row=manifest_row,
+            manifest_source_artifacts=manifest["source_artifacts"],
+            causal_predecessor_required=True,
+        )
 
 
 def test_generated_bundle_bytes_are_git_lf_normalization_stable(tmp_path):

@@ -205,6 +205,25 @@ def test_attempt_gate_fails_closed_on_exception_contact_or_extra_step() -> None:
         },
     }
     assert _attempt_passed(row) is True
+    calibration = copy.deepcopy(row)
+    comparison = {
+        "schema": "wlr50_clean.phase_snapshot_live_comparison.v1",
+        "maximum_errors": {"root_position_m": 0.001},
+    }
+    calibration["snapshot_state_write"]["effective_entry_contract"] = {
+        "schema": (
+            "wlr50_clean.ppo_phase_effective_entry_calibration_live_proof.v1"
+        ),
+        "artifact_role": "CALIBRATION_ONLY_NOT_TRAINING_ACCEPTANCE",
+        "verified": True,
+        "calibration_only": True,
+        "phase": "P10",
+        "source_snapshot_post_prime_diagnostic": comparison,
+        "failures": [],
+    }
+    assert _attempt_passed(calibration, calibration_mode=True) is True
+    assert _attempt_passed(calibration) is False
+    assert _attempt_passed(row, calibration_mode=True) is False
     restored_classifier = copy.deepcopy(row)
     restored_classifier["snapshot_state_write"][
         "classifier_restored_before_only_episode_read"
@@ -280,6 +299,24 @@ def test_cli_and_wrapper_bind_probe_to_one_live_environment() -> None:
         ]
     )
     assert selected.phase == "P09"
+    assert selected.calibrate_effective_entry is False
+
+    calibration_arguments = cli._parser().parse_args(
+        [
+            "phase-snapshot-live-probe",
+            "--run-dir",
+            str(PROJECT_ROOT),
+            "--seed",
+            "1002",
+            "--num-envs",
+            "1",
+            "--phase",
+            "P10",
+            "--calibrate-effective-entry",
+        ]
+    )
+    assert calibration_arguments.calibrate_effective_entry is True
+    cli._validate_common(calibration_arguments)
 
     wrapper = (
         PROJECT_ROOT / "scripts" / "run_phase_snapshot_live_probe.ps1"
@@ -293,6 +330,16 @@ def test_cli_and_wrapper_bind_probe_to_one_live_environment() -> None:
     assert "[string]$Phase = $null" in wrapper
     assert 'if ($null -ne $Phase)' in wrapper
     assert '$BaseArgs += @("--phase", $Phase)' in wrapper
+
+    calibration_wrapper = (
+        PROJECT_ROOT / "scripts" / "run_phase_effective_entry_calibration.ps1"
+    ).read_text(encoding="utf-8")
+    assert '-RunKind "phase_effective_entry_calibration"' in calibration_wrapper
+    assert '-TrainingStage "phase-effective-entry-calibration"' in calibration_wrapper
+    assert '-Subcommand "phase-snapshot-live-probe"' in calibration_wrapper
+    assert '"--calibrate-effective-entry"' in calibration_wrapper
+    assert "[Parameter(Mandatory = $true)]" in calibration_wrapper
+    assert "-ReturnFinalizedEvidenceFailure" not in calibration_wrapper
 
     with pytest.raises(SystemExit):
         cli._parser().parse_args(
@@ -403,6 +450,39 @@ class _FakeEffectiveContract:
             "schema": "wlr50_clean.ppo_phase_effective_entry_record.v1",
             "phase_snapshot_bundle_sha256": self.phase_snapshot_bundle_sha256,
         }
+
+
+def test_calibration_mode_rejects_wrong_seed_contract_or_missing_phase(
+    tmp_path: Path,
+) -> None:
+    bundle = _FakeBundle(tmp_path)
+    with pytest.raises(PhaseSnapshotLiveProbeError, match="seed 1002"):
+        probe_subject.run_phase_snapshot_live_probe(
+            object(),
+            run_dir=tmp_path,
+            seed=1001,
+            snapshot_bundle=bundle,
+            calibration_mode=True,
+            phases=("P10",),
+        )
+    with pytest.raises(PhaseSnapshotLiveProbeError, match="cannot consume"):
+        probe_subject.run_phase_snapshot_live_probe(
+            object(),
+            run_dir=tmp_path,
+            seed=1002,
+            snapshot_bundle=bundle,
+            effective_entry_contract=_FakeEffectiveContract(bundle),
+            calibration_mode=True,
+            phases=("P10",),
+        )
+    with pytest.raises(PhaseSnapshotLiveProbeError, match="explicit phase"):
+        probe_subject.run_phase_snapshot_live_probe(
+            object(),
+            run_dir=tmp_path,
+            seed=1002,
+            snapshot_bundle=bundle,
+            calibration_mode=True,
+        )
 
 
 @pytest.fixture(autouse=True)

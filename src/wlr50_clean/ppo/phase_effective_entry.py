@@ -42,20 +42,11 @@ CALIBRATION_SCHEMA = "wlr50_clean.ppo_phase_effective_entry_calibration.v1"
 RECORD_SCHEMA = "wlr50_clean.ppo_phase_effective_entry_contract_record.v1"
 CONTRACT_HASH_SCHEMA = "wlr50_clean.ppo_phase_effective_entry_contract_hash.v1"
 PROBE_SCHEMA = "wlr50_clean.phase_snapshot_live_probe.v2"
-SOURCE_GIT_COMMIT = "00d6cc6712e71cb12c58431beb180f0476aab4ed"
-CALIBRATION_RUN_IDS = (
-    "20260904T145955257598Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe",
-    "20260904T150033155449Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe",
-    "20260904T150108566113Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe",
-    "20260904T150144775500Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe",
-    "20260904T150221215221Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe",
-    "20260904T150258094110Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe",
-    "20260904T150334893434Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe",
-    "20260904T150411470259Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe",
-    "20260904T150448317651Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe",
-    "20260904T150524364315Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe",
-    "20260904T150602062612Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe",
-    "20260904T150639270357Z_g00d6cc6712e7_c6f361829fc13_s1002_n1_phase-snapshot-live-probe",
+CALIBRATION_RUN_KIND = "phase_effective_entry_calibration"
+CALIBRATION_TRAINING_STAGE = "phase-effective-entry-calibration"
+CALIBRATION_ARTIFACT_ROLE = "CALIBRATION_ONLY_NOT_TRAINING_ACCEPTANCE"
+CALIBRATION_LIVE_PROOF_SCHEMA = (
+    "wlr50_clean.ppo_phase_effective_entry_calibration_live_proof.v1"
 )
 PHASE_IDS = tuple(f"P{index:02d}" for index in range(2, 14))
 WHEEL_ORDER = (
@@ -81,6 +72,14 @@ CONTACT_FORCE_ON_N = 0.25
 CONTACT_FORCE_OFF_N = 0.12
 CONTACT_SOURCE = "isaaclab.ContactSensor.force_matrix_w"
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
+_GIT_COMMIT = re.compile(r"^[0-9a-f]{40}$")
+_AUTHORED_ENTRY_GUARDS = (
+    "previous_state_done",
+    "no_body_obstacle_collision",
+    "joint_hard_limits_valid",
+    "reference_entry_compatible",
+    "critical_actuators_available",
+)
 
 
 class EffectivePhaseEntryError(ValueError):
@@ -204,6 +203,12 @@ def _sha256_bytes(value: bytes) -> str:
 def _require_sha256(value: Any, label: str) -> str:
     if not isinstance(value, str) or _SHA256.fullmatch(value) is None:
         raise EffectivePhaseEntryError(f"{label} must be lowercase SHA-256")
+    return value
+
+
+def _require_git_commit(value: Any, label: str) -> str:
+    if not isinstance(value, str) or _GIT_COMMIT.fullmatch(value) is None:
+        raise EffectivePhaseEntryError(f"{label} must be a lowercase 40-hex commit")
     return value
 
 
@@ -486,8 +491,144 @@ def _capture_paths_once(
 
 
 def _file_record(path: Path, payload: bytes, *, root: Path | None = None) -> dict[str, Any]:
-    shown = str(path if root is None else path.relative_to(root)).replace("\\", "/")
+    shown_path = path
+    if root is not None:
+        try:
+            shown_path = path.relative_to(root)
+        except ValueError:
+            # Explicit calibration inputs may live outside the checkout.  Such
+            # evidence remains host-bound by its canonical absolute path.
+            shown_path = path
+    shown = str(shown_path).replace("\\", "/")
     return {"path": shown, "bytes": len(payload), "sha256": _sha256_bytes(payload)}
+
+
+def _record_path(value: Any, *, label: str) -> Path:
+    if not isinstance(value, str) or not value:
+        raise EffectivePhaseEntryError(f"{label} path is invalid")
+    raw = Path(value)
+    if not raw.is_absolute():
+        if ".." in raw.parts:
+            raise EffectivePhaseEntryError(f"{label} path escapes the project root")
+        raw = PROJECT_ROOT.joinpath(*raw.parts)
+    return _absolute_unredirected(raw, label=label)
+
+
+def _validated_runtime_identity(
+    value: Any, *, expected_git_commit: str | None
+) -> tuple[str, str]:
+    if not isinstance(value, Mapping):
+        raise EffectivePhaseEntryError("calibration runtime identity must be an object")
+    commit = _require_git_commit(value.get("git_commit"), "runtime git commit")
+    if expected_git_commit is not None and commit != expected_git_commit:
+        raise EffectivePhaseEntryError("calibration runtime commit differs")
+    files = value.get("files")
+    if (
+        value.get("schema") != "wlr50_clean.committed_runtime_identity.v1"
+        or not isinstance(files, list)
+        or not files
+        or value.get("file_count") != len(files)
+    ):
+        raise EffectivePhaseEntryError("calibration runtime identity header is invalid")
+    ordered_fields = (
+        "path",
+        "bytes",
+        "sha256",
+        "creation_time_utc_ticks",
+        "last_write_time_utc_ticks",
+    )
+    paths: list[str] = []
+    normalized: list[dict[str, Any]] = []
+    content: list[dict[str, Any]] = []
+    for index, row in enumerate(files):
+        if (
+            not isinstance(row, Mapping)
+            or set(row) != set(ordered_fields)
+            or not isinstance(row.get("path"), str)
+            or not row["path"]
+            or Path(row["path"]).is_absolute()
+            or ".." in Path(row["path"]).parts
+            or type(row.get("bytes")) is not int
+            or row["bytes"] < 0
+            or any(
+                type(row.get(field)) is not int or row[field] <= 0
+                for field in (
+                    "creation_time_utc_ticks",
+                    "last_write_time_utc_ticks",
+                )
+            )
+        ):
+            raise EffectivePhaseEntryError(
+                f"calibration runtime identity row {index} is invalid"
+            )
+        digest = _require_sha256(row.get("sha256"), f"runtime file {index} SHA")
+        paths.append(row["path"])
+        normalized.append({field: row[field] for field in ordered_fields})
+        content.append(
+            {"path": row["path"], "bytes": row["bytes"], "sha256": digest}
+        )
+    if tuple(paths) != tuple(sorted(set(paths))):
+        raise EffectivePhaseEntryError("calibration runtime inventory is not unique/ordered")
+    content_sha = _require_sha256(value.get("content_sha256"), "runtime content SHA")
+    aggregate_sha = _require_sha256(
+        value.get("aggregate_sha256"), "runtime aggregate SHA"
+    )
+    encoded_content = json.dumps(
+        content, separators=(",", ":"), ensure_ascii=False, allow_nan=False
+    ).encode("utf-8")
+    encoded_aggregate = json.dumps(
+        normalized, separators=(",", ":"), ensure_ascii=False, allow_nan=False
+    ).encode("utf-8")
+    if _sha256_bytes(encoded_content) != content_sha:
+        raise EffectivePhaseEntryError("calibration runtime content SHA is invalid")
+    if _sha256_bytes(encoded_aggregate) != aggregate_sha:
+        raise EffectivePhaseEntryError("calibration runtime aggregate SHA is invalid")
+    return commit, content_sha
+
+
+def _validate_manifest_config_set(
+    manifest: Mapping[str, Any], *, expected_config_sha256: str
+) -> None:
+    rows = manifest.get("configs")
+    if not isinstance(rows, list) or not rows:
+        raise EffectivePhaseEntryError("calibration config inventory is missing")
+    names: list[str] = []
+    paths: dict[str, Path] = {}
+    for index, row in enumerate(rows):
+        if (
+            not isinstance(row, Mapping)
+            or set(row) != {"path", "bytes", "sha256"}
+            or not isinstance(row.get("path"), str)
+            or not row["path"]
+            or Path(row["path"]).is_absolute()
+            or ".." in Path(row["path"]).parts
+            or type(row.get("bytes")) is not int
+            or row["bytes"] < 0
+        ):
+            raise EffectivePhaseEntryError(
+                f"calibration config record {index} is invalid"
+            )
+        _require_sha256(row.get("sha256"), f"calibration config {index} SHA")
+        names.append(row["path"])
+        paths[row["path"]] = PROJECT_ROOT.joinpath(*Path(row["path"]).parts)
+    if tuple(names) != tuple(sorted(set(names))):
+        raise EffectivePhaseEntryError("calibration config inventory is not unique/ordered")
+    captured, _ = _capture_paths_once(paths)
+    digest = hashlib.sha256()
+    for row in rows:
+        name = str(row["path"])
+        data = captured[name]
+        if row["bytes"] != len(data) or row["sha256"] != _sha256_bytes(data):
+            raise EffectivePhaseEntryError(
+                f"calibration config differs from recorded identity: {name}"
+            )
+        encoded_name = name.encode("utf-8")
+        digest.update(len(encoded_name).to_bytes(8, "big"))
+        digest.update(encoded_name)
+        digest.update(len(data).to_bytes(8, "big"))
+        digest.update(data)
+    if digest.hexdigest() != expected_config_sha256:
+        raise EffectivePhaseEntryError("calibration config-set SHA is invalid")
 
 
 def _raw_class(ground: bool, obstacle: bool) -> str:
@@ -609,8 +750,101 @@ def _validate_bound_artifact(
         raise EffectivePhaseEntryError(f"run manifest binding differs for {label}")
 
 
+def _validate_controller_entry_guard(value: Any, *, phase: str) -> None:
+    if not isinstance(value, Mapping) or set(value) != {
+        "schema",
+        "verified",
+        "phase",
+        "lifecycle",
+        "nonterminal",
+        "unblocked",
+        "authored_entry_guard_names",
+        "entry_guard_evidence",
+        "p10_signed_velocity_alignment",
+    }:
+        raise EffectivePhaseEntryError("calibration controller entry proof is malformed")
+    evidence = value.get("entry_guard_evidence")
+    if (
+        value.get("schema") != "wlr50_clean.phase_effective_entry_controller.v1"
+        or value.get("verified") is not True
+        or value.get("phase") != phase
+        or value.get("lifecycle") != "EXECUTE_MOTION"
+        or value.get("nonterminal") is not True
+        or value.get("unblocked") is not True
+        or value.get("authored_entry_guard_names") != list(_AUTHORED_ENTRY_GUARDS)
+        or not isinstance(evidence, list)
+        or len(evidence) != len(_AUTHORED_ENTRY_GUARDS)
+    ):
+        raise EffectivePhaseEntryError("calibration controller entry guard did not pass")
+    if tuple(
+        row.get("name") for row in evidence if isinstance(row, Mapping)
+    ) != _AUTHORED_ENTRY_GUARDS:
+        raise EffectivePhaseEntryError("calibration authored entry guards are not exact/ordered")
+    for row in evidence:
+        if (
+            not isinstance(row, Mapping)
+            or set(row) != {"name", "passed", "value", "source", "reason"}
+            or row.get("passed") is not True
+            or not isinstance(row.get("source"), str)
+            or not row["source"]
+            or not isinstance(row.get("reason"), str)
+        ):
+            raise EffectivePhaseEntryError("calibration controller guard evidence is invalid")
+    by_name = {str(row["name"]): row for row in evidence}
+    if by_name["previous_state_done"].get("value") is not True:
+        raise EffectivePhaseEntryError("calibration previous-state guard is not proven")
+    critical = by_name["critical_actuators_available"].get("value")
+    if critical != {"joint_count": 8, "wheel_count": 4}:
+        raise EffectivePhaseEntryError("calibration critical-actuator guard is invalid")
+    reference = by_name["reference_entry_compatible"].get("value")
+    if not isinstance(reference, Mapping):
+        raise EffectivePhaseEntryError("calibration reference-entry guard lacks evidence")
+    velocity_rows = {
+        str(name): row
+        for name, row in reference.items()
+        if str(name).endswith("_velocity") and isinstance(row, Mapping)
+    }
+    alignment = value.get("p10_signed_velocity_alignment")
+    if phase != "P10":
+        if alignment is not None or velocity_rows:
+            raise EffectivePhaseEntryError("non-P10 calibration has signed-velocity evidence")
+        return
+    if set(velocity_rows) != {"rear_right_knee_velocity"}:
+        raise EffectivePhaseEntryError("P10 calibration lacks its unique velocity guard")
+    row = velocity_rows["rear_right_knee_velocity"]
+    if alignment != row or set(row) != {
+        "actual_deg_s",
+        "reference_deg_s",
+        "error_deg_s",
+        "limit_deg_s",
+        "signed_positive_rebound_required",
+    }:
+        raise EffectivePhaseEntryError("P10 signed-velocity alignment is inconsistent")
+    try:
+        actual = float(row["actual_deg_s"])
+        reference_velocity = float(row["reference_deg_s"])
+        error = float(row["error_deg_s"])
+        limit = float(row["limit_deg_s"])
+    except (TypeError, ValueError, KeyError) as exc:
+        raise EffectivePhaseEntryError("P10 signed-velocity values are invalid") from exc
+    if (
+        any(not math.isfinite(item) for item in (actual, reference_velocity, error, limit))
+        or actual <= 0.0
+        or reference_velocity <= 0.0
+        or limit < 0.0
+        or row.get("signed_positive_rebound_required") is not True
+        or not math.isclose(error, actual - reference_velocity, rel_tol=0.0, abs_tol=1e-12)
+        or abs(error) > limit + 1e-12
+    ):
+        raise EffectivePhaseEntryError("P10 signed positive velocity guard did not pass")
+
+
 def _validated_probe_attempt(
-    attempt: Any, *, phase: str, lifecycle: str
+    attempt: Any,
+    *,
+    phase: str,
+    lifecycle: str,
+    phase_snapshot_bundle: ValidatedPhaseSnapshotBundle,
 ) -> Mapping[str, Any]:
     if not isinstance(attempt, Mapping):
         raise EffectivePhaseEntryError("calibration attempt must be an object")
@@ -620,6 +854,14 @@ def _validated_probe_attempt(
     root = state.get("pre_prime_root_link_readback")
     actuation = state.get("source_actuation_match")
     mapper = state.get("source_mapper_post_state")
+    clocks = attempt.get("clocks")
+    observation = attempt.get("observation_diagnostics")
+    safety = state.get("entry_safety_contract")
+    safety_flags = safety.get("flags") if isinstance(safety, Mapping) else None
+    sensor = state.get("entry_sensor_contract")
+    effective_proof = state.get("effective_entry_contract")
+    comparison = state.get("source_snapshot_post_prime_diagnostic")
+    snapshot = phase_snapshot_bundle.snapshot(phase)
     expected_scalars = {
         "state_write_count": 1,
         "root_pose_writes": 1,
@@ -672,29 +914,108 @@ def _validated_probe_attempt(
         and mapper.get("restored_after_prime") is False
         and attempt.get("phase") == phase
         and attempt.get("scene_lifecycle") == lifecycle
+        and type(attempt.get("source_tick")) is int
+        and attempt.get("source_tick") == snapshot.source_tick
+        and attempt.get("snapshot_file_sha256") == snapshot.file_sha256
+        and attempt.get("snapshot_state_sha256") == snapshot.state_sha256
+        and Path(str(attempt.get("snapshot_path", ""))).resolve()
+        == snapshot.snapshot_path
         and attempt.get("physics_steps_during_reset") == 181
         and attempt.get("post_prime_contact_sensor_read_count") == 1
         and attempt.get("extra_physics_priming_steps") == 1
         and attempt.get("fsm_or_episode_advanced_for_probe") is False
-        and attempt.get("reset_completed") is False
-        and attempt.get("passed") is False
-        and attempt.get("failure_classification")
-        == "ORDINARY_POST_WRITE_RESTORE_MISMATCH"
-        and isinstance(attempt.get("exception"), Mapping)
-        and attempt["exception"].get("type") == "SensorContractFailure"
-        and str(attempt["exception"].get("message", "")).startswith(
-            "phase snapshot live restoration could not be proven: "
-        )
+        and attempt.get("reset_completed") is True
+        and attempt.get("passed") is True
+        and attempt.get("failure_classification") is None
+        and attempt.get("exception") is None
+        and isinstance(observation, Mapping)
+        and observation.get("observation_available") is True
+        and observation.get("observation_physics_tick") == 0
+        and observation.get("observation_simulation_time_s") == 0.0
+        and isinstance(clocks, Mapping)
+        and clocks.get("authoritative_frame_committed") is True
+        and clocks.get("backend_episode_tick") == 0
+        and clocks.get("controller_constructed") is True
+        and clocks.get("controller_frame_committed") is True
+        and clocks.get("controller_frame_physics_tick") == 0
+        and clocks.get("controller_frame_state_id") == phase
+        and clocks.get("controller_history_length") == 1
+        and clocks.get("controller_internal_physics_tick") == 1
+        and clocks.get("controller_last_simulation_time_s") == 0.0
+        and clocks.get("controller_state_id") == phase
+        and state.get("current_contact_force_provenance")
+        == "current_final_solver_force_only"
+        and state.get("classifier_cold_started_before_only_episode_read") is True
+        and state.get("classifier_restored_before_only_episode_read") is False
+        and state.get("classifier_source_history_restored") is False
+        and state.get("classifier_source_state_restored") is False
+        and state.get("classifier_history_equivalence_claimed") is False
+        and state.get("raw_sensor_history_rewarmed_from_prime") is True
+        and state.get("contact_backend_reset") is True
+        and state.get("contact_backend_reset_after_prime") is False
+        and isinstance(sensor, Mapping)
+        and sensor.get("verified") is True
+        and isinstance(safety, Mapping)
+        and safety.get("schema") == "wlr50_clean.phase_effective_entry_safety.v1"
+        and safety.get("verified") is True
+        and safety.get("all_failure_flags_false") is True
+        and isinstance(safety_flags, Mapping)
+        and set(safety_flags)
+        == {
+            "body_collision",
+            "combined_physics_abort_guard",
+            "fall",
+            "hard_joint_limit",
+            "nan_inf",
+            "physics_explosion",
+            "wheel_only_climb",
+        }
+        and all(type(value) is bool and value is False for value in safety_flags.values())
+        and isinstance(effective_proof, Mapping)
+        and set(effective_proof)
+        == {
+            "schema",
+            "artifact_role",
+            "verified",
+            "calibration_only",
+            "phase",
+            "source_tick",
+            "target_entry_tick",
+            "effective_entry_offset_s",
+            "phase_snapshot_bundle_sha256",
+            "source_snapshot_post_prime_diagnostic",
+            "failures",
+        }
+        and effective_proof.get("schema") == CALIBRATION_LIVE_PROOF_SCHEMA
+        and effective_proof.get("artifact_role") == CALIBRATION_ARTIFACT_ROLE
+        and effective_proof.get("verified") is True
+        and effective_proof.get("calibration_only") is True
+        and effective_proof.get("phase") == phase
+        and effective_proof.get("source_tick") == snapshot.source_tick
+        and effective_proof.get("target_entry_tick") == snapshot.source_tick + 1
+        and effective_proof.get("effective_entry_offset_s") == 1.0 / 120.0
+        and effective_proof.get("phase_snapshot_bundle_sha256")
+        == phase_snapshot_bundle.bundle_sha256
+        and effective_proof.get("source_snapshot_post_prime_diagnostic") == comparison
+        and effective_proof.get("failures") == []
     )
     if scalar_failures or not boolean_contract:
         raise EffectivePhaseEntryError(
             "calibration reset recipe is invalid: " + ", ".join(scalar_failures)
         )
-    comparison = state.get("priming_observation")
-    if not isinstance(comparison, Mapping):
+    if (
+        not isinstance(comparison, Mapping)
+        or comparison.get("schema")
+        != "wlr50_clean.phase_snapshot_live_comparison.v1"
+    ):
         raise EffectivePhaseEntryError("calibration lacks post-prime comparison")
+    _validate_controller_entry_guard(state.get("entry_guard_contract"), phase=phase)
     raw = comparison.get("raw_physx_contacts")
-    if not isinstance(raw, Mapping):
+    if (
+        not isinstance(raw, Mapping)
+        or set(raw) != {"schema", "pairs", "sha256"}
+        or raw.get("schema") != "wlr50_clean.phase_snapshot_raw_physx_contact.v1"
+    ):
         raise EffectivePhaseEntryError("calibration lacks annotated raw contacts")
     declared = _require_sha256(raw.get("sha256"), "annotated raw-contact SHA")
     unhashed = dict(raw)
@@ -744,6 +1065,7 @@ def _capture_calibration_run(
     phase_snapshot_bundle: ValidatedPhaseSnapshotBundle,
     environment_lock_bytes: bytes,
     frozen_ledger_bytes: bytes,
+    expected_git_commit: str | None = None,
 ) -> tuple[str, dict[str, Any], dict[str, Any]]:
     directory = _absolute_unredirected(run_dir, label="calibration run directory")
     names = {
@@ -762,18 +1084,34 @@ def _capture_calibration_run(
     }
     manifest = decoded["run_manifest"]
     identity = manifest.get("identity")
+    manifest_commit = (
+        _require_git_commit(identity.get("git_commit"), "calibration git commit")
+        if isinstance(identity, Mapping)
+        else None
+    )
     if (
         manifest.get("schema") != "wlr50_clean.ppo_run_manifest.v1"
-        or manifest.get("run_kind") != "phase-snapshot-live-probe"
+        or manifest.get("run_kind") != CALIBRATION_RUN_KIND
         or manifest.get("subcommand") != "phase-snapshot-live-probe"
         or manifest.get("immutable_run_directory") is not True
+        or not isinstance(manifest.get("run_dir"), str)
+        or not manifest["run_dir"]
+        or manifest.get("run_id") != directory.name
+        or Path(str(manifest.get("run_dir", ""))).resolve() != directory
+        or not isinstance(manifest.get("project_root"), str)
+        or not manifest["project_root"]
+        or Path(str(manifest.get("project_root", ""))).resolve() != PROJECT_ROOT
         or not isinstance(identity, Mapping)
-        or identity.get("git_commit") != SOURCE_GIT_COMMIT
-        or identity.get("training_stage") != "phase-snapshot-live-probe"
+        or manifest_commit is None
+        or (expected_git_commit is not None and manifest_commit != expected_git_commit)
+        or identity.get("training_stage") != CALIBRATION_TRAINING_STAGE
+        or type(identity.get("seed")) is not int
         or identity.get("seed") != 1002
+        or type(identity.get("environment_count")) is not int
+        or identity.get("environment_count") != 1
         or _SHA256.fullmatch(str(identity.get("config_sha256", ""))) is None
-        or manifest.get("exit_code") != 2
-        or manifest.get("lifecycle") != "FAILED"
+        or manifest.get("exit_code") != 0
+        or manifest.get("lifecycle") != "SUCCEEDED"
     ):
         raise EffectivePhaseEntryError("calibration run manifest identity is invalid")
     artifacts = manifest.get("artifacts")
@@ -800,14 +1138,17 @@ def _capture_calibration_run(
         or environment_record.get("sha256") != _sha256_bytes(environment_lock_bytes)
     ):
         raise EffectivePhaseEntryError("calibration environment-lock binding is invalid")
+    config_sha = _require_sha256(identity.get("config_sha256"), "identity config SHA")
+    _validate_manifest_config_set(manifest, expected_config_sha256=config_sha)
     runtime_before = decoded["runtime_before"]
     runtime_after = decoded["runtime_after"]
-    if (
-        runtime_before != runtime_after
-        or runtime_before.get("schema") != "wlr50_clean.committed_runtime_identity.v1"
-        or runtime_before.get("git_commit") != SOURCE_GIT_COMMIT
-    ):
+    if runtime_before != runtime_after:
         raise EffectivePhaseEntryError("calibration runtime identity is invalid")
+    runtime_commit, runtime_content_sha = _validated_runtime_identity(
+        runtime_before, expected_git_commit=manifest_commit
+    )
+    if runtime_commit != manifest_commit:
+        raise EffectivePhaseEntryError("calibration manifest/runtime commit differs")
     frozen_sha = _sha256_bytes(frozen_ledger_bytes)
     for role in ("frozen_before", "frozen_after"):
         audit = decoded[role]
@@ -825,12 +1166,15 @@ def _capture_calibration_run(
     attempts = probe.get("attempts")
     if (
         probe.get("schema") != PROBE_SCHEMA
-        or probe.get("artifact_role") != "DIAGNOSTIC_ONLY_NOT_TRAINING_ACCEPTANCE"
-        or probe.get("status") != "FAILED"
-        or probe.get("passed") is not False
+        or probe.get("artifact_role") != CALIBRATION_ARTIFACT_ROLE
+        or probe.get("calibration_mode") is not True
+        or probe.get("status") != "PASSED"
+        or probe.get("passed") is not True
+        or probe.get("seed") != 1002
         or phase not in PHASE_IDS
         or probe.get("phase_selector_mode") != "single_phase"
         or probe.get("phase_count") != 1
+        or probe.get("attempts_per_phase") != 2
         or probe.get("complete") is not True
         or probe.get("expected_attempt_count") != 2
         or probe.get("completed_attempt_count") != 2
@@ -838,8 +1182,13 @@ def _capture_calibration_run(
         or probe.get("expected_reused_scene_attempt_count") != 1
         or probe.get("fresh_scene_attempt_count") != 1
         or probe.get("reused_scene_attempt_count") != 1
-        or probe.get("failure_classification")
-        != "ORDINARY_POST_WRITE_RESTORE_MISMATCH"
+        or probe.get("failure_classification") is not None
+        or probe.get("failure_reasons") != []
+        or probe.get("phase_effective_entry_contract") is not None
+        or probe.get("production_reset_modified") is not True
+        or probe.get("production_reset_mode")
+        != "one_source_command_atomic_write_then_physx_prime_without_rewind"
+        or probe.get("extra_physics_priming_steps") != 1
         or not isinstance(attempts, list)
         or len(attempts) != 2
     ):
@@ -851,27 +1200,47 @@ def _capture_calibration_run(
         or fresh.get("phase") != phase
         or reused.get("phase") != phase
         or fresh.get("attempt_kind") != "primary"
+        or fresh.get("attempt_index_for_phase") != 0
         or fresh.get("scene_lifecycle") != "fresh_scene"
         or fresh.get("scene_existed_before") is not False
         or reused.get("attempt_kind") != "reused_repeat"
+        or reused.get("attempt_index_for_phase") != 1
         or reused.get("scene_lifecycle") != "reused_scene"
         or reused.get("scene_existed_before") is not True
     ):
         raise EffectivePhaseEntryError("calibration fresh/reused attempt ordering is invalid")
     if probe.get("phase_snapshot_bundle") != phase_snapshot_bundle.as_record():
         raise EffectivePhaseEntryError("calibration snapshot-bundle binding is invalid")
+    runtime_reference = probe.get("runtime_identity_before")
+    frozen_reference = probe.get("frozen_hashes_before")
     if (
-        probe.get("runtime_identity_before", {}).get("sha256")
-        != _sha256_bytes(captured["runtime_before"])
-        or probe.get("frozen_hashes_before", {}).get("sha256")
-        != _sha256_bytes(captured["frozen_before"])
+        not isinstance(runtime_reference, Mapping)
+        or set(runtime_reference) != {"path", "sha256", "schema"}
+        or Path(str(runtime_reference.get("path", ""))).resolve()
+        != paths["runtime_before"]
+        or runtime_reference.get("schema")
+        != "wlr50_clean.committed_runtime_identity.v1"
+        or runtime_reference.get("sha256") != _sha256_bytes(captured["runtime_before"])
+        or not isinstance(frozen_reference, Mapping)
+        or set(frozen_reference) != {"path", "sha256", "schema", "passed"}
+        or Path(str(frozen_reference.get("path", ""))).resolve()
+        != paths["frozen_before"]
+        or frozen_reference.get("schema") != "wlr50_clean.frozen_fsm_hash_audit.v1"
+        or frozen_reference.get("passed") is not True
+        or frozen_reference.get("sha256") != _sha256_bytes(captured["frozen_before"])
     ):
         raise EffectivePhaseEntryError("calibration probe precheck binding is invalid")
     comparison = _validated_probe_attempt(
-        fresh, phase=str(phase), lifecycle="fresh_scene"
+        fresh,
+        phase=str(phase),
+        lifecycle="fresh_scene",
+        phase_snapshot_bundle=phase_snapshot_bundle,
     )
     reused_comparison = _validated_probe_attempt(
-        reused, phase=str(phase), lifecycle="reused_scene"
+        reused,
+        phase=str(phase),
+        lifecycle="reused_scene",
+        phase_snapshot_bundle=phase_snapshot_bundle,
     )
     _assert_attempts_bit_identical(comparison, reused_comparison)
     fingerprint, fingerprint_binary = _fingerprint(comparison.get("maximum_errors"))
@@ -892,13 +1261,13 @@ def _capture_calibration_run(
         "phase": phase,
         "run_id": str(manifest.get("run_id")),
         "seed": int(identity.get("seed")),
-        "source_git_commit": SOURCE_GIT_COMMIT,
+        "source_git_commit": manifest_commit,
         "files": {
             role: _file_record(paths[role], captured[role], root=PROJECT_ROOT)
             for role in names
         },
-        "runtime_content_sha256": str(runtime_before.get("content_sha256")),
-        "identity_config_sha256": str(identity.get("config_sha256")),
+        "runtime_content_sha256": runtime_content_sha,
+        "identity_config_sha256": config_sha,
         "phase_snapshot_bundle_sha256": phase_snapshot_bundle.bundle_sha256,
         "environment_lock_sha256": _sha256_bytes(environment_lock_bytes),
         "frozen_ledger_sha256": frozen_sha,
@@ -931,27 +1300,36 @@ def build_effective_phase_entry_contract(
     )
     if len(calibration_run_dirs) != len(PHASE_IDS):
         raise EffectivePhaseEntryError("builder requires exactly 12 calibration runs")
-    received_run_ids = tuple(Path(value).name for value in calibration_run_dirs)
-    if received_run_ids != CALIBRATION_RUN_IDS:
-        raise EffectivePhaseEntryError(
-            "builder inputs must be the fixed ordered 00d6cc calibration allowlist"
-        )
     entries: dict[str, Any] = {}
     calibrations: list[dict[str, Any]] = []
-    for directory in calibration_run_dirs:
+    source_git_commit: str | None = None
+    for expected_phase, directory in zip(
+        PHASE_IDS, calibration_run_dirs, strict=True
+    ):
         phase, entry, calibration = _capture_calibration_run(
             Path(directory),
             phase_snapshot_bundle=snapshot_bundle,
             environment_lock_bytes=anchors["environment_lock"],
             frozen_ledger_bytes=anchors["frozen_ledger"],
+            expected_git_commit=source_git_commit,
         )
-        if phase in entries:
-            raise EffectivePhaseEntryError(f"duplicate calibration phase: {phase}")
+        if phase != expected_phase:
+            raise EffectivePhaseEntryError(
+                "builder calibration inputs must be explicitly ordered P02-P13"
+            )
+        calibration_commit = _require_git_commit(
+            calibration.get("source_git_commit"), f"{phase} calibration commit"
+        )
+        if source_git_commit is None:
+            source_git_commit = calibration_commit
+        elif calibration_commit != source_git_commit:
+            raise EffectivePhaseEntryError("all 12 calibrations must share one commit")
         entries[phase] = entry
         calibrations.append(calibration)
-    if tuple(sorted(entries)) != PHASE_IDS:
+    if tuple(entries) != PHASE_IDS:
         raise EffectivePhaseEntryError("calibration runs must cover P02 through P13 exactly")
-    calibrations.sort(key=lambda row: str(row["phase"]))
+    if source_git_commit is None:
+        raise EffectivePhaseEntryError("calibration commit is unavailable")
     runtime_hashes = {
         _require_sha256(row.get("runtime_content_sha256"), "runtime content SHA")
         for row in calibrations
@@ -966,7 +1344,7 @@ def build_effective_phase_entry_contract(
         )
     derivation = {
         "schema": DERIVATION_SCHEMA,
-        "source_git_commit": SOURCE_GIT_COMMIT,
+        "source_git_commit": source_git_commit,
         "phase_snapshot_bundle": snapshot_bundle.as_record(),
         "environment_lock": _file_record(
             Path(environment_lock_path).resolve(), anchors["environment_lock"]
@@ -1100,6 +1478,13 @@ def _validate_contract_payload(
     }:
         raise EffectivePhaseEntryError("effective-entry contact contract is invalid")
     derivation = payload.get("derivation")
+    derivation_commit = (
+        _require_git_commit(
+            derivation.get("source_git_commit"), "derivation source git commit"
+        )
+        if isinstance(derivation, Mapping)
+        else None
+    )
     if (
         not isinstance(derivation, Mapping)
         or set(derivation)
@@ -1114,7 +1499,7 @@ def _validate_contract_payload(
             "calibration_artifacts",
         }
         or derivation.get("schema") != DERIVATION_SCHEMA
-        or derivation.get("source_git_commit") != SOURCE_GIT_COMMIT
+        or derivation_commit is None
         or derivation.get("phase_snapshot_bundle")
         != expected_snapshot_bundle.as_record()
     ):
@@ -1160,7 +1545,8 @@ def _validate_contract_payload(
                 "captured_filesystem_identity_count",
             }
             or row.get("schema") != CALIBRATION_SCHEMA
-            or row.get("source_git_commit") != SOURCE_GIT_COMMIT
+            or row.get("source_git_commit") != derivation_commit
+            or row.get("seed") != 1002
             or row.get("phase_snapshot_bundle_sha256")
             != expected_snapshot_bundle.bundle_sha256
             or row.get("environment_lock_sha256") != _sha256_bytes(environment_lock_bytes)
@@ -1176,12 +1562,11 @@ def _validate_contract_payload(
     ):
         raise EffectivePhaseEntryError("effective-entry calibration provenance is invalid")
     calibration_probe_hashes: dict[str, str] = {}
-    for phase, run_id, row in zip(
-        PHASE_IDS, CALIBRATION_RUN_IDS, calibrations, strict=True
-    ):
-        if row.get("run_id") != run_id or row.get("phase") != phase:
+    recomputed_entries: dict[str, Mapping[str, Any]] = {}
+    for phase, row in zip(PHASE_IDS, calibrations, strict=True):
+        if row.get("phase") != phase or not isinstance(row.get("run_id"), str):
             raise EffectivePhaseEntryError(
-                f"effective-entry calibration allowlist mismatch for {phase}"
+                f"effective-entry calibration identity mismatch for {phase}"
             )
         files = row.get("files")
         if not isinstance(files, Mapping) or set(files) != {
@@ -1208,6 +1593,41 @@ def _validate_contract_payload(
                 )
             _require_sha256(file_row.get("sha256"), f"{phase}.{role}.sha256")
         calibration_probe_hashes[phase] = str(files["probe"]["sha256"])
+        manifest_path = _record_path(
+            files["run_manifest"].get("path"),
+            label=f"{phase} calibration run manifest",
+        )
+        if manifest_path.name != "run_manifest.json":
+            raise EffectivePhaseEntryError(
+                f"effective-entry calibration manifest path is invalid for {phase}"
+            )
+        run_dir = manifest_path.parent
+        for role, filename in {
+            "run_manifest": "run_manifest.json",
+            "probe": "phase_snapshot_live_probe.json",
+            "runtime_before": "committed_runtime_identity.before.json",
+            "runtime_after": "committed_runtime_identity.after.json",
+            "frozen_before": "frozen_hashes.before.json",
+            "frozen_after": "frozen_hashes.after.json",
+        }.items():
+            if _record_path(
+                files[role].get("path"), label=f"{phase}.{role} calibration file"
+            ) != run_dir / filename:
+                raise EffectivePhaseEntryError(
+                    f"effective-entry calibration file escaped its run: {phase}.{role}"
+                )
+        captured_phase, captured_entry, captured_record = _capture_calibration_run(
+            run_dir,
+            phase_snapshot_bundle=expected_snapshot_bundle,
+            environment_lock_bytes=environment_lock_bytes,
+            frozen_ledger_bytes=frozen_ledger_bytes,
+            expected_git_commit=derivation_commit,
+        )
+        if captured_phase != phase or captured_record != dict(row):
+            raise EffectivePhaseEntryError(
+                f"effective-entry calibration evidence changed for {phase}"
+            )
+        recomputed_entries[phase] = captured_entry
     phases = payload.get("phases")
     if not isinstance(phases, Mapping) or tuple(phases) != PHASE_IDS:
         raise EffectivePhaseEntryError("effective-entry phases must be ordered P02-P13")
@@ -1333,6 +1753,10 @@ def _validate_contract_payload(
         )
         if _sha256_bytes(_canonical_bytes(signature)) != expected_signature:
             raise EffectivePhaseEntryError(f"effective contact signature mismatch for {phase}")
+        if recomputed_entries.get(phase) != dict(row):
+            raise EffectivePhaseEntryError(
+                f"effective entry was not derived from calibration evidence for {phase}"
+            )
         validated.append((phase, dict(row)))
     return contract_hash, tuple(validated)
 

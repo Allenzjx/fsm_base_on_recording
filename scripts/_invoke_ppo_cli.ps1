@@ -207,6 +207,7 @@ $HelperOwnedArgumentNames = @("run-dir", "seed", "num-envs")
 $SemanticLockedArgumentNames = @(
     "training-config", "interface-config", "fsm-config", "config",
     "selected-trial", "snapshot-root", "phase-snapshot-prime-physics-steps", "phase",
+    "calibrate-effective-entry",
     "stage", "checkpoint", "checkpoint-manifest", "source-checkpoint", "source-manifest",
     "candidate-checkpoint", "candidate-manifest", "promotion-decision",
     "best-validation-checkpoint", "best-validation-manifest",

@@ -109,6 +109,14 @@ def _parser() -> argparse.ArgumentParser:
                 "--phase",
                 choices=tuple(f"P{index:02d}" for index in range(2, 14)),
             )
+            command.add_argument(
+                "--calibrate-effective-entry",
+                action="store_true",
+                help=(
+                    "capture one phase's successful live reset as calibration-only "
+                    "evidence without consuming the existing effective-entry contract"
+                ),
+            )
         command.add_argument("--stage", choices=("smoke", "phase-curriculum", "full-episode", "mild-randomization"), default="smoke")
         command.add_argument("--checkpoint", type=Path)
         command.add_argument("--checkpoint-manifest", type=Path)
@@ -234,6 +242,16 @@ def _validate_common(args: argparse.Namespace) -> None:
         raise CliError(
             "phase snapshot prime physics steps must be exactly one"
         )
+    if getattr(args, "calibrate_effective_entry", False):
+        if args.command != "phase-snapshot-live-probe":
+            raise CliError(
+                "effective-entry calibration is restricted to the live snapshot probe"
+            )
+        if args.phase is None or args.seed != 1002 or args.num_envs != 1:
+            raise CliError(
+                "effective-entry calibration requires one explicit P02-P13 phase, "
+                "seed 1002, and exactly one environment"
+            )
     args.training_config = _resolve_project_path(args.training_config)
     args.interface_config = _resolve_project_path(args.interface_config)
     args.snapshot_root = _resolve_project_path(args.snapshot_root)
@@ -379,12 +397,30 @@ def _pinned_runtime_phase_contracts(args: argparse.Namespace) -> tuple[Any, Any]
     return snapshot_bundle, effective_contract
 
 
+def _pinned_runtime_snapshot_bundle(args: argparse.Namespace) -> Any:
+    """Return a pre-launch snapshot pin without requiring its dependent contract."""
+
+    from .phase_snapshots import ValidatedPhaseSnapshotBundle
+
+    snapshot_bundle = getattr(args, "_pinned_phase_snapshot_bundle", None)
+    if snapshot_bundle is None:
+        snapshot_bundle = _capture_runtime_snapshot_bundle(args)
+        args._pinned_phase_snapshot_bundle = snapshot_bundle
+    if not isinstance(snapshot_bundle, ValidatedPhaseSnapshotBundle):
+        raise CliError("phase snapshot pin is not an immutable validated bundle")
+    return snapshot_bundle
+
+
 def _validated_runtime_snapshot_bundle(args: argparse.Namespace) -> Mapping[str, Any]:
     """Validate and return the checkpoint-facing snapshot bundle record."""
 
     from .phase_snapshots import PHASE_IDS
 
-    record = _pinned_runtime_phase_contracts(args)[0].as_record()
+    if getattr(args, "calibrate_effective_entry", False):
+        pinned_snapshot_bundle = _pinned_runtime_snapshot_bundle(args)
+    else:
+        pinned_snapshot_bundle = _pinned_runtime_phase_contracts(args)[0]
+    record = pinned_snapshot_bundle.as_record()
     live_root = _live_phase_snapshot_root()
     entries = record.get("snapshots")
     if (
@@ -1782,21 +1818,30 @@ def _phase_snapshot_live_probe(
 
     from .phase_snapshot_live_probe import run_phase_snapshot_live_probe
 
-    pinned_snapshot_bundle, pinned_effective_entry_contract = (
-        _pinned_runtime_phase_contracts(args)
-    )
+    calibration_mode = bool(getattr(args, "calibrate_effective_entry", False))
+    if calibration_mode:
+        pinned_snapshot_bundle = _pinned_runtime_snapshot_bundle(args)
+        pinned_effective_entry_contract = None
+    else:
+        pinned_snapshot_bundle, pinned_effective_entry_contract = (
+            _pinned_runtime_phase_contracts(args)
+        )
     result = run_phase_snapshot_live_probe(
         simulation_app,
         run_dir=args.run_dir,
         seed=args.seed,
         snapshot_bundle=pinned_snapshot_bundle,
         effective_entry_contract=pinned_effective_entry_contract,
+        calibration_mode=calibration_mode,
         prime_physics_steps=args.phase_snapshot_prime_physics_steps,
         phases=None if args.phase is None else (args.phase,),
     )
-    _revalidate_pinned_phase_contracts(
-        pinned_snapshot_bundle, pinned_effective_entry_contract
-    )
+    if calibration_mode:
+        _revalidate_pinned_snapshot_bundle(pinned_snapshot_bundle)
+    else:
+        _revalidate_pinned_phase_contracts(
+            pinned_snapshot_bundle, pinned_effective_entry_contract
+        )
     print(json.dumps(result, separators=(",", ":"), allow_nan=False), flush=True)
     return 0 if result.get("passed") is True else 2
 
@@ -4905,9 +4950,14 @@ def _dispatch_live(args: argparse.Namespace) -> int:
         _require_canonical_initial_checkpoint(args)
         _revalidate_training_phase_zero_residual_rollout(args)
     phase_contracts = None
+    calibration_snapshot_bundle = None
     if args.command in PHASE_CONTRACT_LIVE_COMMANDS:
-        phase_contracts = _pinned_runtime_phase_contracts(args)
-        _revalidate_pinned_phase_contracts(*phase_contracts)
+        if getattr(args, "calibrate_effective_entry", False):
+            calibration_snapshot_bundle = _pinned_runtime_snapshot_bundle(args)
+            _revalidate_pinned_snapshot_bundle(calibration_snapshot_bundle)
+        else:
+            phase_contracts = _pinned_runtime_phase_contracts(args)
+            _revalidate_pinned_phase_contracts(*phase_contracts)
     # AppLauncher is the only Isaac import before the application exists.
     from isaaclab.app import AppLauncher
 
@@ -4946,6 +4996,8 @@ def _dispatch_live(args: argparse.Namespace) -> int:
             raise CliError(f"unsupported live command: {args.command}")
         if phase_contracts is not None:
             _revalidate_pinned_phase_contracts(*phase_contracts)
+        if calibration_snapshot_bundle is not None:
+            _revalidate_pinned_snapshot_bundle(calibration_snapshot_bundle)
         if args.command == "train":
             _revalidate_training_phase_zero_residual_rollout(args)
         # Closing the stack re-hashes both the source pair and the private
@@ -4996,7 +5048,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command in PHASE_CONTRACT_LIVE_COMMANDS:
             # Capture the authoritative snapshot bundle first, then its bound
             # effective-entry contract, before AppLauncher or scene mutation.
-            _capture_runtime_phase_contracts(args)
+            if getattr(args, "calibrate_effective_entry", False):
+                args._pinned_phase_snapshot_bundle = (
+                    _capture_runtime_snapshot_bundle(args)
+                )
+            else:
+                _capture_runtime_phase_contracts(args)
         if args.command in {
             "phase-snapshot-live-probe",
             "phase-zero-residual-rollout",

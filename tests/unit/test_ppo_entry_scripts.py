@@ -214,7 +214,10 @@ def test_effective_entry_consumers_hash_config_and_sidecar() -> None:
     consumers = []
     for path in scripts.glob("*.ps1"):
         text = path.read_text(encoding="utf-8")
-        if "$Configs = @(" not in text or path.name == "build_phase_snapshots.ps1":
+        if "$Configs = @(" not in text or path.name in {
+            "build_phase_snapshots.ps1",
+            "run_phase_effective_entry_calibration.ps1",
+        }:
             continue
         consumers.append(path.name)
         assert "configs\\ppo_phase_effective_entry_v1.json" in text, path.name

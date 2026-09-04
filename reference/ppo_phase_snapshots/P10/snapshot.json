@@ -4,8 +4,8 @@
   "in_episode_root_write": "FORBIDDEN_IN_EPISODE_ROOT_WRITE",
   "source_trial": "trial_043_20260902_clean_v010",
   "source_trial_path": "C:\\robotics_sim\\wlr_robot\\fsm_50mm_recording_shaped_clean_v1\\runs\\trial_043_20260902_clean_v010",
-  "source_tick": 7794,
-  "source_time_s": 64.95,
+  "source_tick": 7793,
+  "source_time_s": 64.94166666666666,
   "source_artifacts": {
     "trial_manifest": {
       "name": "trial_manifest.json",
@@ -35,9 +35,9 @@
   },
   "source_command": {
     "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
-    "control_physics_tick": 7794,
-    "source_atomic_physics_tick": 7974,
-    "source_atomic_write_count": 7975,
+    "control_physics_tick": 7793,
+    "source_atomic_physics_tick": 7973,
+    "source_atomic_write_count": 7974,
     "adapter_input": {
       "requested_full12": [
         -18.5,
@@ -47,15 +47,13 @@
         15.4,
         19.4,
         -6.9,
-        -34.6,
+        -37.8,
         0.0,
         0.0,
         0.0,
         0.0
       ],
-      "tracking_servo_names": [
-        "rear_right_knee"
-      ],
+      "tracking_servo_names": [],
       "drive_feedback_bias_requested_full12": [
         0.0,
         0.0,
@@ -64,7 +62,7 @@
         0.0,
         0.0,
         0.0,
-        0.7499999999999998,
+        0.0,
         0.0,
         0.0,
         0.0,
@@ -90,6 +88,81 @@
       ]
     },
     "mapper_pre_state": {
+      "schema": "wlr50_clean.ppo_phase_snapshot_mapper_state.v1",
+      "source_control_physics_tick": 7792,
+      "requested_servo_deg": [
+        -18.5,
+        -31.4,
+        0.0,
+        31.1,
+        15.4,
+        19.4,
+        -6.9,
+        -37.8
+      ],
+      "applied_drive_command_deg": [
+        -17.999187130524604,
+        -31.4,
+        -0.21132007650467077,
+        30.528846994747603,
+        16.221511668450894,
+        20.093959627688513,
+        -5.174907446335554,
+        -27.799999999999997
+      ],
+      "nominal_target_reached": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "tracking_compensation_deg": [
+        0.5008128694753964,
+        0.0,
+        -0.21132007650467077,
+        -0.5711530052523983,
+        0.8215116684508939,
+        0.693959627688514,
+        1.725092553664446,
+        10.0
+      ],
+      "tracking_active": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "retiring_stale_bias": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "feedback_tick": 7973,
+      "final_drive_servo_deg": [
+        -17.999187130524604,
+        -31.4,
+        -0.21132007650467077,
+        30.528846994747603,
+        16.221511668450894,
+        20.093959627688513,
+        -5.174907446335554,
+        -27.799999999999997
+      ]
+    },
+    "mapper_post_state": {
       "schema": "wlr50_clean.ppo_phase_snapshot_mapper_state.v1",
       "source_control_physics_tick": 7793,
       "requested_servo_deg": [
@@ -164,81 +237,6 @@
         -27.799999999999997
       ]
     },
-    "mapper_post_state": {
-      "schema": "wlr50_clean.ppo_phase_snapshot_mapper_state.v1",
-      "source_control_physics_tick": 7794,
-      "requested_servo_deg": [
-        -18.5,
-        -31.4,
-        0.0,
-        31.1,
-        15.4,
-        19.4,
-        -6.9,
-        -34.6
-      ],
-      "applied_drive_command_deg": [
-        -17.999187130524604,
-        -31.4,
-        -0.21132007650467077,
-        30.528846994747603,
-        16.221511668450894,
-        20.093959627688513,
-        -5.174907446335554,
-        -29.049999999999997
-      ],
-      "nominal_target_reached": [
-        true,
-        true,
-        true,
-        true,
-        true,
-        true,
-        true,
-        false
-      ],
-      "tracking_compensation_deg": [
-        0.5008128694753964,
-        0.0,
-        -0.21132007650467077,
-        -0.5711530052523983,
-        0.8215116684508939,
-        0.693959627688514,
-        1.725092553664446,
-        0.0
-      ],
-      "tracking_active": [
-        false,
-        false,
-        false,
-        false,
-        false,
-        false,
-        false,
-        true
-      ],
-      "retiring_stale_bias": [
-        false,
-        false,
-        false,
-        false,
-        false,
-        false,
-        false,
-        false
-      ],
-      "feedback_tick": 7975,
-      "final_drive_servo_deg": [
-        -17.999187130524604,
-        -31.4,
-        -0.21132007650467077,
-        30.528846994747603,
-        16.221511668450894,
-        20.093959627688513,
-        -5.174907446335554,
-        -28.299999999999997
-      ]
-    },
     "expected_atomic_ack": {
       "schema": "wlr50_clean.atomic_full12_ack.v1",
       "physics_dt_s": 0.008333333333333333,
@@ -265,7 +263,7 @@
         15.4,
         19.4,
         -6.9,
-        -34.6,
+        -37.8,
         0.0,
         0.0,
         0.0,
@@ -279,7 +277,7 @@
         15.4,
         19.4,
         -6.9,
-        -34.6,
+        -37.8,
         0.0,
         0.0,
         0.0,
@@ -293,7 +291,7 @@
         16.221511668450894,
         20.093959627688513,
         -5.174907446335554,
-        -28.299999999999997,
+        -27.799999999999997,
         0.0,
         0.0,
         0.0,
@@ -307,7 +305,7 @@
         16.221511668450894,
         20.093959627688513,
         -5.174907446335554,
-        -29.049999999999997,
+        -27.799999999999997,
         0.0,
         0.0,
         0.0,
@@ -321,7 +319,7 @@
         0.0,
         0.0,
         0.0,
-        0.7499999999999998,
+        0.0,
         0.0,
         0.0,
         0.0,
@@ -335,7 +333,7 @@
         0.0,
         0.0,
         0.0,
-        0.75,
+        0.0,
         0.0,
         0.0,
         0.0,
@@ -351,7 +349,7 @@
         16.221511668450894,
         20.093959627688513,
         -5.174907446335554,
-        -28.299999999999997
+        -27.799999999999997
       ],
       "servo_native_drive_command_deg": [
         -17.999187130524604,
@@ -361,7 +359,7 @@
         16.221511668450894,
         20.093959627688513,
         -5.174907446335554,
-        -29.049999999999997
+        -27.799999999999997
       ],
       "servo_tracking_compensation_deg": [
         0.5008128694753964,
@@ -371,7 +369,7 @@
         0.8215116684508939,
         0.693959627688514,
         1.725092553664446,
-        0.0
+        10.0
       ],
       "servo_nominal_target_reached": [
         true,
@@ -381,7 +379,7 @@
         true,
         true,
         true,
-        false
+        true
       ],
       "servo_tracking_active": [
         false,
@@ -391,12 +389,10 @@
         false,
         false,
         false,
-        true
+        false
       ],
-      "tracking_servo_names": [
-        "rear_right_knee"
-      ],
-      "servo_tracking_feedback_sample_tick": 7974,
+      "tracking_servo_names": [],
+      "servo_tracking_feedback_sample_tick": 7973,
       "servo_tracking_feedback_sampled": false,
       "servo_joint_ids": [
         0,
@@ -422,7 +418,7 @@
         -0.28625036857136393,
         -0.3478606097368424,
         0.08468208416832998,
-        0.4976848946961536
+        0.488958248436182
       ],
       "wheel_target_physical_rad_s": [
         -0.0,
@@ -432,13 +428,16 @@
       ],
       "motion_start_skew_s": 0.0
     },
-    "source_command_row_canonical_sha256": "b36583e8622e9a882d2371f21fc200ed7813b40e249623f7705ed86513dad711",
-    "source_observation_row_canonical_sha256": "e6af88a281f784d9a609704628ea569b4dd94429a52ce8402041d95c3d445220",
-    "drive_target_full12_sha256": "6e17d0bcac0bf4d96d821b7654e3c3666e5493720dde7a079f33812e90f7c1ef",
-    "actuation_contract_sha256": "a492968cf9947fb8fa311bdca3a9678e0b810eda669f3ef8c34a9d44f808d4e5"
+    "source_command_row_canonical_sha256": "b4306f1217a16ab2667e354c757eae4c4123694219fbad5e911d2738efa73332",
+    "source_observation_row_canonical_sha256": "5f39e0b6a3b3b1620fe9d33e24ff6fefb9650edb327c742596c1d9f94777af3d",
+    "drive_target_full12_sha256": "b4f85d79386f08e47361ad1956f5fb14f2a90d53f97c47f3a73ca59047fffcdb",
+    "actuation_contract_sha256": "50a22d601cede94cd155522be41a40ac863606b56f3ee7f5d3e3630bcc962abd",
+    "source_fsm_state": "P10",
+    "source_fsm_lifecycle": "WAIT_ENTRY",
+    "target_entry_tick": 7794
   },
   "fsm_state": "P10",
-  "fsm_lifecycle": "EXECUTE_MOTION",
+  "fsm_lifecycle": "WAIT_ENTRY",
   "phase_history": [
     "P01",
     "P02",
@@ -452,47 +451,47 @@
   ],
   "root_state": {
     "position_w_m": [
-      0.8015139698982239,
-      -0.025598779320716858,
-      0.10624651610851288
+      0.801192045211792,
+      -0.02569107711315155,
+      0.10615865886211395
     ],
     "orientation_wxyz": [
-      0.995073676109314,
-      -0.014154737815260887,
-      -0.08693396300077438,
-      -0.045505065470933914
+      0.9950733780860901,
+      -0.013039631769061089,
+      -0.08704622089862823,
+      -0.04562995582818985
     ],
     "linear_velocity_w_m_s": [
-      0.040219854563474655,
-      0.01670822501182556,
-      0.016475604847073555
+      0.0332089364528656,
+      0.009761141613125801,
+      0.01013900339603424
     ],
     "angular_velocity_w_rad_s": [
-      -0.15165840089321136,
-      -0.018743764609098434,
-      0.010722162202000618
+      -0.2544333040714264,
+      0.008949877694249153,
+      -0.012472552247345448
     ]
   },
   "joint_state": {
     "logical_position_deg": [
-      -18.733320479441602,
-      -32.30337762184741,
-      -0.28214556135303265,
-      30.6261708600657,
-      15.834739353644213,
-      20.029929720675447,
-      -6.524964797993116,
-      -49.76294405039504
+      -18.70996977021662,
+      -32.2313601072388,
+      -0.27547860303201266,
+      30.63239316239958,
+      15.817955871306202,
+      20.014406408239303,
+      -6.497155682787408,
+      -50.058336071619756
     ],
     "logical_velocity_deg_s": [
-      -4.715781169030244,
-      4.469165236215885,
-      4.010920160836914,
-      0.6634757180734587,
-      2.1882542987413927,
-      -0.9815176070812845,
-      3.4781184480253757,
-      23.82253015510911
+      -6.817988317720992,
+      -0.940568702016354,
+      2.6193340042439313,
+      0.8875831360040098,
+      4.018020142479142,
+      -1.401919379033566,
+      15.366781575842712,
+      30.655138919635338
     ],
     "order": [
       "front_left_hip",
@@ -507,10 +506,10 @@
   },
   "wheel_state": {
     "logical_velocity_rad_s": [
-      0.1971156895160675,
-      0.0012818712275475264,
-      -0.021537598222494125,
-      -0.19164331257343292
+      0.27796390652656555,
+      -0.0005809201393276453,
+      -0.038441553711891174,
+      0.17872077226638794
     ],
     "order": [
       "front_left_ankle",
@@ -527,7 +526,7 @@
     15.4,
     19.4,
     -6.9,
-    -34.6,
+    -37.8,
     0.0,
     0.0,
     0.0,
@@ -541,7 +540,7 @@
     15.4,
     19.4,
     -6.9,
-    -34.6,
+    -37.8,
     0.0,
     0.0,
     0.0,
@@ -606,46 +605,46 @@
     },
     "wheel_centers_w_m": {
       "front_left_ankle": [
-        0.9399682283401489,
-        0.04141411930322647,
-        0.10031837224960327
+        0.9398378729820251,
+        0.041307851672172546,
+        0.10028959065675735
       ],
       "front_right_ankle": [
-        1.1097317934036255,
-        -0.3739390969276428,
-        0.1311884969472885
+        1.1094107627868652,
+        -0.3741041421890259,
+        0.13046176731586456
       ],
       "rear_left_ankle": [
-        0.423597514629364,
-        0.08382800966501236,
-        0.05031358823180199
+        0.42337825894355774,
+        0.08387116342782974,
+        0.050273045897483826
       ],
       "rear_right_ankle": [
-        0.5925308465957642,
-        -0.32907646894454956,
-        0.09896451979875565
+        0.5924116969108582,
+        -0.3291472792625427,
+        0.09889492392539978
       ]
     },
     "wheel_bottoms_w_m": {
       "front_left_ankle": [
-        0.9399682283401489,
-        0.04141411930322647,
-        0.05031810012643098
+        0.9398378729820251,
+        0.041307851672172546,
+        0.050289318533585065
       ],
       "front_right_ankle": [
-        1.1097317934036255,
-        -0.3739390969276428,
-        0.08119377692653504
+        1.1094107627868652,
+        -0.3741041421890259,
+        0.08046704729511109
       ],
       "rear_left_ankle": [
-        0.423597514629364,
-        0.08382800966501236,
-        0.0003146094672204086
+        0.42337825894355774,
+        0.08387116342782974,
+        0.0002740671329022476
       ],
       "rear_right_ankle": [
-        0.5925308465957642,
-        -0.32907646894454956,
-        0.04897431698011785
+        0.5924116969108582,
+        -0.3291472792625427,
+        0.048904721106761986
       ]
     }
   },
@@ -677,6 +676,7 @@
     -0.006009926088154316,
     0.0015246823895722628
   ],
-  "snapshot_semantics": "state is written only before the first episode physics tick; live physics and frozen FSM own all subsequent state",
-  "state_sha256": "547a0fb95168dd0daa461dd43066f7aeb65f99687651c2be20f1e23a6439ae2e"
+  "snapshot_semantics": "causal predecessor state is written before one reset-only source-command PhysX prime; the post-prime live observation is the target phase-entry decision; live physics and frozen FSM own all subsequent state",
+  "target_entry_tick": 7794,
+  "state_sha256": "a2b471da89b4390ae6d57e87968c254f28f3dc86af660ad2b74730276e851dfb"
 }

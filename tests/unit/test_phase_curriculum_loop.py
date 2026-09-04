@@ -651,16 +651,24 @@ def test_cli_wires_curriculum_only_for_phase_curriculum_stage(
         run_dir=tmp_path,
         phase_curriculum_max_decisions=7,
     )
+    snapshot_pin = SimpleNamespace(bundle_sha256="a" * 64)
+    effective_entry_pin = SimpleNamespace(
+        phase_snapshot_bundle_sha256=snapshot_pin.bundle_sha256
+    )
 
     cli._construct_live_runner(
         SimpleNamespace(**base_args, stage="phase-curriculum"),
         object(),
         max_iterations=1,
+        pinned_snapshot_bundle=snapshot_pin,
+        pinned_effective_entry_contract=effective_entry_pin,
     )
     cli._construct_live_runner(
         SimpleNamespace(**base_args, stage="full-episode"),
         object(),
         max_iterations=1,
+        pinned_snapshot_bundle=snapshot_pin,
+        pinned_effective_entry_contract=effective_entry_pin,
     )
 
     assert captures[0]["training_phase_reset_schedule"] == (

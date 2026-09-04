@@ -31,6 +31,9 @@
   },
   "physics_hz": 120.0,
   "phase_count": 13,
+  "causal_predecessor_phases": [
+    "P10"
+  ],
   "snapshots": [
     {
       "phase": "P01",
@@ -133,14 +136,15 @@
     },
     {
       "phase": "P10",
-      "source_tick": 7794,
-      "state_sha256": "547a0fb95168dd0daa461dd43066f7aeb65f99687651c2be20f1e23a6439ae2e",
-      "file_sha256": "6ccd27f81465cb9729abc5745ca3fc19d2fc91cb1646cba973c42acc019f631f",
+      "source_tick": 7793,
+      "state_sha256": "a2b471da89b4390ae6d57e87968c254f28f3dc86af660ad2b74730276e851dfb",
+      "file_sha256": "18763b8a5a1e425a8c1e4d173024340bd55b73f3619e8024218df3732e60ab37",
       "path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\reference\\ppo_phase_snapshots\\P10\\snapshot.json",
-      "source_command_row_canonical_sha256": "b36583e8622e9a882d2371f21fc200ed7813b40e249623f7705ed86513dad711",
-      "source_observation_row_canonical_sha256": "e6af88a281f784d9a609704628ea569b4dd94429a52ce8402041d95c3d445220",
-      "drive_target_full12_sha256": "6e17d0bcac0bf4d96d821b7654e3c3666e5493720dde7a079f33812e90f7c1ef",
-      "actuation_contract_sha256": "a492968cf9947fb8fa311bdca3a9678e0b810eda669f3ef8c34a9d44f808d4e5"
+      "source_command_row_canonical_sha256": "b4306f1217a16ab2667e354c757eae4c4123694219fbad5e911d2738efa73332",
+      "source_observation_row_canonical_sha256": "5f39e0b6a3b3b1620fe9d33e24ff6fefb9650edb327c742596c1d9f94777af3d",
+      "drive_target_full12_sha256": "b4f85d79386f08e47361ad1956f5fb14f2a90d53f97c47f3a73ca59047fffcdb",
+      "actuation_contract_sha256": "50a22d601cede94cd155522be41a40ac863606b56f3ee7f5d3e3630bcc962abd",
+      "target_entry_tick": 7794
     },
     {
       "phase": "P11",

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import math
 from pathlib import Path
 
@@ -13,8 +14,9 @@ from wlr50_clean.ppo.phase_effective_entry import (
     EffectivePhaseEntryError,
     FINGERPRINT_FIELDS,
     PHASE_IDS,
-    assert_effective_phase_entry_contract_unchanged,
+    ValidatedEffectivePhaseEntryContract,
     binary64_ulp_distance,
+    build_effective_phase_entry_contract,
     capture_validated_effective_phase_entry_contract,
     validate_effective_phase_entry_comparison,
 )
@@ -30,9 +32,31 @@ def snapshot_bundle():
 
 
 @pytest.fixture(scope="module")
-def contract(snapshot_bundle):
-    return capture_validated_effective_phase_entry_contract(
-        expected_snapshot_bundle=snapshot_bundle
+def contract():
+    """Keep comparison tests independent of the superseded on-disk derivation."""
+
+    contract_bytes = DEFAULT_EFFECTIVE_ENTRY_CONTRACT_PATH.read_bytes()
+    payload = json.loads(contract_bytes)
+    sidecar = DEFAULT_EFFECTIVE_ENTRY_CONTRACT_PATH.with_suffix(".sha256")
+    environment = effective_entry_module.DEFAULT_ENVIRONMENT_LOCK_PATH
+    frozen = effective_entry_module.DEFAULT_FROZEN_LEDGER_PATH
+    return ValidatedEffectivePhaseEntryContract(
+        contract_path=DEFAULT_EFFECTIVE_ENTRY_CONTRACT_PATH,
+        sidecar_path=sidecar,
+        environment_lock_path=environment,
+        frozen_ledger_path=frozen,
+        contract_bytes=contract_bytes,
+        sidecar_bytes=sidecar.read_bytes(),
+        environment_lock_bytes=environment.read_bytes(),
+        frozen_ledger_bytes=frozen.read_bytes(),
+        file_sha256=hashlib.sha256(contract_bytes).hexdigest(),
+        sidecar_file_sha256=hashlib.sha256(sidecar.read_bytes()).hexdigest(),
+        contract_sha256=payload["contract_sha256"],
+        phase_snapshot_bundle_sha256=payload["derivation"][
+            "phase_snapshot_bundle"
+        ]["bundle_sha256"],
+        entries=tuple((phase, payload["phases"][phase]) for phase in PHASE_IDS),
+        filesystem_identity=(),
     )
 
 
@@ -67,6 +91,185 @@ def _comparison(entry):
     }
 
 
+def _calibration_comparison(entry):
+    comparison = _comparison(entry)
+    comparison["schema"] = "wlr50_clean.phase_snapshot_live_comparison.v1"
+    raw = comparison["raw_physx_contacts"]
+    raw["schema"] = "wlr50_clean.phase_snapshot_raw_physx_contact.v1"
+    raw["sha256"] = hashlib.sha256(
+        effective_entry_module._canonical_bytes(raw)
+    ).hexdigest()
+    return comparison
+
+
+def _entry_guard(phase: str):
+    reference_value = {"checked_servo_channels": []}
+    alignment = None
+    if phase == "P10":
+        alignment = {
+            "actual_deg_s": 24.0,
+            "reference_deg_s": 23.0,
+            "error_deg_s": 1.0,
+            "limit_deg_s": 3.45,
+            "signed_positive_rebound_required": True,
+        }
+        reference_value = {"rear_right_knee_velocity": dict(alignment)}
+    values = {
+        "previous_state_done": True,
+        "no_body_obstacle_collision": "no exact base_link/obstacle contact",
+        "joint_hard_limits_valid": {},
+        "reference_entry_compatible": reference_value,
+        "critical_actuators_available": {"joint_count": 8, "wheel_count": 4},
+    }
+    names = list(effective_entry_module._AUTHORED_ENTRY_GUARDS)
+    return {
+        "schema": "wlr50_clean.phase_effective_entry_controller.v1",
+        "verified": True,
+        "phase": phase,
+        "lifecycle": "EXECUTE_MOTION",
+        "nonterminal": True,
+        "unblocked": True,
+        "authored_entry_guard_names": names,
+        "entry_guard_evidence": [
+            {
+                "name": name,
+                "passed": True,
+                "value": values[name],
+                "source": "controller",
+                "reason": "",
+            }
+            for name in names
+        ],
+        "p10_signed_velocity_alignment": alignment,
+    }
+
+
+def _calibration_attempt(contract, snapshot_bundle, phase: str, lifecycle: str):
+    snapshot = snapshot_bundle.snapshot(phase)
+    comparison = _calibration_comparison(contract.entry(phase))
+    proof = {
+        "schema": effective_entry_module.CALIBRATION_LIVE_PROOF_SCHEMA,
+        "artifact_role": effective_entry_module.CALIBRATION_ARTIFACT_ROLE,
+        "verified": True,
+        "calibration_only": True,
+        "phase": phase,
+        "source_tick": snapshot.source_tick,
+        "target_entry_tick": snapshot.source_tick + 1,
+        "effective_entry_offset_s": 1.0 / 120.0,
+        "phase_snapshot_bundle_sha256": snapshot_bundle.bundle_sha256,
+        "source_snapshot_post_prime_diagnostic": comparison,
+        "failures": [],
+    }
+    state = {
+        "state_write_count": 1,
+        "root_pose_writes": 1,
+        "root_velocity_writes": 1,
+        "joint_state_writes": 1,
+        "simulation_forward_syncs": 1,
+        "physics_steps": 1,
+        "prime_physics_steps": 1,
+        "prime_atomic_full12_writes": 1,
+        "contact_sensor_reads_after_prime": 1,
+        "fsm_clock_steps_during_priming": 0,
+        "episode_clock_steps_during_priming": 0,
+        "sensor_history_samples_after_reset": 1,
+        "pre_prime_state_verified": True,
+        "pre_prime_joint_state_verified": True,
+        "post_prime_state_rewrite_performed": False,
+        "contact_and_state_share_solver_tick": True,
+        "logical_target_fallback_used": False,
+        "root_state_writes_confined_before_first_episode_tick": True,
+        "root_velocity_write_api": "write_root_link_velocity_to_sim",
+        "pre_prime_root_link_readback": {
+            "verified": True,
+            "all_values_finite": True,
+            "all_fields_within_production_tolerances": True,
+            "physics_steps_before_readback": 0,
+            "contact_sensor_reads_before_readback": 0,
+        },
+        "source_actuation_match": {
+            "all_fields_match": True,
+            "field_matches": {"drive_target_full12": True},
+            "source_target_hash_matches": True,
+            "logical_target_fallback_used": False,
+            "source_drive_target_full12_sha256": "1" * 64,
+            "replayed_drive_target_full12_sha256": "1" * 64,
+            "source_actuation_contract_sha256": "2" * 64,
+            "replayed_actuation_contract_sha256": "2" * 64,
+        },
+        "source_mapper_post_state": {
+            "all_fields_match": True,
+            "field_matches": {"feedback_tick": True},
+            "reached_naturally_by_single_atomic_apply": True,
+            "restored_after_prime": False,
+        },
+        "current_contact_force_provenance": "current_final_solver_force_only",
+        "classifier_cold_started_before_only_episode_read": True,
+        "classifier_restored_before_only_episode_read": False,
+        "classifier_source_history_restored": False,
+        "classifier_source_state_restored": False,
+        "classifier_history_equivalence_claimed": False,
+        "raw_sensor_history_rewarmed_from_prime": True,
+        "contact_backend_reset": True,
+        "contact_backend_reset_after_prime": False,
+        "entry_sensor_contract": {"verified": True},
+        "entry_safety_contract": {
+            "schema": "wlr50_clean.phase_effective_entry_safety.v1",
+            "verified": True,
+            "all_failure_flags_false": True,
+            "flags": {
+                "body_collision": False,
+                "combined_physics_abort_guard": False,
+                "fall": False,
+                "hard_joint_limit": False,
+                "nan_inf": False,
+                "physics_explosion": False,
+                "wheel_only_climb": False,
+            },
+        },
+        "entry_guard_contract": _entry_guard(phase),
+        "source_snapshot_post_prime_diagnostic": comparison,
+        "effective_entry_contract": proof,
+    }
+    return {
+        "attempt_index_for_phase": 0 if lifecycle == "fresh_scene" else 1,
+        "attempt_kind": "primary" if lifecycle == "fresh_scene" else "reused_repeat",
+        "phase": phase,
+        "scene_lifecycle": lifecycle,
+        "scene_existed_before": lifecycle == "reused_scene",
+        "source_tick": snapshot.source_tick,
+        "snapshot_path": str(snapshot.snapshot_path),
+        "snapshot_file_sha256": snapshot.file_sha256,
+        "snapshot_state_sha256": snapshot.state_sha256,
+        "physics_steps_during_reset": 181,
+        "post_prime_contact_sensor_read_count": 1,
+        "extra_physics_priming_steps": 1,
+        "fsm_or_episode_advanced_for_probe": False,
+        "reset_completed": True,
+        "passed": True,
+        "failure_classification": None,
+        "exception": None,
+        "observation_diagnostics": {
+            "observation_available": True,
+            "observation_physics_tick": 0,
+            "observation_simulation_time_s": 0.0,
+        },
+        "clocks": {
+            "authoritative_frame_committed": True,
+            "backend_episode_tick": 0,
+            "controller_constructed": True,
+            "controller_frame_committed": True,
+            "controller_frame_physics_tick": 0,
+            "controller_frame_state_id": phase,
+            "controller_history_length": 1,
+            "controller_internal_physics_tick": 1,
+            "controller_last_simulation_time_s": 0.0,
+            "controller_state_id": phase,
+        },
+        "snapshot_state_write": state,
+    }
+
+
 def _nextafter(value: float, count: int) -> float:
     result = float(value)
     for _ in range(count):
@@ -81,27 +284,147 @@ def _write_contract_copy(path: Path, payload: bytes) -> None:
     )
 
 
-def test_checked_in_contract_is_strictly_bound_and_lf_stable(
-    contract, snapshot_bundle
-) -> None:
+def test_legacy_contract_is_only_a_comparison_fixture(contract) -> None:
     assert tuple(phase for phase, _ in contract.entries) == PHASE_IDS
-    assert contract.phase_snapshot_bundle_sha256 == snapshot_bundle.bundle_sha256
     assert b"\r" not in contract.contract_bytes
     assert contract.contract_bytes.endswith(b"\n")
-    assert b"\r" not in contract.sidecar_bytes
-    assert contract.sidecar_bytes.endswith(b"\n")
-    payload = __import__("json").loads(contract.contract_bytes)
-    assert payload["portability_scope"] == "same_locked_host_runtime_only"
-    assert payload["calibration_status"] == (
-        "provisional_pending_independent_fresh_holdout"
+
+
+def test_calibration_attempt_uses_passed_controller_entry_and_post_prime_diagnostic(
+    contract, snapshot_bundle
+) -> None:
+    attempt = _calibration_attempt(contract, snapshot_bundle, "P10", "fresh_scene")
+    attempt["snapshot_state_write"]["priming_observation"] = {
+        "maximum_errors": {field: 999.0 for field in FINGERPRINT_FIELDS}
+    }
+
+    comparison = effective_entry_module._validated_probe_attempt(
+        attempt,
+        phase="P10",
+        lifecycle="fresh_scene",
+        phase_snapshot_bundle=snapshot_bundle,
     )
-    derivation = payload["derivation"]
-    assert {row["runtime_content_sha256"] for row in derivation["calibration_artifacts"]} == {
-        derivation["runtime_content_sha256"]
+
+    assert comparison is attempt["snapshot_state_write"][
+        "source_snapshot_post_prime_diagnostic"
+    ]
+    assert comparison["maximum_errors"] != attempt["snapshot_state_write"][
+        "priming_observation"
+    ]["maximum_errors"]
+
+
+@pytest.mark.parametrize(
+    "tamper",
+    ("failed_attempt", "guard", "controller_history", "calibration_proof"),
+)
+def test_calibration_attempt_rejects_failed_or_unproven_evidence(
+    contract, snapshot_bundle, tamper: str
+) -> None:
+    attempt = _calibration_attempt(contract, snapshot_bundle, "P02", "fresh_scene")
+    if tamper == "failed_attempt":
+        attempt.update(
+            {
+                "reset_completed": False,
+                "passed": False,
+                "failure_classification": "ORDINARY_POST_WRITE_RESTORE_MISMATCH",
+                "exception": {"type": "SensorContractFailure"},
+            }
+        )
+    elif tamper == "guard":
+        attempt["snapshot_state_write"]["entry_guard_contract"]["verified"] = False
+    elif tamper == "controller_history":
+        attempt["clocks"]["controller_history_length"] = 0
+    else:
+        attempt["snapshot_state_write"]["effective_entry_contract"][
+            "source_snapshot_post_prime_diagnostic"
+        ] = {"schema": "tampered"}
+
+    with pytest.raises(EffectivePhaseEntryError):
+        effective_entry_module._validated_probe_attempt(
+            attempt,
+            phase="P02",
+            lifecycle="fresh_scene",
+            phase_snapshot_bundle=snapshot_bundle,
+        )
+
+
+def test_builder_accepts_explicit_ordered_runs_and_binds_dynamic_commit(
+    snapshot_bundle, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    commit = "a" * 40
+    run_dirs = tuple(tmp_path / f"opaque-calibration-{index}" for index in range(12))
+    phase_by_dir = {
+        directory.resolve(): phase
+        for directory, phase in zip(run_dirs, PHASE_IDS, strict=True)
     }
-    assert {row["identity_config_sha256"] for row in derivation["calibration_artifacts"]} == {
-        derivation["identity_config_sha256"]
-    }
+
+    def capture(directory, **kwargs):
+        phase = phase_by_dir[Path(directory).resolve()]
+        expected_commit = kwargs["expected_git_commit"]
+        assert expected_commit in (None, commit)
+        return (
+            phase,
+            {"phase": phase},
+            {
+                "phase": phase,
+                "source_git_commit": commit,
+                "runtime_content_sha256": "b" * 64,
+                "identity_config_sha256": "c" * 64,
+            },
+        )
+
+    monkeypatch.setattr(effective_entry_module, "_capture_calibration_run", capture)
+    monkeypatch.setattr(
+        effective_entry_module,
+        "_validate_contract_payload",
+        lambda *args, **kwargs: ("d" * 64, ()),
+    )
+    monkeypatch.setattr(
+        effective_entry_module,
+        "capture_validated_effective_phase_entry_contract",
+        lambda *args, **kwargs: None,
+    )
+
+    payload = build_effective_phase_entry_contract(
+        run_dirs,
+        tmp_path / "derived.json",
+        snapshot_bundle=snapshot_bundle,
+    )
+
+    assert payload["derivation"]["source_git_commit"] == commit
+    assert tuple(payload["phases"]) == PHASE_IDS
+    assert [row["phase"] for row in payload["derivation"]["calibration_artifacts"]] == list(
+        PHASE_IDS
+    )
+
+
+def test_builder_rejects_out_of_order_phase_artifacts(
+    snapshot_bundle, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run_dirs = tuple(tmp_path / phase for phase in PHASE_IDS)
+    swapped = dict(zip(run_dirs, PHASE_IDS, strict=True))
+    swapped[run_dirs[0]], swapped[run_dirs[1]] = PHASE_IDS[1], PHASE_IDS[0]
+
+    def capture(directory, **_kwargs):
+        phase = swapped[Path(directory)]
+        return (
+            phase,
+            {"phase": phase},
+            {
+                "phase": phase,
+                "source_git_commit": "a" * 40,
+                "runtime_content_sha256": "b" * 64,
+                "identity_config_sha256": "c" * 64,
+            },
+        )
+
+    monkeypatch.setattr(effective_entry_module, "_capture_calibration_run", capture)
+    with pytest.raises(EffectivePhaseEntryError, match="ordered P02-P13"):
+        build_effective_phase_entry_contract(
+            run_dirs,
+            tmp_path / "derived.json",
+            snapshot_bundle=snapshot_bundle,
+        )
 
 
 def test_p01_is_explicitly_outside_the_effective_entry_contract(contract) -> None:
@@ -111,7 +434,7 @@ def test_p01_is_explicitly_outside_the_effective_entry_contract(contract) -> Non
 
 @pytest.mark.parametrize("tamper", ("fingerprint", "contact", "entry_sha256"))
 def test_entry_copy_tamper_cannot_mutate_pinned_contract(
-    contract, snapshot_bundle, tamper: str
+    contract, tamper: str
 ) -> None:
     phase = "P02"
     original = contract.entry(phase)
@@ -126,9 +449,6 @@ def test_entry_copy_tamper_cannot_mutate_pinned_contract(
         candidate["entry_sha256"] = "0" * 64
 
     assert contract.entry(phase) == original
-    assert_effective_phase_entry_contract_unchanged(
-        contract, expected_snapshot_bundle=snapshot_bundle
-    )
 
 
 @pytest.mark.parametrize("tamper", ("fingerprint", "contact", "entry_sha256"))

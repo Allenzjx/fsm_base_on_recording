@@ -444,7 +444,9 @@ def _controller_clocks(controller: Any | None, frame: Any | None) -> dict[str, A
     }
 
 
-def _attempt_passed(row: Mapping[str, Any]) -> bool:
+def _attempt_passed(
+    row: Mapping[str, Any], *, calibration_mode: bool = False
+) -> bool:
     diagnostic = row.get("observation_diagnostics")
     clocks = row.get("clocks")
     snapshot_write = row.get("snapshot_state_write")
@@ -485,6 +487,30 @@ def _attempt_passed(row: Mapping[str, Any]) -> bool:
             and not isinstance(actual_velocity, bool)
             and math.isfinite(float(actual_velocity))
             and float(actual_velocity) > 0.0
+        )
+    if calibration_mode:
+        diagnostic_proof = effective_entry.get(
+            "source_snapshot_post_prime_diagnostic"
+        )
+        effective_entry_ok = bool(
+            effective_entry.get("schema")
+            == "wlr50_clean.ppo_phase_effective_entry_calibration_live_proof.v1"
+            and effective_entry.get("artifact_role")
+            == "CALIBRATION_ONLY_NOT_TRAINING_ACCEPTANCE"
+            and effective_entry.get("verified") is True
+            and effective_entry.get("calibration_only") is True
+            and effective_entry.get("phase") == row.get("phase")
+            and isinstance(diagnostic_proof, Mapping)
+            and diagnostic_proof.get("schema")
+            == "wlr50_clean.phase_snapshot_live_comparison.v1"
+            and not effective_entry.get("failures")
+        )
+    else:
+        effective_entry_ok = bool(
+            effective_entry.get("schema")
+            == "wlr50_clean.ppo_phase_effective_entry_live_proof.v1"
+            and effective_entry.get("verified") is True
+            and not effective_entry.get("failures")
         )
     return bool(
         row.get("reset_completed") is True
@@ -536,10 +562,7 @@ def _attempt_passed(row: Mapping[str, Any]) -> bool:
         and snapshot_write.get("raw_sensor_history_rewarmed_from_prime") is True
         and snapshot_write.get("contact_backend_reset") is True
         and snapshot_write.get("contact_backend_reset_after_prime") is False
-        and effective_entry.get("schema")
-        == "wlr50_clean.ppo_phase_effective_entry_live_proof.v1"
-        and effective_entry.get("verified") is True
-        and not effective_entry.get("failures")
+        and effective_entry_ok
         and entry_safety.get("schema")
         == "wlr50_clean.phase_effective_entry_safety.v1"
         and entry_safety.get("verified") is True
@@ -660,6 +683,7 @@ def run_phase_snapshot_live_probe(
     seed: int,
     snapshot_bundle: Any,
     effective_entry_contract: Any | None = None,
+    calibration_mode: bool = False,
     prime_physics_steps: int = 1,
     phases: Sequence[str] | None = None,
 ) -> Mapping[str, Any]:
@@ -683,20 +707,42 @@ def run_phase_snapshot_live_probe(
             "prime_physics_steps must be exactly one for the production reset"
         )
     selected_phases = _selected_probe_phases(phases)
-    if (
+    if type(calibration_mode) is not bool:
+        raise PhaseSnapshotLiveProbeError(
+            "calibration_mode must be an explicit boolean"
+        )
+    if not isinstance(getattr(snapshot_bundle, "bundle_sha256", None), str):
+        raise PhaseSnapshotLiveProbeError(
+            "phase-snapshot probe requires a pinned snapshot bundle"
+        )
+    if calibration_mode:
+        if effective_entry_contract is not None:
+            raise PhaseSnapshotLiveProbeError(
+                "calibration mode cannot consume an effective-entry contract"
+            )
+        if phases is None or len(selected_phases) != 1:
+            raise PhaseSnapshotLiveProbeError(
+                "calibration mode requires exactly one explicit phase"
+            )
+        if int(seed) != 1002:
+            raise PhaseSnapshotLiveProbeError(
+                "effective-entry calibration requires locked seed 1002"
+            )
+    elif (
         effective_entry_contract is None
         or not callable(getattr(effective_entry_contract, "as_record", None))
         or not isinstance(
             getattr(effective_entry_contract, "phase_snapshot_bundle_sha256", None),
             str,
         )
-        or not isinstance(getattr(snapshot_bundle, "bundle_sha256", None), str)
     ):
         raise PhaseSnapshotLiveProbeError(
             "phase-snapshot probe requires pinned snapshot/effective-entry contracts"
         )
     if (
-        effective_entry_contract.phase_snapshot_bundle_sha256
+        not calibration_mode
+        and effective_entry_contract is not None
+        and effective_entry_contract.phase_snapshot_bundle_sha256
         != snapshot_bundle.bundle_sha256
     ):
         raise PhaseSnapshotLiveProbeError(
@@ -739,7 +785,12 @@ def run_phase_snapshot_live_probe(
     }
     payload: dict[str, Any] = {
         "schema": PROBE_SCHEMA,
-        "artifact_role": "DIAGNOSTIC_ONLY_NOT_TRAINING_ACCEPTANCE",
+        "artifact_role": (
+            "CALIBRATION_ONLY_NOT_TRAINING_ACCEPTANCE"
+            if calibration_mode
+            else "DIAGNOSTIC_ONLY_NOT_TRAINING_ACCEPTANCE"
+        ),
+        "calibration_mode": calibration_mode,
         "probe_process_id": os.getpid(),
         "probe_process_instance_id": _PROBE_PROCESS_INSTANCE_ID,
         "status": "RUNNING",
@@ -774,7 +825,11 @@ def run_phase_snapshot_live_probe(
             ),
         },
         "phase_snapshot_bundle": snapshot_bundle.as_record(),
-        "phase_effective_entry_contract": effective_entry_contract.as_record(),
+        "phase_effective_entry_contract": (
+            None
+            if effective_entry_contract is None
+            else effective_entry_contract.as_record()
+        ),
         "attempts": [],
         "failure_reasons": [],
     }
@@ -789,6 +844,7 @@ def run_phase_snapshot_live_probe(
             dependencies=dependencies,
             expected_phase_snapshot_bundle=snapshot_bundle,
             expected_effective_entry_contract=effective_entry_contract,
+            allow_effective_entry_calibration=calibration_mode,
             phase_snapshot_prime_physics_steps=prime_physics_steps,
         )
         for phase in selected_phases:
@@ -912,7 +968,9 @@ def run_phase_snapshot_live_probe(
                         "authoritative_frame_committed": frame is not None,
                     },
                 }
-                row["passed"] = _attempt_passed(row)
+                row["passed"] = _attempt_passed(
+                    row, calibration_mode=calibration_mode
+                )
                 attempts.append(row)
                 payload["attempts"] = attempts
                 payload["completed_attempt_count"] = len(attempts)
@@ -930,10 +988,11 @@ def run_phase_snapshot_live_probe(
                     snapshot_bundle,
                     canonical_root=snapshot_bundle.snapshot_root,
                 )
-                assert_effective_phase_entry_contract_unchanged(
-                    effective_entry_contract,
-                    expected_snapshot_bundle=snapshot_bundle,
-                )
+                if effective_entry_contract is not None:
+                    assert_effective_phase_entry_contract_unchanged(
+                        effective_entry_contract,
+                        expected_snapshot_bundle=snapshot_bundle,
+                    )
                 if caught_exception is None and row["passed"] is not True:
                     # A production reset which returns successfully must agree
                     # with every probe runtime invariant.  Otherwise the live
@@ -994,10 +1053,11 @@ def run_phase_snapshot_live_probe(
             snapshot_bundle,
             canonical_root=snapshot_bundle.snapshot_root,
         )
-        assert_effective_phase_entry_contract_unchanged(
-            effective_entry_contract,
-            expected_snapshot_bundle=snapshot_bundle,
-        )
+        if effective_entry_contract is not None:
+            assert_effective_phase_entry_contract_unchanged(
+                effective_entry_contract,
+                expected_snapshot_bundle=snapshot_bundle,
+            )
     except Exception as exc:
         _seal_fatal_probe_failure(output, payload, attempts, exc)
         raise PhaseSnapshotLiveProbeError(

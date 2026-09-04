@@ -76,6 +76,15 @@ class PhaseSnapshotError(ValueError):
 
 
 @dataclass(frozen=True, slots=True)
+class _PhaseEntryBoundary:
+    """Source/target ticks for one reset-only phase-entry replay."""
+
+    source_tick: int
+    target_entry_tick: int
+    uses_causal_predecessor: bool
+
+
+@dataclass(frozen=True, slots=True)
 class PhaseSnapshotFileBuffer:
     """Immutable bytes and validated digests for one phase-entry snapshot."""
 
@@ -883,22 +892,72 @@ def _source_replay_at_phase_ticks(
     return result
 
 
-def _phase_entry_ticks_from_rows(
+def _contains_signed_positive_rebound_requirement(value: Any) -> bool:
+    if isinstance(value, Mapping):
+        if value.get("signed_positive_rebound_required") is True:
+            return True
+        return any(
+            _contains_signed_positive_rebound_requirement(item)
+            for item in value.values()
+        )
+    if isinstance(value, (list, tuple)):
+        return any(
+            _contains_signed_positive_rebound_requirement(item) for item in value
+        )
+    return False
+
+
+def _phase_entry_boundaries_from_rows(
     rows: Iterable[Mapping[str, Any]],
-) -> dict[str, int]:
-    result: dict[str, int] = {"P01": 0}
+) -> dict[str, _PhaseEntryBoundary]:
+    result: dict[str, _PhaseEntryBoundary] = {
+        "P01": _PhaseEntryBoundary(
+            source_tick=0,
+            target_entry_tick=0,
+            uses_causal_predecessor=False,
+        )
+    }
     for row in rows:
         phase = str(row.get("state_id"))
-        if phase in PHASE_IDS and row.get("to_lifecycle") == "EXECUTE_MOTION" and phase not in result:
+        if (
+            phase in PHASE_IDS
+            and row.get("from_lifecycle") == "WAIT_ENTRY"
+            and row.get("to_lifecycle") == "EXECUTE_MOTION"
+            and phase not in result
+        ):
             time_s = float(row["sim_time_s"])
             tick = int(round(time_s * PHYSICS_HZ))
             if not math.isclose(time_s, tick / PHYSICS_HZ, abs_tol=2.0e-6):
                 raise PhaseSnapshotError(f"{phase} entry is not on the 120 Hz lattice")
-            result[phase] = tick
+            details = row.get("details")
+            guards = details.get("guards", ()) if isinstance(details, Mapping) else ()
+            uses_causal_predecessor = (
+                _contains_signed_positive_rebound_requirement(guards)
+            )
+            if uses_causal_predecessor and tick <= 0:
+                raise PhaseSnapshotError(
+                    f"{phase} signed-positive entry lacks a causal predecessor tick"
+                )
+            result[phase] = _PhaseEntryBoundary(
+                source_tick=tick - 1 if uses_causal_predecessor else tick,
+                target_entry_tick=tick,
+                uses_causal_predecessor=uses_causal_predecessor,
+            )
     if tuple(result) != PHASE_IDS:
         missing = [phase for phase in PHASE_IDS if phase not in result]
         raise PhaseSnapshotError(f"trial lacks phase-entry transitions: {missing}")
     return result
+
+
+def _phase_entry_ticks_from_rows(
+    rows: Iterable[Mapping[str, Any]],
+) -> dict[str, int]:
+    """Return target decision ticks; reset source ticks may precede them."""
+
+    return {
+        phase: boundary.target_entry_tick
+        for phase, boundary in _phase_entry_boundaries_from_rows(rows).items()
+    }
 
 
 def phase_entry_ticks(trial_dir: Path | str) -> dict[str, int]:
@@ -962,6 +1021,7 @@ def _snapshot_payload(
     trial_id: str,
     phase: str,
     tick: int,
+    target_entry_tick: int,
     observation: Mapping[str, Any],
     command: Mapping[str, Any],
     source_artifacts: Mapping[str, Any],
@@ -980,7 +1040,30 @@ def _snapshot_payload(
         "front_left_ankle", "front_right_ankle", "rear_left_ankle", "rear_right_ankle"
     )
     completed = list(PHASE_IDS[: PHASE_IDS.index(phase)])
-    return {
+    if type(target_entry_tick) is not int or target_entry_tick < tick:
+        raise PhaseSnapshotError(f"invalid target entry tick for {phase}")
+    uses_causal_predecessor = target_entry_tick == tick + 1
+    if target_entry_tick not in {tick, tick + 1}:
+        raise PhaseSnapshotError(
+            f"{phase} reset source must be the target tick or its causal predecessor"
+        )
+    source_state = command.get("state_id")
+    source_lifecycle = command.get("lifecycle")
+    expected_lifecycle = "WAIT_ENTRY" if uses_causal_predecessor else "EXECUTE_MOTION"
+    if source_state != phase or source_lifecycle != expected_lifecycle:
+        raise PhaseSnapshotError(
+            f"{phase} source command state/lifecycle does not match its reset boundary"
+        )
+    serialized_source_command = dict(source_command)
+    if uses_causal_predecessor:
+        serialized_source_command.update(
+            {
+                "source_fsm_state": source_state,
+                "source_fsm_lifecycle": source_lifecycle,
+                "target_entry_tick": target_entry_tick,
+            }
+        )
+    payload = {
         "schema": SNAPSHOT_SCHEMA,
         "reset_use": "TRAINING_RESET_STATE_WRITE",
         "in_episode_root_write": "FORBIDDEN_IN_EPISODE_ROOT_WRITE",
@@ -989,9 +1072,9 @@ def _snapshot_payload(
         "source_tick": tick,
         "source_time_s": tick / PHYSICS_HZ,
         "source_artifacts": dict(source_artifacts),
-        "source_command": dict(source_command),
+        "source_command": serialized_source_command,
         "fsm_state": phase,
-        "fsm_lifecycle": "EXECUTE_MOTION",
+        "fsm_lifecycle": source_lifecycle,
         "phase_history": completed,
         "root_state": {
             "position_w_m": list(base["position_w_m"]),
@@ -1035,6 +1118,14 @@ def _snapshot_payload(
         "level_reference_orientation_wxyz": list(level_reference_orientation_wxyz),
         "snapshot_semantics": "state is written only before the first episode physics tick; live physics and frozen FSM own all subsequent state",
     }
+    if uses_causal_predecessor:
+        payload["target_entry_tick"] = target_entry_tick
+        payload["snapshot_semantics"] = (
+            "causal predecessor state is written before one reset-only source-command "
+            "PhysX prime; the post-prime live observation is the target phase-entry "
+            "decision; live physics and frozen FSM own all subsequent state"
+        )
+    return payload
 
 
 def build_phase_snapshots(
@@ -1081,8 +1172,8 @@ def build_phase_snapshots(
     leg_crossing_rows = _read_jsonl_bytes(
         leg_crossing_bytes, source_paths["leg_crossing"]
     )
-    ticks_by_phase = _phase_entry_ticks_from_rows(transition_rows)
-    ticks = set(ticks_by_phase.values())
+    boundaries_by_phase = _phase_entry_boundaries_from_rows(transition_rows)
+    ticks = {boundary.source_tick for boundary in boundaries_by_phase.values()}
     with _SingleReadJsonlCapture(
         source_paths["command"],
         label="source command stream",
@@ -1148,15 +1239,36 @@ def build_phase_snapshots(
     _assert_source_surface_unchanged(source_identities)
     observations = {tick: row["observation"] for tick, row in replay_rows.items()}
     commands = {tick: row["command"] for tick, row in replay_rows.items()}
+    for phase, boundary in boundaries_by_phase.items():
+        source_command_row = commands[boundary.source_tick]
+        expected_lifecycle = (
+            "WAIT_ENTRY"
+            if boundary.uses_causal_predecessor
+            else "EXECUTE_MOTION"
+        )
+        if (
+            source_command_row.get("state_id") != phase
+            or source_command_row.get("lifecycle") != expected_lifecycle
+        ):
+            raise PhaseSnapshotError(
+                f"{phase} source command state/lifecycle does not match its reset boundary"
+            )
     level_reference_orientation = list(observations[0]["base"]["orientation_wxyz"])
     output.mkdir(parents=True, exist_ok=False)
     rows = []
-    for phase, tick in ticks_by_phase.items():
+    causal_predecessor_phases = [
+        phase
+        for phase, boundary in boundaries_by_phase.items()
+        if boundary.uses_causal_predecessor
+    ]
+    for phase, boundary in boundaries_by_phase.items():
+        tick = boundary.source_tick
         payload = _snapshot_payload(
             trial=trial,
             trial_id=trial_id,
             phase=phase,
             tick=tick,
+            target_entry_tick=boundary.target_entry_tick,
             observation=observations[tick],
             command=commands[tick],
             source_artifacts=source_artifacts,
@@ -1174,27 +1286,28 @@ def build_phase_snapshots(
         (phase_dir / "snapshot.sha256").write_bytes(
             f"{file_hash}  snapshot.json\n".encode("ascii")
         )
-        rows.append(
-            {
-                "phase": phase,
-                "source_tick": tick,
-                "state_sha256": state_hash,
-                "file_sha256": file_hash,
-                "path": str(snapshot_path),
-                "source_command_row_canonical_sha256": replay_rows[tick][
-                    "source_command"
-                ]["source_command_row_canonical_sha256"],
-                "source_observation_row_canonical_sha256": replay_rows[tick][
-                    "source_command"
-                ]["source_observation_row_canonical_sha256"],
-                "drive_target_full12_sha256": replay_rows[tick]["source_command"][
-                    "drive_target_full12_sha256"
-                ],
-                "actuation_contract_sha256": replay_rows[tick]["source_command"][
-                    "actuation_contract_sha256"
-                ],
-            }
-        )
+        row = {
+            "phase": phase,
+            "source_tick": tick,
+            "state_sha256": state_hash,
+            "file_sha256": file_hash,
+            "path": str(snapshot_path),
+            "source_command_row_canonical_sha256": replay_rows[tick][
+                "source_command"
+            ]["source_command_row_canonical_sha256"],
+            "source_observation_row_canonical_sha256": replay_rows[tick][
+                "source_command"
+            ]["source_observation_row_canonical_sha256"],
+            "drive_target_full12_sha256": replay_rows[tick]["source_command"][
+                "drive_target_full12_sha256"
+            ],
+            "actuation_contract_sha256": replay_rows[tick]["source_command"][
+                "actuation_contract_sha256"
+            ],
+        }
+        if boundary.uses_causal_predecessor:
+            row["target_entry_tick"] = boundary.target_entry_tick
+        rows.append(row)
     manifest = {
         "schema": MANIFEST_SCHEMA,
         "source_trial": trial_id,
@@ -1202,6 +1315,7 @@ def build_phase_snapshots(
         "source_artifacts": source_artifacts,
         "physics_hz": PHYSICS_HZ,
         "phase_count": len(rows),
+        "causal_predecessor_phases": causal_predecessor_phases,
         "snapshots": rows,
     }
     (output / "manifest.json").write_bytes(_indented_json_lf_bytes(manifest))
@@ -1283,6 +1397,7 @@ def validate_phase_snapshot_payload_contract(
     *,
     manifest_row: Mapping[str, Any] | None = None,
     manifest_source_artifacts: Mapping[str, Any] | None = None,
+    causal_predecessor_required: bool | None = None,
 ) -> None:
     """Fail closed on every v2 source-command replay field and digest."""
 
@@ -1291,6 +1406,36 @@ def validate_phase_snapshot_payload_contract(
     source_tick = payload.get("source_tick")
     if type(source_tick) is not int or source_tick < 0:
         raise PhaseSnapshotError(f"snapshot source tick is invalid for {phase}")
+    has_target_entry_tick = "target_entry_tick" in payload
+    target_entry_tick = payload.get("target_entry_tick")
+    if has_target_entry_tick:
+        if type(target_entry_tick) is not int or target_entry_tick != source_tick + 1:
+            raise PhaseSnapshotError(
+                f"snapshot causal target-entry tick is invalid for {phase}"
+            )
+    if causal_predecessor_required is True and not has_target_entry_tick:
+        raise PhaseSnapshotError(
+            f"snapshot {phase} lacks its required causal predecessor target tick"
+        )
+    if causal_predecessor_required is False and has_target_entry_tick:
+        raise PhaseSnapshotError(
+            f"snapshot {phase} unexpectedly declares causal predecessor semantics"
+        )
+    expected_lifecycle = "WAIT_ENTRY" if has_target_entry_tick else "EXECUTE_MOTION"
+    if payload.get("fsm_lifecycle") != expected_lifecycle:
+        raise PhaseSnapshotError(
+            f"snapshot FSM lifecycle is inconsistent with its source tick for {phase}"
+        )
+    source_time_s = payload.get("source_time_s")
+    if (
+        isinstance(source_time_s, bool)
+        or not isinstance(source_time_s, (int, float))
+        or not math.isfinite(float(source_time_s))
+        or not math.isclose(
+            float(source_time_s), source_tick / PHYSICS_HZ, rel_tol=0.0, abs_tol=1.0e-12
+        )
+    ):
+        raise PhaseSnapshotError(f"snapshot source time is invalid for {phase}")
     artifacts = _validate_source_artifacts(
         payload.get("source_artifacts"), label=f"snapshot {phase}.source_artifacts"
     )
@@ -1314,6 +1459,14 @@ def validate_phase_snapshot_payload_contract(
         "drive_target_full12_sha256",
         "actuation_contract_sha256",
     }
+    if has_target_entry_tick:
+        expected_source_keys.update(
+            {
+                "source_fsm_state",
+                "source_fsm_lifecycle",
+                "target_entry_tick",
+            }
+        )
     if not isinstance(source, Mapping) or set(source) != expected_source_keys:
         raise PhaseSnapshotError(
             f"snapshot source-command replay fields are incomplete for {phase}"
@@ -1326,6 +1479,14 @@ def validate_phase_snapshot_payload_contract(
         raise PhaseSnapshotError(f"snapshot source atomic tick mismatch for {phase}")
     if source.get("source_atomic_write_count") != SOURCE_SETTLE_TICKS + source_tick + 1:
         raise PhaseSnapshotError(f"snapshot source atomic write count mismatch for {phase}")
+    if has_target_entry_tick and (
+        source.get("source_fsm_state") != phase
+        or source.get("source_fsm_lifecycle") != payload.get("fsm_lifecycle")
+        or source.get("target_entry_tick") != target_entry_tick
+    ):
+        raise PhaseSnapshotError(
+            f"snapshot causal source-command context mismatch for {phase}"
+        )
 
     for name in (
         "source_command_row_canonical_sha256",
@@ -1512,6 +1673,17 @@ def validate_phase_snapshot_payload_contract(
         raise PhaseSnapshotError(f"snapshot actuation-contract hash mismatch for {phase}")
 
     if manifest_row is not None:
+        if manifest_row.get("source_tick") != source_tick:
+            raise PhaseSnapshotError(f"manifest source tick mismatch for {phase}")
+        if has_target_entry_tick:
+            if manifest_row.get("target_entry_tick") != target_entry_tick:
+                raise PhaseSnapshotError(
+                    f"manifest target-entry tick mismatch for {phase}"
+                )
+        elif "target_entry_tick" in manifest_row:
+            raise PhaseSnapshotError(
+                f"manifest unexpectedly declares a target-entry tick for {phase}"
+            )
         bindings = {
             "source_command_row_canonical_sha256": source[
                 "source_command_row_canonical_sha256"
@@ -1577,6 +1749,7 @@ def capture_validated_phase_snapshot_bundle(
         "source_artifacts",
         "physics_hz",
         "phase_count",
+        "causal_predecessor_phases",
         "snapshots",
     }:
         raise PhaseSnapshotError("phase snapshot manifest fields are incomplete or unexpected")
@@ -1597,6 +1770,18 @@ def capture_validated_phase_snapshot_bundle(
         manifest.get("source_artifacts"),
         label="phase snapshot manifest source_artifacts",
     )
+    causal_predecessor_phases = manifest.get("causal_predecessor_phases")
+    if (
+        not isinstance(causal_predecessor_phases, list)
+        or any(phase not in PHASE_IDS[1:] for phase in causal_predecessor_phases)
+        or len(set(causal_predecessor_phases)) != len(causal_predecessor_phases)
+        or causal_predecessor_phases
+        != [phase for phase in PHASE_IDS if phase in causal_predecessor_phases]
+    ):
+        raise PhaseSnapshotError(
+            "phase snapshot causal-predecessor phase list is invalid"
+        )
+    causal_predecessor_phase_set = set(causal_predecessor_phases)
     rows = manifest.get("snapshots")
     if not isinstance(rows, list) or len(rows) != len(PHASE_IDS):
         raise PhaseSnapshotError("phase snapshot manifest must contain exactly 13 entries")
@@ -1613,7 +1798,15 @@ def capture_validated_phase_snapshot_bundle(
         "drive_target_full12_sha256",
         "actuation_contract_sha256",
     }
-    if any(set(row) != expected_row_fields for row in rows):
+    if any(
+        set(row)
+        != (
+            expected_row_fields | {"target_entry_tick"}
+            if row.get("phase") in causal_predecessor_phase_set
+            else expected_row_fields
+        )
+        for row in rows
+    ):
         raise PhaseSnapshotError(
             "phase snapshot manifest entry fields are incomplete or unexpected"
         )
@@ -1656,6 +1849,12 @@ def capture_validated_phase_snapshot_bundle(
         source_tick = row.get("source_tick")
         if isinstance(source_tick, bool) or not isinstance(source_tick, int) or source_tick < 0:
             raise PhaseSnapshotError(f"manifest source tick is invalid for {phase}")
+        if phase in causal_predecessor_phase_set:
+            target_entry_tick = row.get("target_entry_tick")
+            if type(target_entry_tick) is not int or target_entry_tick != source_tick + 1:
+                raise PhaseSnapshotError(
+                    f"manifest causal target-entry tick is invalid for {phase}"
+                )
 
         snapshot_identity = _path_identity(
             snapshot_path, label=f"snapshot {phase}", directory=False
@@ -1690,6 +1889,9 @@ def capture_validated_phase_snapshot_bundle(
             expected_phase,
             manifest_row=row,
             manifest_source_artifacts=manifest_source_artifacts,
+            causal_predecessor_required=(
+                phase in causal_predecessor_phase_set
+            ),
         )
         state_hash = _require_sha256(
             payload.pop("state_sha256", None), label=f"snapshot state hash for {phase}"
@@ -1826,6 +2028,9 @@ def load_validated_phase_snapshot_payload(
         phase,
         manifest_row=manifest_row,
         manifest_source_artifacts=manifest.get("source_artifacts"),
+        causal_predecessor_required=(
+            phase in set(manifest.get("causal_predecessor_phases", ()))
+        ),
     )
     state_hash = _require_sha256(
         payload.pop("state_sha256", None), label=f"pinned snapshot state hash for {phase}"

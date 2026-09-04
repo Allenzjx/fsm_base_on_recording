@@ -1704,6 +1704,42 @@ def test_phase_snapshot_reset_restores_independent_phase_state_and_proves_live_s
     assert all("snapshot" not in row[0] for row in runtime.events)
 
 
+def test_effective_entry_calibration_skips_only_the_prior_contract() -> None:
+    runtime = FakeRuntime()
+    backend = IsaacFSMBackend(
+        dependencies=runtime.dependencies(),
+        allow_effective_entry_calibration=True,
+    )
+
+    frame = backend.reset(seed=1002, options={"training_phase_snapshot": "P10"})
+
+    restoration = frame.info["phase_snapshot_restoration"]
+    proof = restoration["physical_state"]["effective_entry_contract"]
+    assert proof["schema"] == (
+        "wlr50_clean.ppo_phase_effective_entry_calibration_live_proof.v1"
+    )
+    assert proof["artifact_role"] == "CALIBRATION_ONLY_NOT_TRAINING_ACCEPTANCE"
+    assert proof["calibration_only"] is True
+    assert proof["phase"] == "P10"
+    assert proof["verified"] is True
+    assert proof["source_snapshot_post_prime_diagnostic"] == restoration[
+        "physical_state"
+    ]["source_snapshot_post_prime_diagnostic"]
+    assert restoration["physical_state"]["entry_safety_contract"]["verified"] is True
+    assert restoration["physical_state"]["entry_guard_contract"]["verified"] is True
+    assert not any(row[0] == "verify_effective_entry" for row in runtime.events)
+    assert sum(row[0] == "controller.step" for row in runtime.events) == 1
+
+
+def test_effective_entry_calibration_is_mutually_exclusive_with_contract() -> None:
+    with pytest.raises(IsaacFSMBackendError, match="cannot consume"):
+        IsaacFSMBackend(
+            dependencies=FakeRuntime().dependencies(),
+            expected_effective_entry_contract=FakeEffectiveEntryContract(),
+            allow_effective_entry_calibration=True,
+        )
+
+
 def test_phase_snapshot_state_write_uses_root_link_velocity_api_only() -> None:
     torch = pytest.importorskip("torch")
     payload = _snapshot_payload("P09")
@@ -2137,9 +2173,17 @@ def test_all_checked_snapshots_replay_source_drive_with_one_real_adapter_write()
 
     p03 = _load_validated_phase_snapshot("P03").payload["source_command"]
     assert p03["expected_atomic_ack"]["servo_tracking_feedback_sampled"] is True
-    p10 = _load_validated_phase_snapshot("P10").payload["source_command"]
-    assert p10["expected_atomic_ack"]["drive_feedback_bias_requested_full12"][7] == pytest.approx(0.75)
-    assert p10["expected_atomic_ack"]["drive_feedback_bias_realized_full12"][7] == pytest.approx(0.75)
+    p10_payload = _load_validated_phase_snapshot("P10").payload
+    p10 = p10_payload["source_command"]
+    assert p10_payload["source_tick"] == 7793
+    assert p10_payload["target_entry_tick"] == 7794
+    assert p10["source_fsm_lifecycle"] == "WAIT_ENTRY"
+    assert p10["expected_atomic_ack"]["drive_feedback_bias_requested_full12"][
+        7
+    ] == pytest.approx(0.0)
+    assert p10["expected_atomic_ack"]["drive_feedback_bias_realized_full12"][
+        7
+    ] == pytest.approx(0.0)
 
 
 def test_real_frozen_controller_and_guard_tracker_restore_from_checked_snapshot() -> None:

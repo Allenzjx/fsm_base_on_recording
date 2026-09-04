@@ -301,6 +301,7 @@ class IsaacFSMBackend:
         expected_effective_entry_contract: (
             ValidatedEffectivePhaseEntryContract | None
         ) = None,
+        allow_effective_entry_calibration: bool = False,
         phase_snapshot_prime_physics_steps: int = PHASE_SNAPSHOT_PRIME_PHYSICS_STEPS,
     ) -> None:
         self.simulation_app = simulation_app
@@ -325,7 +326,19 @@ class IsaacFSMBackend:
             raise IsaacFSMBackendError(
                 "effective-entry contract is bound to a different phase snapshot bundle"
             )
+        if type(allow_effective_entry_calibration) is not bool:
+            raise IsaacFSMBackendError(
+                "effective-entry calibration mode must be an explicit boolean"
+            )
+        if (
+            allow_effective_entry_calibration
+            and expected_effective_entry_contract is not None
+        ):
+            raise IsaacFSMBackendError(
+                "effective-entry calibration cannot consume an acceptance contract"
+            )
         self._expected_effective_entry_contract = expected_effective_entry_contract
+        self._allow_effective_entry_calibration = allow_effective_entry_calibration
         if (
             isinstance(phase_snapshot_prime_physics_steps, bool)
             or not isinstance(phase_snapshot_prime_physics_steps, int)
@@ -492,27 +505,37 @@ class IsaacFSMBackend:
                 )
             _validate_phase_snapshot_payload(loaded_snapshot.payload, snapshot_phase)
             if snapshot_phase != "P01":
-                if self._expected_effective_entry_contract is None:
+                if (
+                    self._expected_effective_entry_contract is None
+                    and not self._allow_effective_entry_calibration
+                ):
                     raise IsaacFSMBackendError(
                         "phase curriculum lacks a pinned effective-entry contract"
                     )
-                try:
-                    effective_entry = self._expected_effective_entry_contract.entry(
-                        snapshot_phase
-                    )
-                except EffectivePhaseEntryError as exc:
-                    self._phase_snapshot_integrity_failed = True
-                    raise IsaacFSMBackendError(
-                        f"effective-entry contract rejected {snapshot_phase}: {exc}"
-                    ) from exc
+                if self._expected_effective_entry_contract is not None:
+                    try:
+                        effective_entry = self._expected_effective_entry_contract.entry(
+                            snapshot_phase
+                        )
+                    except EffectivePhaseEntryError as exc:
+                        self._phase_snapshot_integrity_failed = True
+                        raise IsaacFSMBackendError(
+                            f"effective-entry contract rejected {snapshot_phase}: {exc}"
+                        ) from exc
                 if any(
                     callback is None
                     for callback in (
                         dependencies.write_phase_snapshot,
                         dependencies.restore_guard_snapshot,
                         dependencies.restore_controller_snapshot,
-                        dependencies.verify_effective_entry,
                     )
+                ):
+                    raise IsaacFSMBackendError(
+                        "phase curriculum lacks physical/controller/guard/effective-entry seams"
+                    )
+                if (
+                    not self._allow_effective_entry_calibration
+                    and dependencies.verify_effective_entry is None
                 ):
                     raise IsaacFSMBackendError(
                         "phase curriculum lacks physical/controller/guard/effective-entry seams"
@@ -751,11 +774,26 @@ class IsaacFSMBackend:
                     "source_tick": int(loaded_snapshot.payload["source_tick"]),
                 }
             )
-            if effective_entry is not None:
+            source_snapshot_semantics = (
+                "source_recording_causal_predecessor_tick"
+                if "target_entry_tick" in loaded_snapshot.payload
+                else "source_recording_entry_tick"
+            )
+            if self._allow_effective_entry_calibration and snapshot_phase != "P01":
+                self._snapshot_restoration.update(
+                    {
+                        "source_snapshot_semantics": source_snapshot_semantics,
+                        "effective_entry_semantics": (
+                            "calibration_source_snapshot_plus_one_real_physx_tick_no_rewind"
+                        ),
+                        "effective_entry_calibration_mode": True,
+                    }
+                )
+            elif effective_entry is not None:
                 assert self._expected_effective_entry_contract is not None
                 self._snapshot_restoration.update(
                     {
-                        "source_snapshot_semantics": "source_recording_tick_t",
+                        "source_snapshot_semantics": source_snapshot_semantics,
                         "effective_entry_semantics": (
                             "source_snapshot_plus_one_real_physx_tick_no_rewind"
                         ),
@@ -979,39 +1017,68 @@ class IsaacFSMBackend:
                     "contact_backend_reset_after_prime": False,
                 }
             )
-            assert effective_entry is not None
-            assert self._expected_effective_entry_contract is not None
-            assert dependencies.verify_effective_entry is not None
-            try:
-                effective_proof = dict(
-                    dependencies.verify_effective_entry(
-                        self._expected_effective_entry_contract,
-                        snapshot_phase,
-                        priming_comparison,
-                    )
-                )
-            except EffectivePhaseEntryError as exc:
-                physical_proof["effective_entry_contract"] = {
-                    "verified": False,
-                    "contract_sha256": (
-                        self._expected_effective_entry_contract.contract_sha256
+            if self._allow_effective_entry_calibration:
+                effective_proof = {
+                    "schema": (
+                        "wlr50_clean.ppo_phase_effective_entry_"
+                        "calibration_live_proof.v1"
                     ),
-                    "entry_sha256": effective_entry["entry_sha256"],
-                    "error": str(exc),
+                    "artifact_role": (
+                        "CALIBRATION_ONLY_NOT_TRAINING_ACCEPTANCE"
+                    ),
+                    "verified": True,
+                    "calibration_only": True,
+                    "phase": snapshot_phase,
+                    "source_tick": int(loaded_snapshot.payload["source_tick"]),
+                    "target_entry_tick": int(
+                        loaded_snapshot.payload.get(
+                            "target_entry_tick",
+                            int(loaded_snapshot.payload["source_tick"]) + 1,
+                        )
+                    ),
+                    "effective_entry_offset_s": PHYSICS_DT_S,
+                    "phase_snapshot_bundle_sha256": (
+                        None
+                        if self._expected_phase_snapshot_bundle is None
+                        else self._expected_phase_snapshot_bundle.bundle_sha256
+                    ),
+                    "source_snapshot_post_prime_diagnostic": priming_comparison,
+                    "failures": [],
                 }
-                self._snapshot_restoration.update(
-                    {
-                        "guard_state": guard_proof,
-                        "controller_state": controller_proof,
-                        "source_snapshot_diagnostic": priming_comparison,
-                        "effective_entry": physical_proof[
-                            "effective_entry_contract"
-                        ],
+            else:
+                assert effective_entry is not None
+                assert self._expected_effective_entry_contract is not None
+                assert dependencies.verify_effective_entry is not None
+                try:
+                    effective_proof = dict(
+                        dependencies.verify_effective_entry(
+                            self._expected_effective_entry_contract,
+                            snapshot_phase,
+                            priming_comparison,
+                        )
+                    )
+                except EffectivePhaseEntryError as exc:
+                    physical_proof["effective_entry_contract"] = {
+                        "verified": False,
+                        "contract_sha256": (
+                            self._expected_effective_entry_contract.contract_sha256
+                        ),
+                        "entry_sha256": effective_entry["entry_sha256"],
+                        "error": str(exc),
                     }
-                )
-                raise SensorContractFailure(
-                    "phase effective-entry contract failed: " + str(exc)
-                ) from exc
+                    self._snapshot_restoration.update(
+                        {
+                            "guard_state": guard_proof,
+                            "controller_state": controller_proof,
+                            "source_snapshot_diagnostic": priming_comparison,
+                            "effective_entry": physical_proof[
+                                "effective_entry_contract"
+                            ],
+                        }
+                    )
+                    raise SensorContractFailure(
+                        "phase effective-entry contract failed: " + str(exc)
+                    ) from exc
             _require_running(scene, "effective phase-entry verification")
             try:
                 safety_proof = _verify_effective_entry_safety(observation)
@@ -2152,8 +2219,13 @@ def _validate_phase_snapshot_payload(
         failures.append("in-episode root-write prohibition is absent")
     if payload.get("fsm_state") != phase_id:
         failures.append("fsm_state differs from the requested phase")
-    if payload.get("fsm_lifecycle") != "EXECUTE_MOTION":
-        failures.append("phase entry lifecycle is not EXECUTE_MOTION")
+    expected_source_lifecycle = (
+        "WAIT_ENTRY" if "target_entry_tick" in payload else "EXECUTE_MOTION"
+    )
+    if payload.get("fsm_lifecycle") != expected_source_lifecycle:
+        failures.append(
+            "phase reset-source lifecycle is inconsistent with its timing semantics"
+        )
     if payload.get("phase_history") != expected_history:
         failures.append("phase history is not the exact fixed-graph prefix")
     fsm_history = payload.get("fsm_history", {})
