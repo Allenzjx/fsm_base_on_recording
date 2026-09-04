@@ -562,6 +562,45 @@ def _make_fixture(tmp_path: Path, *, promoted: bool = True) -> dict:
         },
     )
 
+    torchscript_actor = checkpoints / checkpoint.TORCHSCRIPT_ACTOR_NAME
+    torchscript_actor.write_bytes(b"synthetic-inference-only-torchscript")
+    inference_manifest = _json(
+        output / "manifests" / checkpoint.INFERENCE_EXPORT_MANIFEST_NAME,
+        {
+            "schema": checkpoint.INFERENCE_EXPORT_SCHEMA,
+            "valid": True,
+            "status": "PASS",
+            "inference_only": True,
+            "deterministic_mean_policy": True,
+            "contains_critic": False,
+            "contains_optimizer": False,
+            "contains_rollout_state": False,
+            "contains_stochastic_sampler": False,
+            "source_checkpoint": str(improved.resolve()),
+            "source_checkpoint_sha256": artifacts.sha256_file(improved),
+            "source_manifest": str(improved_manifest),
+            "source_manifest_sha256": artifacts.sha256_file(improved_manifest),
+            "torchscript": {
+                "valid": True,
+                "status": "PASS",
+                "supported": True,
+                "path": str(torchscript_actor.resolve()),
+                "sha256": artifacts.sha256_file(torchscript_actor),
+                "bytes": torchscript_actor.stat().st_size,
+                "reloaded": True,
+                "finite": True,
+                "deterministic": True,
+                "equivalent_to_loaded_runner": True,
+            },
+            "onnx": {
+                "status": "UNSUPPORTED",
+                "supported": False,
+                "reason": "synthetic test runtime",
+                "path": None,
+            },
+        },
+    )
+
     videos_dir = output / "videos"
     videos_dir.mkdir()
     video_names = {
@@ -687,6 +726,7 @@ def _make_fixture(tmp_path: Path, *, promoted: bool = True) -> dict:
             validation_promotion,
             improved_manifest,
             final_promotion,
+            inference_manifest,
         ],
         "video_validation_path": video_validation,
         "video_checksum_path": video_checksum,
