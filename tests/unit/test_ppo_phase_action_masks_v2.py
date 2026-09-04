@@ -20,12 +20,20 @@ PRIORITY_PHASES = ("P02", "P03", "P08", "P12", "P13")
 
 
 def test_deterministic_small_smoke_pattern_is_nonzero_and_negligible() -> None:
-    env = SimpleNamespace(frame=SimpleNamespace(state_id="P03"))
+    env = SimpleNamespace(
+        frame=SimpleNamespace(
+            state_id="P03",
+            phase_progress=0.8,
+            nominal_action_full12=(0.0, -22.9, 0.0, 45.9) + ZERO12[4:],
+        ),
+        phase_actions=load_phase_action_masks_v2(),
+    )
     positive = _smoke_action(env, 0)
-    negative = _smoke_action(env, 1)
-    assert positive == (1.0e-9,) * 12
-    assert negative == (-1.0e-9,) * 12
-    assert max(abs(value) for value in positive + negative) < 0.05
+    repeated = _smoke_action(env, 1)
+    assert positive[3] == 1.0e-9
+    assert sum(value != 0.0 for value in positive) == 1
+    assert repeated == positive
+    assert max(abs(value) for value in positive + repeated) < 0.05
 
 
 def test_deterministic_rate_limit_probe_uses_production_projector_off_robot() -> None:
@@ -37,12 +45,33 @@ def test_deterministic_rate_limit_probe_uses_production_projector_off_robot() ->
     assert "residual_rate_limit" in probe["second_clipping_stages"]
 
 
-def test_smoke_pattern_resets_its_local_counter_and_remains_nonzero_in_every_phase() -> None:
-    env = SimpleNamespace(frame=SimpleNamespace(state_id="P01"))
-    assert _smoke_action(env, 0) == (1.0e-9,) * 12
-    assert _smoke_action(env, 1) == (-1.0e-9,) * 12
-    env.frame.state_id = "P02"
-    assert _smoke_action(env, 2) == (1.0e-9,) * 12
+def test_smoke_pattern_arms_late_and_exercises_only_disabled_mask_channels() -> None:
+    config = load_phase_action_masks_v2()
+    env = SimpleNamespace(
+        frame=SimpleNamespace(
+            state_id="P08",
+            phase_progress=0.5,
+            nominal_action_full12=(1.0, -2.0, 3.0, -4.0, 5.0, -6.0, 7.0, -8.0)
+            + ZERO12[8:],
+        ),
+        phase_actions=config,
+    )
+    assert _smoke_action(env, 0) == ZERO12
+
+    env.frame.phase_progress = 0.75
+    armed = _smoke_action(env, 1)
+    assert armed[7] == 1.0e-9
+    mask = config.mask_for("P08")
+    assert all(armed[index] == -1.0e-9 for index, value in enumerate(mask) if not value)
+    assert all(
+        armed[index] == 0.0
+        for index, value in enumerate(mask)
+        if value and index != 7
+    )
+
+    # Once armed, the phase remains non-zero through its transition boundary.
+    env.frame.phase_progress = 0.0
+    assert _smoke_action(env, 2) == armed
 
 
 def _direct_project(

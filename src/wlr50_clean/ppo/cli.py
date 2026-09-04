@@ -335,25 +335,41 @@ def _smoke_action(env: Any, decision_index: int) -> tuple[float, ...]:
         f"P{index:02d}" for index in range(1, 14)
     }:
         raise CliError("bounded smoke action requires an active P01-P13 frame")
-    # An alternating 1e-9 normalized pattern proves physical nonzero projection
-    # in every phase, exercises masked P08/P11 channels and carries a genuine
-    # nonzero bridge value across every transition, while remaining beneath the
-    # contact trajectory's meaningful actuation resolution.  Slew behavior is
-    # proven separately by ``_smoke_rate_limit_probe`` using this exact runtime
-    # projector; a diagnostic clipping pulse must not perturb the task itself.
     phase_id = str(env.frame.state_id)
-    previous_phase = getattr(env, "_bounded_smoke_phase_id", None)
-    if previous_phase != phase_id:
-        local_decision = 0
-        setattr(env, "_bounded_smoke_phase_id", phase_id)
-    else:
-        local_decision = int(
-            getattr(env, "_bounded_smoke_phase_decision_index", -1)
-        ) + 1
-    setattr(env, "_bounded_smoke_phase_decision_index", local_decision)
+    progress = float(env.frame.phase_progress)
+    if not math.isfinite(progress) or not 0.0 <= progress <= 1.0:
+        raise CliError("bounded smoke action requires finite phase progress in [0,1]")
+    mask = tuple(int(value) for value in env.phase_actions.mask_for(phase_id))
+    nominal = tuple(float(value) for value in env.frame.nominal_action_full12)
+    if len(mask) != 12 or len(nominal) != 12:
+        raise CliError("bounded smoke action requires Full12 mask and nominal action")
 
-    direction = 1.0 if local_decision % 2 == 0 else -1.0
-    return (direction * 1.0e-9,) * 12
+    # Gate B verifies the real projection path without turning its diagnostic
+    # pattern into a second controller.  Arm only in the final quarter of each
+    # phase, then keep one active servo residual through the phase edge so the
+    # transition bridge is exercised.  The servo with the largest non-zero FSM
+    # nominal is selected because its 1e-9 normalized delta remains below the
+    # float target quantization of the mature actuator path.  Raw values are
+    # also sent only to disabled channels; their exact removal proves the mask
+    # without physically perturbing those channels.  Rate limiting is tested by
+    # ``_smoke_rate_limit_probe`` with this same production projector off-robot.
+    armed = set(getattr(env, "_bounded_smoke_armed_phases", ()))
+    if progress >= 0.75:
+        armed.add(phase_id)
+        setattr(env, "_bounded_smoke_armed_phases", tuple(sorted(armed)))
+    if phase_id not in armed:
+        return (0.0,) * 12
+
+    action = [0.0] * 12
+    active_servos = tuple(index for index in range(8) if mask[index])
+    if not active_servos:
+        raise CliError(f"bounded smoke phase {phase_id} has no active servo channel")
+    selected = max(active_servos, key=lambda index: abs(nominal[index]))
+    action[selected] = 1.0e-9
+    for index, enabled in enumerate(mask):
+        if not enabled:
+            action[index] = -1.0e-9
+    return tuple(action)
 
 
 def _smoke_rate_limit_probe() -> Mapping[str, Any]:
