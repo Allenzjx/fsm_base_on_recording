@@ -534,25 +534,35 @@ class ActionProjector:
             value if mask else 0.0
             for value, mask in zip(rate_candidate, effective_mask, strict=True)
         )
-        # Servo limits reserve configured safety margin.  A frozen nominal that
-        # is already inside the reserved band is never pushed farther outward;
-        # including that nominal in the interval also preserves the baseline
-        # zero-residual identity.  Wheels use their absolute speed range.
-        hard_intervals = tuple(
-            (min(nominal_value, lower), max(nominal_value, upper))
+        # Servo limits reserve the configured safety margin.  Work directly in
+        # residual space so the projection never subtracts two nearly equal
+        # absolute commands to recover a tiny residual.  Besides avoiding
+        # cancellation, this makes the ownership boundary explicit: the
+        # frozen FSM nominal is immutable, and only its feasible delta is
+        # clipped.  A nominal already outside the reserved band may move inward
+        # but is never displaced merely because the residual path is active.
+        residual_intervals = tuple(
+            (
+                min(0.0, lower - nominal_value),
+                max(0.0, upper - nominal_value),
+            )
             for nominal_value, (lower, upper) in zip(
                 nominal, self.config.safety_limits_full12, strict=True
             )
         )
-        limit_action = tuple(
-            _clamp(nominal_value + residual_value, lower, upper)
-            for nominal_value, residual_value, (lower, upper) in zip(
-                nominal, rate_projected, hard_intervals, strict=True
+        limit_residual = tuple(
+            _clamp(residual_value, lower, upper)
+            for residual_value, (lower, upper) in zip(
+                rate_projected, residual_intervals, strict=True
             )
         )
-        limit_residual = tuple(
-            value - nominal_value
-            for value, nominal_value in zip(limit_action, nominal, strict=True)
+        limit_action = tuple(
+            nominal_value
+            if residual_value == 0.0
+            else nominal_value + residual_value
+            for nominal_value, residual_value in zip(
+                nominal, limit_residual, strict=True
+            )
         )
 
         physical_stop = bool(

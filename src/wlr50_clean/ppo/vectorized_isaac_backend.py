@@ -76,6 +76,7 @@ from wlr50_clean.ppo.isaac_fsm_backend import (
     _observation_quaternion,
     _validate_controller_clock,
     _validate_sensor_contract,
+    build_residual_actuation_plan,
 )
 from wlr50_clean.ppo.ppo_env_adapter import AuthoritativeFrame
 from wlr50_clean.sensing.contact_classifier import (
@@ -473,7 +474,12 @@ class _BatchAck:
 
 
 class _BatchedCommandAdapter:
-    """Per-row mature servo shaping followed by one batched articulation write."""
+    """Per-row mature nominal shaping followed by one batched articulation write.
+
+    The caller supplies frozen nominal commands here and composes PPO residuals
+    into the bounded post-mapper bias.  This keeps every row's mapper state
+    independent without treating 15 Hz policy updates as FSM segment changes.
+    """
 
     def __init__(self, robot: Any, num_envs: int) -> None:
         self.robot = robot
@@ -870,8 +876,10 @@ class VectorizedIsaacFSMBackend:
             )
         self._require_running("vector episode")
         tracking: list[tuple[str, ...]] = []
-        biases: list[tuple[float, ...]] = []
-        for controller_frame in self._controller_frames:
+        plans = []
+        for action, controller_frame in zip(
+            actions, self._controller_frames, strict=True
+        ):
             if not bool(getattr(controller_frame, "full12_atomic_write_required", False)):
                 raise VectorizedIsaacBackendError(
                     "a frozen controller did not require an atomic Full12 write"
@@ -879,20 +887,33 @@ class VectorizedIsaacFSMBackend:
             tracking.append(
                 tuple(str(name) for name in controller_frame.tracking_servo_names)
             )
-            first = _full12(
-                controller_frame.drive_feedback_bias_full12,
-                "controller drive_feedback_bias_full12",
+            plans.append(
+                build_residual_actuation_plan(
+                    action,
+                    frozen_nominal_full12=controller_frame.full12,
+                    drive_feedback_bias_full12=(
+                        controller_frame.drive_feedback_bias_full12
+                    ),
+                    normal_drive_bias_full12=(
+                        controller_frame.normal_drive_bias_full12
+                    ),
+                )
             )
-            second = _full12(
-                controller_frame.normal_drive_bias_full12,
-                "controller normal_drive_bias_full12",
-            )
-            biases.append(tuple(a + b for a, b in zip(first, second, strict=True)))
-        ack = self.command_adapter.apply_batch(
-            actions,
+        raw_ack = self.command_adapter.apply_batch(
+            tuple(plan.frozen_nominal_full12 for plan in plans),
             physics_tick=self.global_physics_step_count,
             tracking_servo_names=tuple(tracking),
-            drive_feedback_bias_full12=tuple(biases),
+            drive_feedback_bias_full12=tuple(
+                plan.combined_post_mapper_bias_full12 for plan in plans
+            ),
+        )
+        ack = _BatchAck(
+            rows=tuple(
+                plan.annotate_ack(row)
+                for plan, row in zip(plans, raw_ack.rows, strict=True)
+            ),
+            articulation_writes_this_call=raw_ack.articulation_writes_this_call,
+            physics_tick=raw_ack.physics_tick,
         )
         before_steps = self.global_physics_step_count
         self._advance_global_physics()

@@ -17,6 +17,7 @@ from wlr50_clean.ppo.isaac_fsm_backend import (
     IsaacFSMBackendError,
     LoadedPhaseSnapshot,
     SensorContractFailure,
+    build_residual_actuation_plan,
     _load_validated_phase_snapshot,
     _restore_controller_from_snapshot,
     _restore_guard_tracker_from_snapshot,
@@ -550,9 +551,12 @@ def test_reset_settles_and_step_preserves_atomic_order_and_drive_feedback() -> N
     ]
     apply_event = runtime.events[0]
     assert apply_event[1] == SETTLE_TICKS
-    assert apply_event[2] == action
+    # PPO residuals are composed after the mature nominal mapper.  Presenting
+    # them as new nominal targets would clear frozen tracking compensation on
+    # every 15 Hz policy update.
+    assert apply_event[2] == ZERO
     assert apply_event[3] == ("front_left_hip",)
-    assert apply_event[4][0] == pytest.approx(0.3)
+    assert apply_event[4][0] == pytest.approx(0.8)
     assert runtime.live_readers[-1].last_command[0] == pytest.approx(0.8)
     assert following.physics_tick == 1
     assert following.sim_time_s == pytest.approx(1.0 / 120.0)
@@ -563,6 +567,34 @@ def test_reset_settles_and_step_preserves_atomic_order_and_drive_feedback() -> N
     assert following.info["in_episode_force_or_impulse_writes"] == 0
     assert following.info["in_episode_gravity_writes"] == 0
     assert following.info["recording_accesses"] == 0
+    ack = following.info["atomic_ack"]
+    assert ack["ppo_actuation_contract"] == (
+        "frozen_nominal_plus_post_mapper_residual.v1"
+    )
+    assert ack["fsm_nominal_mapper_input_full12"] == list(ZERO)
+    assert ack["ppo_projected_applied_full12"] == list(action)
+    assert ack["ppo_projected_residual_full12"] == list(action)
+    assert ack["controller_drive_bias_full12"][0] == pytest.approx(0.3)
+    assert ack["combined_post_mapper_bias_full12"][0] == pytest.approx(0.8)
+
+
+def test_residual_actuation_plan_preserves_nominal_mapper_input() -> None:
+    nominal = (9.0, -22.9) + ZERO[2:]
+    projected = (9.25, -22.8) + ZERO[2:]
+    feedback = (0.5, -0.25) + ZERO[2:]
+    normal = (0.1, 0.2) + ZERO[2:]
+
+    plan = build_residual_actuation_plan(
+        projected,
+        frozen_nominal_full12=nominal,
+        drive_feedback_bias_full12=feedback,
+        normal_drive_bias_full12=normal,
+    )
+
+    assert plan.frozen_nominal_full12 == nominal
+    assert plan.projected_residual_full12[:2] == pytest.approx((0.25, 0.1))
+    assert plan.controller_drive_bias_full12[:2] == pytest.approx((0.6, -0.05))
+    assert plan.combined_post_mapper_bias_full12[:2] == pytest.approx((0.85, 0.05))
 
 
 def test_invalid_exact_pair_fails_closed_after_one_physics_step() -> None:

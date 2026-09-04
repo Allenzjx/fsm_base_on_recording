@@ -184,6 +184,9 @@ def test_source_contract_has_one_global_step_and_no_single_env_physics_loop() ->
     assert "for row" in step
     assert "self.sim.step(" not in step
     assert "IsaacFSMBackend(" not in step
+    assert "build_residual_actuation_plan(" in step
+    assert "plan.frozen_nominal_full12" in step
+    assert "plan.combined_post_mapper_bias_full12" in step
 
 
 def test_batched_adapter_reuses_canonical_servo_limits() -> None:

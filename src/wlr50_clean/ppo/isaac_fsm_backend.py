@@ -9,8 +9,11 @@ imports live in :func:`_load_live_dependencies` and therefore occur only when
 The backend owns exactly one controller call and one atomic Full12 write for
 each episode-relative 120 Hz physics tick.  The controller remains the source
 of the nominal command, phase, lifecycle, task result, tracking set, and both
-drive-feedback paths; PPO may only replace the logical Full12 command supplied
-to :meth:`step_physics` after its external safety projection.
+drive-feedback paths.  The frozen nominal is supplied unchanged to its mature
+servo target mapper; the already-projected PPO delta is injected through the
+mapper's bounded post-mapper drive-bias seam.  This prevents policy decisions
+from being mistaken for new FSM motion segments and clearing the frozen
+controller's tracking compensation.
 """
 
 from __future__ import annotations
@@ -95,6 +98,78 @@ class LoadedPhaseSnapshot:
     state_sha256: str
     file_sha256: str
     snapshot_path: Path
+
+
+@dataclass(frozen=True, slots=True)
+class ResidualActuationPlan:
+    """Auditable split between frozen nominal shaping and PPO actuation."""
+
+    frozen_nominal_full12: tuple[float, ...]
+    projected_applied_full12: tuple[float, ...]
+    projected_residual_full12: tuple[float, ...]
+    controller_drive_bias_full12: tuple[float, ...]
+    combined_post_mapper_bias_full12: tuple[float, ...]
+
+    def annotate_ack(self, ack: Mapping[str, Any]) -> dict[str, Any]:
+        result = dict(ack)
+        result.update(
+            {
+                "ppo_actuation_contract": "frozen_nominal_plus_post_mapper_residual.v1",
+                "fsm_nominal_mapper_input_full12": list(self.frozen_nominal_full12),
+                "ppo_projected_applied_full12": list(self.projected_applied_full12),
+                "ppo_projected_residual_full12": list(self.projected_residual_full12),
+                "controller_drive_bias_full12": list(
+                    self.controller_drive_bias_full12
+                ),
+                "combined_post_mapper_bias_full12": list(
+                    self.combined_post_mapper_bias_full12
+                ),
+            }
+        )
+        return result
+
+
+def build_residual_actuation_plan(
+    projected_applied_full12: Sequence[float],
+    *,
+    frozen_nominal_full12: Sequence[float],
+    drive_feedback_bias_full12: Sequence[float],
+    normal_drive_bias_full12: Sequence[float],
+) -> ResidualActuationPlan:
+    """Keep the mature mapper on FSM nominal and add PPO after that mapper.
+
+    ``ServoTargetMapper`` deliberately interprets a changed logical request as
+    a new motion target and clears its sampled tracking compensation.  A PPO
+    residual changes at 15 Hz and is not a new FSM segment, so feeding the sum
+    into that mapper breaks the nominal controller even for tiny residuals.
+    The existing bounded drive-bias seam is expressed in the same canonical
+    Full12 units and is therefore the correct actuator-composition boundary.
+    """
+
+    projected = _full12(projected_applied_full12, "projected_applied_full12")
+    nominal = _full12(frozen_nominal_full12, "frozen_nominal_full12")
+    feedback = _full12(drive_feedback_bias_full12, "drive_feedback_bias_full12")
+    normal = _full12(normal_drive_bias_full12, "normal_drive_bias_full12")
+    residual = tuple(
+        applied - baseline
+        for applied, baseline in zip(projected, nominal, strict=True)
+    )
+    controller_bias = tuple(
+        first + second for first, second in zip(feedback, normal, strict=True)
+    )
+    combined = tuple(
+        baseline + delta
+        for baseline, delta in zip(controller_bias, residual, strict=True)
+    )
+    if any(not math.isfinite(value) for value in controller_bias + combined):
+        raise IsaacFSMBackendError("residual actuation plan contains non-finite bias")
+    return ResidualActuationPlan(
+        frozen_nominal_full12=nominal,
+        projected_applied_full12=projected,
+        projected_residual_full12=residual,
+        controller_drive_bias_full12=controller_bias,
+        combined_post_mapper_bias_full12=combined,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -477,33 +552,38 @@ class IsaacFSMBackend:
             raise IsaacFSMBackendError(
                 "frozen controller did not require one complete Full12 write"
             )
-        feedback = _full12(
-            getattr(source_frame, "drive_feedback_bias_full12"),
-            "controller drive_feedback_bias_full12",
-        )
-        normal = _full12(
-            getattr(source_frame, "normal_drive_bias_full12"),
-            "controller normal_drive_bias_full12",
-        )
-        total_drive_bias = tuple(
-            first + second for first, second in zip(feedback, normal, strict=True)
+        actuation = build_residual_actuation_plan(
+            action,
+            frozen_nominal_full12=getattr(source_frame, "full12"),
+            drive_feedback_bias_full12=getattr(
+                source_frame, "drive_feedback_bias_full12"
+            ),
+            normal_drive_bias_full12=getattr(
+                source_frame, "normal_drive_bias_full12"
+            ),
         )
         physical_tick = (
             SETTLE_TICKS + self._video_pre_action_tick_count + self._episode_tick
         )
-        ack = self._atomic_apply(
+        raw_ack = self._atomic_apply(
             self._adapter,
-            action,
+            actuation.frozen_nominal_full12,
             physics_tick=physical_tick,
             tracking_servo_names=tuple(
                 str(name) for name in getattr(source_frame, "tracking_servo_names", ())
             ),
-            drive_feedback_bias_full12=total_drive_bias,
+            drive_feedback_bias_full12=(
+                actuation.combined_post_mapper_bias_full12
+            ),
         )
-        if _full12(ack["applied_full12"], "atomic ack applied_full12") != action:
+        if (
+            _full12(raw_ack["applied_full12"], "atomic ack applied_full12")
+            != actuation.frozen_nominal_full12
+        ):
             raise IsaacFSMBackendError(
-                "RobotAdapter silently clamped an already-projected PPO action"
+                "RobotAdapter silently changed the frozen nominal mapper input"
             )
+        ack = actuation.annotate_ack(raw_ack)
 
         # This is the only physics advance in the episode tick.  In particular,
         # no render, root-state write, force, impulse, or gravity mutation is

@@ -215,6 +215,21 @@ def test_v2_projector_keeps_phase_mask_slew_limits_and_safety_order() -> None:
         assert stopped.clipping_stages[-1] == "body_collision_or_wheel_only_safety"
 
 
+def test_v2_margin_projection_preserves_outside_band_frozen_nominal() -> None:
+    projector = build_action_projector_v2()
+    nominal = (-134.0, -59.0) + ZERO12[2:]
+    projected = _direct_project(
+        projector,
+        raw=(-100.0, -100.0) + ZERO12[2:],
+        state_id="P03",
+        nominal=nominal,
+        dt_s=1.0,
+    )
+
+    assert projected.limit_projected_residual_full12[:2] == (0.0, 0.0)
+    assert projected.applied_action_full12 == nominal
+
+
 def test_transition_bridge_holds_allowed_residual_then_slews_without_forbidden_leak() -> None:
     config = load_phase_action_masks_v2()
     projector = build_action_projector_v2(config)

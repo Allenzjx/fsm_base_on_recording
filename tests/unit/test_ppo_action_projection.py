@@ -195,6 +195,46 @@ def test_servo_wheel_rate_and_absolute_limits_are_separate_stages() -> None:
     assert "joint_safety_margin_or_wheel_speed_limit" in absolute_wheel.clipping_stages
 
 
+@pytest.mark.parametrize(
+    ("channel", "nominal_value", "raw_value"),
+    (
+        (0, -134.0, -100.0),
+        (1, -59.0, -100.0),
+        (0, 134.0, 100.0),
+        (1, 209.0, 100.0),
+    ),
+)
+def test_margin_projection_clips_only_outward_residual_and_never_moves_nominal(
+    channel: int, nominal_value: float, raw_value: float
+) -> None:
+    nominal = list(ZERO)
+    raw = list(ZERO)
+    nominal[channel] = nominal_value
+    raw[channel] = raw_value
+
+    result = _project(tuple(raw), nominal=tuple(nominal), reference=tuple(nominal))
+
+    assert result.zero_residual_fast_path is False
+    assert result.rate_projected_residual_full12[channel] != 0.0
+    assert result.limit_projected_residual_full12[channel] == 0.0
+    assert bitwise_full12_equal(result.applied_action_full12, tuple(nominal))
+    assert "joint_safety_margin_or_wheel_speed_limit" in result.clipping_stages
+
+
+def test_tiny_residual_is_not_falsely_reported_as_limit_clipping() -> None:
+    nominal = (9.0,) + ZERO[1:]
+    result = _project(
+        (1.0e-9,) + ZERO[1:],
+        nominal=nominal,
+        reference=nominal,
+    )
+
+    assert result.limit_projected_residual_full12 == (
+        result.rate_projected_residual_full12
+    )
+    assert "joint_safety_margin_or_wheel_speed_limit" not in result.clipping_stages
+
+
 def test_phase_mask_is_reapplied_after_rate_limit_with_nonzero_prior() -> None:
     result = _project(
         (100.0,) * 12,
