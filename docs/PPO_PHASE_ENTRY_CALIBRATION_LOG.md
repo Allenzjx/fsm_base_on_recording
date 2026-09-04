@@ -132,3 +132,16 @@ and file SHA-256
 It remains provisional until the independent seed-1003 holdout passes.
 The old JSON and checksum are recoverable under
 `C:\robotics_sim\wlr_robot\ppo_effective_entry_pre_source_proven_20260904`.
+
+### Independent holdout aggregation repair
+
+All twelve seed-1003 probes on `c17a61df195e` completed with both fresh and
+reused attempts passing. The final aggregation nevertheless failed closed:
+its call to `_attempt_passed` omitted the required snapshot-derived replay
+window. No acceptance artifact or training authorization was produced.
+
+The aggregator now reconstructs that window from the validated, pinned phase
+snapshot and passes it to the same strict validator used by the live probe.
+Rechecking the twenty-four recorded attempts with this call passed every
+attempt, including source-proven P10. This is a software repair, not a new
+physical acceptance; a new committed-runtime holdout is still required.

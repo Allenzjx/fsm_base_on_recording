@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import shutil
@@ -11,6 +12,16 @@ import pytest
 
 from wlr50_clean.ppo import artifacts, cli
 from wlr50_clean.ppo import phase_effective_entry_holdout as holdout
+from wlr50_clean.ppo import phase_snapshot_live_probe as probe
+from wlr50_clean.ppo.phase_effective_entry import (
+    DEFAULT_EFFECTIVE_ENTRY_CONTRACT_PATH,
+    validate_effective_phase_entry_comparison,
+)
+from wlr50_clean.ppo.phase_snapshots import (
+    DEFAULT_PHASE_SNAPSHOT_ROOT,
+    capture_validated_phase_snapshot_bundle,
+    load_validated_phase_snapshot_payload,
+)
 from wlr50_clean.ppo.vector_benchmark_matrix import (
     VectorBenchmarkMatrixError,
     validate_managed_run_directory,
@@ -24,6 +35,203 @@ def test_default_holdout_config_set_includes_transitive_runtime_inputs() -> None
         "configs/ppo_observation_schema.json",
         "configs/conformance_policy.yaml",
     } <= paths
+
+
+@pytest.fixture(scope="module")
+def holdout_snapshot_bundle():
+    return capture_validated_phase_snapshot_bundle(DEFAULT_PHASE_SNAPSHOT_ROOT)
+
+
+@pytest.mark.parametrize("phase", ("P02", "P10"))
+@pytest.mark.parametrize("tamper", (None, "replay_tick", "controller_proof"))
+def test_worker_import_revalidates_real_attempt_api_with_pinned_replay_window(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    holdout_snapshot_bundle,
+    phase: str,
+    tamper: str | None,
+) -> None:
+    # Reuse evidence construction only.  Neither the live attempt validator,
+    # the snapshot loader, nor the replay-window validator is monkeypatched.
+    from test_phase_effective_entry import _calibration_attempt, _comparison
+
+    payload = json.loads(DEFAULT_EFFECTIVE_ENTRY_CONTRACT_PATH.read_bytes())
+    contract_record = {"contract_sha256": payload["contract_sha256"]}
+    contract = SimpleNamespace(
+        contract_sha256=payload["contract_sha256"],
+        entry=lambda selected: copy.deepcopy(payload["phases"][selected]),
+        as_record=lambda: copy.deepcopy(contract_record),
+    )
+    snapshot_payload, snapshot_entry = load_validated_phase_snapshot_payload(
+        holdout_snapshot_bundle, phase
+    )
+    replay_window = probe._validated_replay_window(
+        snapshot_payload, snapshot_entry, phase=phase
+    )
+    if phase == "P02":
+        assert replay_window.controller_restore_contract is None
+        assert replay_window.controller_restore_mode is None
+    else:
+        assert replay_window.controller_restore_contract is not None
+        assert (
+            replay_window.controller_restore_mode
+            == "source_proven_execute_after_prime"
+        )
+    attempts = []
+    for lifecycle in ("fresh_scene", "reused_scene"):
+        row = _calibration_attempt(
+            contract, holdout_snapshot_bundle, phase, lifecycle
+        )
+        calibration_proof = row["snapshot_state_write"]["effective_entry_contract"]
+        acceptance_proof = dict(
+            validate_effective_phase_entry_comparison(
+                contract, phase, _comparison(contract.entry(phase))
+            )
+        )
+        # Backend acceptance appends the same pinned replay-anchor fields to
+        # the calibrated physical-state comparison returned above.
+        row["snapshot_state_write"]["effective_entry_contract"] = {
+            **{
+                key: value
+                for key, value in calibration_proof.items()
+                if key in probe._ACCEPTANCE_EFFECTIVE_ENTRY_FIELDS
+            },
+            **acceptance_proof,
+        }
+        assert probe._attempt_passed(row, replay_window=replay_window) is True
+        attempts.append(row)
+    if tamper == "replay_tick":
+        attempts[1]["target_entry_tick"] += 1
+    elif tamper == "controller_proof":
+        guard = attempts[1]["snapshot_state_write"]["entry_guard_contract"]
+        if phase == "P10":
+            guard["source_transition_row_canonical_sha256"] = "0" * 64
+        else:
+            guard["verified"] = False
+    if tamper is not None:
+        assert (
+            probe._attempt_passed(attempts[1], replay_window=replay_window)
+            is False
+        )
+
+    run_dir = tmp_path / phase
+    run_dir.mkdir()
+    for filename in (
+        "committed_runtime_identity.before.json",
+        "committed_runtime_identity.after.json",
+        "frozen_hashes.before.json",
+        "frozen_hashes.after.json",
+        "run_manifest.json",
+        "stderr.log",
+    ):
+        (run_dir / filename).write_text("{}\n", encoding="utf-8")
+
+    def record(filename: str) -> dict[str, object]:
+        return holdout._snapshot(
+            run_dir / filename, label="test worker file", cache={}
+        ).record()
+
+    runtime_before = record("committed_runtime_identity.before.json")
+    runtime_after = record("committed_runtime_identity.after.json")
+    report = {
+        "schema": holdout.PROBE_SCHEMA,
+        "artifact_role": "DIAGNOSTIC_ONLY_NOT_TRAINING_ACCEPTANCE",
+        "status": "PASSED",
+        "passed": True,
+        "complete": True,
+        "seed": holdout.HOLDOUT_SEED,
+        "phases": [phase],
+        "phase_count": 1,
+        "phase_selector_mode": "single_phase",
+        "attempts_per_phase": 2,
+        "expected_attempt_count": 2,
+        "completed_attempt_count": 2,
+        "expected_fresh_scene_attempt_count": 1,
+        "expected_reused_scene_attempt_count": 1,
+        "fresh_scene_attempt_count": 1,
+        "reused_scene_attempt_count": 1,
+        "failure_reasons": [],
+        "failure_classification": None,
+        "probe_process_id": 123,
+        "probe_process_instance_id": "1" * 32,
+        "attempts": attempts,
+        "phase_snapshot_bundle": holdout_snapshot_bundle.as_record(),
+        "phase_effective_entry_contract": contract.as_record(),
+        "runtime_identity_before": runtime_before,
+        "frozen_hashes_before": record("frozen_hashes.before.json"),
+        "managed_post_checks": {
+            "runtime_identity_after": str(
+                run_dir / "committed_runtime_identity.after.json"
+            ),
+            "frozen_hashes_after": str(run_dir / "frozen_hashes.after.json"),
+            "sealed_by_run_manifest": str(run_dir / "run_manifest.json"),
+        },
+    }
+    (run_dir / holdout.PROBE_FILENAME).write_text(
+        json.dumps(report) + "\n", encoding="utf-8"
+    )
+    (run_dir / "stdout.log").write_text(
+        json.dumps(report) + "\n", encoding="utf-8"
+    )
+    (run_dir / "live_command_result.json").write_text(
+        json.dumps(
+            {
+                "schema": "wlr50_clean.live_command_result.v1",
+                "command": "phase-snapshot-live-probe",
+                "exit_code": 0,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    manifest = {
+        "invocation_arguments": [
+            "--phase", phase, "--seed", "1003", "--num-envs", "1",
+            "--phase-snapshot-prime-physics-steps", "1", "--seed-set", "train",
+            "--deterministic",
+        ],
+        "artifacts": {
+            filename: {**record(filename), "path": filename}
+            for filename in (holdout.PROBE_FILENAME, "live_command_result.json")
+        },
+        "logs": {
+            filename: {**record(filename), "path": filename}
+            for filename in ("stdout.log", "stderr.log")
+        },
+    }
+    context = SimpleNamespace(
+        project_root=tmp_path,
+        git_commit="a" * 40,
+        backend_sha256="b" * 64,
+        config_sha256="c" * 64,
+        frozen_manifest_sha256="d" * 64,
+        snapshot_bundle=holdout_snapshot_bundle,
+        effective_entry_contract=contract,
+    )
+    # Isolate managed-launcher identity checks, which have separate coverage;
+    # all file hashes, stdout binding, and physical-attempt checks stay real.
+    monkeypatch.setattr(
+        holdout, "validate_managed_run_directory", lambda value, **kwargs: Path(value)
+    )
+    monkeypatch.setattr(
+        holdout, "_validate_started_and_final_manifest",
+        lambda *args, **kwargs: (manifest, manifest),
+    )
+    monkeypatch.setattr(
+        holdout, "_validate_runtime_and_frozen_pair",
+        lambda *args, **kwargs: (runtime_before, runtime_after, "e" * 64),
+    )
+    if tamper is None:
+        worker = holdout._validate_probe_worker(run_dir, context=context, cache={})
+        assert worker["phase"] == phase
+        assert worker["fresh_attempt_passed"] is True
+        assert worker["reused_attempt_passed"] is True
+    else:
+        with pytest.raises(
+            holdout.PhaseEffectiveEntryHoldoutError,
+            match=f"attempt proof is invalid: {phase}\\[reused_repeat\\]",
+        ):
+            holdout._validate_probe_worker(run_dir, context=context, cache={})
 
 
 def _worker(phase: str, index: int) -> dict[str, object]:

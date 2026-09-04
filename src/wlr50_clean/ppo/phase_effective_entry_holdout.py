@@ -572,7 +572,18 @@ def _validate_probe_worker(
         raise PhaseEffectiveEntryHoldoutError(
             f"phase holdout probe is incomplete or failed for {phase}"
         )
-    from .phase_snapshot_live_probe import _attempt_passed
+    from .phase_snapshot_live_probe import _attempt_passed, _validated_replay_window
+    from .phase_snapshots import load_validated_phase_snapshot_payload
+
+    # Reconstruct the expected replay from the pinned snapshot, never from the
+    # worker's self-reported replay fields.  The same proof must be checked
+    # both when the live attempt finishes and when its holdout is consumed.
+    snapshot_payload, snapshot_entry = load_validated_phase_snapshot_payload(
+        context.snapshot_bundle, phase
+    )
+    replay_window = _validated_replay_window(
+        snapshot_payload, snapshot_entry, phase=phase
+    )
 
     expected_attempts = (
         ("primary", "fresh_scene", False),
@@ -589,7 +600,7 @@ def _validate_probe_worker(
             or row.get("exception") is not None
             or row.get("failure_classification") is not None
             or row.get("passed") is not True
-            or _attempt_passed(row) is not True
+            or _attempt_passed(row, replay_window=replay_window) is not True
         ):
             raise PhaseEffectiveEntryHoldoutError(
                 f"phase holdout attempt proof is invalid: {phase}[{kind}]"
