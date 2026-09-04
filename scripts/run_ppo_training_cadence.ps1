@@ -141,7 +141,7 @@ $HoldoutPath = [IO.Path]::GetFullPath(
     })
 )
 $HoldoutRoot = [IO.Path]::GetFullPath(
-    (Join-Path $RunsRoot "phase_effective_entry_holdout")
+    (Join-Path $RunsRoot "phase-effective-entry-holdout")
 ).TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
 $HoldoutManifestPath = Join-Path (Split-Path -Parent $HoldoutPath) "run_manifest.json"
 if (-not $HoldoutPath.StartsWith(
@@ -170,7 +170,7 @@ if ([string]$Holdout.schema -cne "wlr50_clean.phase_effective_entry_holdout_acce
     ($HoldoutPhases -join ',') -cne ((2..13 | ForEach-Object { "P{0:D2}" -f $_ }) -join ',') -or
     [string]$HoldoutManifest.schema -cne "wlr50_clean.ppo_run_manifest.v1" -or
     [string]$HoldoutManifest.lifecycle -cne "SUCCEEDED" -or
-    [string]$HoldoutManifest.run_kind -cne "phase_effective_entry_holdout" -or
+    [string]$HoldoutManifest.run_kind -cne "phase-effective-entry-holdout" -or
     [int]$HoldoutManifest.exit_code -ne 0) {
     throw "Phase effective-entry holdout evidence is incomplete or failed"
 }
@@ -183,7 +183,7 @@ $PhaseRolloutPath = [IO.Path]::GetFullPath(
     })
 )
 $PhaseRolloutRoot = [IO.Path]::GetFullPath(
-    (Join-Path $RunsRoot "phase_zero_residual_rollout")
+    (Join-Path $RunsRoot "phase-zero-residual-rollout")
 ).TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
 $PhaseRolloutManifestPath = Join-Path (
     Split-Path -Parent $PhaseRolloutPath
@@ -223,7 +223,7 @@ if ([string]$PhaseRollout.schema -cne "wlr50_clean.phase_zero_residual_rollout.v
     @($PhaseRolloutChecks | Where-Object { $_ -ne $true }).Count -ne 0 -or
     [string]$PhaseRolloutManifest.schema -cne "wlr50_clean.ppo_run_manifest.v1" -or
     [string]$PhaseRolloutManifest.lifecycle -cne "SUCCEEDED" -or
-    [string]$PhaseRolloutManifest.run_kind -cne "phase_zero_residual_rollout" -or
+    [string]$PhaseRolloutManifest.run_kind -cne "phase-zero-residual-rollout" -or
     [int]$PhaseRolloutManifest.exit_code -ne 0) {
     throw "Phase zero-residual rollout evidence is incomplete or failed"
 }
@@ -728,7 +728,7 @@ $InitialPublicationOutput = @(& $InitializeScript -Seed $Seed)
 $InitialPublicationRun = Confirm-SingleManagedRunDirectory `
     $InitialPublicationOutput `
     "initial checkpoint publication" `
-    "initial_checkpoint_publication"
+    "initial-checkpoint-publication"
 $InitialPublicationResultPath = Join-Path `
     $InitialPublicationRun "initial_checkpoint_publication.json"
 if (-not (Test-Path -LiteralPath $InitialPublicationResultPath -PathType Leaf)) {

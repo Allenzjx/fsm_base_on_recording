@@ -44,6 +44,8 @@ OUTPUT_FILENAME = "phase_effective_entry_holdout_acceptance.json"
 PROBE_FILENAME = "phase_snapshot_live_probe.json"
 PROBE_SCHEMA = "wlr50_clean.phase_snapshot_live_probe.v2"
 RUN_MANIFEST_SCHEMA = "wlr50_clean.ppo_run_manifest.v1"
+PROBE_RUN_KIND = "phase-snapshot-live-probe"
+HOLDOUT_RUN_KIND = "phase-effective-entry-holdout"
 HOLDOUT_SEED = 1003
 HOLDOUT_PHASES = tuple(f"P{index:02d}" for index in range(2, 14))
 HOLDOUT_CONFIG_RELATIVE_PATHS = (
@@ -468,11 +470,11 @@ def _validate_probe_worker(
     run_dir = validate_managed_run_directory(
         run_dir_value,
         project_root=context.project_root,
-        run_kind="phase_snapshot_live_probe",
+        run_kind=PROBE_RUN_KIND,
     )
     manifest, _ = _validate_started_and_final_manifest(
         run_dir,
-        run_kind="phase_snapshot_live_probe",
+        run_kind=PROBE_RUN_KIND,
         entrypoint="wlr50_clean.ppo.cli",
         subcommand="phase-snapshot-live-probe",
         training_stage="phase-snapshot-live-probe",
@@ -794,7 +796,7 @@ def aggregate_phase_effective_entry_holdout(
         run_dir = validate_managed_run_directory(
             output.parent,
             project_root=context.project_root,
-            run_kind="phase_effective_entry_holdout",
+            run_kind=HOLDOUT_RUN_KIND,
         )
         if output != run_dir / OUTPUT_FILENAME:
             raise PhaseEffectiveEntryHoldoutError(
@@ -821,7 +823,7 @@ def _validate_acceptance_run(
     run_dir = validate_managed_run_directory(
         acceptance_path.parent,
         project_root=context.project_root,
-        run_kind="phase_effective_entry_holdout",
+        run_kind=HOLDOUT_RUN_KIND,
     )
     if acceptance_path != run_dir / OUTPUT_FILENAME:
         raise PhaseEffectiveEntryHoldoutError(
@@ -829,7 +831,7 @@ def _validate_acceptance_run(
         )
     manifest, _ = _validate_started_and_final_manifest(
         run_dir,
-        run_kind="phase_effective_entry_holdout",
+        run_kind=HOLDOUT_RUN_KIND,
         entrypoint="wlr50_clean.ppo.phase_effective_entry_holdout",
         subcommand="aggregate",
         training_stage="effective-entry-holdout-aggregation",
@@ -998,9 +1000,11 @@ if __name__ == "__main__":
 __all__ = [
     "ACCEPTANCE_SCHEMA",
     "HOLDOUT_CONFIG_RELATIVE_PATHS",
+    "HOLDOUT_RUN_KIND",
     "HOLDOUT_PHASES",
     "HOLDOUT_SEED",
     "OUTPUT_FILENAME",
+    "PROBE_RUN_KIND",
     "PhaseEffectiveEntryHoldoutError",
     "TRAINING_EVIDENCE_SCHEMA",
     "aggregate_phase_effective_entry_holdout",

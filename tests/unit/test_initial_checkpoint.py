@@ -10,10 +10,12 @@ from types import SimpleNamespace
 import pytest
 
 from wlr50_clean.ppo import (
+    artifacts,
     cli,
     evaluation_artifacts,
     initial_checkpoint,
     rl_library_wrapper,
+    training_orchestration,
 )
 from wlr50_clean.ppo.phase_snapshots import capture_validated_phase_snapshot_bundle
 
@@ -190,7 +192,7 @@ def _fake_evidence(checkpoint: Path, manifest: Path) -> initial_checkpoint.Initi
         manifest_path=manifest.resolve(),
         manifest_sha256=hashlib.sha256(manifest.read_bytes()).hexdigest(),
         manifest=payload,
-        creation_run_kind="initial_checkpoint",
+        creation_run_kind="initial-checkpoint",
         creation_run_directory=checkpoint.parent,
         creation_run_manifest={"path": "run_manifest.json"},
         checkpoint_bytes=checkpoint.read_bytes(),
@@ -231,6 +233,8 @@ def test_publication_is_no_clobber_and_reuses_only_an_identical_pair(
         expected_seed=1001,
     )
     assert first.reused_existing is False
+    assert first.creation_run_kind == initial_checkpoint.INITIAL_RUN_KIND
+    assert first.as_dict()["creation_run_kind"] == "initial-checkpoint"
     original_checkpoint = first.checkpoint_path.read_bytes()
     original_manifest = first.manifest_path.read_bytes()
     published_payload = json.loads(original_manifest)
@@ -684,7 +688,7 @@ def test_offline_validator_requires_embedded_infos_and_exact_zero_actor(
         initial_checkpoint,
         "_validate_creation_run",
         lambda *args, **kwargs: (
-            "initial_checkpoint",
+            "initial-checkpoint",
             root / "runs" / "creator",
             {"path": "run_manifest.json"},
         ),
@@ -701,6 +705,144 @@ def test_offline_validator_requires_embedded_infos_and_exact_zero_actor(
         initial_checkpoint.validate_initial_zero_residual_checkpoint(
             checkpoint, manifest_path, project_root=root, expected_seed=1001
         )
+
+
+def test_creation_validator_matches_real_reserved_kind_and_rejects_raw_kind(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    config = tmp_path / "configs" / "initializer.yaml"
+    config.parent.mkdir()
+    config.write_text("initializer: true\n", encoding="utf-8")
+    reservation = artifacts.reserve_run(
+        project_root=tmp_path,
+        run_kind="initial_checkpoint",
+        config_paths=(config,),
+        seed=1001,
+        environment_count=1,
+        training_stage=initial_checkpoint.INITIAL_RUN_STAGE,
+        git_commit="b" * 40,
+        entrypoint="wlr50_clean.ppo.cli",
+        subcommand="initialize-zero-residual",
+    )
+    run_dir = reservation.run_dir
+    started = json.loads(reservation.started_manifest.read_text(encoding="utf-8"))
+    assert run_dir.parent.name == initial_checkpoint.INITIAL_RUN_KIND
+    assert started["run_kind"] == initial_checkpoint.INITIAL_RUN_KIND
+
+    publication = artifacts.reserve_run(
+        project_root=tmp_path,
+        run_kind="initial_checkpoint_publication",
+        config_paths=(config,),
+        seed=1001,
+        environment_count=1,
+        training_stage="initial-checkpoint-publication",
+        git_commit="b" * 40,
+        entrypoint="wlr50_clean.ppo.cli",
+        subcommand="publish-initial-zero-residual",
+    )
+    publication_started = json.loads(
+        publication.started_manifest.read_text(encoding="utf-8")
+    )
+    assert publication.run_dir.parent.name == "initial-checkpoint-publication"
+    assert publication_started["run_kind"] == "initial-checkpoint-publication"
+    assert publication_started["run_kind"] != "initial_checkpoint_publication"
+
+    runtime_identity = run_dir / "committed_runtime_identity.before.json"
+    runtime_identity.write_bytes(b"runtime-identity")
+    runtime_record = artifacts.file_record(runtime_identity)
+    checkpoint = run_dir / initial_checkpoint.INITIAL_CHECKPOINT_NAME
+    checkpoint.write_bytes(b"exact-zero-checkpoint")
+    checkpoint_record = artifacts.file_record(checkpoint, relative_to=run_dir)
+    staged_manifest_path = run_dir / initial_checkpoint.INITIAL_MANIFEST_NAME
+    staged_manifest = {
+        "training_seed": 1001,
+        "source_git_commit": "b" * 40,
+        "committed_runtime_content_sha256": "d" * 64,
+        "creation_runtime_identity_path": str(runtime_identity.resolve()),
+        "creation_runtime_identity_sha256": runtime_record["sha256"],
+        "checkpoint_path": str(checkpoint.resolve()),
+        "checkpoint_sha256": checkpoint_record["sha256"],
+    }
+    _write_json(staged_manifest_path, staged_manifest)
+    staged_manifest_record = artifacts.file_record(
+        staged_manifest_path, relative_to=run_dir
+    )
+    result_path = run_dir / initial_checkpoint.INITIAL_RESULT_NAME
+    _write_json(
+        result_path,
+        {
+            "schema": initial_checkpoint.INITIAL_RESULT_SCHEMA,
+            "stage": "initial_zero_residual",
+            "seed": 1001,
+            "num_envs": 1,
+            "global_policy_decisions": 0,
+            "save_load_round_trip": True,
+            "checkpoint_private_capture_verified": True,
+            "zero_mean_actor_output_layer_verified_before_save": True,
+            "zero_mean_actor_output_layer_verified_after_load": True,
+            "phase_snapshot_bundle": None,
+            "phase_effective_entry_contract": None,
+            "checkpoint": str(checkpoint.resolve()),
+            "checkpoint_sha256": checkpoint_record["sha256"],
+            "checkpoint_manifest": str(staged_manifest_path.resolve()),
+            "checkpoint_manifest_sha256": staged_manifest_record["sha256"],
+        },
+    )
+    result_record = artifacts.file_record(result_path, relative_to=run_dir)
+    calls: list[tuple[Path, str]] = []
+
+    def fake_validate_finalized_run(selected, **kwargs):
+        calls.append((Path(selected), str(kwargs["run_kind"])))
+        return {
+            "directory": run_dir,
+            "identity": {"seed": 1001, "environment_count": 1},
+            "artifacts": {
+                initial_checkpoint.INITIAL_RESULT_NAME: result_record,
+                initial_checkpoint.INITIAL_CHECKPOINT_NAME: checkpoint_record,
+                initial_checkpoint.INITIAL_MANIFEST_NAME: staged_manifest_record,
+            },
+            "committed_runtime_identities": [runtime_record],
+            "committed_runtime_identity_before_payload": {
+                "git_commit": "b" * 40,
+                "content_sha256": "d" * 64,
+            },
+            "run_manifest": {"path": "run_manifest.json"},
+        }
+
+    monkeypatch.setattr(
+        training_orchestration,
+        "_validate_finalized_run",
+        fake_validate_finalized_run,
+    )
+    run_kind, returned_dir, _ = initial_checkpoint._validate_creation_run(
+        staged_manifest, project_root=tmp_path.resolve(), cache={}
+    )
+    assert run_kind == "initial-checkpoint"
+    assert returned_dir == run_dir
+    assert calls == [(run_dir, "initial-checkpoint")]
+
+    raw_run = (
+        tmp_path
+        / "runs"
+        / "ppo_phase_v1"
+        / "initial_checkpoint"
+        / "raw-kind-must-fail"
+    )
+    raw_run.mkdir(parents=True)
+    raw_identity = raw_run / "committed_runtime_identity.before.json"
+    raw_identity.write_bytes(b"runtime-identity")
+    raw_manifest = {
+        **staged_manifest,
+        "creation_runtime_identity_path": str(raw_identity.resolve()),
+    }
+    with pytest.raises(
+        initial_checkpoint.InitialCheckpointError,
+        match="not created by an initializer",
+    ):
+        initial_checkpoint._validate_creation_run(
+            raw_manifest, project_root=tmp_path.resolve(), cache={}
+        )
+    assert calls == [(run_dir, "initial-checkpoint")]
 
 
 def test_train_no_longer_creates_initial_checkpoint_and_preflight_blocks_missing_pair(
@@ -732,8 +874,28 @@ def test_train_no_longer_creates_initial_checkpoint_and_preflight_blocks_missing
 def test_final_evaluation_accepts_dedicated_creator_only_for_initial_role(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    run_dir = tmp_path / "initial-run"
-    run_dir.mkdir()
+    config = tmp_path / "configs" / "initializer.yaml"
+    config.parent.mkdir()
+    config.write_text("initializer: true\n", encoding="utf-8")
+    reservation = artifacts.reserve_run(
+        project_root=tmp_path,
+        run_kind="initial_checkpoint",
+        config_paths=(config,),
+        seed=1001,
+        environment_count=1,
+        training_stage="initialize-zero-residual",
+        git_commit="b" * 40,
+        entrypoint="wlr50_clean.ppo.cli",
+        subcommand="initialize-zero-residual",
+    )
+    run_dir = reservation.run_dir
+    started_payload = json.loads(
+        reservation.started_manifest.read_text(encoding="utf-8")
+    )
+    assert run_dir.parent.name == initial_checkpoint.INITIAL_RUN_KIND
+    assert started_payload["run_kind"] == "initial-checkpoint"
+    assert started_payload["run_kind"] != "initial_checkpoint"
+
     identity_path = run_dir / "committed_runtime_identity.before.json"
     identity_path.write_bytes(b"runtime")
     identity_record = {
@@ -741,21 +903,9 @@ def test_final_evaluation_accepts_dedicated_creator_only_for_initial_role(
         "bytes": len(b"runtime"),
         "sha256": hashlib.sha256(b"runtime").hexdigest(),
     }
-    run_payload = {
-        "schema": evaluation_artifacts.RUN_MANIFEST_SCHEMA,
-        "lifecycle": "SUCCEEDED",
-        "exit_code": 0,
-        "run_kind": "initial_checkpoint",
-        "entrypoint": "wlr50_clean.ppo.cli",
-        "subcommand": "initialize-zero-residual",
-        "immutable_run_directory": True,
-        "run_dir": str(run_dir.resolve()),
-        "identity": {
-            "training_stage": "initialize-zero-residual",
-            "environment_count": 1,
-        },
-    }
-    _write_json(run_dir / "run_manifest.json", run_payload)
+    final_manifest = artifacts.finalize_run(run_dir, exit_code=0)
+    run_payload = json.loads(final_manifest.read_text(encoding="utf-8"))
+    assert run_payload["run_kind"] == "initial-checkpoint"
     runtime = {"git_commit": "b" * 40, "content_sha256": "d" * 64}
     monkeypatch.setattr(
         evaluation_artifacts,
@@ -780,4 +930,12 @@ def test_final_evaluation_accepts_dedicated_creator_only_for_initial_role(
     ):
         evaluation_artifacts._validate_checkpoint_creation_runtime(
             manifest, role="checkpoint_smoke"
+        )
+
+    _write_json(final_manifest, {**run_payload, "run_kind": "initial_checkpoint"})
+    with pytest.raises(
+        evaluation_artifacts.EvaluationArtifactError, match="allowed finalized"
+    ):
+        evaluation_artifacts._validate_checkpoint_creation_runtime(
+            manifest, role="checkpoint_initial"
         )

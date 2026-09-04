@@ -272,6 +272,7 @@ def test_initial_checkpoint_entry_is_two_managed_phases_and_cadence_runs_it_firs
     common = (scripts / "_invoke_ppo_cli.ps1").read_text(encoding="utf-8")
 
     assert initializer.count("_invoke_ppo_cli.ps1") == 2
+    assert r'runs\ppo_phase_v1\initial-checkpoint' in initializer
     assert '-RunKind "initial_checkpoint"' in initializer
     assert '-Subcommand "initialize-zero-residual"' in initializer
     assert '-RunKind "initial_checkpoint_publication"' in initializer

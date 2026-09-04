@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import copy
+import hashlib
+import json
 import math
 from dataclasses import replace
 from pathlib import Path
@@ -390,15 +392,22 @@ def _snapshot_payload(phase="P09"):
 def _snapshot_payload_with_source_replay(
     phase: str = "P10",
     *,
-    source_replay_steps: int = 18,
-    controller_anchor_offset: int = 8,
+    source_replay_steps: int = 217,
+    predecessor_verify_offset: int = 199,
+    controller_anchor_offset: int = 207,
 ):
-    """Build the P10 hybrid physical/controller-anchor replay shape."""
+    """Build the P10 three-segment contact-history replay shape."""
 
     assert phase == "P10"
-    assert 0 < controller_anchor_offset < source_replay_steps
+    assert (
+        0
+        < predecessor_verify_offset
+        < controller_anchor_offset
+        < source_replay_steps
+    )
     payload = _snapshot_payload(phase)
     source_tick = int(payload["source_tick"])
+    predecessor_verify_tick = source_tick + predecessor_verify_offset
     controller_anchor_tick = source_tick + controller_anchor_offset
     target_entry_tick = source_tick + source_replay_steps
     first = payload["source_command"]
@@ -413,7 +422,11 @@ def _snapshot_payload_with_source_replay(
                 "source_atomic_write_count": 281 + offset,
                 "source_fsm_state": "P09" if tick < controller_anchor_tick else phase,
                 "source_fsm_lifecycle": (
-                    "VERIFY_RESULT" if tick < controller_anchor_tick else "WAIT_ENTRY"
+                    "EXECUTE_MOTION"
+                    if tick < predecessor_verify_tick
+                    else "VERIFY_RESULT"
+                    if tick < controller_anchor_tick
+                    else "WAIT_ENTRY"
                 ),
                 "target_entry_tick": target_entry_tick,
             }
@@ -434,6 +447,8 @@ def _snapshot_payload_with_source_replay(
             "source_command": replay[0],
             "source_commands": replay,
             "source_replay_steps": source_replay_steps,
+            "predecessor_verify_tick": predecessor_verify_tick,
+            "predecessor_verify_time_s": predecessor_verify_tick / 120.0,
             "controller_anchor_tick": controller_anchor_tick,
             "controller_anchor_time_s": controller_anchor_tick / 120.0,
             "target_entry_tick": target_entry_tick,
@@ -1819,101 +1834,135 @@ def test_phase_snapshot_reset_replays_every_authored_source_tick_before_one_fsm_
     physical = restoration["physical_state"]
     assert restoration["physical_anchor_tick"] == 100
     assert restoration["physical_anchor_time_s"] == 100 / 120.0
-    assert restoration["controller_anchor_tick"] == 108
-    assert restoration["controller_anchor_time_s"] == 108 / 120.0
-    assert restoration["target_entry_tick"] == 118
-    assert restoration["target_entry_time_s"] == 118 / 120.0
-    assert restoration["source_replay_steps"] == 18
+    assert restoration["predecessor_verify_tick"] == 299
+    assert restoration["predecessor_verify_time_s"] == 299 / 120.0
+    assert restoration["controller_anchor_tick"] == 307
+    assert restoration["controller_anchor_time_s"] == 307 / 120.0
+    assert restoration["target_entry_tick"] == 317
+    assert restoration["target_entry_time_s"] == 317 / 120.0
+    assert restoration["source_replay_steps"] == 217
     assert restoration["source_snapshot_semantics"] == (
         "source_recording_hybrid_physical_anchor_tick"
     )
     assert physical["state_write_count"] == 1
-    assert physical["source_replay_steps"] == 18
+    assert physical["source_replay_steps"] == 217
     assert physical["physical_anchor_tick"] == 100
-    assert physical["controller_anchor_tick"] == 108
-    assert physical["target_entry_tick"] == 118
-    assert physical["physical_to_controller_replay_steps"] == 8
+    assert physical["predecessor_verify_tick"] == 299
+    assert physical["controller_anchor_tick"] == 307
+    assert physical["target_entry_tick"] == 317
+    assert physical["physical_to_predecessor_verify_replay_steps"] == 199
+    assert physical["predecessor_verify_to_controller_replay_steps"] == 8
+    assert physical["physical_to_controller_replay_steps"] == 207
     assert physical["controller_to_target_replay_steps"] == 10
     assert physical["hybrid_physical_controller_anchor"] is True
     anchor_contract = physical["replay_anchor_contract"]
     assert anchor_contract["verified"] is True
-    assert anchor_contract["mode"] == "hybrid_physical_and_controller_anchors"
+    assert anchor_contract["schema"] == (
+        "wlr50_clean.phase_snapshot_replay_anchor_contract.v2"
+    )
+    assert anchor_contract["mode"] == (
+        "hybrid_physical_predecessor_verify_and_controller_anchors"
+    )
     assert anchor_contract["physical_state_anchor_tick"] == 100
-    assert anchor_contract["controller_state_anchor_tick"] == 108
-    assert anchor_contract["latch_snapshot_anchor_tick"] == 108
-    assert anchor_contract["source_replay_context_transition_tick"] == 108
+    assert anchor_contract["predecessor_verify_tick"] == 299
+    assert anchor_contract["controller_state_anchor_tick"] == 307
+    assert anchor_contract["latch_snapshot_anchor_tick"] == 307
+    assert anchor_contract["source_replay_context_transition_tick"] == 307
+    assert anchor_contract["source_replay_context_transition_ticks"] == [299, 307]
     assert anchor_contract["source_replay_context_segments"] == [
         {
+            "anchor_segment": "physical_anchor_to_predecessor_verify",
             "first_source_tick": 100,
-            "last_source_tick": 107,
+            "last_source_tick": 298,
+            "source_replay_steps": 199,
+            "source_fsm_state": "P09",
+            "source_fsm_lifecycle": "EXECUTE_MOTION",
+        },
+        {
+            "anchor_segment": "predecessor_verify_to_controller_anchor",
+            "first_source_tick": 299,
+            "last_source_tick": 306,
             "source_replay_steps": 8,
             "source_fsm_state": "P09",
             "source_fsm_lifecycle": "VERIFY_RESULT",
         },
         {
-            "first_source_tick": 108,
-            "last_source_tick": 117,
+            "anchor_segment": "controller_anchor_to_target_entry",
+            "first_source_tick": 307,
+            "last_source_tick": 316,
             "source_replay_steps": 10,
             "source_fsm_state": "P10",
             "source_fsm_lifecycle": "WAIT_ENTRY",
         },
     ]
-    assert physical["source_replay_fsm_contexts"][:8] == [
+    assert physical["source_replay_fsm_contexts"][:199] == [
+        {
+            "source_control_physics_tick": tick,
+            "source_fsm_state": "P09",
+            "source_fsm_lifecycle": "EXECUTE_MOTION",
+            "anchor_segment": "physical_anchor_to_predecessor_verify",
+        }
+        for tick in range(100, 299)
+    ]
+    assert physical["source_replay_fsm_contexts"][199:207] == [
         {
             "source_control_physics_tick": tick,
             "source_fsm_state": "P09",
             "source_fsm_lifecycle": "VERIFY_RESULT",
-            "anchor_segment": "physical_anchor_to_controller_anchor",
+            "anchor_segment": "predecessor_verify_to_controller_anchor",
         }
-        for tick in range(100, 108)
+        for tick in range(299, 307)
     ]
-    assert physical["source_replay_fsm_contexts"][8:] == [
+    assert physical["source_replay_fsm_contexts"][207:] == [
         {
             "source_control_physics_tick": tick,
             "source_fsm_state": "P10",
             "source_fsm_lifecycle": "WAIT_ENTRY",
             "anchor_segment": "controller_anchor_to_target_entry",
         }
-        for tick in range(108, 118)
+        for tick in range(307, 317)
     ]
-    assert restoration["controller_state"]["controller_state_anchor_tick"] == 108
+    assert restoration["controller_state"]["predecessor_verify_tick"] == 299
+    assert restoration["controller_state"]["controller_state_anchor_tick"] == 307
     assert restoration["controller_state"]["controller_state_anchor_role"] == (
         "controller_anchor"
     )
-    assert restoration["guard_state"]["latch_snapshot_anchor_tick"] == 108
+    assert restoration["guard_state"]["predecessor_verify_tick"] == 299
+    assert restoration["guard_state"]["latch_snapshot_anchor_tick"] == 307
     assert restoration["guard_state"]["latch_snapshot_anchor_role"] == (
         "controller_anchor"
     )
     effective = physical["effective_entry_contract"]
     assert effective["physical_anchor_tick"] == 100
-    assert effective["controller_anchor_tick"] == 108
-    assert effective["target_entry_tick"] == 118
-    assert effective["source_replay_steps"] == 18
-    assert physical["prime_physics_steps"] == 18
-    assert physical["prime_atomic_full12_writes"] == 18
-    assert physical["sensor_history_samples_after_reset"] == 18
-    assert physical["contact_sensor_reads_after_prime"] == 18
-    assert physical["source_replay_observation_ticks"] == list(range(101, 119))
-    assert physical["episode_sensor_tick_offset"] == 118
+    assert effective["predecessor_verify_tick"] == 299
+    assert effective["controller_anchor_tick"] == 307
+    assert effective["target_entry_tick"] == 317
+    assert effective["source_replay_steps"] == 217
+    assert physical["prime_physics_steps"] == 217
+    assert physical["prime_atomic_full12_writes"] == 217
+    assert physical["sensor_history_samples_after_reset"] == 217
+    assert physical["contact_sensor_reads_after_prime"] == 217
+    assert physical["source_replay_observation_ticks"] == list(range(101, 318))
+    assert physical["episode_sensor_tick_offset"] == 317
     assert [
         row["source_control_physics_tick"]
         for row in physical["prime_atomic_writes"]
-    ] == list(range(100, 118))
+    ] == list(range(100, 317))
     assert [
         row["source_control_physics_tick"]
         for row in physical["source_actuation_matches"]
-    ] == list(range(100, 118))
+    ] == list(range(100, 317))
     assert [
         row["source_control_physics_tick"]
         for row in physical["source_mapper_post_states"]
-    ] == list(range(100, 118))
+    ] == list(range(100, 317))
     assert physical["source_actuation_match"] == physical[
         "source_actuation_matches"
     ][-1]
     assert physical["source_mapper_post_state"] == physical[
         "source_mapper_post_states"
     ][-1]
-    assert len(physical["source_replay_safety_checks"]) == 18
+    assert len(physical["source_replay_safety_checks"]) == 217
     assert all(
         row["verified"] is True
         and row["source_control_physics_tick"] + 1
@@ -1921,23 +1970,23 @@ def test_phase_snapshot_reset_replays_every_authored_source_tick_before_one_fsm_
         for row in physical["source_replay_safety_checks"]
     )
     assert physical["all_source_replay_steps_safe"] is True
-    assert frame.info["reset_prime_tick_count"] == 18
-    assert frame.info["next_post_reset_command_tick"] == SETTLE_TICKS + 18
-    assert frame.info["sensor_tick_at_effective_entry"] == 118
+    assert frame.info["reset_prime_tick_count"] == 217
+    assert frame.info["next_post_reset_command_tick"] == SETTLE_TICKS + 217
+    assert frame.info["sensor_tick_at_effective_entry"] == 317
     assert frame.info["sensor_clock_semantics"] == (
         "absolute_source_tick_continues_independently_of_episode_clock"
     )
-    assert runtime.live_readers[-1].ticks == list(range(101, 119))
+    assert runtime.live_readers[-1].ticks == list(range(101, 318))
     live_reads = [row for row in runtime.events if row[0] == "reader.live"]
-    assert [row[1] for row in live_reads] == list(range(101, 119))
+    assert [row[1] for row in live_reads] == list(range(101, 318))
     assert [row[2] for row in live_reads] == pytest.approx(
-        [tick / 120.0 for tick in range(101, 119)]
+        [tick / 120.0 for tick in range(101, 318)]
     )
     assert sum(row[0] == "write_phase_snapshot" for row in runtime.events) == 1
     assert sum(row[0] == "controller.step" for row in runtime.events) == 1
-    assert runtime.sim.step_count == SETTLE_TICKS + 18
+    assert runtime.sim.step_count == SETTLE_TICKS + 217
     assert [row[1] for row in runtime.events if row[0] == "adapter.apply"] == list(
-        range(SETTLE_TICKS + 18)
+        range(SETTLE_TICKS + 217)
     )
     assert [
         row[1:] for row in runtime.events if row[0] == "controller.step"
@@ -1945,7 +1994,7 @@ def test_phase_snapshot_reset_replays_every_authored_source_tick_before_one_fsm_
 
     following = backend.step_physics(ZERO)
     assert following.physics_tick == 1
-    assert runtime.live_readers[-1].ticks == list(range(101, 120))
+    assert runtime.live_readers[-1].ticks == list(range(101, 319))
     assert [
         row[1:] for row in runtime.events if row[0] == "controller.step"
     ] == [(0, 0.0), (1, 1.0 / 120.0)]
@@ -1953,10 +2002,10 @@ def test_phase_snapshot_reset_replays_every_authored_source_tick_before_one_fsm_
     first_reader = runtime.live_readers[-1]
     repeated = backend.reset(seed=912, options={"training_phase_snapshot": "P10"})
     assert repeated.physics_tick == 0
-    assert repeated.info["sensor_tick_at_effective_entry"] == 118
+    assert repeated.info["sensor_tick_at_effective_entry"] == 317
     assert runtime.reset_scene_count == 2
     assert runtime.live_readers[-1] is not first_reader
-    assert runtime.live_readers[-1].ticks == list(range(101, 119))
+    assert runtime.live_readers[-1].ticks == list(range(101, 318))
 
 
 def test_phase_snapshot_target_tick_1817_uses_canonical_binary64_time() -> None:
@@ -2049,8 +2098,9 @@ def test_phase_snapshot_replay_stops_on_an_intermediate_safety_failure() -> None
     assert failed["source_control_physics_tick"] == 104
     assert failed["observation_physics_tick"] == 105
     assert failed["physical_anchor_tick"] == 100
-    assert failed["controller_anchor_tick"] == 108
-    assert failed["target_entry_tick"] == 118
+    assert failed["predecessor_verify_tick"] == 299
+    assert failed["controller_anchor_tick"] == 307
+    assert failed["target_entry_tick"] == 317
     assert failed["replay_anchor_contract"]["verified"] is True
 
 
@@ -2074,12 +2124,16 @@ def test_effective_entry_calibration_skips_only_the_prior_contract() -> None:
     assert proof["verified"] is True
     assert proof["physical_anchor_tick"] == 100
     assert proof["physical_anchor_time_s"] == 100 / 120.0
-    assert proof["controller_anchor_tick"] == 108
-    assert proof["controller_anchor_time_s"] == 108 / 120.0
-    assert proof["target_entry_tick"] == 118
-    assert proof["target_entry_time_s"] == 118 / 120.0
-    assert proof["source_replay_steps"] == 18
-    assert proof["physical_to_controller_replay_steps"] == 8
+    assert proof["predecessor_verify_tick"] == 299
+    assert proof["predecessor_verify_time_s"] == 299 / 120.0
+    assert proof["controller_anchor_tick"] == 307
+    assert proof["controller_anchor_time_s"] == 307 / 120.0
+    assert proof["target_entry_tick"] == 317
+    assert proof["target_entry_time_s"] == 317 / 120.0
+    assert proof["source_replay_steps"] == 217
+    assert proof["physical_to_predecessor_verify_replay_steps"] == 199
+    assert proof["predecessor_verify_to_controller_replay_steps"] == 8
+    assert proof["physical_to_controller_replay_steps"] == 207
     assert proof["controller_to_target_replay_steps"] == 10
     assert proof["hybrid_physical_controller_anchor"] is True
     assert proof["replay_anchor_contract"]["verified"] is True
@@ -2096,8 +2150,11 @@ def test_effective_entry_calibration_skips_only_the_prior_contract() -> None:
     "surface",
     (
         "missing_controller_anchor_time",
+        "missing_predecessor_verify_time",
+        "predecessor_verify_not_after_physical_anchor",
         "controller_anchor_not_inside_window",
         "pre_anchor_fsm_state",
+        "predecessor_verify_fsm_lifecycle",
         "controller_anchor_fsm_lifecycle",
     ),
 )
@@ -2108,13 +2165,22 @@ def test_p10_hybrid_anchor_or_context_tamper_fails_before_scene_creation(
     payload = _snapshot_payload_with_source_replay()
     if surface == "missing_controller_anchor_time":
         del payload["controller_anchor_time_s"]
+    elif surface == "missing_predecessor_verify_time":
+        del payload["predecessor_verify_time_s"]
+    elif surface == "predecessor_verify_not_after_physical_anchor":
+        payload["predecessor_verify_tick"] = payload["source_tick"]
+        payload["predecessor_verify_time_s"] = payload["source_time_s"]
     elif surface == "controller_anchor_not_inside_window":
-        payload["controller_anchor_tick"] = payload["source_tick"]
-        payload["controller_anchor_time_s"] = payload["source_time_s"]
+        payload["controller_anchor_tick"] = payload["predecessor_verify_tick"]
+        payload["controller_anchor_time_s"] = payload[
+            "predecessor_verify_time_s"
+        ]
     elif surface == "pre_anchor_fsm_state":
         payload["source_commands"][0]["source_fsm_state"] = "P10"
+    elif surface == "predecessor_verify_fsm_lifecycle":
+        payload["source_commands"][199]["source_fsm_lifecycle"] = "EXECUTE_MOTION"
     elif surface == "controller_anchor_fsm_lifecycle":
-        payload["source_commands"][8]["source_fsm_lifecycle"] = "VERIFY_RESULT"
+        payload["source_commands"][207]["source_fsm_lifecycle"] = "VERIFY_RESULT"
     else:  # pragma: no cover - parametrization is exhaustive.
         raise AssertionError(surface)
     loaded = LoadedPhaseSnapshot(
@@ -2521,8 +2587,45 @@ def test_all_checked_snapshots_replay_every_source_drive_with_real_adapter_write
         def write_data_to_sim(self):
             self.articulation_write_count += 1
 
-    for phase in (f"P{index:02d}" for index in range(1, 14)):
-        snapshot = _load_validated_phase_snapshot(phase).payload
+    snapshots = tuple(
+        _load_validated_phase_snapshot(f"P{index:02d}").payload
+        for index in range(1, 14)
+    )
+    observation_bindings = {
+        (
+            Path(snapshot["source_trial_path"])
+            / snapshot["source_artifacts"]["observation"]["name"],
+            snapshot["source_artifacts"]["observation"]["sha256"],
+        )
+        for snapshot in snapshots
+    }
+    assert len(observation_bindings) == 1
+    (
+        observation_path,
+        expected_observation_file_sha256,
+    ) = observation_bindings.pop()
+    required_observation_ticks = {
+        row["control_physics_tick"]
+        for snapshot in snapshots
+        for row in snapshot["source_commands"]
+    }
+    observation_file_hasher = hashlib.sha256()
+    observations_by_tick = {}
+    with observation_path.open("rb") as observation_file:
+        for line_tick, encoded_row in enumerate(observation_file):
+            observation_file_hasher.update(encoded_row)
+            if line_tick not in required_observation_ticks:
+                continue
+            observation = json.loads(encoded_row)
+            assert observation["physics_tick"] == line_tick
+            observations_by_tick[line_tick] = observation
+    assert (
+        observation_file_hasher.hexdigest()
+        == expected_observation_file_sha256
+    )
+    assert set(observations_by_tick) == required_observation_ticks
+
+    for snapshot in snapshots:
         source = snapshot["source_command"]
         expected = source["expected_atomic_ack"]
         standing = dict(
@@ -2563,6 +2666,35 @@ def test_all_checked_snapshots_replay_every_source_drive_with_real_adapter_write
         backend_module._install_source_mapper_pre_state(adapter, snapshot)
 
         for offset, replay_source in enumerate(snapshot["source_commands"]):
+            # The Trial observation is the hash-bound causal feedback input to
+            # the recorded mapper transition.  Isaac supplied joint tensors as
+            # float32, so retain that quantization before the adapter promotes
+            # each scalar to Python float; recomputing the radians in float64
+            # changes a few source actuation hashes by one or two ULPs.
+            source_tick = replay_source["control_physics_tick"]
+            observation = observations_by_tick[source_tick]
+            observation_row_sha256 = hashlib.sha256(
+                json.dumps(
+                    observation,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    ensure_ascii=True,
+                ).encode("utf-8")
+            ).hexdigest()
+            assert observation_row_sha256 == replay_source[
+                "source_observation_row_canonical_sha256"
+            ]
+            for index, name in enumerate(SERVO_NAMES):
+                logical_position_deg = observation["joints"][name][
+                    "position_deg"
+                ]
+                physical_position_rad = numpy.float32(
+                    math.radians(
+                        standing[name]
+                        + SERVO_COMMAND_SIGN[name] * logical_position_deg
+                    )
+                )
+                robot.data.joint_pos[0, servo_ids[index]] = physical_position_rad
             ack = adapter.apply_full12(
                 replay_source["adapter_input"]["requested_full12"],
                 physics_tick=SETTLE_TICKS + offset,
@@ -2591,25 +2723,31 @@ def test_all_checked_snapshots_replay_every_source_drive_with_real_adapter_write
     assert p03["expected_atomic_ack"]["servo_tracking_feedback_sampled"] is True
     p10_payload = _load_validated_phase_snapshot("P10").payload
     p10 = p10_payload["source_command"]
-    assert p10_payload["source_tick"] == 7776
-    assert p10_payload["source_time_s"] == 7776 / 120.0
+    assert p10_payload["source_tick"] == 7577
+    assert p10_payload["source_time_s"] == 7577 / 120.0
+    assert p10_payload["predecessor_verify_tick"] == 7776
+    assert p10_payload["predecessor_verify_time_s"] == 7776 / 120.0
     assert p10_payload["controller_anchor_tick"] == 7784
     assert p10_payload["controller_anchor_time_s"] == 7784 / 120.0
-    assert p10_payload["source_replay_steps"] == 18
+    assert p10_payload["source_replay_steps"] == 217
     assert p10_payload["target_entry_tick"] == 7794
     assert [
         row["control_physics_tick"] for row in p10_payload["source_commands"]
-    ] == list(range(7776, 7794))
+    ] == list(range(7577, 7794))
     assert {
         (row["source_fsm_state"], row["source_fsm_lifecycle"])
-        for row in p10_payload["source_commands"][:8]
+        for row in p10_payload["source_commands"][:199]
+    } == {("P09", "EXECUTE_MOTION")}
+    assert {
+        (row["source_fsm_state"], row["source_fsm_lifecycle"])
+        for row in p10_payload["source_commands"][199:207]
     } == {("P09", "VERIFY_RESULT")}
     assert {
         (row["source_fsm_state"], row["source_fsm_lifecycle"])
-        for row in p10_payload["source_commands"][8:]
+        for row in p10_payload["source_commands"][207:]
     } == {("P10", "WAIT_ENTRY")}
     assert p10["source_fsm_state"] == "P09"
-    assert p10["source_fsm_lifecycle"] == "VERIFY_RESULT"
+    assert p10["source_fsm_lifecycle"] == "EXECUTE_MOTION"
     assert p10["expected_atomic_ack"]["drive_feedback_bias_requested_full12"][
         7
     ] == pytest.approx(0.0)
@@ -2637,6 +2775,8 @@ def test_real_frozen_controller_and_guard_tracker_restore_from_checked_snapshot(
     )
     assert controller.history == []
     assert controller_proof["physical_anchor_tick"] == loaded.payload["source_tick"]
+    assert controller_proof["predecessor_verify_tick"] is None
+    assert controller_proof["predecessor_verify_time_s"] is None
     assert controller_proof["controller_anchor_tick"] is None
     assert controller_proof["controller_anchor_time_s"] is None
     assert controller_proof["controller_state_anchor_tick"] is None
@@ -2657,6 +2797,8 @@ def test_real_frozen_controller_and_guard_tracker_restore_from_checked_snapshot(
     assert guard_proof["source_event_ticks_preserved_absolute"] is True
     assert guard_proof["source_ticks_shifted_to_episode_relative"] is False
     assert guard_proof["physical_anchor_tick"] == loaded.payload["source_tick"]
+    assert guard_proof["predecessor_verify_tick"] is None
+    assert guard_proof["predecessor_verify_time_s"] is None
     assert guard_proof["controller_anchor_tick"] is None
     assert guard_proof["controller_anchor_time_s"] is None
     assert guard_proof["latch_snapshot_anchor_tick"] == loaded.payload["source_tick"]
@@ -2690,7 +2832,9 @@ def test_real_frozen_p10_controller_and_latches_restore_from_later_anchor() -> N
     controller_proof = _restore_controller_from_snapshot(controller, loaded.payload)
     assert controller_proof["state_id"] == "P10"
     assert controller_proof["lifecycle"] == "WAIT_ENTRY"
-    assert controller_proof["physical_anchor_tick"] == 7776
+    assert controller_proof["physical_anchor_tick"] == 7577
+    assert controller_proof["predecessor_verify_tick"] == 7776
+    assert controller_proof["predecessor_verify_time_s"] == 7776 / 120.0
     assert controller_proof["controller_anchor_tick"] == 7784
     assert controller_proof["controller_anchor_time_s"] == 7784 / 120.0
     assert controller_proof["controller_state_anchor_tick"] == 7784
@@ -2702,7 +2846,9 @@ def test_real_frozen_p10_controller_and_latches_restore_from_later_anchor() -> N
         contact_classifier=ContactClassifier(),
     )
     guard_proof = _restore_guard_tracker_from_snapshot(reader, loaded.payload)
-    assert guard_proof["physical_anchor_tick"] == 7776
+    assert guard_proof["physical_anchor_tick"] == 7577
+    assert guard_proof["predecessor_verify_tick"] == 7776
+    assert guard_proof["predecessor_verify_time_s"] == 7776 / 120.0
     assert guard_proof["controller_anchor_tick"] == 7784
     assert guard_proof["controller_anchor_time_s"] == 7784 / 120.0
     assert guard_proof["latch_snapshot_anchor_tick"] == 7784
@@ -2765,8 +2911,9 @@ def test_p10_effective_entry_mismatch_retains_hybrid_anchor_evidence() -> None:
     failure = backend._snapshot_restoration["effective_entry"]
     assert failure["verified"] is False
     assert failure["physical_anchor_tick"] == 100
-    assert failure["controller_anchor_tick"] == 108
-    assert failure["target_entry_tick"] == 118
+    assert failure["predecessor_verify_tick"] == 299
+    assert failure["controller_anchor_tick"] == 307
+    assert failure["target_entry_tick"] == 317
     assert failure["replay_anchor_contract"]["verified"] is True
     assert runtime.controller.physics_tick == 0
     assert not any(row[0] == "controller.step" for row in runtime.events)

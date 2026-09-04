@@ -34,6 +34,7 @@ SOURCE_MAPPER_STATE_SCHEMA = "wlr50_clean.ppo_phase_snapshot_mapper_state.v1"
 PHASE_IDS = tuple(f"P{i:02d}" for i in range(1, 14))
 PHYSICS_HZ = 120.0
 SOURCE_SETTLE_TICKS = 180
+SOURCE_CONTACT_HISTORY_SAMPLES = 3
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_PHASE_SNAPSHOT_ROOT = PROJECT_ROOT / "reference" / "ppo_phase_snapshots"
 _SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
@@ -80,6 +81,7 @@ class _PhaseEntryBoundary:
     """Source/target ticks for one reset-only phase-entry replay."""
 
     source_tick: int
+    predecessor_verify_tick: int | None
     controller_anchor_tick: int | None
     target_entry_tick: int
     source_replay_steps: int
@@ -94,6 +96,8 @@ class PhaseSnapshotFileBuffer:
     source_tick: int
     source_replay_steps: int
     target_entry_tick: int | None
+    predecessor_verify_tick: int | None
+    predecessor_verify_time_s: float | None
     controller_anchor_tick: int | None
     controller_anchor_time_s: float | None
     snapshot_path: Path
@@ -110,6 +114,8 @@ class PhaseSnapshotFileBuffer:
             "source_tick": self.source_tick,
             "source_replay_steps": self.source_replay_steps,
             "target_entry_tick": self.target_entry_tick,
+            "predecessor_verify_tick": self.predecessor_verify_tick,
+            "predecessor_verify_time_s": self.predecessor_verify_time_s,
             "controller_anchor_tick": self.controller_anchor_tick,
             "controller_anchor_time_s": self.controller_anchor_time_s,
             "snapshot_path": str(self.snapshot_path),
@@ -918,12 +924,51 @@ def _contains_signed_positive_rebound_requirement(value: Any) -> bool:
     return False
 
 
+def _p10_contact_history_anchor_tick(
+    rows: Iterable[Mapping[str, Any]],
+) -> int:
+    """Return the first raw-history sample behind P09's RR top-load latch."""
+
+    matches: list[int] = []
+    for row in rows:
+        if (
+            row.get("state_id") != "P09"
+            or row.get("leg") != "RR"
+            or row.get("event") != "TOP_LOADED"
+        ):
+            continue
+        tick = row.get("physics_tick")
+        evidence = row.get("evidence")
+        value = evidence.get("value") if isinstance(evidence, Mapping) else None
+        if (
+            type(tick) is not int
+            or tick < SOURCE_CONTACT_HISTORY_SAMPLES - 1
+            or not isinstance(evidence, Mapping)
+            or evidence.get("passed") is not True
+            or not isinstance(value, Mapping)
+            or value.get("latched") is not True
+            or value.get("latch_tick") != tick
+        ):
+            raise PhaseSnapshotError(
+                "P09 RR TOP_LOADED event lacks exact successful latch evidence"
+            )
+        matches.append(tick)
+    if len(matches) != 1:
+        raise PhaseSnapshotError(
+            "trial must contain exactly one successful P09 RR TOP_LOADED event"
+        )
+    return matches[0] - (SOURCE_CONTACT_HISTORY_SAMPLES - 1)
+
+
 def _phase_entry_boundaries_from_rows(
     rows: Iterable[Mapping[str, Any]],
+    *,
+    leg_crossing_rows: Iterable[Mapping[str, Any]] | None = None,
 ) -> dict[str, _PhaseEntryBoundary]:
     result: dict[str, _PhaseEntryBoundary] = {
         "P01": _PhaseEntryBoundary(
             source_tick=0,
+            predecessor_verify_tick=None,
             controller_anchor_tick=None,
             target_entry_tick=0,
             source_replay_steps=1,
@@ -982,6 +1027,14 @@ def _phase_entry_boundaries_from_rows(
                 _contains_signed_positive_rebound_requirement(guards)
             )
             if uses_causal_predecessor:
+                if leg_crossing_rows is None:
+                    raise PhaseSnapshotError(
+                        f"{phase} signed-positive entry lacks its contact-history "
+                        "anchor evidence"
+                    )
+                p10_contact_history_anchor_tick = _p10_contact_history_anchor_tick(
+                    leg_crossing_rows
+                )
                 controller_anchor_tick = wait_entry_ticks.get(phase)
                 if (
                     controller_anchor_tick is None
@@ -993,23 +1046,31 @@ def _phase_entry_boundaries_from_rows(
                     )
                 phase_index = PHASE_IDS.index(phase)
                 predecessor = PHASE_IDS[phase_index - 1]
-                source_tick = verify_result_ticks.get(predecessor)
+                predecessor_verify_tick = verify_result_ticks.get(predecessor)
                 if (
-                    source_tick is None
-                    or source_tick < 0
-                    or source_tick >= controller_anchor_tick
+                    predecessor_verify_tick is None
+                    or predecessor_verify_tick < 0
+                    or predecessor_verify_tick >= controller_anchor_tick
                 ):
                     raise PhaseSnapshotError(
                         f"{phase} signed-positive entry lacks a prior "
                         f"{predecessor} VERIFY_RESULT start"
                     )
+                source_tick = p10_contact_history_anchor_tick
+                if not 0 <= source_tick < predecessor_verify_tick:
+                    raise PhaseSnapshotError(
+                        f"{phase} contact-history anchor does not precede "
+                        f"{predecessor} VERIFY_RESULT"
+                    )
                 source_replay_steps = tick - source_tick
             else:
                 source_tick = tick
+                predecessor_verify_tick = None
                 controller_anchor_tick = None
                 source_replay_steps = 1
             result[phase] = _PhaseEntryBoundary(
                 source_tick=source_tick,
+                predecessor_verify_tick=predecessor_verify_tick,
                 controller_anchor_tick=controller_anchor_tick,
                 target_entry_tick=tick,
                 source_replay_steps=source_replay_steps,
@@ -1023,21 +1084,30 @@ def _phase_entry_boundaries_from_rows(
 
 def _phase_entry_ticks_from_rows(
     rows: Iterable[Mapping[str, Any]],
+    *,
+    leg_crossing_rows: Iterable[Mapping[str, Any]] | None = None,
 ) -> dict[str, int]:
     """Return target decision ticks; reset source ticks may precede them."""
 
     return {
         phase: boundary.target_entry_tick
-        for phase, boundary in _phase_entry_boundaries_from_rows(rows).items()
+        for phase, boundary in _phase_entry_boundaries_from_rows(
+            rows, leg_crossing_rows=leg_crossing_rows
+        ).items()
     }
 
 
 def phase_entry_ticks(trial_dir: Path | str) -> dict[str, int]:
     trial = Path(trial_dir).resolve()
     transitions = trial / SOURCE_TRANSITION_FILE
+    leg_crossings = trial / SOURCE_LEG_CROSSING_FILE
     if not transitions.is_file():
         raise FileNotFoundError(transitions)
-    return _phase_entry_ticks_from_rows(_read_jsonl(transitions))
+    if not leg_crossings.is_file():
+        raise FileNotFoundError(leg_crossings)
+    return _phase_entry_ticks_from_rows(
+        _read_jsonl(transitions), leg_crossing_rows=_read_jsonl(leg_crossings)
+    )
 
 
 def _rows_at_ticks(path: Path, ticks: set[int], key: str) -> dict[int, dict[str, Any]]:
@@ -1090,12 +1160,15 @@ def _event_latches(
 def _expected_replay_fsm_context(
     phase: str,
     tick: int,
+    predecessor_verify_tick: int,
     controller_anchor_tick: int,
 ) -> tuple[str, str]:
     """Return the only legal command context for a hybrid causal replay tick."""
 
+    predecessor = PHASE_IDS[PHASE_IDS.index(phase) - 1]
+    if tick < predecessor_verify_tick:
+        return predecessor, "EXECUTE_MOTION"
     if tick < controller_anchor_tick:
-        predecessor = PHASE_IDS[PHASE_IDS.index(phase) - 1]
         return predecessor, "VERIFY_RESULT"
     return phase, "WAIT_ENTRY"
 
@@ -1106,6 +1179,7 @@ def _snapshot_payload(
     trial_id: str,
     phase: str,
     tick: int,
+    predecessor_verify_tick: int | None,
     controller_anchor_tick: int | None,
     target_entry_tick: int,
     observation: Mapping[str, Any],
@@ -1143,8 +1217,9 @@ def _snapshot_payload(
     if uses_causal_predecessor:
         if (
             target_entry_tick - tick != source_replay_steps
+            or type(predecessor_verify_tick) is not int
             or type(controller_anchor_tick) is not int
-            or not tick < controller_anchor_tick < target_entry_tick
+            or not tick < predecessor_verify_tick < controller_anchor_tick < target_entry_tick
         ):
             raise PhaseSnapshotError(
                 f"{phase} hybrid replay boundary is invalid"
@@ -1152,6 +1227,7 @@ def _snapshot_payload(
     elif (
         target_entry_tick != tick
         or source_replay_steps != 1
+        or predecessor_verify_tick is not None
         or controller_anchor_tick is not None
     ):
         raise PhaseSnapshotError(
@@ -1161,7 +1237,12 @@ def _snapshot_payload(
     source_lifecycle = command.get("lifecycle")
     if uses_causal_predecessor:
         expected_source_state, expected_source_lifecycle = (
-            _expected_replay_fsm_context(phase, tick, int(controller_anchor_tick))
+            _expected_replay_fsm_context(
+                phase,
+                tick,
+                int(predecessor_verify_tick),
+                int(controller_anchor_tick),
+            )
         )
     else:
         expected_source_state, expected_source_lifecycle = phase, "EXECUTE_MOTION"
@@ -1258,15 +1339,20 @@ def _snapshot_payload(
         "snapshot_semantics": "state is written only before the first episode physics tick; live physics and frozen FSM own all subsequent state",
     }
     if uses_causal_predecessor:
+        payload["predecessor_verify_tick"] = predecessor_verify_tick
+        payload["predecessor_verify_time_s"] = (
+            predecessor_verify_tick / PHYSICS_HZ
+        )
         payload["controller_anchor_tick"] = controller_anchor_tick
         payload["controller_anchor_time_s"] = controller_anchor_tick / PHYSICS_HZ
         payload["target_entry_tick"] = target_entry_tick
         payload["snapshot_semantics"] = (
-            "hybrid causal physical state is written from the predecessor VERIFY_RESULT "
-            "anchor while controller state and latches come from the later WAIT_ENTRY "
-            "anchor; every intervening real source command is replayed in order and the "
-            "final post-replay live observation is the target phase-entry decision; live "
-            "physics and frozen FSM own all subsequent state"
+            "hybrid causal physical state is written from the contact-history anchor "
+            "before the predecessor VERIFY_RESULT boundary while controller state and "
+            "latches come from the later WAIT_ENTRY anchor; every intervening real "
+            "source command is replayed in order and the final post-replay live "
+            "observation is the target phase-entry decision; live physics and frozen "
+            "FSM own all subsequent state"
         )
     return payload
 
@@ -1315,7 +1401,10 @@ def build_phase_snapshots(
     leg_crossing_rows = _read_jsonl_bytes(
         leg_crossing_bytes, source_paths["leg_crossing"]
     )
-    boundaries_by_phase = _phase_entry_boundaries_from_rows(transition_rows)
+    boundaries_by_phase = _phase_entry_boundaries_from_rows(
+        transition_rows,
+        leg_crossing_rows=leg_crossing_rows,
+    )
     ticks = {
         tick
         for boundary in boundaries_by_phase.values()
@@ -1397,9 +1486,13 @@ def build_phase_snapshots(
         for replay_tick in replay_ticks:
             source_command_row = commands[replay_tick]
             if boundary.uses_causal_predecessor:
+                assert boundary.predecessor_verify_tick is not None
                 assert boundary.controller_anchor_tick is not None
                 expected_state, expected_lifecycle = _expected_replay_fsm_context(
-                    phase, replay_tick, boundary.controller_anchor_tick
+                    phase,
+                    replay_tick,
+                    boundary.predecessor_verify_tick,
+                    boundary.controller_anchor_tick,
                 )
             else:
                 expected_state, expected_lifecycle = phase, "EXECUTE_MOTION"
@@ -1430,6 +1523,7 @@ def build_phase_snapshots(
             trial_id=trial_id,
             phase=phase,
             tick=tick,
+            predecessor_verify_tick=boundary.predecessor_verify_tick,
             controller_anchor_tick=boundary.controller_anchor_tick,
             target_entry_tick=boundary.target_entry_tick,
             observation=observations[tick],
@@ -1485,7 +1579,12 @@ def build_phase_snapshots(
             ],
         }
         if boundary.uses_causal_predecessor:
+            assert boundary.predecessor_verify_tick is not None
             assert boundary.controller_anchor_tick is not None
+            row["predecessor_verify_tick"] = boundary.predecessor_verify_tick
+            row["predecessor_verify_time_s"] = (
+                boundary.predecessor_verify_tick / PHYSICS_HZ
+            )
             row["controller_anchor_tick"] = boundary.controller_anchor_tick
             row["controller_anchor_time_s"] = (
                 boundary.controller_anchor_tick / PHYSICS_HZ
@@ -1580,6 +1679,7 @@ def _validate_additional_source_replay_row(
     *,
     phase: str,
     source_tick: int,
+    predecessor_verify_tick: int,
     controller_anchor_tick: int,
     target_entry_tick: int,
     first_source: Mapping[str, Any],
@@ -1588,7 +1688,7 @@ def _validate_additional_source_replay_row(
     """Validate one post-anchor row in a causal source-command replay."""
 
     expected_state, expected_lifecycle = _expected_replay_fsm_context(
-        phase, source_tick, controller_anchor_tick
+        phase, source_tick, predecessor_verify_tick, controller_anchor_tick
     )
     if set(source) != set(first_source):
         raise PhaseSnapshotError(
@@ -1809,6 +1909,9 @@ def validate_phase_snapshot_payload_contract(
         )
     has_target_entry_tick = "target_entry_tick" in payload
     target_entry_tick = payload.get("target_entry_tick")
+    has_predecessor_verify_tick = "predecessor_verify_tick" in payload
+    has_predecessor_verify_time = "predecessor_verify_time_s" in payload
+    predecessor_verify_tick = payload.get("predecessor_verify_tick")
     has_controller_anchor_tick = "controller_anchor_tick" in payload
     has_controller_anchor_time = "controller_anchor_time_s" in payload
     controller_anchor_tick = payload.get("controller_anchor_tick")
@@ -1822,10 +1925,33 @@ def validate_phase_snapshot_payload_contract(
                 f"snapshot causal target-entry tick is invalid for {phase}"
             )
         if (
+            not has_predecessor_verify_tick
+            or not has_predecessor_verify_time
+            or type(predecessor_verify_tick) is not int
+            or not source_tick < predecessor_verify_tick < target_entry_tick
+        ):
+            raise PhaseSnapshotError(
+                f"snapshot predecessor verify tick is invalid for {phase}"
+            )
+        predecessor_verify_time = payload.get("predecessor_verify_time_s")
+        if (
+            isinstance(predecessor_verify_time, bool)
+            or not isinstance(predecessor_verify_time, (int, float))
+            or not math.isfinite(float(predecessor_verify_time))
+            or float(predecessor_verify_time)
+            != predecessor_verify_tick / PHYSICS_HZ
+        ):
+            raise PhaseSnapshotError(
+                f"snapshot predecessor verify time is invalid for {phase}"
+            )
+        if (
             not has_controller_anchor_tick
             or not has_controller_anchor_time
             or type(controller_anchor_tick) is not int
-            or not source_tick < controller_anchor_tick < target_entry_tick
+            or not source_tick
+            < predecessor_verify_tick
+            < controller_anchor_tick
+            < target_entry_tick
         ):
             raise PhaseSnapshotError(
                 f"snapshot controller anchor tick is invalid for {phase}"
@@ -1845,9 +1971,14 @@ def validate_phase_snapshot_payload_contract(
         raise PhaseSnapshotError(
             f"snapshot non-causal source replay must contain exactly one step for {phase}"
         )
-    elif has_controller_anchor_tick or has_controller_anchor_time:
+    elif (
+        has_predecessor_verify_tick
+        or has_predecessor_verify_time
+        or has_controller_anchor_tick
+        or has_controller_anchor_time
+    ):
         raise PhaseSnapshotError(
-            f"snapshot non-causal reset declares a controller anchor for {phase}"
+            f"snapshot non-causal reset declares replay anchors for {phase}"
         )
     if causal_predecessor_required is True and not has_target_entry_tick:
         raise PhaseSnapshotError(
@@ -1943,7 +2074,10 @@ def validate_phase_snapshot_payload_contract(
     if has_target_entry_tick:
         expected_source_state, expected_source_lifecycle = (
             _expected_replay_fsm_context(
-                phase, source_tick, int(controller_anchor_tick)
+                phase,
+                source_tick,
+                int(predecessor_verify_tick),
+                int(controller_anchor_tick),
             )
         )
         if (
@@ -2146,6 +2280,7 @@ def validate_phase_snapshot_payload_contract(
             replay_source,
             phase=phase,
             source_tick=source_tick + replay_offset,
+            predecessor_verify_tick=int(predecessor_verify_tick),
             controller_anchor_tick=int(controller_anchor_tick),
             target_entry_tick=int(target_entry_tick),
             first_source=source,
@@ -2163,6 +2298,10 @@ def validate_phase_snapshot_payload_contract(
         if has_target_entry_tick:
             if (
                 manifest_row.get("target_entry_tick") != target_entry_tick
+                or manifest_row.get("predecessor_verify_tick")
+                != predecessor_verify_tick
+                or manifest_row.get("predecessor_verify_time_s")
+                != payload.get("predecessor_verify_time_s")
                 or manifest_row.get("controller_anchor_tick")
                 != controller_anchor_tick
                 or manifest_row.get("controller_anchor_time_s")
@@ -2175,6 +2314,8 @@ def validate_phase_snapshot_payload_contract(
             field in manifest_row
             for field in (
                 "target_entry_tick",
+                "predecessor_verify_tick",
+                "predecessor_verify_time_s",
                 "controller_anchor_tick",
                 "controller_anchor_time_s",
             )
@@ -2302,6 +2443,8 @@ def capture_validated_phase_snapshot_bundle(
         != (
             expected_row_fields
             | {
+                "predecessor_verify_tick",
+                "predecessor_verify_time_s",
                 "controller_anchor_tick",
                 "controller_anchor_time_s",
                 "target_entry_tick",
@@ -2359,10 +2502,14 @@ def capture_validated_phase_snapshot_bundle(
                 f"manifest source replay step count is invalid for {phase}"
             )
         target_entry_tick: int | None = None
+        predecessor_verify_tick: int | None = None
+        predecessor_verify_time: float | None = None
         controller_anchor_tick: int | None = None
         controller_anchor_time: float | None = None
         if phase in causal_predecessor_phase_set:
             target_entry_tick = row.get("target_entry_tick")
+            predecessor_verify_tick = row.get("predecessor_verify_tick")
+            predecessor_verify_time = row.get("predecessor_verify_time_s")
             controller_anchor_tick = row.get("controller_anchor_tick")
             controller_anchor_time = row.get("controller_anchor_time_s")
             if (
@@ -2373,8 +2520,28 @@ def capture_validated_phase_snapshot_bundle(
                     f"manifest causal target-entry tick is invalid for {phase}"
                 )
             if (
+                type(predecessor_verify_tick) is not int
+                or not source_tick < predecessor_verify_tick < target_entry_tick
+            ):
+                raise PhaseSnapshotError(
+                    f"manifest predecessor verify tick is invalid for {phase}"
+                )
+            if (
+                isinstance(predecessor_verify_time, bool)
+                or not isinstance(predecessor_verify_time, (int, float))
+                or not math.isfinite(float(predecessor_verify_time))
+                or float(predecessor_verify_time)
+                != predecessor_verify_tick / PHYSICS_HZ
+            ):
+                raise PhaseSnapshotError(
+                    f"manifest predecessor verify time is invalid for {phase}"
+                )
+            if (
                 type(controller_anchor_tick) is not int
-                or not source_tick < controller_anchor_tick < target_entry_tick
+                or not source_tick
+                < predecessor_verify_tick
+                < controller_anchor_tick
+                < target_entry_tick
             ):
                 raise PhaseSnapshotError(
                     f"manifest controller anchor tick is invalid for {phase}"
@@ -2461,6 +2628,8 @@ def capture_validated_phase_snapshot_bundle(
                 source_tick=source_tick,
                 source_replay_steps=source_replay_steps,
                 target_entry_tick=target_entry_tick,
+                predecessor_verify_tick=predecessor_verify_tick,
+                predecessor_verify_time_s=predecessor_verify_time,
                 controller_anchor_tick=controller_anchor_tick,
                 controller_anchor_time_s=controller_anchor_time,
                 snapshot_path=snapshot_path,
@@ -2557,6 +2726,10 @@ def load_validated_phase_snapshot_payload(
         raise PhaseSnapshotError(f"pinned source replay step mismatch for {phase}")
     if payload.get("target_entry_tick") != entry.target_entry_tick:
         raise PhaseSnapshotError(f"pinned target-entry tick mismatch for {phase}")
+    if payload.get("predecessor_verify_tick") != entry.predecessor_verify_tick:
+        raise PhaseSnapshotError(f"pinned predecessor-verify tick mismatch for {phase}")
+    if payload.get("predecessor_verify_time_s") != entry.predecessor_verify_time_s:
+        raise PhaseSnapshotError(f"pinned predecessor-verify time mismatch for {phase}")
     if payload.get("controller_anchor_tick") != entry.controller_anchor_tick:
         raise PhaseSnapshotError(f"pinned controller-anchor tick mismatch for {phase}")
     if payload.get("controller_anchor_time_s") != entry.controller_anchor_time_s:
@@ -2612,6 +2785,8 @@ def phase_snapshot_bundle_file_hashes(
         "source_tick",
         "source_replay_steps",
         "target_entry_tick",
+        "predecessor_verify_tick",
+        "predecessor_verify_time_s",
         "controller_anchor_tick",
         "controller_anchor_time_s",
         "snapshot_path",
@@ -2643,6 +2818,8 @@ def phase_snapshot_bundle_file_hashes(
         source_tick = entry.get("source_tick")
         source_replay_steps = entry.get("source_replay_steps")
         target_entry_tick = entry.get("target_entry_tick")
+        predecessor_verify_tick = entry.get("predecessor_verify_tick")
+        predecessor_verify_time = entry.get("predecessor_verify_time_s")
         controller_anchor_tick = entry.get("controller_anchor_tick")
         controller_anchor_time = entry.get("controller_anchor_time_s")
         if type(source_tick) is not int or source_tick < 0:
@@ -2654,6 +2831,8 @@ def phase_snapshot_bundle_file_hashes(
         if target_entry_tick is None:
             if (
                 source_replay_steps != 1
+                or predecessor_verify_tick is not None
+                or predecessor_verify_time is not None
                 or controller_anchor_tick is not None
                 or controller_anchor_time is not None
             ):
@@ -2670,8 +2849,28 @@ def phase_snapshot_bundle_file_hashes(
                     f"bundle target-entry tick is invalid for {phase}"
                 )
             if (
+                type(predecessor_verify_tick) is not int
+                or not source_tick < predecessor_verify_tick < target_entry_tick
+            ):
+                raise PhaseSnapshotError(
+                    f"bundle predecessor verify tick is invalid for {phase}"
+                )
+            if (
+                isinstance(predecessor_verify_time, bool)
+                or not isinstance(predecessor_verify_time, (int, float))
+                or not math.isfinite(float(predecessor_verify_time))
+                or float(predecessor_verify_time)
+                != predecessor_verify_tick / PHYSICS_HZ
+            ):
+                raise PhaseSnapshotError(
+                    f"bundle predecessor verify time is invalid for {phase}"
+                )
+            if (
                 type(controller_anchor_tick) is not int
-                or not source_tick < controller_anchor_tick < target_entry_tick
+                or not source_tick
+                < predecessor_verify_tick
+                < controller_anchor_tick
+                < target_entry_tick
             ):
                 raise PhaseSnapshotError(
                     f"bundle controller anchor tick is invalid for {phase}"

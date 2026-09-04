@@ -38,6 +38,8 @@ MODES = ("zero", "bounded-smoke")
 MINIMUM_MEASURED_TICKS = 1200
 MINIMUM_POLICY_DECISIONS = 128
 OUTPUT_FILENAME = "vector_benchmark_matrix.json"
+VECTOR_BENCHMARK_RUN_KIND = "vector-benchmark"
+VECTOR_BENCHMARK_MATRIX_RUN_KIND = "vector-benchmark-matrix"
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 _HEX40 = frozenset("0123456789abcdef")
 _FROZEN_MANIFEST_RELATIVE = Path(
@@ -156,11 +158,11 @@ def _require_managed_output_path(
         ) from exc
     if (
         len(relative.parts) != 3
-        or relative.parts[0] != "vector_benchmark_matrix"
+        or relative.parts[0] != VECTOR_BENCHMARK_MATRIX_RUN_KIND
         or relative.parts[2] != OUTPUT_FILENAME
     ):
         raise VectorBenchmarkMatrixError(
-            "matrix output is not in its managed vector_benchmark_matrix run"
+            "matrix output is not in its managed vector-benchmark-matrix run"
         )
     _reject_links(lexical, root=root, label="matrix output")
     return lexical
@@ -907,7 +909,7 @@ def validate_vector_benchmark_slot(
         benchmark_path, run_dir = _require_managed_path(
             benchmark_path,
             project_root=expected_project_root,
-            run_kind="vector_benchmark",
+            run_kind=VECTOR_BENCHMARK_RUN_KIND,
             filename="vector_benchmark.json",
             label="vector benchmark",
         )
@@ -923,7 +925,7 @@ def validate_vector_benchmark_slot(
     benchmark_path, managed_run_dir = _require_managed_path(
         benchmark_path,
         project_root=project_root,
-        run_kind="vector_benchmark",
+        run_kind=VECTOR_BENCHMARK_RUN_KIND,
         filename="vector_benchmark.json",
         label="vector benchmark",
     )
@@ -935,7 +937,7 @@ def validate_vector_benchmark_slot(
     if (
         manifest.get("schema") != RUN_MANIFEST_SCHEMA
         or manifest.get("immutable_run_directory") is not True
-        or manifest.get("run_kind") != "vector_benchmark"
+        or manifest.get("run_kind") != VECTOR_BENCHMARK_RUN_KIND
         or manifest.get("subcommand") != "vector-benchmark"
         or manifest.get("entrypoint") != "wlr50_clean.ppo.cli"
         or manifest.get("run_id") != run_dir.name
@@ -1483,7 +1485,7 @@ def validate_finalized_vector_benchmark_matrix(
     matrix_path, run_dir = _require_managed_path(
         path,
         project_root=project_root,
-        run_kind="vector_benchmark_matrix",
+        run_kind=VECTOR_BENCHMARK_MATRIX_RUN_KIND,
         filename=OUTPUT_FILENAME,
         label="vector benchmark matrix",
     )
@@ -1510,7 +1512,7 @@ def validate_finalized_vector_benchmark_matrix(
         or manifest.get("lifecycle") != "SUCCEEDED"
         or manifest.get("exit_code") != 0
         or manifest.get("immutable_run_directory") is not True
-        or manifest.get("run_kind") != "vector_benchmark_matrix"
+        or manifest.get("run_kind") != VECTOR_BENCHMARK_MATRIX_RUN_KIND
         or manifest.get("entrypoint") != "wlr50_clean.ppo.vector_benchmark_matrix"
         or manifest.get("subcommand") != "aggregate"
         or manifest.get("run_id") != run_dir.name
@@ -1828,7 +1830,9 @@ def _current_run_expectations(
     identity = started.get("identity")
     configs = started.get("configs")
     project_root = _absolute_lexical(PROJECT_ROOT)
-    expected_run_dir = project_root / _RUNS_RELATIVE / "vector_benchmark_matrix" / run_dir.name
+    expected_run_dir = (
+        project_root / _RUNS_RELATIVE / VECTOR_BENCHMARK_MATRIX_RUN_KIND / run_dir.name
+    )
     if (
         started.get("schema") != RUN_MANIFEST_SCHEMA
         or started.get("lifecycle") != "STARTED"
@@ -1836,7 +1840,7 @@ def _current_run_expectations(
         or _absolute_lexical(str(started.get("project_root", ""))) != project_root
         or _absolute_lexical(str(started.get("run_dir", ""))) != run_dir
         or run_dir != expected_run_dir
-        or started.get("run_kind") != "vector_benchmark_matrix"
+        or started.get("run_kind") != VECTOR_BENCHMARK_MATRIX_RUN_KIND
         or started.get("entrypoint")
         != "wlr50_clean.ppo.vector_benchmark_matrix"
         or started.get("subcommand") != "aggregate"

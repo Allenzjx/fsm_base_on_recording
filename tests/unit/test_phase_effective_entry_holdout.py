@@ -9,8 +9,12 @@ from types import SimpleNamespace
 
 import pytest
 
-from wlr50_clean.ppo import cli
+from wlr50_clean.ppo import artifacts, cli
 from wlr50_clean.ppo import phase_effective_entry_holdout as holdout
+from wlr50_clean.ppo.vector_benchmark_matrix import (
+    VectorBenchmarkMatrixError,
+    validate_managed_run_directory,
+)
 
 
 def test_default_holdout_config_set_includes_transitive_runtime_inputs() -> None:
@@ -208,6 +212,89 @@ def test_holdout_script_locks_seed_phases_and_separate_probe_invocations() -> No
     assert '-RunKind "phase_effective_entry_holdout"' in text
     assert '-CliModule "wlr50_clean.ppo.phase_effective_entry_holdout"' in text
     assert '"--probe-run-dir"' in text
+
+
+@pytest.mark.parametrize(
+    ("requested_run_kind", "canonical_run_kind", "training_stage", "subcommand"),
+    (
+        (
+            "phase_snapshot_live_probe",
+            holdout.PROBE_RUN_KIND,
+            "phase-snapshot-live-probe",
+            "phase-snapshot-live-probe",
+        ),
+        (
+            "phase_effective_entry_holdout",
+            holdout.HOLDOUT_RUN_KIND,
+            "effective-entry-holdout-aggregation",
+            "aggregate",
+        ),
+    ),
+)
+def test_holdout_importer_accepts_real_canonical_managed_manifest_and_rejects_raw_kind(
+    tmp_path: Path,
+    requested_run_kind: str,
+    canonical_run_kind: str,
+    training_stage: str,
+    subcommand: str,
+) -> None:
+    config = tmp_path / "configs" / "holdout.yaml"
+    config.parent.mkdir()
+    config.write_text("holdout: true\n", encoding="utf-8")
+    config_sha256, config_records = artifacts.config_set_record(
+        (config,), project_root=tmp_path
+    )
+    reservation = artifacts.reserve_run(
+        project_root=tmp_path,
+        run_kind=requested_run_kind,
+        config_paths=(config,),
+        seed=holdout.HOLDOUT_SEED,
+        environment_count=1,
+        training_stage=training_stage,
+        git_commit="a" * 40,
+        entrypoint=(
+            "wlr50_clean.ppo.phase_effective_entry_holdout"
+            if subcommand == "aggregate"
+            else "wlr50_clean.ppo.cli"
+        ),
+        subcommand=subcommand,
+    )
+    artifacts.finalize_run(reservation.run_dir, exit_code=0)
+    context = SimpleNamespace(
+        project_root=tmp_path.resolve(),
+        git_commit="a" * 40,
+        config_sha256=config_sha256,
+        config_records=tuple(config_records),
+    )
+
+    assert reservation.run_dir.parent.name == canonical_run_kind
+    assert validate_managed_run_directory(
+        reservation.run_dir,
+        project_root=tmp_path,
+        run_kind=canonical_run_kind,
+    ) == reservation.run_dir
+    final, started = holdout._validate_started_and_final_manifest(
+        reservation.run_dir,
+        run_kind=canonical_run_kind,
+        entrypoint=(
+            "wlr50_clean.ppo.phase_effective_entry_holdout"
+            if subcommand == "aggregate"
+            else "wlr50_clean.ppo.cli"
+        ),
+        subcommand=subcommand,
+        training_stage=training_stage,
+        context=context,
+        cache={},
+    )
+    assert final["run_kind"] == canonical_run_kind
+    assert started["run_kind"] == canonical_run_kind
+
+    with pytest.raises(VectorBenchmarkMatrixError, match="managed run must be"):
+        validate_managed_run_directory(
+            reservation.run_dir,
+            project_root=tmp_path,
+            run_kind=requested_run_kind,
+        )
 
 
 def test_holdout_script_preserves_single_worker_output_as_one_full_path(

@@ -794,6 +794,12 @@ class IsaacFSMBackend:
                     "physical_anchor_time_s": replay_anchor_contract[
                         "physical_anchor_time_s"
                     ],
+                    "predecessor_verify_tick": replay_anchor_contract[
+                        "predecessor_verify_tick"
+                    ],
+                    "predecessor_verify_time_s": replay_anchor_contract[
+                        "predecessor_verify_time_s"
+                    ],
                     "controller_anchor_tick": replay_anchor_contract[
                         "controller_anchor_tick"
                     ],
@@ -916,6 +922,12 @@ class IsaacFSMBackend:
                     "physical_anchor_tick": replay_anchor_contract[
                         "physical_anchor_tick"
                     ],
+                    "predecessor_verify_tick": replay_anchor_contract[
+                        "predecessor_verify_tick"
+                    ],
+                    "predecessor_verify_time_s": replay_anchor_contract[
+                        "predecessor_verify_time_s"
+                    ],
                     "controller_anchor_tick": replay_anchor_contract[
                         "controller_anchor_tick"
                     ],
@@ -1026,6 +1038,9 @@ class IsaacFSMBackend:
                         "physical_anchor_tick": replay_anchor_contract[
                             "physical_anchor_tick"
                         ],
+                        "predecessor_verify_tick": replay_anchor_contract[
+                            "predecessor_verify_tick"
+                        ],
                         "controller_anchor_tick": replay_anchor_contract[
                             "controller_anchor_tick"
                         ],
@@ -1055,6 +1070,9 @@ class IsaacFSMBackend:
                         "physical_anchor_tick": replay_anchor_contract[
                             "physical_anchor_tick"
                         ],
+                        "predecessor_verify_tick": replay_anchor_contract[
+                            "predecessor_verify_tick"
+                        ],
                         "controller_anchor_tick": replay_anchor_contract[
                             "controller_anchor_tick"
                         ],
@@ -1078,15 +1096,20 @@ class IsaacFSMBackend:
                 )
                 source_replay_observation_ticks.append(replay_tick)
                 source_replay_safety_checks.append(replay_safety)
-                replay_segment = (
-                    "physical_anchor_to_controller_anchor"
-                    if replay_anchor_contract["controller_anchor_tick"] is not None
-                    and expected_source_tick
-                    < replay_anchor_contract["controller_anchor_tick"]
-                    else "controller_anchor_to_target_entry"
-                    if replay_anchor_contract["controller_anchor_tick"] is not None
-                    else "single_source_command"
-                )
+                predecessor_verify_tick = replay_anchor_contract[
+                    "predecessor_verify_tick"
+                ]
+                controller_anchor_tick = replay_anchor_contract[
+                    "controller_anchor_tick"
+                ]
+                if predecessor_verify_tick is None or controller_anchor_tick is None:
+                    replay_segment = "single_source_command"
+                elif expected_source_tick < predecessor_verify_tick:
+                    replay_segment = "physical_anchor_to_predecessor_verify"
+                elif expected_source_tick < controller_anchor_tick:
+                    replay_segment = "predecessor_verify_to_controller_anchor"
+                else:
+                    replay_segment = "controller_anchor_to_target_entry"
                 source_replay_fsm_contexts.append(
                     {
                         "source_control_physics_tick": expected_source_tick,
@@ -1171,11 +1194,23 @@ class IsaacFSMBackend:
                     "physical_anchor_time_s": replay_anchor_contract[
                         "physical_anchor_time_s"
                     ],
+                    "predecessor_verify_tick": replay_anchor_contract[
+                        "predecessor_verify_tick"
+                    ],
+                    "predecessor_verify_time_s": replay_anchor_contract[
+                        "predecessor_verify_time_s"
+                    ],
                     "controller_anchor_tick": replay_anchor_contract[
                         "controller_anchor_tick"
                     ],
                     "controller_anchor_time_s": replay_anchor_contract[
                         "controller_anchor_time_s"
+                    ],
+                    "physical_to_predecessor_verify_replay_steps": replay_anchor_contract[
+                        "physical_to_predecessor_verify_replay_steps"
+                    ],
+                    "predecessor_verify_to_controller_replay_steps": replay_anchor_contract[
+                        "predecessor_verify_to_controller_replay_steps"
                     ],
                     "physical_to_controller_replay_steps": replay_anchor_contract[
                         "physical_to_controller_replay_steps"
@@ -1254,6 +1289,12 @@ class IsaacFSMBackend:
                     "physical_anchor_tick": replay_anchor_contract[
                         "physical_anchor_tick"
                     ],
+                    "predecessor_verify_tick": replay_anchor_contract[
+                        "predecessor_verify_tick"
+                    ],
+                    "predecessor_verify_time_s": replay_anchor_contract[
+                        "predecessor_verify_time_s"
+                    ],
                     "controller_anchor_tick": replay_anchor_contract[
                         "controller_anchor_tick"
                     ],
@@ -1285,6 +1326,9 @@ class IsaacFSMBackend:
                     "error": str(exc),
                     "physical_anchor_tick": replay_anchor_contract[
                         "physical_anchor_tick"
+                    ],
+                    "predecessor_verify_tick": replay_anchor_contract[
+                        "predecessor_verify_tick"
                     ],
                     "controller_anchor_tick": replay_anchor_contract[
                         "controller_anchor_tick"
@@ -1349,6 +1393,12 @@ class IsaacFSMBackend:
                     "physical_anchor_time_s": replay_anchor_contract[
                         "physical_anchor_time_s"
                     ],
+                    "predecessor_verify_tick": replay_anchor_contract[
+                        "predecessor_verify_tick"
+                    ],
+                    "predecessor_verify_time_s": replay_anchor_contract[
+                        "predecessor_verify_time_s"
+                    ],
                     "controller_anchor_tick": replay_anchor_contract[
                         "controller_anchor_tick"
                     ],
@@ -1360,6 +1410,12 @@ class IsaacFSMBackend:
                         "target_entry_time_s"
                     ],
                     "source_replay_steps": source_replay_steps,
+                    "physical_to_predecessor_verify_replay_steps": replay_anchor_contract[
+                        "physical_to_predecessor_verify_replay_steps"
+                    ],
+                    "predecessor_verify_to_controller_replay_steps": replay_anchor_contract[
+                        "predecessor_verify_to_controller_replay_steps"
+                    ],
                     "physical_to_controller_replay_steps": replay_anchor_contract[
                         "physical_to_controller_replay_steps"
                     ],
@@ -1403,6 +1459,9 @@ class IsaacFSMBackend:
                         "physical_anchor_tick": replay_anchor_contract[
                             "physical_anchor_tick"
                         ],
+                        "predecessor_verify_tick": replay_anchor_contract[
+                            "predecessor_verify_tick"
+                        ],
                         "controller_anchor_tick": replay_anchor_contract[
                             "controller_anchor_tick"
                         ],
@@ -1436,6 +1495,12 @@ class IsaacFSMBackend:
                         "physical_anchor_time_s": replay_anchor_contract[
                             "physical_anchor_time_s"
                         ],
+                        "predecessor_verify_tick": replay_anchor_contract[
+                            "predecessor_verify_tick"
+                        ],
+                        "predecessor_verify_time_s": replay_anchor_contract[
+                            "predecessor_verify_time_s"
+                        ],
                         "controller_anchor_tick": replay_anchor_contract[
                             "controller_anchor_tick"
                         ],
@@ -1450,6 +1515,12 @@ class IsaacFSMBackend:
                         ],
                         "source_replay_steps": replay_anchor_contract[
                             "source_replay_steps"
+                        ],
+                        "physical_to_predecessor_verify_replay_steps": replay_anchor_contract[
+                            "physical_to_predecessor_verify_replay_steps"
+                        ],
+                        "predecessor_verify_to_controller_replay_steps": replay_anchor_contract[
+                            "predecessor_verify_to_controller_replay_steps"
                         ],
                         "physical_to_controller_replay_steps": replay_anchor_contract[
                             "physical_to_controller_replay_steps"
@@ -1473,6 +1544,9 @@ class IsaacFSMBackend:
                     "error": str(exc),
                     "physical_anchor_tick": replay_anchor_contract[
                         "physical_anchor_tick"
+                    ],
+                    "predecessor_verify_tick": replay_anchor_contract[
+                        "predecessor_verify_tick"
                     ],
                     "controller_anchor_tick": replay_anchor_contract[
                         "controller_anchor_tick"
@@ -1559,6 +1633,9 @@ class IsaacFSMBackend:
                     "pending_entry_blocker": pending_record,
                     "physical_anchor_tick": replay_anchor_contract[
                         "physical_anchor_tick"
+                    ],
+                    "predecessor_verify_tick": replay_anchor_contract[
+                        "predecessor_verify_tick"
                     ],
                     "controller_anchor_tick": replay_anchor_contract[
                         "controller_anchor_tick"
@@ -2658,14 +2735,15 @@ def _load_validated_phase_snapshot(
 def _phase_snapshot_replay_anchor_contract(
     payload: Mapping[str, Any], phase_id: str
 ) -> Mapping[str, Any]:
-    """Return a fail-closed audit record for physical/controller replay anchors.
+    """Return a fail-closed audit record for every replay-history anchor.
 
     Most phase snapshots use one physical source row and do not claim an
-    independently sourced controller anchor.  P10 is the deliberate hybrid:
-    generalized/contact state comes from the predecessor P09 VERIFY_RESULT
-    row, while controller history and cumulative latches come from the later
-    P10 WAIT_ENTRY row.  Every command between those anchors and the target
-    entry must retain its authored FSM context.
+    independently sourced controller anchor.  P10 is the deliberate
+    three-segment hybrid: generalized/contact state starts before the final P09
+    contact-history samples, P09 later enters VERIFY_RESULT, and controller
+    history plus cumulative latches come from the still-later P10 WAIT_ENTRY
+    anchor.  Every command through the P10 target entry retains its authored
+    FSM context.
     """
 
     def fail(reason: str) -> None:
@@ -2708,23 +2786,52 @@ def _phase_snapshot_replay_anchor_contract(
     has_controller_time = "controller_anchor_time_s" in payload
     if has_controller_tick != has_controller_time:
         fail("controller anchor tick/time fields are not an atomic pair")
+    has_predecessor_verify_tick = "predecessor_verify_tick" in payload
+    has_predecessor_verify_time = "predecessor_verify_time_s" in payload
+    if has_predecessor_verify_tick != has_predecessor_verify_time:
+        fail("predecessor VERIFY anchor tick/time fields are not an atomic pair")
 
+    predecessor_verify_tick: int | None = None
+    predecessor_verify_time_s: float | None = None
     controller_anchor_tick: int | None = None
     controller_anchor_time_s: float | None = None
     hybrid = target_is_authored
     replay_contexts: list[dict[str, Any]] = []
     context_segments: list[dict[str, Any]] = []
     if hybrid:
+        predecessor_tick_value = payload.get("predecessor_verify_tick")
+        predecessor_time_value = payload.get("predecessor_verify_time_s")
         controller_tick_value = payload.get("controller_anchor_tick")
         controller_time_value = payload.get("controller_anchor_time_s")
         if phase_id != "P10":
-            fail("only P10 may declare split physical/controller anchors")
+            fail("only P10 may declare split replay-history anchors")
+        if (
+            not has_predecessor_verify_tick
+            or type(predecessor_tick_value) is not int
+            or not source_tick < predecessor_tick_value
+        ):
+            fail(
+                "predecessor VERIFY anchor tick is not strictly after the physical anchor"
+            )
         if (
             not has_controller_tick
             or type(controller_tick_value) is not int
-            or not source_tick < controller_tick_value < target_entry_tick
+            or not predecessor_tick_value
+            < controller_tick_value
+            < target_entry_tick
         ):
-            fail("controller anchor tick is not strictly inside the replay window")
+            fail(
+                "controller anchor tick is not strictly after predecessor VERIFY "
+                "and before target entry"
+            )
+        if (
+            isinstance(predecessor_time_value, bool)
+            or not isinstance(predecessor_time_value, (int, float))
+            or not math.isfinite(float(predecessor_time_value))
+            or float(predecessor_time_value)
+            != phase_entry_time_s(predecessor_tick_value)
+        ):
+            fail("predecessor VERIFY anchor time does not equal its 120 Hz tick")
         if (
             isinstance(controller_time_value, bool)
             or not isinstance(controller_time_value, (int, float))
@@ -2733,6 +2840,8 @@ def _phase_snapshot_replay_anchor_contract(
             != phase_entry_time_s(controller_tick_value)
         ):
             fail("controller anchor time does not equal its 120 Hz tick")
+        predecessor_verify_tick = predecessor_tick_value
+        predecessor_verify_time_s = float(predecessor_time_value)
         controller_anchor_tick = controller_tick_value
         controller_anchor_time_s = float(controller_time_value)
         predecessor = PHASE_IDS[PHASE_IDS.index(phase_id) - 1]
@@ -2740,11 +2849,18 @@ def _phase_snapshot_replay_anchor_contract(
             tick = source_tick + offset
             if row.get("control_physics_tick") != tick:
                 fail("source replay ticks are not contiguous from the physical anchor")
-            before_controller_anchor = tick < controller_anchor_tick
-            expected_state = predecessor if before_controller_anchor else phase_id
-            expected_lifecycle = (
-                "VERIFY_RESULT" if before_controller_anchor else "WAIT_ENTRY"
-            )
+            if tick < predecessor_verify_tick:
+                expected_state = predecessor
+                expected_lifecycle = "EXECUTE_MOTION"
+                anchor_segment = "physical_anchor_to_predecessor_verify"
+            elif tick < controller_anchor_tick:
+                expected_state = predecessor
+                expected_lifecycle = "VERIFY_RESULT"
+                anchor_segment = "predecessor_verify_to_controller_anchor"
+            else:
+                expected_state = phase_id
+                expected_lifecycle = "WAIT_ENTRY"
+                anchor_segment = "controller_anchor_to_target_entry"
             if (
                 row.get("source_fsm_state") != expected_state
                 or row.get("source_fsm_lifecycle") != expected_lifecycle
@@ -2758,22 +2874,29 @@ def _phase_snapshot_replay_anchor_contract(
                     "source_control_physics_tick": tick,
                     "source_fsm_state": expected_state,
                     "source_fsm_lifecycle": expected_lifecycle,
-                    "anchor_segment": (
-                        "physical_anchor_to_controller_anchor"
-                        if before_controller_anchor
-                        else "controller_anchor_to_target_entry"
-                    ),
+                    "anchor_segment": anchor_segment,
                 }
             )
         context_segments = [
             {
+                "anchor_segment": "physical_anchor_to_predecessor_verify",
                 "first_source_tick": source_tick,
+                "last_source_tick": predecessor_verify_tick - 1,
+                "source_replay_steps": predecessor_verify_tick - source_tick,
+                "source_fsm_state": predecessor,
+                "source_fsm_lifecycle": "EXECUTE_MOTION",
+            },
+            {
+                "anchor_segment": "predecessor_verify_to_controller_anchor",
+                "first_source_tick": predecessor_verify_tick,
                 "last_source_tick": controller_anchor_tick - 1,
-                "source_replay_steps": controller_anchor_tick - source_tick,
+                "source_replay_steps": controller_anchor_tick
+                - predecessor_verify_tick,
                 "source_fsm_state": predecessor,
                 "source_fsm_lifecycle": "VERIFY_RESULT",
             },
             {
+                "anchor_segment": "controller_anchor_to_target_entry",
                 "first_source_tick": controller_anchor_tick,
                 "last_source_tick": target_entry_tick - 1,
                 "source_replay_steps": target_entry_tick
@@ -2788,8 +2911,13 @@ def _phase_snapshot_replay_anchor_contract(
         ):
             fail("restored controller state is not P10 WAIT_ENTRY")
     else:
-        if has_controller_tick or has_controller_time:
-            fail("a single-anchor replay unexpectedly declares a controller anchor")
+        if (
+            has_predecessor_verify_tick
+            or has_predecessor_verify_time
+            or has_controller_tick
+            or has_controller_time
+        ):
+            fail("a single-anchor replay unexpectedly declares history anchors")
         if source_replay_steps != 1:
             fail("a replay without an authored target must contain one source row")
         only_row = source_commands[0]
@@ -2805,6 +2933,7 @@ def _phase_snapshot_replay_anchor_contract(
         )
         context_segments = [
             {
+                "anchor_segment": "single_source_command",
                 "first_source_tick": source_tick,
                 "last_source_tick": source_tick,
                 "source_replay_steps": 1,
@@ -2817,11 +2946,11 @@ def _phase_snapshot_replay_anchor_contract(
         controller_anchor_tick if controller_anchor_tick is not None else source_tick
     )
     return {
-        "schema": "wlr50_clean.phase_snapshot_replay_anchor_contract.v1",
+        "schema": "wlr50_clean.phase_snapshot_replay_anchor_contract.v2",
         "verified": True,
         "phase": phase_id,
         "mode": (
-            "hybrid_physical_and_controller_anchors"
+            "hybrid_physical_predecessor_verify_and_controller_anchors"
             if hybrid
             else "single_physical_anchor"
         ),
@@ -2829,6 +2958,8 @@ def _phase_snapshot_replay_anchor_contract(
         "physical_anchor_time_s": float(source_time),
         "physical_state_anchor_tick": source_tick,
         "physical_state_anchor_role": "physical_anchor",
+        "predecessor_verify_tick": predecessor_verify_tick,
+        "predecessor_verify_time_s": predecessor_verify_time_s,
         "controller_anchor_tick": controller_anchor_tick,
         "controller_anchor_time_s": controller_anchor_time_s,
         "controller_state_anchor_tick": controller_anchor_tick,
@@ -2843,6 +2974,16 @@ def _phase_snapshot_replay_anchor_contract(
         "target_entry_time_s": phase_entry_time_s(target_entry_tick),
         "target_entry_tick_authored": target_is_authored,
         "source_replay_steps": source_replay_steps,
+        "physical_to_predecessor_verify_replay_steps": (
+            None
+            if predecessor_verify_tick is None
+            else predecessor_verify_tick - source_tick
+        ),
+        "predecessor_verify_to_controller_replay_steps": (
+            None
+            if predecessor_verify_tick is None or controller_anchor_tick is None
+            else controller_anchor_tick - predecessor_verify_tick
+        ),
         "physical_to_controller_replay_steps": (
             None
             if controller_anchor_tick is None
@@ -2857,6 +2998,11 @@ def _phase_snapshot_replay_anchor_contract(
         "source_replay_first_tick": source_tick,
         "source_replay_last_tick": target_entry_tick - 1,
         "source_replay_context_transition_tick": controller_anchor_tick,
+        "source_replay_context_transition_ticks": (
+            []
+            if predecessor_verify_tick is None or controller_anchor_tick is None
+            else [predecessor_verify_tick, controller_anchor_tick]
+        ),
         "source_replay_fsm_contexts": replay_contexts,
         "source_replay_context_segments": context_segments,
         "all_source_replay_contexts_verified": True,
@@ -3496,6 +3642,12 @@ def _write_phase_snapshot_state(
         "physical_anchor_time_s": replay_anchor_contract[
             "physical_anchor_time_s"
         ],
+        "predecessor_verify_tick": replay_anchor_contract[
+            "predecessor_verify_tick"
+        ],
+        "predecessor_verify_time_s": replay_anchor_contract[
+            "predecessor_verify_time_s"
+        ],
         "controller_anchor_tick": replay_anchor_contract[
             "controller_anchor_tick"
         ],
@@ -3572,6 +3724,12 @@ def _restore_controller_from_snapshot(
         "history_is_independent": controller.history == [],
         "entry_guards_pending_effective_tick_zero": True,
         "physical_anchor_tick": replay_anchor_contract["physical_anchor_tick"],
+        "predecessor_verify_tick": replay_anchor_contract[
+            "predecessor_verify_tick"
+        ],
+        "predecessor_verify_time_s": replay_anchor_contract[
+            "predecessor_verify_time_s"
+        ],
         "controller_anchor_tick": replay_anchor_contract[
             "controller_anchor_tick"
         ],
@@ -3702,6 +3860,12 @@ def _restore_guard_tracker_from_snapshot(
         "classifier_history_before_effective_tick_zero": {},
         "history_is_independent": True,
         "physical_anchor_tick": replay_anchor_contract["physical_anchor_tick"],
+        "predecessor_verify_tick": replay_anchor_contract[
+            "predecessor_verify_tick"
+        ],
+        "predecessor_verify_time_s": replay_anchor_contract[
+            "predecessor_verify_time_s"
+        ],
         "controller_anchor_tick": replay_anchor_contract[
             "controller_anchor_tick"
         ],

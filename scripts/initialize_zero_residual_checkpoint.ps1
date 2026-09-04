@@ -38,7 +38,7 @@ $ManifestExists = Test-Path -LiteralPath $Manifest -PathType Leaf
 $SourceCheckpoint = $Checkpoint
 $SourceManifest = $Manifest
 $InitializerRoot = [IO.Path]::GetFullPath(
-    (Join-Path $ProjectRoot "runs\ppo_phase_v1\initial_checkpoint")
+    (Join-Path $ProjectRoot "runs\ppo_phase_v1\initial-checkpoint")
 )
 $InitializerPrefix = $InitializerRoot.TrimEnd(
     [IO.Path]::DirectorySeparatorChar

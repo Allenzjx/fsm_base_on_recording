@@ -283,7 +283,7 @@ def _managed_rollout_fixture(
         project_root
         / "runs"
         / "ppo_phase_v1"
-        / "phase_effective_entry_holdout"
+        / holdout_module.HOLDOUT_RUN_KIND
         / "holdout-fixture"
     )
     holdout_run.mkdir(parents=True)
@@ -344,7 +344,7 @@ def _managed_rollout_fixture(
         project_root
         / "runs"
         / "ppo_phase_v1"
-        / "phase_zero_residual_rollout"
+        / rollout_module.RUN_KIND
         / identity.run_id
     )
     run_dir.mkdir(parents=True)
@@ -440,7 +440,7 @@ def _managed_rollout_fixture(
         "lifecycle": "STARTED",
         "immutable_run_directory": True,
         "run_id": identity.run_id,
-        "run_kind": "phase_zero_residual_rollout",
+        "run_kind": rollout_module.RUN_KIND,
         "run_dir": str(run_dir.resolve()),
         "project_root": str(project_root.resolve()),
         "identity": identity_record,
@@ -516,6 +516,35 @@ def test_managed_evidence_validator_binds_complete_finalized_run(
     assert evidence["run_manifest_sha256"] == _sha256(
         Path(fixture["run_dir"]) / "run_manifest.json"
     )
+
+
+@pytest.mark.parametrize(
+    ("requested_run_kind", "canonical_run_kind"),
+    (
+        ("phase_zero_residual_rollout", rollout_module.RUN_KIND),
+        ("phase_effective_entry_holdout", holdout_module.HOLDOUT_RUN_KIND),
+    ),
+)
+def test_rollout_consumers_use_reserve_run_canonical_kinds(
+    tmp_path: Path,
+    requested_run_kind: str,
+    canonical_run_kind: str,
+) -> None:
+    config = tmp_path / "config.yaml"
+    config.write_text("fixture: true\n", encoding="utf-8")
+    reservation = artifacts.reserve_run(
+        project_root=tmp_path,
+        run_kind=requested_run_kind,
+        config_paths=(config,),
+        seed=1004,
+        environment_count=1,
+        training_stage="run-kind-contract",
+        git_commit="a" * 40,
+    )
+    started = json.loads(reservation.started_manifest.read_text(encoding="utf-8"))
+
+    assert reservation.run_dir.parent.name == canonical_run_kind
+    assert started["run_kind"] == canonical_run_kind
 
 
 @pytest.mark.parametrize(

@@ -1186,7 +1186,7 @@ def _validate_checkpoint_creation_runtime(
     allowed_creation_run = creation_run_kind == "train" or (
         role == "checkpoint_initial"
         and manifest.get("stage") == "initial_zero_residual"
-        and creation_run_kind == "initial_checkpoint"
+        and creation_run_kind == "initial-checkpoint"
         and run_payload.get("entrypoint") == "wlr50_clean.ppo.cli"
         and run_payload.get("subcommand") == "initialize-zero-residual"
         and isinstance(run_payload.get("identity"), Mapping)

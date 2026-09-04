@@ -226,7 +226,7 @@ def _write_finalized_benchmark(
         "lifecycle": "STARTED",
         "run_id": run_id,
         "run_dir": str(root.resolve()),
-        "run_kind": "vector_benchmark",
+        "run_kind": "vector-benchmark",
         "project_root": str(root.parent.resolve()),
         "immutable_run_directory": True,
         "identity": identity,
@@ -311,4 +311,23 @@ def test_vector_acceptance_seed_rows_must_match_training_reset_rows(
     )
 
     with pytest.raises(cli.CliError, match="seed_rows"):
+        _validate(benchmark, expected_seed_rows=EXPECTED_SEED_ROWS)
+
+
+def test_vector_acceptance_rejects_legacy_underscore_manifest_kind(
+    tmp_path: Path,
+) -> None:
+    benchmark = _write_finalized_benchmark(tmp_path / "gate")
+    run_dir = benchmark.parent
+    started_path = run_dir / "run_manifest.started.json"
+    final_path = run_dir / "run_manifest.json"
+    started = json.loads(started_path.read_text(encoding="utf-8"))
+    final = json.loads(final_path.read_text(encoding="utf-8"))
+    started["run_kind"] = "vector_benchmark"
+    final["run_kind"] = "vector_benchmark"
+    _write_json(started_path, started)
+    final["started_manifest"] = _record(started_path, relative_to=run_dir)
+    _write_json(final_path, final)
+
+    with pytest.raises(cli.CliError, match="successful finalized"):
         _validate(benchmark, expected_seed_rows=EXPECTED_SEED_ROWS)

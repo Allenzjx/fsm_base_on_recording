@@ -228,7 +228,7 @@ def _validate_common(args: argparse.Namespace) -> None:
             args.run_dir = validate_managed_run_directory(
                 args.run_dir,
                 project_root=PROJECT_ROOT,
-                run_kind="vector_benchmark",
+                run_kind="vector-benchmark",
             )
         except VectorBenchmarkMatrixError as exc:
             raise CliError(f"vector benchmark run directory rejected: {exc}") from exc
@@ -2388,7 +2388,7 @@ def _validate_vector_benchmark_acceptance(
         or manifest.get("lifecycle") != "SUCCEEDED"
         or manifest.get("exit_code") != 0
         or manifest.get("immutable_run_directory") is not True
-        or manifest.get("run_kind") != "vector_benchmark"
+        or manifest.get("run_kind") != "vector-benchmark"
         or manifest.get("subcommand") != "vector-benchmark"
         or manifest.get("entrypoint") != "wlr50_clean.ppo.cli"
         or Path(str(manifest.get("run_dir", ""))).resolve() != run_dir

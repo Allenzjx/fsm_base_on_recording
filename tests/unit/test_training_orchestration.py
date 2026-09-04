@@ -502,7 +502,11 @@ def test_initial_checkpoint_creation_binding_accepts_dedicated_finalized_run(
 ) -> None:
     root = tmp_path.resolve()
     creation_run = (
-        root / "runs" / "ppo_phase_v1" / "initial_checkpoint" / "creation"
+        root
+        / "runs"
+        / "ppo_phase_v1"
+        / subject.INITIAL_CHECKPOINT_RUN_KIND
+        / "creation"
     )
     creation_run.mkdir(parents=True)
     identity = creation_run / "committed_runtime_identity.before.json"
@@ -539,22 +543,28 @@ def test_initial_checkpoint_creation_binding_accepts_dedicated_finalized_run(
         cache={},
     )
 
-    assert seen["run_kind"] == "initial_checkpoint"
+    assert seen["run_kind"] == subject.INITIAL_CHECKPOINT_RUN_KIND
     assert seen["training_stage"] == "initialize-zero-residual"
     assert seen["subcommand"] == "initialize-zero-residual"
-    assert result["creation_run_kind"] == "initial_checkpoint"
+    assert result["creation_run_kind"] == subject.INITIAL_CHECKPOINT_RUN_KIND
 
 
 def test_initial_publication_rejects_manual_same_byte_source_copy(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     root = tmp_path.resolve()
-    creator = root / "runs" / "ppo_phase_v1" / "initial_checkpoint" / "creator"
+    creator = (
+        root
+        / "runs"
+        / "ppo_phase_v1"
+        / subject.INITIAL_CHECKPOINT_RUN_KIND
+        / "creator"
+    )
     publisher = (
         root
         / "runs"
         / "ppo_phase_v1"
-        / "initial_checkpoint_publication"
+        / subject.INITIAL_CHECKPOINT_PUBLICATION_RUN_KIND
         / "publisher"
     )
     canonical_dir = root / "outputs" / "ppo_phase_v1" / "checkpoints"
@@ -607,7 +617,7 @@ def test_initial_publication_rejects_manual_same_byte_source_copy(
             "source_initializer_finalized_success": True,
             "embedded_infos_match_manifest": True,
             "zero_mean_actor_output_layer_verified": True,
-            "creation_run_kind": "initial_checkpoint",
+            "creation_run_kind": subject.INITIAL_CHECKPOINT_RUN_KIND,
             "creation_run_directory": str(creator),
         }
         _write_json(result_path, payload)
@@ -641,7 +651,7 @@ def test_initial_publication_rejects_manual_same_byte_source_copy(
         "manifest_path": str(canonical_manifest),
         "manifest_sha256": _record(canonical_manifest)["sha256"],
         "creation_runtime_identity": {
-            "creation_run_kind": "initial_checkpoint",
+            "creation_run_kind": subject.INITIAL_CHECKPOINT_RUN_KIND,
             "creation_run_directory": str(creator),
             "creation_run_completed_at_utc": "2026-09-04T00:00:01Z",
         },
@@ -678,14 +688,16 @@ def test_initial_publication_rejects_manual_same_byte_source_copy(
         )
 
 
-@pytest.mark.parametrize("wrong_kind", ["train", "initial_checkpoint"])
+@pytest.mark.parametrize(
+    "wrong_kind", ["train", subject.INITIAL_CHECKPOINT_RUN_KIND]
+)
 def test_initial_publication_rejects_wrong_kind_publisher(
     tmp_path: Path, wrong_kind: str
 ) -> None:
     root = tmp_path.resolve()
     run = root / "runs" / "ppo_phase_v1" / wrong_kind / "publisher"
     run.mkdir(parents=True)
-    if wrong_kind == "initial_checkpoint_publication":
+    if wrong_kind == subject.INITIAL_CHECKPOINT_PUBLICATION_RUN_KIND:
         pytest.fail("parameter must exercise a wrong run kind")
 
     with pytest.raises(subject.TrainingOrchestrationError, match="must be"):
@@ -708,7 +720,7 @@ def test_initial_publication_rejects_failed_publisher(tmp_path: Path) -> None:
         root
         / "runs"
         / "ppo_phase_v1"
-        / "initial_checkpoint_publication"
+        / subject.INITIAL_CHECKPOINT_PUBLICATION_RUN_KIND
         / "failed-publisher"
     )
     run.mkdir(parents=True)
@@ -853,7 +865,7 @@ def test_publication_hook_detects_source_mutation(
         root
         / "runs"
         / "ppo_phase_v1"
-        / "training_orchestration"
+        / subject.TRAINING_ORCHESTRATION_RUN_KIND
         / "fixture-run"
     )
     run_dir.mkdir(parents=True)
@@ -870,7 +882,7 @@ def test_publication_hook_detects_source_mutation(
             "schema": subject.RUN_MANIFEST_SCHEMA,
             "lifecycle": "STARTED",
             "immutable_run_directory": True,
-            "run_kind": "training_orchestration",
+            "run_kind": subject.TRAINING_ORCHESTRATION_RUN_KIND,
             "entrypoint": "wlr50_clean.ppo.training_orchestration",
             "subcommand": "build-manifest",
             "run_dir": str(run_dir.resolve()),
@@ -939,7 +951,7 @@ def test_publication_hook_rejects_run_directory_replaced_by_junction(
         root
         / "runs"
         / "ppo_phase_v1"
-        / "training_orchestration"
+        / subject.TRAINING_ORCHESTRATION_RUN_KIND
         / "fixture-run"
     )
     run_dir.mkdir(parents=True)
@@ -956,7 +968,7 @@ def test_publication_hook_rejects_run_directory_replaced_by_junction(
             "schema": subject.RUN_MANIFEST_SCHEMA,
             "lifecycle": "STARTED",
             "immutable_run_directory": True,
-            "run_kind": "training_orchestration",
+            "run_kind": subject.TRAINING_ORCHESTRATION_RUN_KIND,
             "entrypoint": "wlr50_clean.ppo.training_orchestration",
             "subcommand": "build-manifest",
             "run_dir": str(run_dir),
@@ -1164,7 +1176,11 @@ def test_cadence_driver_runs_21_guarded_chunks_and_fresh_screenings() -> None:
     assert "immutable_history_checkpoint" in text
     assert "checkpoint_initial_zero_residual.pt" in text
     assert "-InitialCheckpointPublicationRun $InitialPublicationRun" in text
-    assert '"initial_checkpoint_publication"' in text
+    assert '"initial-checkpoint-publication"' in text
+    assert '(Join-Path $RunsRoot "phase-effective-entry-holdout")' in text
+    assert '$HoldoutManifest.run_kind -cne "phase-effective-entry-holdout"' in text
+    assert '(Join-Path $RunsRoot "phase-zero-residual-rollout")' in text
+    assert '$PhaseRolloutManifest.run_kind -cne "phase-zero-residual-rollout"' in text
     assert "checkpoint_smoke.pt" in text
     assert "creation_runtime_identity_sha256" in text
     assert "CheckpointManifest" in text
@@ -1184,5 +1200,57 @@ def test_public_contract_exports_validator_error_and_constants() -> None:
     assert subject.TRAINING_ORCHESTRATION_FILENAME == (
         "training_orchestration_manifest.json"
     )
+    assert subject.TRAINING_ORCHESTRATION_RUN_KIND == "training-orchestration"
+    assert subject.VECTOR_BENCHMARK_MATRIX_RUN_KIND == "vector-benchmark-matrix"
+    assert subject.INITIAL_CHECKPOINT_RUN_KIND == "initial-checkpoint"
+    assert subject.INITIAL_CHECKPOINT_PUBLICATION_RUN_KIND == (
+        "initial-checkpoint-publication"
+    )
+    assert subject.DEFAULT_TRAINING_ORCHESTRATION_RUNS.name == (
+        subject.TRAINING_ORCHESTRATION_RUN_KIND
+    )
+    assert subject.DEFAULT_VECTOR_BENCHMARK_MATRIX.name == (
+        subject.VECTOR_BENCHMARK_MATRIX_RUN_KIND
+    )
     assert issubclass(subject.TrainingOrchestrationError, RuntimeError)
     assert callable(subject.validate_training_orchestration_manifest)
+
+
+@pytest.mark.parametrize(
+    ("requested_run_kind", "canonical_run_kind"),
+    (
+        ("training_orchestration", subject.TRAINING_ORCHESTRATION_RUN_KIND),
+        ("vector_benchmark_matrix", subject.VECTOR_BENCHMARK_MATRIX_RUN_KIND),
+        ("initial_checkpoint", subject.INITIAL_CHECKPOINT_RUN_KIND),
+        (
+            "initial_checkpoint_publication",
+            subject.INITIAL_CHECKPOINT_PUBLICATION_RUN_KIND,
+        ),
+    ),
+)
+def test_orchestration_consumers_match_real_reserve_run_canonical_kind(
+    tmp_path: Path,
+    requested_run_kind: str,
+    canonical_run_kind: str,
+) -> None:
+    config = tmp_path / "config.yaml"
+    config.write_text("fixture: true\n", encoding="utf-8")
+    reservation = artifacts.reserve_run(
+        project_root=tmp_path,
+        run_kind=requested_run_kind,
+        config_paths=(config,),
+        seed=1001,
+        environment_count=1,
+        training_stage="run-kind-contract",
+        git_commit="a" * 40,
+    )
+    started = json.loads(reservation.started_manifest.read_text(encoding="utf-8"))
+
+    assert reservation.run_dir.parent.name == canonical_run_kind
+    assert started["run_kind"] == canonical_run_kind
+    assert subject._managed_run_dir(
+        reservation.run_dir,
+        project_root=tmp_path,
+        run_kind=canonical_run_kind,
+        label="canonical fixture",
+    ) == reservation.run_dir

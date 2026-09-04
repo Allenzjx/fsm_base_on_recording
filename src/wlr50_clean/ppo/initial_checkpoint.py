@@ -30,7 +30,7 @@ INITIAL_MANIFEST_NAME = "checkpoint_initial_zero_residual_manifest.json"
 INITIAL_RESULT_NAME = "initial_checkpoint_result.json"
 INITIAL_RESULT_SCHEMA = "wlr50_clean.initial_zero_residual_checkpoint_run.v1"
 PUBLICATION_SCHEMA = "wlr50_clean.initial_zero_residual_checkpoint_publication.v1"
-INITIAL_RUN_KIND = "initial_checkpoint"
+INITIAL_RUN_KIND = "initial-checkpoint"
 INITIAL_RUN_STAGE = "initialize-zero-residual"
 
 

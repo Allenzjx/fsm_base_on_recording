@@ -30,6 +30,7 @@ SCHEMA = "wlr50_clean.validation_aggregate_binding.v1"
 RUN_SCHEMA = "wlr50_clean.ppo_run_manifest.v1"
 AGGREGATE_SCHEMA = "wlr50_clean.fresh_process_episode_batch.v1"
 VALIDATION_SEEDS = (2001, 2002, 2003, 2004, 2005)
+BASELINE_WORKER_RUN_KIND = "baseline-fsm-eval"
 _REPARSE = 0x400
 
 
@@ -368,7 +369,7 @@ def capture_validation_aggregate(
     ):
         raise PairedAggregateBindingError("validation aggregate worker list is invalid")
     worker_kind = (
-        "baseline_fsm_eval"
+        BASELINE_WORKER_RUN_KIND
         if selected_role == "baseline"
         else "validation-checkpoint-evaluation"
     )
@@ -662,6 +663,7 @@ def capture_validation_aggregate(
 
 
 __all__ = (
+    "BASELINE_WORKER_RUN_KIND",
     "CapturedValidationAggregate",
     "PairedAggregateBindingError",
     "SCHEMA",

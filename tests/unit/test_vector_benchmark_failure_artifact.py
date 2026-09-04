@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from wlr50_clean.ppo import cli
+from wlr50_clean.ppo import artifacts, cli
 from wlr50_clean.ppo import vectorized_isaac_backend
 
 
@@ -108,5 +108,56 @@ def test_vector_worker_rejects_run_directory_outside_managed_root(
     tmp_path: Path,
 ) -> None:
     args = argparse.Namespace(command="vector-benchmark", run_dir=tmp_path)
+    with pytest.raises(cli.CliError, match="run directory rejected"):
+        cli._validate_common(args)
+
+
+def test_vector_worker_accepts_real_canonical_reservation_and_rejects_legacy_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = tmp_path / "configs" / "fixture.yaml"
+    config.parent.mkdir(parents=True)
+    config.write_text("fixture: true\n", encoding="utf-8")
+    reservation = artifacts.reserve_run(
+        project_root=tmp_path,
+        run_kind="vector_benchmark",
+        config_paths=(config,),
+        seed=1001,
+        environment_count=8,
+        training_stage="backend-benchmark",
+        git_commit="c" * 40,
+        entrypoint="wlr50_clean.ppo.cli",
+        subcommand="vector-benchmark",
+    )
+    started = json.loads(reservation.started_manifest.read_text(encoding="utf-8"))
+
+    assert reservation.run_dir.parent.name == "vector-benchmark"
+    assert started["run_kind"] == "vector-benchmark"
+    assert Path(started["run_dir"]).resolve() == reservation.run_dir
+
+    monkeypatch.setattr(cli, "PROJECT_ROOT", tmp_path)
+    args = cli._parser().parse_args(
+        [
+            "vector-benchmark",
+            "--run-dir",
+            str(reservation.run_dir),
+            "--seed",
+            "1001",
+            "--num-envs",
+            "8",
+        ]
+    )
+    cli._validate_common(args)
+    assert args.run_dir == reservation.run_dir
+
+    legacy_dir = (
+        tmp_path
+        / "runs"
+        / "ppo_phase_v1"
+        / "vector_benchmark"
+        / reservation.run_id
+    )
+    legacy_dir.mkdir(parents=True)
+    args.run_dir = legacy_dir
     with pytest.raises(cli.CliError, match="run directory rejected"):
         cli._validate_common(args)

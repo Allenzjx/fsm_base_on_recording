@@ -25,7 +25,9 @@ ARTIFACT_SCHEMA = "wlr50_clean.phase_zero_residual_rollout.v1"
 TRAINING_EVIDENCE_SCHEMA = (
     "wlr50_clean.phase_zero_residual_rollout_training_evidence.v1"
 )
-RUN_KIND = "phase_zero_residual_rollout"
+# ``artifacts.reserve_run`` canonicalizes the wrapper's underscore-separated
+# request before it creates the managed directory and lifecycle manifests.
+RUN_KIND = "phase-zero-residual-rollout"
 TRAINING_STAGE = "phase-zero-residual-rollout"
 SUBCOMMAND = "phase-zero-residual-rollout"
 PHASE_IDS = tuple(f"P{index:02d}" for index in range(1, 14))
@@ -1041,6 +1043,7 @@ def validate_phase_zero_residual_rollout_evidence(
 
     from .artifacts import ArtifactError
     from .phase_effective_entry_holdout import (
+        HOLDOUT_RUN_KIND,
         OUTPUT_FILENAME as HOLDOUT_OUTPUT_FILENAME,
         PhaseEffectiveEntryHoldoutError,
         _current_context,
@@ -1185,7 +1188,7 @@ def validate_phase_zero_residual_rollout_evidence(
         holdout_run_dir = validate_managed_run_directory(
             holdout_path.parent,
             project_root=root,
-            run_kind="phase_effective_entry_holdout",
+            run_kind=HOLDOUT_RUN_KIND,
         )
         if (
             holdout_path != holdout_run_dir / HOLDOUT_OUTPUT_FILENAME

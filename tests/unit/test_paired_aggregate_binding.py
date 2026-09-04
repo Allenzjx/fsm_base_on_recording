@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from wlr50_clean.ppo import artifacts
 from wlr50_clean.ppo import paired_aggregate_binding as subject
 from wlr50_clean.ppo import training_orchestration
 from wlr50_clean.ppo.evaluation_artifacts import (
@@ -232,6 +233,27 @@ def _trust_central_run_validator(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         training_orchestration, "_validate_finalized_run", lambda *args, **kwargs: {}
     )
+
+
+def test_baseline_worker_consumer_matches_real_reserve_run_canonical_kind(
+    tmp_path: Path,
+) -> None:
+    config = tmp_path / "config.yaml"
+    config.write_text("fixture: true\n", encoding="utf-8")
+    reservation = artifacts.reserve_run(
+        project_root=tmp_path,
+        run_kind="baseline_fsm_eval",
+        config_paths=(config,),
+        seed=2001,
+        environment_count=1,
+        training_stage="baseline-fsm-eval-fresh-process",
+        git_commit="a" * 40,
+    )
+    started = json.loads(reservation.started_manifest.read_text(encoding="utf-8"))
+
+    assert subject.BASELINE_WORKER_RUN_KIND == "baseline-fsm-eval"
+    assert reservation.run_dir.parent.name == subject.BASELINE_WORKER_RUN_KIND
+    assert started["run_kind"] == subject.BASELINE_WORKER_RUN_KIND
 
 
 def test_candidate_failure_is_complete_bound_evidence(

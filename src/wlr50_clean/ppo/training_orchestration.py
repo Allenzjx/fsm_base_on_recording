@@ -31,12 +31,16 @@ from .artifacts import ArtifactError, atomic_write_json
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 TRAINING_ORCHESTRATION_SCHEMA = "wlr50_clean.ppo_training_orchestration.v1"
 TRAINING_ORCHESTRATION_FILENAME = "training_orchestration_manifest.json"
+TRAINING_ORCHESTRATION_RUN_KIND = "training-orchestration"
+VECTOR_BENCHMARK_MATRIX_RUN_KIND = "vector-benchmark-matrix"
+INITIAL_CHECKPOINT_RUN_KIND = "initial-checkpoint"
+INITIAL_CHECKPOINT_PUBLICATION_RUN_KIND = "initial-checkpoint-publication"
 DEFAULT_TRAINING_ORCHESTRATION_RUNS = (
-    PROJECT_ROOT / "runs" / "ppo_phase_v1" / "training_orchestration"
+    PROJECT_ROOT / "runs" / "ppo_phase_v1" / TRAINING_ORCHESTRATION_RUN_KIND
 )
 DEFAULT_TRAINING_CONFIG = PROJECT_ROOT / "configs" / "ppo_training_phase_v1.yaml"
 DEFAULT_VECTOR_BENCHMARK_MATRIX = (
-    PROJECT_ROOT / "runs" / "ppo_phase_v1" / "vector_benchmark_matrix"
+    PROJECT_ROOT / "runs" / "ppo_phase_v1" / VECTOR_BENCHMARK_MATRIX_RUN_KIND
 )
 RUN_MANIFEST_SCHEMA = "wlr50_clean.ppo_run_manifest.v1"
 TRAINING_RESULT_SCHEMA = "wlr50_clean.ppo_training_run.v1"
@@ -1206,9 +1210,9 @@ def _validate_checkpoint_creation_binding(
     if (
         manifest.get("stage") == "initial_zero_residual"
         and len(creation_relative.parts) == 2
-        and creation_relative.parts[0] == "initial_checkpoint"
+        and creation_relative.parts[0] == INITIAL_CHECKPOINT_RUN_KIND
     ):
-        creation_run_kind = "initial_checkpoint"
+        creation_run_kind = INITIAL_CHECKPOINT_RUN_KIND
         creation_training_stage = "initialize-zero-residual"
         creation_subcommand = "initialize-zero-residual"
     else:
@@ -1403,7 +1407,7 @@ def _validate_initial_checkpoint_publication(
     run = _validate_finalized_run(
         publication_run_dir,
         project_root=project_root,
-        run_kind="initial_checkpoint_publication",
+        run_kind=INITIAL_CHECKPOINT_PUBLICATION_RUN_KIND,
         training_stage="initial-checkpoint-publication",
         entrypoint="wlr50_clean.ppo.cli",
         subcommand="publish-initial-zero-residual",
@@ -1501,7 +1505,7 @@ def _validate_initial_checkpoint_publication(
         and source_manifest.path == canonical_manifest.path
     )
     source_is_initializer = (
-        creation_kind == "initial_checkpoint"
+        creation_kind == INITIAL_CHECKPOINT_RUN_KIND
         and source_checkpoint.path == creator_source_checkpoint
         and source_manifest.path == creator_source_manifest
     )
@@ -2479,7 +2483,7 @@ def build_training_orchestration_manifest(
     run_dir = _managed_run_dir(
         output.parent,
         project_root=root,
-        run_kind="training_orchestration",
+        run_kind=TRAINING_ORCHESTRATION_RUN_KIND,
         label="training orchestration run",
     )
     if output.name != TRAINING_ORCHESTRATION_FILENAME:
@@ -2509,7 +2513,7 @@ def build_training_orchestration_manifest(
         started.get("schema") != RUN_MANIFEST_SCHEMA
         or started.get("lifecycle") != "STARTED"
         or started.get("immutable_run_directory") is not True
-        or started.get("run_kind") != "training_orchestration"
+        or started.get("run_kind") != TRAINING_ORCHESTRATION_RUN_KIND
         or started.get("entrypoint") != "wlr50_clean.ppo.training_orchestration"
         or started.get("subcommand") != "build-manifest"
         or _absolute(str(started.get("run_dir", ""))) != run_dir
@@ -2602,7 +2606,7 @@ def validate_training_orchestration_manifest(
     run_dir = _managed_run_dir(
         manifest_path.parent,
         project_root=root,
-        run_kind="training_orchestration",
+        run_kind=TRAINING_ORCHESTRATION_RUN_KIND,
         label="training orchestration run",
     )
     cache: _Cache = {}
@@ -2767,7 +2771,7 @@ def validate_training_orchestration_manifest(
     lifecycle = _validate_finalized_run(
         run_dir,
         project_root=root,
-        run_kind="training_orchestration",
+        run_kind=TRAINING_ORCHESTRATION_RUN_KIND,
         training_stage="training-orchestration-prefinal",
         entrypoint="wlr50_clean.ppo.training_orchestration",
         subcommand="build-manifest",
@@ -2857,10 +2861,14 @@ __all__ = [
     "DEFAULT_TRAINING_CONFIG",
     "DEFAULT_VECTOR_BENCHMARK_MATRIX",
     "DETERMINISTIC_VALIDATION_INTERVAL",
+    "INITIAL_CHECKPOINT_PUBLICATION_RUN_KIND",
+    "INITIAL_CHECKPOINT_RUN_KIND",
     "STAGE_BUDGETS",
     "TRAINING_ORCHESTRATION_FILENAME",
+    "TRAINING_ORCHESTRATION_RUN_KIND",
     "TRAINING_ORCHESTRATION_SCHEMA",
     "TrainingOrchestrationError",
+    "VECTOR_BENCHMARK_MATRIX_RUN_KIND",
     "build_training_orchestration_manifest",
     "main",
     "validate_training_orchestration_manifest",

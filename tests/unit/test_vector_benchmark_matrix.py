@@ -128,7 +128,7 @@ def _matrix_output(project_root: Path, name: str = "matrix") -> Path:
         project_root
         / "runs"
         / "ppo_phase_v1"
-        / "vector_benchmark_matrix"
+        / "vector-benchmark-matrix"
         / name
     )
     directory.mkdir(parents=True, exist_ok=True)
@@ -303,7 +303,7 @@ def _write_slot(
     current_config_sha256, configs = _config_evidence(project_root)
     if config_sha256 is None:
         config_sha256 = current_config_sha256
-    worker_root = project_root / "runs" / "ppo_phase_v1" / "vector_benchmark"
+    worker_root = project_root / "runs" / "ppo_phase_v1" / "vector-benchmark"
     worker_root.mkdir(parents=True, exist_ok=True)
     directory = worker_root / f"slot_n{num_envs}_{mode}_{len(tuple(worker_root.iterdir()))}"
     directory.mkdir()
@@ -354,7 +354,7 @@ def _write_slot(
         "lifecycle": "STARTED",
         "run_id": directory.name,
         "run_dir": str(directory.resolve()),
-        "run_kind": "vector_benchmark",
+        "run_kind": "vector-benchmark",
         "project_root": str(project_root.resolve()),
         "immutable_run_directory": True,
         "identity": identity,
@@ -510,7 +510,7 @@ def _finalized_matrix_run(
         "lifecycle": "STARTED",
         "run_id": run_dir.name,
         "run_dir": str(run_dir.resolve()),
-        "run_kind": "vector_benchmark_matrix",
+        "run_kind": "vector-benchmark-matrix",
         "project_root": str(project_root.resolve()),
         "immutable_run_directory": True,
         "identity": identity,
@@ -788,13 +788,34 @@ def test_matrix_rejects_worker_outside_managed_runs_root(tmp_path: Path) -> None
         )
 
 
+def test_matrix_rejects_legacy_underscore_worker_manifest_kind(
+    tmp_path: Path,
+) -> None:
+    paths = _matrix(tmp_path)
+    run_dir = paths[0].parent
+    started_path = run_dir / "run_manifest.started.json"
+    final_path = run_dir / "run_manifest.json"
+    started = json.loads(started_path.read_text(encoding="utf-8"))
+    final = json.loads(final_path.read_text(encoding="utf-8"))
+    started["run_kind"] = "vector_benchmark"
+    final["run_kind"] = "vector_benchmark"
+    _write_json(started_path, started)
+    final["started_manifest"] = file_record(started_path, relative_to=run_dir)
+    _write_json(final_path, final)
+
+    with pytest.raises(VectorBenchmarkMatrixError, match="valid immutable"):
+        aggregate_vector_benchmark_matrix(
+            paths, output_path=_matrix_output(tmp_path, "legacy-worker-kind")
+        )
+
+
 def test_matrix_rejects_symlinked_worker_path(tmp_path: Path) -> None:
     paths = _matrix(tmp_path)
     link = (
         tmp_path
         / "runs"
         / "ppo_phase_v1"
-        / "vector_benchmark"
+        / "vector-benchmark"
         / "linked-worker"
     )
     try:
@@ -885,6 +906,40 @@ def test_finalized_matrix_rejects_changed_matrix_runtime_identity(
         (paths[0].parent / "run_manifest.json").read_text(encoding="utf-8")
     )
     with pytest.raises(VectorBenchmarkMatrixError, match="changed during"):
+        validate_finalized_vector_benchmark_matrix(
+            matrix,
+            expected_project_root=tmp_path,
+            expected_config_sha256=worker_manifest["identity"]["config_sha256"],
+            expected_frozen_manifest_sha256=frozen_sha256,
+            expected_git_commit=GIT_COMMIT,
+            expected_run_seed=RUN_SEED,
+            expected_num_envs=16,
+            expected_seed_rows=tuple(range(RUN_SEED, RUN_SEED + 16)),
+            expected_config_records=worker_manifest["configs"],
+        )
+
+
+def test_finalized_matrix_rejects_legacy_underscore_manifest_kind(
+    tmp_path: Path,
+) -> None:
+    paths = _matrix(tmp_path)
+    matrix = _finalized_matrix_run(tmp_path, paths)
+    run_dir = matrix.parent
+    started_path = run_dir / "run_manifest.started.json"
+    final_path = run_dir / "run_manifest.json"
+    started = json.loads(started_path.read_text(encoding="utf-8"))
+    final = json.loads(final_path.read_text(encoding="utf-8"))
+    started["run_kind"] = "vector_benchmark_matrix"
+    final["run_kind"] = "vector_benchmark_matrix"
+    _write_json(started_path, started)
+    final["started_manifest"] = file_record(started_path, relative_to=run_dir)
+    _write_json(final_path, final)
+    _, _, frozen_sha256 = _frozen_manifest(tmp_path)
+    worker_manifest = json.loads(
+        (paths[0].parent / "run_manifest.json").read_text(encoding="utf-8")
+    )
+
+    with pytest.raises(VectorBenchmarkMatrixError, match="matching immutable"):
         validate_finalized_vector_benchmark_matrix(
             matrix,
             expected_project_root=tmp_path,
