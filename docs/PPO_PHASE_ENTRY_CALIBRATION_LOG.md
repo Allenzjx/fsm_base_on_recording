@@ -46,3 +46,27 @@ from a calibrated numeric offset.  Reset reconstructs the complete P09 causal
 trajectory, including its RR lift, crossing, top-load impact, verification,
 and P10 wait window.  This remains reset-only state initialization; no guard,
 tolerance, frozen controller byte, or in-episode behavior changes.
+
+### Result
+
+Calibration run
+`20260904T222920227476Z_g66f0af803001_c5f04cb732d63_s1002_n1_phase-effective-entry-calibration`
+also remained fail-closed.  The signed velocity recovered to +5.791487 deg/s,
+but rear-right-knee position reached only -40.979061 deg.  Replaying a longer
+open-loop history is therefore not monotonic evidence of reconstructing the
+unserialized PhysX constraint warm-start state.
+
+## P10 final P09 command-segment boundary
+
+- Changed factor: P10 reset-only physical replay anchor
+- Old value: Trial043 P09 phase-entry tick 6912; 882 replay steps
+- New value: Trial043 tick 7560; replay ticks 7560--7793 (234 steps)
+- Unchanged anchors: predecessor `P09/VERIFY_RESULT` tick 7776, controller
+  `P10/WAIT_ENTRY` tick 7784, target entry tick 7794
+
+Tick 7560 is the last pre-impact stable-window sample and the exact onset of
+the final authored P09 tracked-servo command segment.  Its source root speed is
+0.015735 m/s, root angular speed is 0.047008 rad/s, maximum servo speed is
+11.59935 deg/s, and the support margin is 0.035237 m.  This is the final
+single-factor natural-entry experiment before replacing open-loop solver-state
+reconstruction with a versioned, source-proven post-entry curriculum reset.

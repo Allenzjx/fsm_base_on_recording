@@ -38,6 +38,14 @@ PHASE_IDS = tuple(f"P{i:02d}" for i in range(1, 14))
 PHYSICS_HZ = 120.0
 SOURCE_SETTLE_TICKS = 180
 SOURCE_CONTACT_HISTORY_SAMPLES = 3
+# P10 is the only entry with a signed rebound-velocity guard.  Its minimum
+# three-sample RR top-contact history starts inside the impact and is not a
+# reproducible generalized-coordinate reset.  Trial043's last pre-impact
+# stable window ends at tick 7560, exactly where the final P09 tracked-servo
+# command segment begins.  Seventeen additional pre-roll ticks place the
+# reset on that authored segment boundary while retaining the whole impact,
+# top-load latch, VERIFY_RESULT, and WAIT_ENTRY history in the live replay.
+P10_CONTACT_DYNAMICS_PREROLL_TICKS = 17
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_PHASE_SNAPSHOT_ROOT = PROJECT_ROOT / "reference" / "ppo_phase_snapshots"
 _SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
@@ -1138,19 +1146,23 @@ def _phase_entry_boundaries_from_rows(
                         f"{predecessor} VERIFY_RESULT start"
                     )
                 # A generalized-coordinate write cannot restore hidden PhysX
-                # contact/solver history.  Replay the complete causal
-                # predecessor phase, not merely the final contact samples or
-                # an already-active impulse row.
-                source_tick = predecessor_boundary.target_entry_tick
+                # contact/solver history.  Start at the last stable authored
+                # command-segment boundary before impact, rather than inside
+                # the impulse or at the earlier dynamic P09 entry.
+                source_tick = p10_top_loaded_latch_tick - (
+                    SOURCE_CONTACT_HISTORY_SAMPLES
+                    - 1
+                    + P10_CONTACT_DYNAMICS_PREROLL_TICKS
+                )
                 if not (
-                    0
+                    predecessor_boundary.target_entry_tick
                     <= source_tick
                     < p10_top_loaded_latch_tick
                     < predecessor_verify_tick
                 ):
                     raise PhaseSnapshotError(
-                        f"{phase} predecessor entry, top-load latch, and "
-                        f"{predecessor} VERIFY_RESULT are not causally ordered"
+                        f"{phase} stable command-segment anchor, top-load latch, "
+                        f"and {predecessor} VERIFY_RESULT are not causally ordered"
                     )
                 source_replay_steps = tick - source_tick
             else:
