@@ -56,6 +56,14 @@ def _reset_metadata(*, reused: bool) -> dict[str, object]:
     payload: dict[str, object] = {
         "environment_hash": "environment",
         "robot_asset_hash": "robot",
+        "canonical_reset_state_source": "fresh_scene_post_sim_reset_pre_settle",
+        "canonical_reset_state_sha256": "canonical-reset-sha256",
+        "canonical_reset_state_instance_count": 1,
+        "canonical_reset_restore_applied": reused,
+        "canonical_reset_applied_sha256": (
+            "canonical-reset-sha256" if reused else None
+        ),
+        "adapter_standing_pose_deg": [0.0] * 8,
         "controller_hash": "controller",
         "motion_contract_hash": "motion",
         "seed": 2001,

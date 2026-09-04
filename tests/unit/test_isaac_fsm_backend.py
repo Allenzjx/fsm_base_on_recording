@@ -18,6 +18,8 @@ from wlr50_clean.ppo.isaac_fsm_backend import (
     LoadedPhaseSnapshot,
     SensorContractFailure,
     build_residual_actuation_plan,
+    capture_canonical_articulation_reset_state,
+    restore_canonical_articulation_reset_state,
     _load_validated_phase_snapshot,
     _restore_controller_from_snapshot,
     _restore_guard_tracker_from_snapshot,
@@ -331,6 +333,7 @@ class FakeAdapter:
     def __init__(self, runtime):
         self.runtime = runtime
         self.write_count = 0
+        self.standing_pose_deg = {name: 0.0 for name in SERVO_NAMES}
         self.servo_target_mapper = SimpleNamespace(servo_rate_deg_s=150.0)
 
     def apply_full12(
@@ -444,9 +447,19 @@ class FakeRuntime:
             self.controller = FakeController(self)
             return self.controller
 
-        def reset_scene(scene):
+        canonical_reset_state = SimpleNamespace(
+            instance_count=1, state_sha256="fake-canonical-reset-sha256"
+        )
+
+        def capture_reset_state(scene):
+            assert scene is self.scene
+            self.events.append(("capture_reset_state", canonical_reset_state))
+            return canonical_reset_state
+
+        def reset_scene(scene, reset_state):
+            assert reset_state is canonical_reset_state
             self.reset_scene_count += 1
-            self.events.append(("reset_scene",))
+            self.events.append(("reset_scene", reset_state))
             return {
                 "root_pose_writes": 1,
                 "root_velocity_writes": 1,
@@ -502,6 +515,7 @@ class FakeRuntime:
             adapter_from_scene=adapter_from_scene,
             reader_from_scene=reader_from_scene,
             controller_from_paths=controller_from_paths,
+            capture_reset_state=capture_reset_state,
             reset_scene=reset_scene,
             locked_scene_snapshot=lambda: {
                 "schema": "fake.locked_scene.v1",
@@ -660,6 +674,62 @@ def test_subsequent_reset_uses_reset_boundary_state_restore_only() -> None:
     assert second.info["reset_root_velocity_writes"] == 1
     assert second.info["reset_joint_state_writes"] == 1
     assert second.info["in_episode_root_pose_writes"] == 0
+
+
+def test_canonical_reset_uses_usd_authored_live_pose_not_zero_default_cache() -> None:
+    import torch
+
+    authored_root = torch.tensor(
+        [[0.0, 0.0, 0.04, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]],
+        dtype=torch.float64,
+    )
+    authored_joint = torch.tensor(
+        [[0.08, 0.03, -0.01, 0.13, -0.18, 0.16, -0.32, 0.22, 0.0, 0.0, 0.0, 0.0]],
+        dtype=torch.float64,
+    )
+    authored_velocity = torch.zeros_like(authored_joint)
+
+    class FakeRobot:
+        def __init__(self) -> None:
+            self.data = SimpleNamespace(
+                root_state_w=authored_root.clone(),
+                joint_pos=authored_joint.clone(),
+                joint_vel=authored_velocity.clone(),
+                # This deliberately reproduces the Isaac Lab cache mismatch:
+                # joint_pos={} creates zeros even though the USD pose is not zero.
+                default_joint_pos=torch.zeros_like(authored_joint),
+            )
+            self.writes = {}
+            self.reset_count = 0
+
+        def write_root_pose_to_sim(self, value):
+            self.writes["root_pose"] = value.clone()
+
+        def write_root_velocity_to_sim(self, value):
+            self.writes["root_velocity"] = value.clone()
+
+        def write_joint_state_to_sim(self, position, velocity):
+            self.writes["joint_position"] = position.clone()
+            self.writes["joint_velocity"] = velocity.clone()
+
+        def reset(self):
+            self.reset_count += 1
+
+    robot = FakeRobot()
+    canonical = capture_canonical_articulation_reset_state(robot)
+    restore_canonical_articulation_reset_state(
+        robot, canonical, expected_instance_count=1
+    )
+
+    assert canonical.instance_count == 1
+    assert canonical.state_sha256
+    assert torch.equal(robot.writes["joint_position"], authored_joint)
+    assert not torch.equal(
+        robot.writes["joint_position"], robot.data.default_joint_pos
+    )
+    assert torch.equal(robot.writes["root_pose"], authored_root[:, :7])
+    assert torch.equal(robot.writes["root_velocity"], authored_root[:, 7:])
+    assert robot.reset_count == 1
 
 
 def test_phase_snapshot_reset_restores_independent_phase_state_and_proves_live_state() -> None:

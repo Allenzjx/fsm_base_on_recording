@@ -101,6 +101,25 @@ class LoadedPhaseSnapshot:
 
 
 @dataclass(frozen=True, slots=True)
+class CanonicalArticulationResetState:
+    """Native articulation state captured before the first physical settle.
+
+    The locked USD authors a non-zero standing joint pose while
+    ``ArticulationCfg.InitialStateCfg(joint_pos={})`` leaves Isaac Lab's
+    ``default_joint_pos`` cache at zero.  Consequently that cache is not a
+    faithful reset source for this asset.  These tensors are cloned directly
+    after the one scene-construction ``SimulationContext.reset()`` and are
+    reused only at later episode reset boundaries.
+    """
+
+    root_state: Any
+    joint_position: Any
+    joint_velocity: Any
+    instance_count: int
+    state_sha256: str
+
+
+@dataclass(frozen=True, slots=True)
 class ResidualActuationPlan:
     """Auditable split between frozen nominal shaping and PPO actuation."""
 
@@ -181,7 +200,10 @@ class BackendDependencies:
     adapter_from_scene: Callable[[Any], Any]
     reader_from_scene: Callable[..., Any]
     controller_from_paths: Callable[[Path, Path], Any]
-    reset_scene: Callable[[Any], Mapping[str, int]]
+    capture_reset_state: Callable[[Any], CanonicalArticulationResetState]
+    reset_scene: Callable[
+        [Any, CanonicalArticulationResetState], Mapping[str, Any]
+    ]
     locked_scene_snapshot: Callable[[], Mapping[str, Any]]
     expected_contact_bodies: tuple[str, ...]
     robot_asset_hash: str
@@ -215,6 +237,9 @@ def _load_live_dependencies() -> BackendDependencies:
             scene, adapter, backends=backends
         ),
         controller_from_paths=SensorFsmController.from_paths,
+        capture_reset_state=lambda scene: capture_canonical_articulation_reset_state(
+            scene.robot
+        ),
         reset_scene=_restore_default_articulation_state,
         locked_scene_snapshot=locked_scene_snapshot,
         expected_contact_bodies=tuple(SENSED_BODIES),
@@ -273,6 +298,7 @@ class IsaacFSMBackend:
         self._joint_limit_seen = False
         self._fall_seen = False
         self._physics_explosion_seen = False
+        self._canonical_reset_state: CanonicalArticulationResetState | None = None
 
     @property
     def raw_observation(self) -> Any | None:
@@ -350,8 +376,19 @@ class IsaacFSMBackend:
                     sim=sim, robot=robot
                 ),
             )
+            self._canonical_reset_state = dependencies.capture_reset_state(
+                self._scene
+            )
         else:
-            reset_writes = dict(dependencies.reset_scene(self._scene))
+            if self._canonical_reset_state is None:
+                raise IsaacFSMBackendError(
+                    "canonical pre-settle articulation state is unavailable"
+                )
+            reset_writes = dict(
+                dependencies.reset_scene(
+                    self._scene, self._canonical_reset_state
+                )
+            )
 
         scene = self._scene
         backends = getattr(scene, "instrumentation", None)
@@ -1266,10 +1303,37 @@ class IsaacFSMBackend:
             if DEFAULT_ENVIRONMENT_LOCK_PATH.is_file()
             else _canonical_hash(scene_snapshot)
         )
+        standing_pose = getattr(self._adapter, "standing_pose_deg", None)
+        if not isinstance(standing_pose, Mapping) or set(standing_pose) != set(
+            SERVO_ORDER
+        ):
+            raise IsaacFSMBackendError(
+                "RobotAdapter standing-pose reset evidence is unavailable"
+            )
         limit_evidence = self._adapter.joint_limit_initialization_evidence()
         return {
             "environment_hash": environment_hash,
             "robot_asset_hash": self._dependencies.robot_asset_hash,
+            "canonical_reset_state_source": "fresh_scene_post_sim_reset_pre_settle",
+            "canonical_reset_state_sha256": (
+                None
+                if self._canonical_reset_state is None
+                else self._canonical_reset_state.state_sha256
+            ),
+            "canonical_reset_state_instance_count": (
+                0
+                if self._canonical_reset_state is None
+                else self._canonical_reset_state.instance_count
+            ),
+            "canonical_reset_restore_applied": bool(
+                reset_writes.get("canonical_reset_restore_applied", False)
+            ),
+            "canonical_reset_applied_sha256": reset_writes.get(
+                "canonical_reset_applied_sha256"
+            ),
+            "adapter_standing_pose_deg": [
+                float(standing_pose[name]) for name in SERVO_ORDER
+            ],
             "initial_root_state": list(root_state),
             "initial_joint_state": list(initial_joint_state),
             "obstacle_pose": list(obstacle_pose),
@@ -1927,8 +1991,135 @@ def _quaternion_distance(left: Any, right: Any) -> float:
     return min(direct, antipodal)
 
 
-def _restore_default_articulation_state(scene: Any) -> Mapping[str, int]:
-    """Soft-reset the single articulation at an episode boundary.
+def _flat_finite_tensor_values(value: Any, label: str) -> tuple[float, ...]:
+    """Copy a live tensor to a finite, device-independent hash payload."""
+
+    current = value
+    for method_name in ("detach", "cpu"):
+        method = getattr(current, method_name, None)
+        if callable(method):
+            current = method()
+    reshape = getattr(current, "reshape", None)
+    if callable(reshape):
+        current = reshape(-1)
+    tolist = getattr(current, "tolist", None)
+    try:
+        raw = tolist() if callable(tolist) else list(current)
+        result = tuple(float(item) for item in raw)
+    except (TypeError, ValueError) as exc:
+        raise IsaacFSMBackendError(
+            f"{label} cannot be serialized as a numeric tensor"
+        ) from exc
+    if not result or any(not math.isfinite(item) for item in result):
+        raise IsaacFSMBackendError(f"{label} must contain finite values")
+    return result
+
+
+def _canonical_articulation_state_identity(
+    root_state: Any, joint_position: Any, joint_velocity: Any
+) -> tuple[int, str]:
+    try:
+        root_shape = tuple(int(value) for value in root_state.shape)
+        position_shape = tuple(int(value) for value in joint_position.shape)
+        velocity_shape = tuple(int(value) for value in joint_velocity.shape)
+    except Exception as exc:
+        raise IsaacFSMBackendError(
+            "canonical articulation reset tensor shapes are unavailable"
+        ) from exc
+    if (
+        len(root_shape) != 2
+        or root_shape[1] != 13
+        or len(position_shape) != 2
+        or position_shape != velocity_shape
+        or position_shape[0] != root_shape[0]
+        or position_shape[1] <= 0
+    ):
+        raise IsaacFSMBackendError(
+            "canonical articulation reset tensors have inconsistent shapes"
+        )
+    payload = {
+        "root_state": _flat_finite_tensor_values(root_state, "canonical root state"),
+        "joint_position": _flat_finite_tensor_values(
+            joint_position, "canonical joint position"
+        ),
+        "joint_velocity": _flat_finite_tensor_values(
+            joint_velocity, "canonical joint velocity"
+        ),
+        "root_shape": root_shape,
+        "joint_shape": position_shape,
+    }
+    return root_shape[0], _canonical_hash(payload)
+
+
+def capture_canonical_articulation_reset_state(
+    robot: Any,
+) -> CanonicalArticulationResetState:
+    """Clone the USD-authored live state before any settle or command tick."""
+
+    try:
+        root_state = robot.data.root_state_w.clone()
+        joint_position = robot.data.joint_pos.clone()
+        joint_velocity = robot.data.joint_vel.clone()
+    except Exception as exc:
+        raise IsaacFSMBackendError(
+            "cannot clone the live USD-authored articulation reset state"
+        ) from exc
+    instance_count, state_sha256 = _canonical_articulation_state_identity(
+        root_state, joint_position, joint_velocity
+    )
+    return CanonicalArticulationResetState(
+        root_state=root_state,
+        joint_position=joint_position,
+        joint_velocity=joint_velocity,
+        instance_count=instance_count,
+        state_sha256=state_sha256,
+    )
+
+
+def restore_canonical_articulation_reset_state(
+    robot: Any,
+    canonical_state: CanonicalArticulationResetState,
+    *,
+    expected_instance_count: int,
+) -> None:
+    """Write one previously captured native state at a reset boundary."""
+
+    if not isinstance(canonical_state, CanonicalArticulationResetState):
+        raise IsaacFSMBackendError("canonical articulation reset state is invalid")
+    if canonical_state.instance_count != int(expected_instance_count):
+        raise IsaacFSMBackendError(
+            "canonical articulation reset state has the wrong instance count"
+        )
+    live_count, live_sha256 = _canonical_articulation_state_identity(
+        canonical_state.root_state,
+        canonical_state.joint_position,
+        canonical_state.joint_velocity,
+    )
+    if (
+        live_count != canonical_state.instance_count
+        or live_sha256 != canonical_state.state_sha256
+    ):
+        raise IsaacFSMBackendError(
+            "canonical articulation reset tensors changed after capture"
+        )
+    try:
+        root_state = canonical_state.root_state.clone()
+        joint_position = canonical_state.joint_position.clone()
+        joint_velocity = canonical_state.joint_velocity.clone()
+        robot.write_root_pose_to_sim(root_state[:, :7])
+        robot.write_root_velocity_to_sim(root_state[:, 7:])
+        robot.write_joint_state_to_sim(joint_position, joint_velocity)
+        robot.reset()
+    except Exception as exc:
+        raise IsaacFSMBackendError(
+            f"canonical articulation restore failed: {type(exc).__name__}: {exc}"
+        ) from exc
+
+
+def _restore_default_articulation_state(
+    scene: Any, canonical_state: CanonicalArticulationResetState
+) -> Mapping[str, Any]:
+    """Soft-reset to the captured USD-authored state at an episode boundary.
 
     A process-level/fresh-scene rollout and a reused scene must have the same
     physical history.  Calling ``SimulationContext.reset()`` here proved not
@@ -1944,13 +2135,9 @@ def _restore_default_articulation_state(scene: Any) -> Mapping[str, int]:
 
     robot = scene.robot
     try:
-        root_state = robot.data.default_root_state.clone()
-        joint_position = robot.data.default_joint_pos.clone()
-        joint_velocity = robot.data.default_joint_vel.clone()
-        robot.write_root_pose_to_sim(root_state[:, :7])
-        robot.write_root_velocity_to_sim(root_state[:, 7:])
-        robot.write_joint_state_to_sim(joint_position, joint_velocity)
-        robot.reset()
+        restore_canonical_articulation_reset_state(
+            robot, canonical_state, expected_instance_count=1
+        )
         instrumentation = getattr(scene, "instrumentation", None)
         contact_backend = getattr(instrumentation, "contact_backend", None)
         reset_contacts = getattr(contact_backend, "reset", None)
@@ -1974,6 +2161,10 @@ def _restore_default_articulation_state(scene: Any) -> Mapping[str, int]:
         "joint_state_writes": 1,
         "global_simulation_resets": 0,
         "simulation_forward_syncs": 1,
+        "canonical_reset_state_sha256": canonical_state.state_sha256,
+        "canonical_reset_state_source": "fresh_scene_post_sim_reset_pre_settle",
+        "canonical_reset_restore_applied": True,
+        "canonical_reset_applied_sha256": canonical_state.state_sha256,
     }
 
 

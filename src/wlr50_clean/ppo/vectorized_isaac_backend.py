@@ -77,6 +77,8 @@ from wlr50_clean.ppo.isaac_fsm_backend import (
     _validate_controller_clock,
     _validate_sensor_contract,
     build_residual_actuation_plan,
+    capture_canonical_articulation_reset_state,
+    restore_canonical_articulation_reset_state,
 )
 from wlr50_clean.ppo.ppo_env_adapter import AuthoritativeFrame
 from wlr50_clean.sensing.contact_classifier import (
@@ -699,6 +701,12 @@ class VectorizedIsaacFSMBackend:
         )
         self.robot = self.scene["robot"]
         self._validate_physical_batch()
+        # ``default_joint_pos`` is zero because the locked config deliberately
+        # defers to the USD-authored standing pose.  Capture the actual native
+        # state now, before reset_all can overwrite that authored pose.
+        self._canonical_reset_state = capture_canonical_articulation_reset_state(
+            self.robot
+        )
         origins = _numpy(self.scene.env_origins)
         sensors = {
             body: self.scene.sensors[_sensor_key(body)] for body in SENSED_BODIES
@@ -1032,14 +1040,11 @@ class VectorizedIsaacFSMBackend:
         self.contact_bank.capture(self.global_physics_step_count)
 
     def _restore_default_state(self) -> None:
-        root = self.robot.data.default_root_state.clone()
-        root[:, :3] += self.scene.env_origins
-        joint_pos = self.robot.data.default_joint_pos.clone()
-        joint_vel = self.robot.data.default_joint_vel.clone()
-        self.robot.write_root_pose_to_sim(root[:, :7])
-        self.robot.write_root_velocity_to_sim(root[:, 7:])
-        self.robot.write_joint_state_to_sim(joint_pos, joint_vel)
-        self.robot.reset()
+        restore_canonical_articulation_reset_state(
+            self.robot,
+            self._canonical_reset_state,
+            expected_instance_count=self.num_envs,
+        )
         self.scene.reset()
         self.robot.update(0.0)
 
@@ -1180,6 +1185,8 @@ class VectorizedIsaacFSMBackend:
             "in_episode_force_or_impulse_writes": 0,
             "in_episode_gravity_writes": 0,
             "recording_accesses": 0,
+            "canonical_reset_state_source": "fresh_scene_post_sim_reset_pre_settle",
+            "canonical_reset_state_sha256": self._canonical_reset_state.state_sha256,
             "locked_scene_snapshot": locked_scene_snapshot(),
         }
 

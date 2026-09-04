@@ -189,6 +189,14 @@ def test_source_contract_has_one_global_step_and_no_single_env_physics_loop() ->
     assert "plan.combined_post_mapper_bias_full12" in step
 
 
+def test_vector_reset_restores_captured_usd_state_not_zero_default_cache() -> None:
+    source = inspect.getsource(VectorizedIsaacFSMBackend._restore_default_state)
+
+    assert "restore_canonical_articulation_reset_state" in source
+    assert "self._canonical_reset_state" in source
+    assert "default_joint_pos" not in source
+
+
 def test_batched_adapter_reuses_canonical_servo_limits() -> None:
     source = inspect.getsource(
         __import__(

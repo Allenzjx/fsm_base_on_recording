@@ -50,6 +50,12 @@ ACCEPTANCE_CHECK_NAMES = (
 RESET_METADATA_FIELDS = (
     "environment_hash",
     "robot_asset_hash",
+    "canonical_reset_state_source",
+    "canonical_reset_state_sha256",
+    "canonical_reset_state_instance_count",
+    "canonical_reset_restore_applied",
+    "canonical_reset_applied_sha256",
+    "adapter_standing_pose_deg",
     "controller_hash",
     "motion_contract_hash",
     "seed",
@@ -282,6 +288,10 @@ def compare_reset_metadata(
     same_fields = (
         "environment_hash",
         "robot_asset_hash",
+        "canonical_reset_state_source",
+        "canonical_reset_state_sha256",
+        "canonical_reset_state_instance_count",
+        "adapter_standing_pose_deg",
         "controller_hash",
         "motion_contract_hash",
         "seed",
@@ -318,6 +328,10 @@ def compare_reset_metadata(
             fresh.get("reset_joint_state_writes", -1)
         )
         == 0,
+        "fresh_did_not_restore_canonical_state": not bool(
+            fresh.get("canonical_reset_restore_applied", True)
+        )
+        and fresh.get("canonical_reset_applied_sha256") is None,
         "reused_did_not_call_global_sim_reset": int(
             reused.get("reset_global_simulation_resets", -1)
         )
@@ -335,6 +349,11 @@ def compare_reset_metadata(
             reused.get("reset_joint_state_writes", -1)
         )
         == 1,
+        "reused_restored_canonical_state": bool(
+            reused.get("canonical_reset_restore_applied", False)
+        )
+        and reused.get("canonical_reset_applied_sha256")
+        == reused.get("canonical_reset_state_sha256"),
         **{
             f"same_{name}": fresh.get(name) == reused.get(name)
             for name in same_fields
