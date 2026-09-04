@@ -289,6 +289,7 @@ def test_transition_bridge_holds_allowed_residual_then_slews_without_forbidden_l
         dt_s=1.0,
     ).projection
     assert before.safe_projected_residual_full12[0] == pytest.approx(1.5)
+    assert before.safe_projected_residual_full12[7] == pytest.approx(2.5)
     assert before.safe_projected_residual_full12[9] == pytest.approx(0.08)
 
     first_new_phase = _bridge_project(
@@ -307,11 +308,20 @@ def test_transition_bridge_holds_allowed_residual_then_slews_without_forbidden_l
         before.safe_projected_residual_full12[0]
     )
     assert metric.residual_step_full12[0] == pytest.approx(0.0, abs=1.0e-9)
-    # A retained residual that exceeds the new phase's smaller cap is reduced
-    # by no more than the configured one-tick projector slew.
+    # Retained legal channels stay continuous when their new phase cap permits
+    # it, and the normal subsequent decay remains slew limited.
     assert metric.max_abs_servo_residual_step_deg <= 0.375 + 1.0e-12
+    # Channel 7 remains enabled but its cap shrinks P07 2.5 -> P08 2.0.  The
+    # bridge must enforce the new M*S bound immediately and report this
+    # separately from mask-forbidden drops.
+    assert result.safe_projected_residual_full12[7] == pytest.approx(2.0)
+    assert metric.phase_scale_clipped_channel_indices == (2, 3, 4, 5, 7, 8, 11)
+    assert metric.clipped_phase_scale_excess_residual_full12[7] == pytest.approx(0.5)
     # P08 forbids FR/RL wheel residuals, so they are removed before projection.
     assert metric.forbidden_channel_indices == (9, 10)
+    assert not set(metric.forbidden_channel_indices).intersection(
+        metric.phase_scale_clipped_channel_indices
+    )
     assert result.safe_projected_residual_full12[9:11] == (0.0, 0.0)
     assert metric.dropped_forbidden_residual_full12[9] == pytest.approx(0.08)
     assert metric.max_abs_wheel_action_jump_rad_s == pytest.approx(0.08)

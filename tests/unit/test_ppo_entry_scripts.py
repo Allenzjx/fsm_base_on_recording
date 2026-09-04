@@ -7,6 +7,7 @@ REQUESTED = (
     "build_phase_snapshots.ps1",
     "run_zero_residual_live_validation.ps1",
     "run_nonzero_residual_smoke.ps1",
+    "initialize_zero_residual_checkpoint.ps1",
     "train_phase_residual_ppo.ps1",
     "evaluate_ppo_checkpoint.ps1",
     "export_paired_ppo_evaluation.ps1",
@@ -50,6 +51,24 @@ def test_common_wrapper_locks_runtime_reserves_logs_and_finalizes() -> None:
         assert required in text
     assert "Remove-Item" not in text
     assert "-Force" not in text
+
+
+def test_common_wrapper_rejects_duplicate_controlled_arguments() -> None:
+    text = (_root() / "scripts" / "_invoke_ppo_cli.ps1").read_text(encoding="utf-8")
+    assert "$ControlledArgumentPattern" in text
+    assert "run-dir|seed|num-envs" in text
+    assert "@($BaseCliArgs) + @($CliArgs)" in text
+    assert "cannot override controlled argument" in text
+
+
+def test_multi_env_train_wrapper_requires_only_finalized_matrix() -> None:
+    text = (_root() / "scripts" / "train_phase_residual_ppo.ps1").read_text(
+        encoding="utf-8"
+    )
+    assert "[string]$VectorBenchmarkMatrix" in text
+    assert '"--vector-benchmark-matrix"' in text
+    assert "VectorZeroBenchmarkAcceptance" not in text
+    assert "VectorNonzeroBenchmarkAcceptance" not in text
 
 
 def test_checkpoint_publication_scripts_are_explicit_two_stage_gates() -> None:
@@ -100,6 +119,10 @@ def test_paired_evaluation_script_separates_exactly_five_role_inputs() -> None:
     assert '"--candidate-episode-dir"' in text
     assert '"--candidate-checkpoint"' in text
     assert '"--candidate-manifest"' in text
+    assert '"--baseline-aggregate"' in text
+    assert '"--candidate-validation-aggregate"' in text
+    assert "[string]$BaselineAggregate" in text
+    assert "[string]$CandidateValidationAggregate" in text
     assert '$SeedSet -ne "validation"' in text
     assert "$Seed -ne 2001" in text
     assert "$EpisodeCount -ne 5" in text
@@ -134,3 +157,38 @@ def test_managed_artifact_scripts_hash_objectives_and_environment_lock() -> None
         text = (scripts / name).read_text(encoding="utf-8")
         assert "configs\\ppo_phase_objectives_v2.yaml" in text, name
         assert "configs\\environment_lock.json" in text, name
+
+
+def test_final_delivery_requires_the_complete_six_manifest_chain() -> None:
+    text = (_root() / "scripts" / "finalize_ppo_delivery.ps1").read_text(
+        encoding="utf-8"
+    )
+    assert "[ValidateCount(6, 64)]" in text
+    assert text.count('"--checkpoint-manifest"') == 1
+
+
+def test_initial_checkpoint_entry_is_two_managed_phases_and_cadence_runs_it_first() -> None:
+    scripts = _root() / "scripts"
+    initializer = (scripts / "initialize_zero_residual_checkpoint.ps1").read_text(
+        encoding="utf-8"
+    )
+    cadence = (scripts / "run_ppo_training_cadence.ps1").read_text(
+        encoding="utf-8"
+    )
+    common = (scripts / "_invoke_ppo_cli.ps1").read_text(encoding="utf-8")
+
+    assert initializer.count("_invoke_ppo_cli.ps1") == 2
+    assert '-RunKind "initial_checkpoint"' in initializer
+    assert '-Subcommand "initialize-zero-residual"' in initializer
+    assert '-RunKind "initial_checkpoint_publication"' in initializer
+    assert '-Subcommand "publish-initial-zero-residual"' in initializer
+    assert "never start a new" in initializer
+    assert "Checkpoint-only canonical partial" in initializer
+    assert "creation_runtime_identity_path" in initializer
+    assert "SourceCheckpoint = Join-Path $InitializeRun" in initializer
+    assert '"initialize-zero-residual"' in common
+    assert '$InitializeScript = Join-Path $PSScriptRoot "initialize_zero_residual_checkpoint.ps1"' in cadence
+    assert cadence.index("$InitialPublicationOutput") < cadence.index("$Stages = @(")
+    assert cadence.index("$InitialPublicationOutput") < cadence.index(
+        "foreach ($StagePlan in $Stages)"
+    )

@@ -123,10 +123,20 @@ def test_train_validates_loaded_resume_provenance_before_learning(
 
     monkeypatch.setattr(rl_library_wrapper, "save_checkpoint_with_manifest", save_checkpoint)
     loaded_infos = {"global_policy_decisions": 99}
+    runtime_capture = object()
+    monkeypatch.setattr(
+        cli,
+        "_pin_live_checkpoint",
+        lambda *args, **kwargs: runtime_capture,
+    )
     monkeypatch.setattr(
         rl_library_wrapper,
         "load_checkpoint_round_trip",
-        lambda loaded_runner, path: loaded_infos,
+        lambda loaded_runner, path, *, captured_bundle: (
+            loaded_infos
+            if captured_bundle is runtime_capture
+            else pytest.fail("trainer did not use its pinned checkpoint capture")
+        ),
     )
 
     seen: list[tuple[Path, object]] = []

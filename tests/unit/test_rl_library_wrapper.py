@@ -4,11 +4,13 @@ import json
 from types import SimpleNamespace
 
 import pytest
+import yaml
 
 from wlr50_clean.ppo.reward_v2 import load_reward_v2_config
 from wlr50_clean.ppo.rl_library_wrapper import (
     CHECKPOINT_RUNTIME_CONTRACT_FIELDS,
     CHECKPOINT_MANIFEST_SCHEMA,
+    DEFAULT_TRAINING_PATH,
     RlLibraryConfigurationError,
     assert_supported_rsl_runtime,
     build_rsl_runner_config,
@@ -27,17 +29,44 @@ from wlr50_clean.ppo.rl_library_wrapper import (
     sha256_file,
     synchronize_loaded_optimizer_learning_rate,
     validate_resume_checkpoint_provenance,
+    zero_mean_actor_output_layer_verified,
 )
 
 
 def _resume_checkpoint(tmp_path, *, step=12_345):
     checkpoint = tmp_path / "model_12.pt"
     checkpoint.write_bytes(b"deterministic fake RSL checkpoint bytes")
+    snapshot_bundle = {
+        "schema": "wlr50_clean.ppo_phase_snapshot_bundle_record.v1",
+        "snapshot_root": str((tmp_path / "snapshots").resolve()),
+        "manifest_path": str((tmp_path / "snapshots" / "manifest.json").resolve()),
+        "manifest_sha256": "7" * 64,
+        "phase_count": 13,
+        "snapshots": [
+            {
+                "phase": f"P{index:02d}",
+                "snapshot_path": str(
+                    (tmp_path / "snapshots" / f"P{index:02d}" / "snapshot.json").resolve()
+                ),
+                "checksum_path": str(
+                    (tmp_path / "snapshots" / f"P{index:02d}" / "snapshot.sha256").resolve()
+                ),
+                "file_sha256": f"{index:064x}",
+                "state_sha256": f"{index + 13:064x}",
+                "checksum_file_sha256": f"{index + 26:064x}",
+            }
+            for index in range(1, 14)
+        ],
+        "bundle_sha256": "8" * 64,
+        "source_trial": "success",
+    }
     infos = {
         "schema": "wlr50_clean.phase_residual_checkpoint_manifest.v1",
         "stage": "full_episode_100k",
         "training_seed": 1001,
         "global_policy_decisions": step,
+        "source_git_commit": "a" * 40,
+        "committed_runtime_content_sha256": "b" * 64,
         "actor_observation_dimension": 125,
         "critic_observation_dimension": 125,
         "residual_dimension": 12,
@@ -49,6 +78,10 @@ def _resume_checkpoint(tmp_path, *, step=12_345):
         "observation_schema_hash": "4" * 64,
         "action_schema_hash": "5" * 64,
         "reward_config_hash": "6" * 64,
+        "phase_snapshot_manifest": snapshot_bundle["manifest_path"],
+        "phase_snapshot_manifest_sha256": snapshot_bundle["manifest_sha256"],
+        "phase_snapshot_bundle_sha256": snapshot_bundle["bundle_sha256"],
+        "phase_snapshot_bundle": snapshot_bundle,
     }
     manifest = {
         **infos,
@@ -76,6 +109,45 @@ def test_profile_has_disjoint_splits_and_locked_timing():
     )
     assert profile.entropy_start == pytest.approx(0.005)
     assert profile.entropy_end == pytest.approx(0.001)
+    assert profile.deterministic_validation_interval == 10_000
+    assert profile.early_stop_when_promotion_gate_passes is True
+    assert set(profile.budgets) == {
+        "smoke",
+        "phase_curriculum",
+        "full_episode",
+        "mild_randomization",
+    }
+
+
+@pytest.mark.parametrize(
+    ("key", "value", "message"),
+    (
+        ("deterministic_validation_interval", 0, "positive integer"),
+        ("deterministic_validation_interval", True, "positive integer"),
+        ("early_stop_when_promotion_gate_passes", 1, "strict boolean"),
+        ("smoke", True, "strict integers"),
+    ),
+)
+def test_profile_rejects_non_strict_budget_controls(
+    tmp_path, key, value, message
+) -> None:
+    payload = yaml.safe_load(DEFAULT_TRAINING_PATH.read_text(encoding="utf-8"))
+    payload["budgets_policy_decisions"][key] = value
+    path = tmp_path / "training.yaml"
+    path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+
+    with pytest.raises(RlLibraryConfigurationError, match=message):
+        load_training_profile(path)
+
+
+def test_profile_rejects_extra_or_missing_budget_keys(tmp_path) -> None:
+    payload = yaml.safe_load(DEFAULT_TRAINING_PATH.read_text(encoding="utf-8"))
+    payload["budgets_policy_decisions"]["legacy_dead_field"] = 123
+    path = tmp_path / "training.yaml"
+    path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+
+    with pytest.raises(RlLibraryConfigurationError, match="exactly four stages"):
+        load_training_profile(path)
 
 
 def test_reward_potential_discount_matches_ppo_discount():
@@ -181,6 +253,10 @@ def test_zero_mean_initializer_zeros_only_actor_output_layer():
     assert torch.count_nonzero(actor.mlp[-1].weight) == 0
     assert torch.count_nonzero(actor.mlp[-1].bias) == 0
     assert torch.equal(actor.mlp(torch.randn(3, 5)), torch.zeros(3, 12))
+    assert zero_mean_actor_output_layer_verified(runner) is True
+    with torch.no_grad():
+        actor.mlp[-1].bias[0] = 1.0
+    assert zero_mean_actor_output_layer_verified(runner) is False
 
 
 def test_installed_rsl_matches_isaac_lab_pin():
@@ -213,6 +289,43 @@ def test_resume_provenance_rejects_self_consistent_stale_runtime_contract(tmp_pa
     with pytest.raises(
         RlLibraryConfigurationError,
         match="runtime contract differs for 'reward_config_hash'",
+    ):
+        validate_resume_checkpoint_provenance(
+            checkpoint,
+            infos,
+            expected_runtime_contract=expected,
+        )
+
+
+@pytest.mark.parametrize(
+    "field", ("source_git_commit", "committed_runtime_content_sha256")
+)
+def test_resume_provenance_rejects_different_committed_runtime_identity(
+    tmp_path, field
+):
+    checkpoint, infos, _, _ = _resume_checkpoint(tmp_path)
+    expected = {name: infos[name] for name in CHECKPOINT_RUNTIME_CONTRACT_FIELDS}
+    expected[field] = "f" * (40 if field == "source_git_commit" else 64)
+
+    with pytest.raises(
+        RlLibraryConfigurationError,
+        match=f"runtime contract differs for '{field}'",
+    ):
+        validate_resume_checkpoint_provenance(
+            checkpoint,
+            infos,
+            expected_runtime_contract=expected,
+        )
+
+
+def test_resume_provenance_rejects_changed_snapshot_bundle_contract(tmp_path):
+    checkpoint, infos, _, _ = _resume_checkpoint(tmp_path)
+    expected = {field: infos[field] for field in CHECKPOINT_RUNTIME_CONTRACT_FIELDS}
+    expected["phase_snapshot_bundle_sha256"] = "f" * 64
+
+    with pytest.raises(
+        RlLibraryConfigurationError,
+        match="runtime contract differs for 'phase_snapshot_bundle_sha256'",
     ):
         validate_resume_checkpoint_provenance(
             checkpoint,

@@ -24,6 +24,7 @@ from wlr50_clean.ppo.final_reporting import (
     REPORT_FILENAMES,
     FinalReportingError,
     generate_final_reporting_bundle,
+    generate_nonfinal_two_role_reporting_bundle_for_testing,
 )
 from wlr50_clean.ppo.phase_objectives import DENSE_FAMILIES
 from wlr50_clean.ppo.stability_metrics import PHASE_IDS
@@ -81,6 +82,12 @@ def _phase_rows(checkpoint: str, multiplier: float) -> list[dict[str, object]]:
                     "action_jerk_rms": 0.30 * base * multiplier,
                     "residual_high_frequency_fraction": 0.08 * base * multiplier,
                     "applied_high_frequency_fraction": 0.04 * base * multiplier,
+                    "residual_spectrum_normalization": "phase_scale_full12",
+                    "residual_spectral_energy_fraction_0p0_0p5_hz": 0.10,
+                    "residual_spectral_energy_fraction_0p5_1p0_hz": 0.20,
+                    "residual_spectral_energy_fraction_1p0_2p0_hz": 0.30,
+                    "residual_spectral_energy_fraction_2p0_3p0_hz": 0.20,
+                    "residual_spectral_energy_fraction_3p0_nyquist_hz": 0.20,
                 }
             )
     return rows
@@ -227,6 +234,22 @@ def _write_evidence(directory: Path, *, promoted: bool) -> None:
     )
 
 
+def test_public_final_api_rejects_legacy_two_role_evidence(tmp_path: Path) -> None:
+    metrics = tmp_path / "metrics"
+    output = tmp_path / "final"
+    _write_evidence(metrics, promoted=True)
+
+    with pytest.raises(FinalReportingError, match="five-role"):
+        generate_final_reporting_bundle(
+            metrics,
+            output,
+            training_orchestration_manifest=tmp_path
+            / "training_orchestration_manifest.json",
+        )
+
+    assert not output.exists()
+
+
 def test_generates_exact_bundle_and_is_byte_idempotent_and_no_overwrite(
     tmp_path: Path,
 ) -> None:
@@ -234,7 +257,7 @@ def test_generates_exact_bundle_and_is_byte_idempotent_and_no_overwrite(
     output = tmp_path / "final"
     _write_evidence(metrics, promoted=True)
 
-    paths = generate_final_reporting_bundle(metrics, output)
+    paths = generate_nonfinal_two_role_reporting_bundle_for_testing(metrics, output)
 
     assert tuple(path.name for path in paths.files()) == PLOT_FILENAMES + REPORT_FILENAMES
     assert len(paths.files()) == 13
@@ -244,7 +267,7 @@ def test_generates_exact_bundle_and_is_byte_idempotent_and_no_overwrite(
     assert "supports describing this checkpoint as improved" in improvement
     before = {path: (path.read_bytes(), path.stat().st_mtime_ns) for path in paths.files()}
 
-    rerun = generate_final_reporting_bundle(metrics, output)
+    rerun = generate_nonfinal_two_role_reporting_bundle_for_testing(metrics, output)
 
     assert rerun == paths
     assert {
@@ -254,7 +277,7 @@ def test_generates_exact_bundle_and_is_byte_idempotent_and_no_overwrite(
     paths.overall_pitch_rate_comparison.write_bytes(b"conflicting plot")
     paths.training_report.unlink()
     with pytest.raises(FinalReportingError, match="refusing to overwrite"):
-        generate_final_reporting_bundle(metrics, output)
+        generate_nonfinal_two_role_reporting_bundle_for_testing(metrics, output)
     assert not paths.training_report.exists(), "preflight must finish before any publication"
 
 
@@ -262,22 +285,10 @@ def test_failed_promotion_keeps_all_reports_and_plots_candidate_neutral(
     tmp_path: Path,
 ) -> None:
     metrics = tmp_path / "metrics"
-    manifest = tmp_path / "training_manifest.json"
     _write_evidence(metrics, promoted=False)
-    manifest.write_text(
-        json.dumps(
-            {
-                "schema": "wlr50_clean.ppo_training_run.v1",
-                "stage": "full-episode",
-                "global_policy_decisions": 1234,
-                "status": "UNTRUSTED_CHECKPOINT_IMPROVES_FSM",
-            }
-        ),
-        encoding="utf-8",
-    )
 
-    paths = generate_final_reporting_bundle(
-        metrics, tmp_path / "final", training_manifest=manifest
+    paths = generate_nonfinal_two_role_reporting_bundle_for_testing(
+        metrics, tmp_path / "final"
     )
 
     assert all(path.is_file() for path in paths.files())
@@ -286,8 +297,7 @@ def test_failed_promotion_keeps_all_reports_and_plots_candidate_neutral(
     assert "makes no PPO-improvement claim" in improvement
     assert "supports describing this checkpoint as improved" not in improvement
     assert "Promotion status: **NOT PASSED" in training
-    assert "UNTRUSTED_CHECKPOINT_IMPROVES_FSM" not in training
-    assert "Global policy decisions | 1234" in training
+    assert "No authoritative prefinal orchestration evidence" in training
 
 
 def test_contradictory_promotion_fails_closed_before_creating_output(
@@ -302,7 +312,29 @@ def test_contradictory_promotion_fails_closed_before_creating_output(
     decision_path.write_text(json.dumps(decision), encoding="utf-8")
 
     with pytest.raises(FinalReportingError, match="promotion status disagrees"):
-        generate_final_reporting_bundle(metrics, output)
+        generate_nonfinal_two_role_reporting_bundle_for_testing(metrics, output)
+
+    assert not output.exists()
+
+
+def test_duration_gate_is_recomputed_per_seed_from_episode_csv(tmp_path: Path) -> None:
+    metrics = tmp_path / "metrics"
+    output = tmp_path / "final"
+    _write_evidence(metrics, promoted=True)
+    candidate_rows = _episode_rows(CANDIDATE, 0.8)
+    # 15.0 / 13.0 exceeds 1.15 for seed 2001, while the other faster rows keep
+    # the candidate group mean below the FSM mean.  A mean-only validator
+    # would therefore accept this contradictory promotion evidence.
+    candidate_rows[0]["duration_s"] = 15.0
+    assert sum(float(row["duration_s"]) for row in candidate_rows) / len(
+        candidate_rows
+    ) < sum(
+        float(row["duration_s"]) for row in _episode_rows(BASELINE, 1.0)
+    ) / len(SEEDS)
+    _write_csv(metrics / CANDIDATE_EPISODE_FILENAME, candidate_rows)
+
+    with pytest.raises(FinalReportingError, match="raw paired episode CSV"):
+        generate_nonfinal_two_role_reporting_bundle_for_testing(metrics, output)
 
     assert not output.exists()
 
@@ -322,7 +354,7 @@ def test_promotion_missing_an_authoritative_gate_fails_closed(tmp_path: Path) ->
     decision_path.write_text(json.dumps(decision), encoding="utf-8")
 
     with pytest.raises(FinalReportingError, match="authoritative gate order"):
-        generate_final_reporting_bundle(metrics, output)
+        generate_nonfinal_two_role_reporting_bundle_for_testing(metrics, output)
 
     assert not output.exists()
 
@@ -339,6 +371,6 @@ def test_missing_required_csv_column_fails_closed_before_creating_output(
     _write_csv(metrics / BASELINE_EPISODE_FILENAME, rows)
 
     with pytest.raises(FinalReportingError, match="missing columns"):
-        generate_final_reporting_bundle(metrics, output)
+        generate_nonfinal_two_role_reporting_bundle_for_testing(metrics, output)
 
     assert not output.exists()

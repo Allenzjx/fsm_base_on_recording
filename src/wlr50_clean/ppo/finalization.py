@@ -17,7 +17,9 @@ import functools
 import hashlib
 import json
 import math
+import os
 import re
+import struct
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
@@ -42,6 +44,7 @@ from .checkpoint_promotion import (
     REQUIRED_PROMOTION_GATES,
     VALIDATION_SEEDS,
 )
+from .checkpoint_runtime_capture import CHECKPOINT_CAPTURE_SCHEMA
 from .evaluation_artifacts import (
     BASELINE_EPISODE_FILENAME,
     BASELINE_EVALUATION_MANIFEST_FILENAME,
@@ -56,15 +59,36 @@ from .evaluation_artifacts import (
     REWARD_CONTRIBUTION_FILENAME,
     TERMINATION_SUMMARY_FILENAME,
     NONEMPTY_CANONICAL_EPISODE_FILES,
+    FINAL_LIFECYCLE_ROLES,
+    EvaluationArtifactError,
+    _require_no_reparse_components,
 )
-from .final_reporting import PLOT_FILENAMES, REPORT_FILENAMES
+from .final_reporting import (
+    PLOT_FILENAMES,
+    REPORT_FILENAMES,
+    FinalReportingError,
+    verify_final_reporting_bundle,
+)
+from .paired_aggregate_binding import (
+    PairedAggregateBindingError,
+    SCHEMA as VALIDATION_AGGREGATE_BINDING_SCHEMA,
+    capture_validation_aggregate,
+)
+from .training_orchestration import (
+    TRAINING_ORCHESTRATION_SCHEMA,
+    TrainingOrchestrationError,
+    _validate_finalized_run,
+    validate_training_orchestration_manifest,
+)
 from .video_artifacts import (
     COMPARISON_VIDEO_NAME,
     DIAGNOSTIC_VIDEO_NAME,
     FSM_VIDEO_NAME,
+    PPOVideoArtifactError,
     PPO_VIDEO_NAME,
     VIDEO_CHECKSUM_NAME,
     VIDEO_VALIDATION_NAME,
+    verify_final_video_publication,
 )
 
 
@@ -134,7 +158,15 @@ def _fail_closed(function: Any) -> Any:
             return function(*args, **kwargs)
         except FinalizationError:
             raise
-        except (ArtifactError, KeyError, OSError, TypeError, ValueError, OverflowError) as exc:
+        except (
+            ArtifactError,
+            AttributeError,
+            KeyError,
+            OSError,
+            TypeError,
+            ValueError,
+            OverflowError,
+        ) as exc:
             raise FinalizationError(
                 f"malformed or unstable finalization evidence: {type(exc).__name__}: {exc}"
             ) from exc
@@ -168,6 +200,10 @@ def _json_bytes(payload: Mapping[str, Any]) -> bytes:
 
 
 def _load_json(path: Path | str, *, label: str) -> _JsonSnapshot:
+    try:
+        _require_no_reparse_components(Path(path), label=label)
+    except EvaluationArtifactError as exc:
+        raise FinalizationError(str(exc)) from exc
     source = Path(path).resolve()
     if not source.is_file():
         raise FinalizationError(f"{label} is missing: {source}")
@@ -197,8 +233,12 @@ def _path(value: Any, *, base: Path, label: str) -> Path:
     if value is None or not str(value).strip():
         raise FinalizationError(f"{label} path is missing")
     raw = Path(str(value))
-    result = (base / raw).resolve() if not raw.is_absolute() else raw.resolve()
-    return result
+    candidate = base / raw if not raw.is_absolute() else raw
+    try:
+        _require_no_reparse_components(candidate, label=label)
+    except EvaluationArtifactError as exc:
+        raise FinalizationError(str(exc)) from exc
+    return candidate.resolve()
 
 
 def _within(path: Path, root: Path, *, label: str) -> None:
@@ -211,17 +251,25 @@ def _within(path: Path, root: Path, *, label: str) -> None:
 def _file_record(
     path: Path | str, *, root: Path | None = None, allow_empty: bool = False
 ) -> dict[str, Any]:
+    try:
+        _require_no_reparse_components(Path(path), label="final evidence")
+    except EvaluationArtifactError as exc:
+        raise FinalizationError(str(exc)) from exc
     source = Path(path).resolve()
-    if not source.is_file() or (source.stat().st_size <= 0 and not allow_empty):
+    if not source.is_file():
         raise FinalizationError(f"required artifact is missing or empty: {source}")
-    if source.is_symlink():
-        raise FinalizationError(f"final evidence may not be a symbolic link: {source}")
+    try:
+        raw = source.read_bytes()
+    except OSError as exc:
+        raise FinalizationError(f"cannot read final evidence: {source}") from exc
+    if not raw and not allow_empty:
+        raise FinalizationError(f"required artifact is missing or empty: {source}")
     if root is not None:
         _within(source, root, label="final artifact")
     return {
         "path": str(source),
-        "bytes": source.stat().st_size,
-        "sha256": sha256_file(source),
+        "bytes": len(raw),
+        "sha256": hashlib.sha256(raw).hexdigest(),
     }
 
 
@@ -285,6 +333,178 @@ def _finite_positive(value: Any, *, label: str) -> float:
     return result
 
 
+def _float32_tensor_from_evidence(
+    evidence: Any,
+    *,
+    expected_shape: tuple[int, int],
+    expected_sha256: Any,
+    label: str,
+) -> Any:
+    if (
+        not isinstance(evidence, Mapping)
+        or set(evidence) != {"encoding", "shape", "values", "sha256"}
+        or evidence.get("encoding")
+        != "little_endian_ieee754_float32_c_order"
+        or evidence.get("shape") != list(expected_shape)
+    ):
+        raise FinalizationError(f"{label} canonical float32 evidence is malformed")
+    rows = evidence.get("values")
+    if (
+        not isinstance(rows, Sequence)
+        or isinstance(rows, (str, bytes))
+        or len(rows) != expected_shape[0]
+    ):
+        raise FinalizationError(f"{label} value matrix has the wrong shape")
+    flat: list[float] = []
+    for row in rows:
+        if (
+            not isinstance(row, Sequence)
+            or isinstance(row, (str, bytes))
+            or len(row) != expected_shape[1]
+        ):
+            raise FinalizationError(f"{label} value matrix has the wrong shape")
+        for value in row:
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise FinalizationError(f"{label} contains a nonnumeric value")
+            number = float(value)
+            if not math.isfinite(number):
+                raise FinalizationError(f"{label} contains NaN or infinity")
+            flat.append(number)
+    try:
+        encoded = struct.pack(f"<{len(flat)}f", *flat)
+    except (OverflowError, struct.error) as exc:
+        raise FinalizationError(f"{label} is outside float32 range") from exc
+    digest = hashlib.sha256(encoded).hexdigest()
+    if (
+        evidence.get("sha256") != digest
+        or _require_hash(expected_sha256, label=f"{label} top-level hash") != digest
+    ):
+        raise FinalizationError(f"{label} canonical SHA-256 mismatch")
+    try:
+        import torch  # type: ignore
+    except ImportError as exc:
+        raise FinalizationError(
+            "PyTorch is required to independently verify the inference actor"
+        ) from exc
+    return torch.tensor(flat, dtype=torch.float32).reshape(expected_shape)
+
+
+def _verify_inference_actor_model(
+    export_manifest: _JsonSnapshot,
+    *,
+    torchscript_path: Path,
+) -> dict[str, Any]:
+    """Reload and execute the published actor against the recorded RSL output."""
+
+    payload = export_manifest.payload
+    if (
+        payload.get("observation_dimension") != 125
+        or payload.get("residual_action_dimension") != 12
+        or payload.get("test_batch_size") != 4
+        or payload.get("test_input") != "deterministic linspace[-1,1] float32"
+    ):
+        raise FinalizationError("inference actor fixed verification ABI is invalid")
+    try:
+        import torch  # type: ignore
+    except ImportError as exc:
+        raise FinalizationError(
+            "PyTorch is required to independently verify the inference actor"
+        ) from exc
+    expected_input = torch.linspace(
+        -1.0,
+        1.0,
+        steps=4 * 125,
+        dtype=torch.float32,
+    ).reshape(4, 125)
+    recorded_input = _float32_tensor_from_evidence(
+        payload.get("verification_input_float32"),
+        expected_shape=(4, 125),
+        expected_sha256=payload.get("verification_input_sha256"),
+        label="inference actor verification input",
+    )
+    if not torch.equal(recorded_input, expected_input):
+        raise FinalizationError("inference actor verification input is not the fixed linspace")
+    reference = _float32_tensor_from_evidence(
+        payload.get("loaded_runner_reference_output_float32"),
+        expected_shape=(4, 12),
+        expected_sha256=payload.get("loaded_runner_reference_output_sha256"),
+        label="loaded runner reference output",
+    )
+    try:
+        absolute_tolerance = float(payload.get("absolute_tolerance"))
+        relative_tolerance = float(payload.get("relative_tolerance"))
+    except (TypeError, ValueError) as exc:
+        raise FinalizationError("inference actor comparison tolerances are invalid") from exc
+    if (
+        not math.isfinite(absolute_tolerance)
+        or absolute_tolerance < 0.0
+        or not math.isfinite(relative_tolerance)
+        or relative_tolerance < 0.0
+    ):
+        raise FinalizationError("inference actor comparison tolerances are invalid")
+    try:
+        actor = torch.jit.load(str(torchscript_path), map_location="cpu").eval()
+        with torch.inference_mode():
+            output = actor(expected_input)
+            repeated = actor(expected_input)
+    except Exception as exc:
+        raise FinalizationError(
+            f"published TorchScript actor cannot be loaded/executed: {type(exc).__name__}: {exc}"
+        ) from exc
+    if (
+        not isinstance(output, torch.Tensor)
+        or not isinstance(repeated, torch.Tensor)
+        or tuple(output.shape) != (4, 12)
+        or tuple(repeated.shape) != (4, 12)
+        or not bool(torch.isfinite(output).all().item())
+        or not torch.equal(output, repeated)
+    ):
+        raise FinalizationError(
+            "published TorchScript actor is nonfinite, nondeterministic, or has the wrong ABI"
+        )
+    if not torch.allclose(
+        output,
+        reference,
+        atol=absolute_tolerance,
+        rtol=relative_tolerance,
+    ):
+        raise FinalizationError(
+            "published TorchScript actor differs from the loaded-runner reference output"
+        )
+    maximum_error = float(torch.max(torch.abs(output - reference)).item())
+    torchscript_evidence = payload.get("torchscript")
+    if not isinstance(torchscript_evidence, Mapping):
+        raise FinalizationError("inference actor TorchScript evidence is missing")
+    try:
+        declared_error = float(torchscript_evidence.get("maximum_absolute_error"))
+    except (TypeError, ValueError) as exc:
+        raise FinalizationError("inference actor declared error is invalid") from exc
+    if (
+        not math.isfinite(declared_error)
+        or declared_error < 0.0
+        or maximum_error > declared_error + 1.0e-12
+        or torchscript_evidence.get("output_shape") != [4, 12]
+        or torchscript_evidence.get("finite") is not True
+        or torchscript_evidence.get("deterministic") is not True
+        or torchscript_evidence.get("equivalent_to_loaded_runner") is not True
+    ):
+        raise FinalizationError("inference actor recorded round-trip evidence is inconsistent")
+    flat = [float(value) for value in output.detach().to(torch.float32).reshape(-1).tolist()]
+    output_sha256 = hashlib.sha256(
+        struct.pack(f"<{len(flat)}f", *flat)
+    ).hexdigest()
+    return {
+        "valid": True,
+        "fixed_input_shape": [4, 125],
+        "output_shape": [4, 12],
+        "finite": True,
+        "deterministic": True,
+        "matches_loaded_runner_reference": True,
+        "maximum_absolute_error": maximum_error,
+        "output_float32_sha256": output_sha256,
+    }
+
+
 def _validate_record(
     record: Mapping[str, Any], *, base: Path, label: str, allow_empty: bool = False
 ) -> dict[str, Any]:
@@ -344,8 +564,12 @@ def _validate_checkpoint_contract(
 
 
 def _validate_training_run(run_dir: Path | str) -> dict[str, Any]:
+    try:
+        _require_no_reparse_components(Path(run_dir), label="training run directory")
+    except EvaluationArtifactError as exc:
+        raise FinalizationError(str(exc)) from exc
     directory = Path(run_dir).resolve()
-    if not directory.is_dir() or directory.is_symlink():
+    if not directory.is_dir():
         raise FinalizationError(f"training run directory is missing or unsafe: {directory}")
     lifecycle = _load_json(directory / "run_manifest.json", label="training lifecycle")
     result = _load_json(directory / "training_result.json", label="training result")
@@ -561,7 +785,7 @@ def _validate_training_run(run_dir: Path | str) -> dict[str, Any]:
 
 
 def _validate_training_runs(run_dirs: Sequence[Path | str]) -> tuple[dict[str, Any], ...]:
-    directories = tuple(Path(value).resolve() for value in run_dirs)
+    directories = tuple(Path(os.path.abspath(value)) for value in run_dirs)
     if not directories or len(set(directories)) != len(directories):
         raise FinalizationError("training_run_dirs must be a non-empty unique sequence")
     records = tuple(_validate_training_run(path) for path in directories)
@@ -729,11 +953,20 @@ def _validate_batch(
         checkpoint_hash = str(checkpoint["sha256"])
     episodes = payload.get("episodes")
     workers = payload.get("workers")
+    canonical_episode_dirs = payload.get("canonical_episode_dirs")
     if not isinstance(episodes, Sequence) or isinstance(episodes, (str, bytes)):
         raise FinalizationError(f"{role} aggregate episodes are missing")
     if not isinstance(workers, Sequence) or isinstance(workers, (str, bytes)):
         raise FinalizationError(f"{role} aggregate workers are missing")
-    if len(episodes) != len(expected_seeds) or len(workers) != len(expected_seeds):
+    if not isinstance(canonical_episode_dirs, Sequence) or isinstance(
+        canonical_episode_dirs, (str, bytes)
+    ):
+        raise FinalizationError(f"{role} aggregate canonical directories are missing")
+    if (
+        len(episodes) != len(expected_seeds)
+        or len(workers) != len(expected_seeds)
+        or len(canonical_episode_dirs) != len(expected_seeds)
+    ):
         raise FinalizationError(f"{role} aggregate worker/episode count is incomplete")
     worker_evidence: list[dict[str, Any]] = []
     for seed, episode, worker in zip(expected_seeds, episodes, workers, strict=True):
@@ -741,6 +974,29 @@ def _validate_batch(
             raise FinalizationError(f"{role} aggregate row is not an object")
         _safe_episode(episode, seed=seed, label=f"{role} episode {seed}")
         worker_evidence.append(_validate_worker(worker, role=role, seed=seed))
+    expected_directories = tuple(
+        Path(row["canonical_episode_directory"]) for row in worker_evidence
+    )
+    declared_directories = tuple(
+        _path(value, base=snapshot.path.parent, label=f"{role} canonical episode")
+        for value in canonical_episode_dirs
+    )
+    episode_directories = tuple(
+        _path(
+            row.get("canonical_episode_dir"),
+            base=snapshot.path.parent,
+            label=f"{role} episode canonical directory",
+        )
+        for row in episodes
+    )
+    if (
+        declared_directories != expected_directories
+        or episode_directories != expected_directories
+        or len(set(expected_directories)) != len(expected_directories)
+    ):
+        raise FinalizationError(
+            f"{role} aggregate canonical episode paths disagree with its workers"
+        )
     return snapshot, checkpoint_hash, tuple(worker_evidence)
 
 
@@ -751,7 +1007,11 @@ def _require_named_paths(
     root: Path,
     label: str,
 ) -> dict[str, Path]:
-    values = tuple(Path(value).resolve() for value in paths)
+    raw_values = tuple(Path(value) for value in paths)
+    # Capture through the caller-provided lexical path before resolving it so
+    # a symlink/junction cannot be hidden by an eager ``Path.resolve``.
+    captured = tuple(_file_record(value, root=root) for value in raw_values)
+    values = tuple(Path(record["path"]) for record in captured)
     if len(values) != len(set(values)):
         raise FinalizationError(f"{label} paths are duplicated")
     by_name = {path.name: path for path in values}
@@ -759,8 +1019,6 @@ def _require_named_paths(
         raise FinalizationError(
             f"{label} must contain exactly {tuple(required_names)}, got {tuple(sorted(by_name))}"
         )
-    for path in values:
-        _file_record(path, root=root)
     return by_name
 
 
@@ -855,7 +1113,14 @@ def _validate_baseline_metrics(
 
 
 def _validate_promotion(
-    path: Path | str, *, root: Path, validation_checkpoint_hash: str
+    path: Path | str,
+    *,
+    root: Path,
+    baseline: _JsonSnapshot,
+    baseline_workers: Sequence[Mapping[str, Any]],
+    validation: _JsonSnapshot,
+    validation_workers: Sequence[Mapping[str, Any]],
+    validation_checkpoint_hash: str,
 ) -> tuple[_JsonSnapshot, tuple[dict[str, Any], ...]]:
     snapshot = _load_json(path, label="validation promotion decision")
     payload = snapshot.payload
@@ -899,6 +1164,20 @@ def _validate_promotion(
     )
     if checkpoint["sha256"] != validation_checkpoint_hash:
         raise FinalizationError("validation aggregate and promotion checkpoint hashes differ")
+    _validate_paired_aggregate_binding(
+        payload.get("baseline_evaluation_aggregate"),
+        role="baseline",
+        aggregate=baseline,
+        workers=baseline_workers,
+        validation_checkpoint_hash=None,
+    )
+    _validate_paired_aggregate_binding(
+        payload.get("candidate_validation_aggregate"),
+        role="candidate",
+        aggregate=validation,
+        workers=validation_workers,
+        validation_checkpoint_hash=validation_checkpoint_hash,
+    )
     artifacts = payload.get("artifacts")
     if not isinstance(artifacts, Mapping):
         raise FinalizationError("promotion decision omits its evaluation artifacts")
@@ -916,17 +1195,145 @@ def _validate_promotion(
     )
 
 
+def _validate_paired_aggregate_binding(
+    binding: Any,
+    *,
+    role: str,
+    aggregate: _JsonSnapshot,
+    workers: Sequence[Mapping[str, Any]],
+    validation_checkpoint_hash: str | None,
+) -> dict[str, Any]:
+    """Reconstruct and exact-match one aggregate bound into a cadence decision.
+
+    The producer snapshots every managed aggregate/worker/canonical source.  The
+    finalizer independently repeats that strict capture and requires byte-for-byte
+    equality of the canonical binding object, so a decision cannot be spliced onto
+    another five-worker evaluation that happened to use the same checkpoint.
+    """
+
+    if not isinstance(binding, Mapping):
+        raise FinalizationError(f"promotion decision omits the {role} aggregate binding")
+    common_keys = {
+        "schema",
+        "path",
+        "bytes",
+        "sha256",
+        "role",
+        "physical_passed",
+        "seeds",
+        "worker_run_dirs",
+        "canonical_episode_dirs",
+        "source_file_records",
+        "source_file_set_sha256",
+    }
+    candidate_keys = {
+        "checkpoint_path",
+        "checkpoint_sha256",
+        "checkpoint_manifest_path",
+        "checkpoint_manifest_sha256",
+    }
+    expected_keys = common_keys | (candidate_keys if role == "candidate" else set())
+    if set(binding) != expected_keys:
+        raise FinalizationError(
+            f"{role} aggregate binding fields are incomplete or contain extras"
+        )
+    if (
+        binding.get("schema") != VALIDATION_AGGREGATE_BINDING_SCHEMA
+        or binding.get("role") != role
+        or binding.get("physical_passed") is not True
+        or binding.get("seeds") != list(VALIDATION_SEEDS)
+        or binding.get("path") != str(aggregate.path)
+        or binding.get("bytes") != aggregate.size
+        or binding.get("sha256") != aggregate.sha256
+    ):
+        raise FinalizationError(
+            f"{role} aggregate binding does not name the explicit successful aggregate"
+        )
+    expected_worker_dirs = [str(row["run_directory"]) for row in workers]
+    expected_episode_dirs = [str(row["canonical_episode_directory"]) for row in workers]
+    if (
+        binding.get("worker_run_dirs") != expected_worker_dirs
+        or binding.get("canonical_episode_dirs") != expected_episode_dirs
+    ):
+        raise FinalizationError(
+            f"{role} aggregate binding worker/canonical source directories differ"
+        )
+
+    checkpoint_path: Path | None = None
+    checkpoint_manifest_path: Path | None = None
+    if role == "candidate":
+        checkpoint_path = _path(
+            binding.get("checkpoint_path"),
+            base=aggregate.path.parent,
+            label="candidate aggregate-bound checkpoint",
+        )
+        checkpoint_manifest_path = _path(
+            binding.get("checkpoint_manifest_path"),
+            base=aggregate.path.parent,
+            label="candidate aggregate-bound checkpoint manifest",
+        )
+        checkpoint_record = _file_record(checkpoint_path)
+        checkpoint_manifest_record = _file_record(checkpoint_manifest_path)
+        aggregate_checkpoint = _path(
+            aggregate.payload.get("checkpoint"),
+            base=aggregate.path.parent,
+            label="candidate validation aggregate checkpoint",
+        )
+        if (
+            validation_checkpoint_hash is None
+            or checkpoint_path != aggregate_checkpoint
+            or binding.get("checkpoint_sha256") != validation_checkpoint_hash
+            or checkpoint_record["sha256"] != validation_checkpoint_hash
+            or binding.get("checkpoint_manifest_sha256")
+            != checkpoint_manifest_record["sha256"]
+        ):
+            raise FinalizationError(
+                "candidate aggregate binding names a different checkpoint or sidecar"
+            )
+
+    try:
+        captured = capture_validation_aggregate(
+            aggregate.path,
+            role=role,
+            expected_checkpoint_path=checkpoint_path,
+            expected_checkpoint_manifest_path=checkpoint_manifest_path,
+            project_root=Path(__file__).resolve().parents[3],
+        )
+        actual = captured.as_record()
+        captured.assert_unchanged()
+    except PairedAggregateBindingError as exc:
+        raise FinalizationError(
+            f"{role} aggregate binding cannot be reconstructed: {exc}"
+        ) from exc
+    if dict(binding) != actual:
+        raise FinalizationError(
+            f"{role} aggregate binding differs from its current complete source inventory"
+        )
+    return actual
+
+
 def _validate_checkpoint_manifests(
     paths: Sequence[Path | str],
     *,
     root: Path,
     promotion: _JsonSnapshot,
     locked_test: _JsonSnapshot,
-) -> tuple[tuple[dict[str, Any], ...], str, Path]:
-    values = tuple(Path(value).resolve() for value in paths)
-    if not values or len(values) != len(set(values)):
+) -> tuple[
+    tuple[dict[str, Any], ...],
+    str,
+    Path,
+    _JsonSnapshot,
+    _JsonSnapshot,
+]:
+    raw_values = tuple(Path(value) for value in paths)
+    if not raw_values:
         raise FinalizationError("checkpoint_manifest_paths must be a non-empty unique sequence")
-    snapshots = tuple(_load_json(path, label="checkpoint manifest") for path in values)
+    snapshots = tuple(
+        _load_json(path, label="checkpoint manifest") for path in raw_values
+    )
+    values = tuple(snapshot.path for snapshot in snapshots)
+    if len(values) != len(set(values)):
+        raise FinalizationError("checkpoint_manifest_paths must be a non-empty unique sequence")
     allowed = {
         CHECKPOINT_MANIFEST_SCHEMA,
         CHECKPOINT_VALIDATION_PROMOTION_SCHEMA,
@@ -1042,10 +1449,19 @@ def _validate_checkpoint_manifests(
         for row in snapshots
         if row.payload.get("schema") == CHECKPOINT_IMPROVED_PROMOTION_SCHEMA
     ]
-    if len(improved) != 1 or len(final_promotions) != 1:
+    inference_exports = [
+        row
+        for row in snapshots
+        if row.payload.get("schema") == INFERENCE_EXPORT_SCHEMA
+    ]
+    if (
+        len(improved) != 1
+        or len(final_promotions) != 1
+        or len(inference_exports) != 1
+    ):
         raise FinalizationError(
             "checkpoint manifests require exactly one content-authorized improved manifest "
-            "and one final promotion manifest"
+            "one final promotion manifest, and one inference actor export manifest"
         )
     improved_snapshot = improved[0]
     improved_payload = improved_snapshot.payload
@@ -1102,6 +1518,18 @@ def _validate_checkpoint_manifests(
         or best_snapshot.payload.get("locked_test_authorized") is not False
     ):
         raise FinalizationError("source best-validation checkpoint manifest is invalid")
+    for field in (
+        "baseline_evaluation_aggregate",
+        "candidate_validation_aggregate",
+    ):
+        expected_binding = promotion.payload.get(field)
+        if (
+            best_snapshot.payload.get(field) != expected_binding
+            or improved_payload.get(field) != expected_binding
+        ):
+            raise FinalizationError(
+                f"best-validation/improved checkpoint chain changed {field}"
+            )
     best_decision, best_decision_record = _declared_file(
         best_snapshot.payload,
         path_key="promotion_decision",
@@ -1127,6 +1555,14 @@ def _validate_checkpoint_manifests(
         or dict(validation_promotion) != dict(promotion.payload["promotion"])
     ):
         raise FinalizationError("validation promotion manifest is incomplete or inconsistent")
+    for field in (
+        "baseline_evaluation_aggregate",
+        "candidate_validation_aggregate",
+    ):
+        if validation_payload.get(field) != promotion.payload.get(field):
+            raise FinalizationError(
+                f"validation promotion manifest changed {field}"
+            )
     validation_decision, validation_decision_record = _declared_file(
         validation_payload,
         path_key="promotion_decision",
@@ -1291,7 +1727,13 @@ def _validate_checkpoint_manifests(
         record["publication_role"] = snapshot.payload.get("publication_role")
         records.append(record)
     records.append({**improved_record, "role": "improved_checkpoint"})
-    return tuple(records), str(improved_record["sha256"]), improved_path
+    return (
+        tuple(records),
+        str(improved_record["sha256"]),
+        improved_path,
+        improved_snapshot,
+        inference_exports[0],
+    )
 
 
 def _validate_locked_test(
@@ -1323,6 +1765,278 @@ def _validate_locked_test(
     return snapshot, workers
 
 
+def _validate_inference_actor_export_run(
+    run_dir: Path | str,
+    *,
+    improved_checkpoint: Path,
+    improved_manifest: _JsonSnapshot,
+    export_manifest: _JsonSnapshot,
+) -> dict[str, Any]:
+    """Require the actor export to come from one successful managed live run."""
+
+    project_root = Path(__file__).resolve().parents[3]
+    cache: dict[Path, Any] = {}
+    try:
+        run = _validate_finalized_run(
+            run_dir,
+            project_root=project_root,
+            run_kind="inference-actor-export",
+            training_stage="improved-inference-actor-export",
+            entrypoint="wlr50_clean.ppo.cli",
+            subcommand="export-inference-actor",
+            cache=cache,
+        )
+    except TrainingOrchestrationError as exc:
+        raise FinalizationError(
+            f"inference actor export managed run is invalid: {exc}"
+        ) from exc
+    directory = Path(run["directory"])
+    artifacts = run.get("artifacts")
+    result_record = (
+        artifacts.get("inference_actor_export.json")
+        if isinstance(artifacts, Mapping)
+        else None
+    )
+    if not isinstance(result_record, Mapping):
+        raise FinalizationError(
+            "inference actor export run does not bind inference_actor_export.json"
+        )
+    result_path = directory / "inference_actor_export.json"
+    verified_result = _validate_record(
+        result_record,
+        base=directory,
+        label="inference actor export live result",
+    )
+    if verified_result["path"] != str(result_path.resolve()):
+        raise FinalizationError("inference actor export result has the wrong managed path")
+    result = _load_json(result_path, label="inference actor export live result")
+    payload = result.payload
+    if (
+        payload.get("schema") != "wlr50_clean.ppo_inference_actor_export_cli.v1"
+        or payload.get("live_rsl_runner_loaded") is not True
+        or payload.get("episode_stepped") is not False
+        or payload.get("deterministic_mean_policy") is not True
+        or payload.get("runner_checkpoint_infos_verified") is not True
+        or payload.get("checkpoint_runtime_capture_verified") is not True
+    ):
+        raise FinalizationError("inference actor export live result is incomplete")
+
+    source_checkpoint = _path(
+        payload.get("checkpoint"),
+        base=directory,
+        label="inference actor export source checkpoint",
+    )
+    source_manifest = _path(
+        payload.get("checkpoint_manifest"),
+        base=directory,
+        label="inference actor export source manifest",
+    )
+    named_export_manifest = _path(
+        payload.get("export_manifest"),
+        base=directory,
+        label="inference actor export manifest",
+    )
+    if (
+        source_checkpoint != improved_checkpoint
+        or source_manifest != improved_manifest.path
+        or named_export_manifest != export_manifest.path
+    ):
+        raise FinalizationError(
+            "inference actor export run names a different improved checkpoint/export"
+        )
+    manifest_checkpoint, manifest_checkpoint_record = _declared_file(
+        export_manifest.payload,
+        path_key="source_checkpoint",
+        hash_key="source_checkpoint_sha256",
+        base=export_manifest.path.parent,
+        label="inference actor manifest source checkpoint",
+    )
+    manifest_source, manifest_source_record = _declared_file(
+        export_manifest.payload,
+        path_key="source_manifest",
+        hash_key="source_manifest_sha256",
+        base=export_manifest.path.parent,
+        label="inference actor manifest source sidecar",
+    )
+    if (
+        manifest_checkpoint != improved_checkpoint
+        or manifest_source != improved_manifest.path
+        or manifest_source_record["sha256"] != improved_manifest.sha256
+    ):
+        raise FinalizationError(
+            "inference actor manifest is not bound to the explicit improved checkpoint"
+        )
+
+    torchscript = export_manifest.payload.get("torchscript")
+    if not isinstance(torchscript, Mapping):
+        raise FinalizationError("inference actor export omits TorchScript evidence")
+    torchscript_path, torchscript_record = _declared_file(
+        torchscript,
+        path_key="path",
+        hash_key="sha256",
+        bytes_key="bytes",
+        base=export_manifest.path.parent,
+        label="inference actor TorchScript",
+    )
+    if _path(
+        payload.get("torchscript_actor"),
+        base=directory,
+        label="managed TorchScript actor",
+    ) != torchscript_path:
+        raise FinalizationError("managed export result names a different TorchScript actor")
+    model_verification = _verify_inference_actor_model(
+        export_manifest,
+        torchscript_path=torchscript_path,
+    )
+    onnx = export_manifest.payload.get("onnx")
+    named_onnx = payload.get("onnx_actor")
+    onnx_record: dict[str, Any] | None = None
+    if isinstance(onnx, Mapping) and onnx.get("supported") is True:
+        onnx_path, onnx_record = _declared_file(
+            onnx,
+            path_key="path",
+            hash_key="sha256",
+            bytes_key="bytes",
+            base=export_manifest.path.parent,
+            label="inference actor ONNX",
+        )
+        if _path(named_onnx, base=directory, label="managed ONNX actor") != onnx_path:
+            raise FinalizationError("managed export result names a different ONNX actor")
+    elif named_onnx is not None:
+        raise FinalizationError("managed export result names an unsupported ONNX actor")
+
+    capture = payload.get("checkpoint_runtime_capture")
+    expected_capture_keys = {
+        "schema",
+        "source_checkpoint_path",
+        "source_checkpoint_sha256",
+        "source_manifest_path",
+        "source_manifest_sha256",
+        "private_checkpoint_path",
+        "private_manifest_path",
+        "private_copy_exclusive",
+        "runner_loads_private_copy_only",
+    }
+    if (
+        not isinstance(capture, Mapping)
+        or set(capture) != expected_capture_keys
+        or capture.get("schema") != CHECKPOINT_CAPTURE_SCHEMA
+        or capture.get("source_checkpoint_path") != str(improved_checkpoint)
+        or capture.get("source_checkpoint_sha256")
+        != manifest_checkpoint_record["sha256"]
+        or capture.get("source_manifest_path") != str(improved_manifest.path)
+        or capture.get("source_manifest_sha256") != improved_manifest.sha256
+        or capture.get("private_copy_exclusive") is not True
+        or capture.get("runner_loads_private_copy_only") is not True
+    ):
+        raise FinalizationError("inference actor checkpoint runtime capture is invalid")
+    private_checkpoint = Path(str(capture.get("private_checkpoint_path", "")))
+    private_manifest = Path(str(capture.get("private_manifest_path", "")))
+    pins_root = directory / ".checkpoint-pins"
+    try:
+        _require_no_reparse_components(
+            private_checkpoint, label="inference actor private checkpoint"
+        )
+        _require_no_reparse_components(
+            private_manifest, label="inference actor private manifest"
+        )
+    except EvaluationArtifactError as exc:
+        raise FinalizationError(str(exc)) from exc
+    if (
+        not private_checkpoint.is_absolute()
+        or not private_manifest.is_absolute()
+        or private_checkpoint.name != "checkpoint.pt"
+        or private_manifest.name != "checkpoint_manifest.json"
+        or private_checkpoint.parent != private_manifest.parent
+        or private_checkpoint.parent.parent != pins_root
+        or private_checkpoint.exists()
+        or private_manifest.exists()
+    ):
+        raise FinalizationError(
+            "inference actor checkpoint private-copy provenance is outside its managed run"
+        )
+
+    source_records: dict[str, dict[str, Any]] = {}
+
+    def add(record: Mapping[str, Any]) -> None:
+        path = str(record["path"])
+        normalized = {
+            "path": path,
+            "bytes": int(record["bytes"]),
+            "sha256": str(record["sha256"]),
+        }
+        prior = source_records.get(path)
+        if prior is not None and prior != normalized:
+            raise FinalizationError(f"inference export source changed: {path}")
+        source_records[path] = normalized
+
+    add(run["run_manifest"])
+    add(_snapshot_record(result))
+    add(_snapshot_record(export_manifest))
+    add(_snapshot_record(improved_manifest))
+    add(manifest_checkpoint_record)
+    add(torchscript_record)
+    if onnx_record is not None:
+        add(onnx_record)
+    final_run_payload = run["payload"]
+    add(
+        _validate_record(
+            final_run_payload["started_manifest"],
+            base=directory,
+            label="inference export started manifest",
+        )
+    )
+    for group_name in ("logs", "artifacts"):
+        group = final_run_payload[group_name]
+        for name, record in group.items():
+            add(
+                _validate_record(
+                    record,
+                    base=directory,
+                    label=f"inference export {group_name} {name}",
+                    allow_empty=group_name == "logs" and name == "stderr.log",
+                )
+            )
+    for record in run.get("configs", ()):
+        add(
+            _validate_record(
+                record,
+                base=project_root,
+                label="inference export config",
+            )
+        )
+    for record in (
+        *run.get("frozen_audits", ()),
+        *run.get("committed_runtime_identities", ()),
+    ):
+        add(record)
+    runtime = run.get("committed_runtime_identity_before_payload")
+    runtime_files = runtime.get("files") if isinstance(runtime, Mapping) else None
+    if not isinstance(runtime_files, Sequence) or isinstance(runtime_files, (str, bytes)):
+        raise FinalizationError("inference export runtime source inventory is missing")
+    for record in runtime_files:
+        if not isinstance(record, Mapping):
+            raise FinalizationError("inference export runtime source record is malformed")
+        add(
+            _file_record(
+                project_root / str(record.get("path", "")),
+                allow_empty=True,
+            )
+        )
+    add(_file_record(project_root / "artifacts/ppo_phase_v1_start/frozen_fsm_hashes.json"))
+    records = [source_records[path] for path in sorted(source_records)]
+    return {
+        "schema": "wlr50_clean.ppo_inference_actor_export_run_provenance.v1",
+        "valid": True,
+        "run_directory": str(directory),
+        "run_manifest": run["run_manifest"],
+        "live_result": _snapshot_record(result),
+        "export_manifest": _snapshot_record(export_manifest),
+        "independent_model_verification": model_verification,
+        "source_file_records": records,
+    }
+
+
 def _validate_video_evidence(
     validation_path: Path | str,
     checksum_path: Path | str,
@@ -1330,170 +2044,22 @@ def _validate_video_evidence(
     root: Path,
     improved_checkpoint_hash: str,
 ) -> tuple[dict[str, Any], tuple[dict[str, Any], ...]]:
-    validation = _load_json(validation_path, label="video validation")
-    payload = validation.payload
-    if (
-        payload.get("schema") != FINAL_VIDEO_SCHEMA
-        or payload.get("valid") is not True
-        or payload.get("status") != "PASS"
-        or payload.get("immutable_no_overwrite") is not True
-        or float(payload.get("maximum_duration_s", math.inf)) > 200.0
-    ):
-        raise FinalizationError("video validation manifest did not pass")
-    explicit_checksum = Path(checksum_path).resolve()
-    declared_checksum = _path(
-        payload.get("video_checksum_manifest"),
-        base=validation.path.parent,
-        label="video checksum manifest",
-    )
-    if declared_checksum != explicit_checksum or explicit_checksum.name != VIDEO_CHECKSUM_NAME:
-        raise FinalizationError("video validation names a different checksum manifest")
-    _within(validation.path, root, label="video validation")
-    _within(explicit_checksum, root, label="video checksum")
     try:
-        verification = verify_checksum_manifest(explicit_checksum, root=root)
-    except (ArtifactError, OSError) as exc:
-        raise FinalizationError(f"video checksum manifest is invalid: {exc}") from exc
-    if verification.get("valid") is not True:
-        raise FinalizationError("video checksum manifest reports a SHA-256 mismatch")
-    pair = payload.get("pair_evidence")
-    if not isinstance(pair, Mapping) or any(
-        pair.get(key) is not True
-        for key in (
-            "same_seed",
-            "same_live_environment_contract",
-            "same_obstacle_contract",
-            "same_camera",
-            "same_resolution",
-            "same_initial_state",
+        verified = verify_final_video_publication(
+            validation_path,
+            checksum_path,
+            output_root=root,
+            expected_improved_checkpoint_sha256=improved_checkpoint_hash,
         )
-    ):
-        raise FinalizationError("video pair comparability evidence is incomplete")
-    videos = payload.get("videos")
+    except PPOVideoArtifactError as exc:
+        raise FinalizationError(f"final video publication is invalid: {exc}") from exc
+    if verified.get("valid") is not True or verified.get("status") != "PASS":
+        raise FinalizationError("final video publication verifier did not return PASS")
+    videos = verified.get("videos")
     if not isinstance(videos, Mapping) or set(videos) != set(_REQUIRED_VIDEO_KEYS):
-        raise FinalizationError("video validation does not contain the four canonical videos")
-    records: list[dict[str, Any]] = []
-    for key, filename in zip(_REQUIRED_VIDEO_KEYS, _REQUIRED_VIDEO_NAMES, strict=True):
-        row = videos.get(key)
-        if not isinstance(row, Mapping):
-            raise FinalizationError(f"video validation row {key} is invalid")
-        source, record = _declared_file(
-            row,
-            path_key="path",
-            hash_key="sha256",
-            bytes_key="bytes",
-            base=validation.path.parent,
-            label=f"video {key}",
-        )
-        _within(source, root, label=f"video {key}")
-        try:
-            duration = float(row.get("duration_s", math.inf))
-            fps = float(row.get("fps", 0.0))
-            frames = int(row.get("frame_count", 0))
-        except (TypeError, ValueError) as exc:
-            raise FinalizationError(f"video {key} numeric validation is invalid") from exc
-        if (
-            source.name != filename
-            or row.get("valid") is not True
-            or row.get("status") != "PASS"
-            or not (0.0 < duration <= 200.0)
-            or fps <= 0.0
-            or frames < 2
-            or row.get("codec") != "h264"
-            or row.get("pixel_format") != "yuv420p"
-            or row.get("pix_fmt") != "yuv420p"
-            or row.get("full_decode") is not True
-            or row.get("timestamps_monotonic") is not True
-            or row.get("monotonic") is not True
-            or row.get("stitched") is not False
-            or row.get("speed_modified") is not False
-        ):
-            raise FinalizationError(f"video {key} failed technical acceptance")
-        if key in {"ppo_improved", "ppo_diagnostic"} and _require_hash(
-            row.get("source_checkpoint_sha256"),
-            label=f"video {key} source checkpoint hash",
-        ) != improved_checkpoint_hash:
-            raise FinalizationError(f"video {key} was not rendered from improved checkpoint")
-        records.append(record)
-    sources = payload.get("source_episodes")
-    if not isinstance(sources, Mapping) or set(sources) != {"fsm", "ppo"}:
-        raise FinalizationError("video source episode provenance is incomplete")
-    source_records: dict[str, Any] = {}
-    for role in ("fsm", "ppo"):
-        source_row = sources.get(role)
-        if not isinstance(source_row, Mapping):
-            raise FinalizationError(f"{role} video source evidence is invalid")
-        directory = _path(
-            source_row.get("directory"),
-            base=validation.path.parent,
-            label=f"{role} video source directory",
-        )
-        if not directory.is_dir() or directory.is_symlink():
-            raise FinalizationError(f"{role} video source directory is missing: {directory}")
-        verified_source_files: list[dict[str, Any]] = []
-        for key in ("source_manifest", "viewport_ledger", "policy_trace", "raw_video"):
-            source_file, record = _declared_file(
-                source_row,
-                path_key=key,
-                hash_key=f"{key}_sha256",
-                base=directory,
-                label=f"{role} video {key}",
-            )
-            try:
-                source_file.relative_to(directory)
-            except ValueError as exc:
-                raise FinalizationError(f"{role} video {key} escapes its source directory") from exc
-            verified_source_files.append(record)
-        source_records[role] = {
-            "directory": str(directory),
-            "files": verified_source_files,
-        }
-    ppo_source = sources["ppo"]
-    ppo_checkpoint, ppo_checkpoint_record = _declared_file(
-        ppo_source,
-        path_key="checkpoint",
-        hash_key="checkpoint_sha256",
-        base=validation.path.parent,
-        label="PPO video source checkpoint",
-    )
-    if ppo_checkpoint_record["sha256"] != improved_checkpoint_hash:
-        raise FinalizationError("video source episode is not bound to improved checkpoint")
-    source_records["ppo"]["checkpoint"] = ppo_checkpoint_record
-    diagnostic = payload.get("diagnostic_ass")
-    if not isinstance(diagnostic, Mapping):
-        raise FinalizationError("video validation omits diagnostic overlay provenance")
-    diagnostic_path, diagnostic_record = _declared_file(
-        diagnostic,
-        path_key="path",
-        hash_key="sha256",
-        base=validation.path.parent,
-        label="diagnostic overlay",
-    )
-    checksum_entries = {
-        str(entry.get("path")) for entry in verification.get("entries", ())
-    }
-    expected_checksum_entries = {
-        path.relative_to(root).as_posix()
-        for path in (
-            *(Path(record["path"]) for record in records),
-            validation.path,
-            diagnostic_path,
-        )
-    }
-    if checksum_entries != expected_checksum_entries:
-        raise FinalizationError(
-            "video checksum manifest does not cover exactly the published video bundle"
-        )
-    return (
-        {
-            "validation": _snapshot_record(validation),
-            "video_checksums": _file_record(explicit_checksum, root=root),
-            "video_checksum_verification": verification,
-            "source_episodes": source_records,
-            "diagnostic_overlay": diagnostic_record,
-        },
-        tuple(records),
-    )
+        raise FinalizationError("final video verifier omitted canonical video records")
+    records = tuple(dict(videos[key]) for key in _REQUIRED_VIDEO_KEYS)
+    return dict(verified), records
 
 
 def _validate_reports_and_plots(
@@ -1523,6 +2089,86 @@ def _validate_reports_and_plots(
     )
 
 
+def _validate_five_role_reporting(
+    *,
+    root: Path,
+    aggregate_paths: Mapping[str, Path | str],
+    metric_paths: Sequence[Path | str],
+    training_orchestration_manifest_path: Path | str,
+    report_paths: Sequence[Path | str],
+    plot_paths: Sequence[Path | str],
+) -> tuple[
+    Mapping[str, Any],
+    tuple[dict[str, Any], ...],
+    tuple[dict[str, Any], ...],
+]:
+    if tuple(aggregate_paths) != FINAL_LIFECYCLE_ROLES:
+        raise FinalizationError(
+            "final lifecycle aggregates must be supplied in the exact five-role order"
+        )
+    aggregate_records: list[dict[str, Any]] = []
+    resolved_aggregates: dict[str, Path] = {}
+    for role in FINAL_LIFECYCLE_ROLES:
+        # Lifecycle aggregates remain immutable inputs under managed run trees;
+        # requiring them below output_root would contradict the exporter's
+        # mandatory input/output-tree separation.
+        aggregate_record = _file_record(aggregate_paths[role])
+        path = Path(aggregate_record["path"])
+        resolved_aggregates[role] = path
+        aggregate_records.append(aggregate_record)
+    if len(set(resolved_aggregates.values())) != len(FINAL_LIFECYCLE_ROLES):
+        raise FinalizationError("final lifecycle aggregate paths must be distinct")
+
+    named_metrics = _require_named_paths(
+        metric_paths,
+        required_names=_REQUIRED_VALIDATION_FILES,
+        root=root,
+        label="final five-role metrics",
+    )
+    metric_directories = {path.parent for path in named_metrics.values()}
+    if len(metric_directories) != 1:
+        raise FinalizationError("final five-role metric files must share one directory")
+    metrics_directory = next(iter(metric_directories))
+    reports = _require_named_paths(
+        report_paths, required_names=REPORT_FILENAMES, root=root, label="final reports"
+    )
+    plots = _require_named_paths(
+        plot_paths, required_names=PLOT_FILENAMES, root=root, label="final plots"
+    )
+    try:
+        reporting = verify_final_reporting_bundle(
+            metrics_directory,
+            root,
+            training_orchestration_manifest=training_orchestration_manifest_path,
+            report_paths=[reports[name] for name in REPORT_FILENAMES],
+            plot_paths=[plots[name] for name in PLOT_FILENAMES],
+        )
+    except FinalReportingError as exc:
+        raise FinalizationError(f"strict final reporting evidence is invalid: {exc}") from exc
+    lifecycle = reporting.get("five_role_artifact_provenance")
+    if not isinstance(lifecycle, Mapping) or set(lifecycle) != set(FINAL_LIFECYCLE_ROLES):
+        raise FinalizationError("final reports omit exact five-role artifact provenance")
+    for role, aggregate_record in zip(
+        FINAL_LIFECYCLE_ROLES, aggregate_records, strict=True
+    ):
+        record = lifecycle[role]
+        if (
+            not isinstance(record, Mapping)
+            or Path(str(record.get("aggregate_path", ""))).resolve()
+            != resolved_aggregates[role]
+            or record.get("aggregate_sha256") != aggregate_record["sha256"]
+            or len(tuple(record.get("source_groups", ()))) != 5
+        ):
+            raise FinalizationError(
+                f"final reports are not bound to the supplied {role} aggregate"
+            )
+    metric_records = tuple(
+        _file_record(named_metrics[name], root=root)
+        for name in _REQUIRED_VALIDATION_FILES
+    )
+    return reporting, tuple(aggregate_records), metric_records
+
+
 def _output_inventory(
     root: Path, *, excluded: Iterable[Path]
 ) -> dict[str, tuple[Path, str, int]]:
@@ -1530,11 +2176,17 @@ def _output_inventory(
     inventory: dict[str, tuple[Path, str, int]] = {}
     if not root.exists():
         return inventory
-    if not root.is_dir() or root.is_symlink():
+    try:
+        _require_no_reparse_components(root, label="output_root")
+    except EvaluationArtifactError as exc:
+        raise FinalizationError(str(exc)) from exc
+    if not root.is_dir():
         raise FinalizationError(f"output_root is not a safe directory: {root}")
     for item in sorted(root.rglob("*"), key=lambda value: value.as_posix()):
-        if item.is_symlink():
-            raise FinalizationError(f"output_root contains a symbolic link: {item}")
+        try:
+            _require_no_reparse_components(item, label="delivery inventory")
+        except EvaluationArtifactError as exc:
+            raise FinalizationError(str(exc)) from exc
         if not item.is_file():
             continue
         resolved = item.resolve()
@@ -1625,17 +2277,21 @@ def _publish_bundle(publications: Mapping[Path, bytes]) -> tuple[Path, ...]:
 def finalize_ppo_phase_delivery(
     *,
     output_root: Path | str,
-    training_run_dirs: Sequence[Path | str],
+    training_orchestration_manifest_path: Path | str,
+    final_lifecycle_aggregate_paths: Mapping[str, Path | str],
+    final_lifecycle_metric_paths: Sequence[Path | str],
     baseline_aggregate_path: Path | str,
     baseline_metric_paths: Sequence[Path | str],
     validation_aggregate_path: Path | str,
     promotion_decision_path: Path | str,
     locked_test_aggregate_path: Path | str,
     checkpoint_manifest_paths: Sequence[Path | str],
+    inference_actor_export_run_dir: Path | str,
     video_validation_path: Path | str,
     video_checksum_path: Path | str,
     report_paths: Sequence[Path | str],
     plot_paths: Sequence[Path | str],
+    training_run_dirs: Sequence[Path | str] = (),
 ) -> FinalizationPaths:
     """Validate and publish final training/evaluation/checksum provenance.
 
@@ -1644,6 +2300,12 @@ def finalize_ppo_phase_delivery(
     itself), including the retained ``video_checksums.sha256``.
     """
 
+    try:
+        _require_no_reparse_components(
+            Path(output_root), label="final delivery output root"
+        )
+    except EvaluationArtifactError as exc:
+        raise FinalizationError(str(exc)) from exc
     root = Path(output_root).resolve()
     manifests = root / "manifests"
     paths = FinalizationPaths(
@@ -1654,7 +2316,37 @@ def finalize_ppo_phase_delivery(
     )
     destinations = (paths.training_manifest, paths.evaluation_manifest, paths.checksums)
 
-    training_runs = _validate_training_runs(training_run_dirs)
+    try:
+        orchestration = validate_training_orchestration_manifest(
+            training_orchestration_manifest_path,
+            expected_project_root=Path(__file__).resolve().parents[3],
+        )
+    except TrainingOrchestrationError as exc:
+        raise FinalizationError(
+            f"prefinal training orchestration evidence is invalid: {exc}"
+        ) from exc
+    orchestration_payload = orchestration["payload"]
+    if (
+        orchestration_payload.get("schema") != TRAINING_ORCHESTRATION_SCHEMA
+        or orchestration.get("valid") is not True
+        or orchestration.get("status") != "PROMOTION_FOUND"
+    ):
+        raise FinalizationError(
+            "final delivery requires a valid PROMOTION_FOUND training orchestration"
+        )
+    chunks = orchestration_payload.get("chunks")
+    if not isinstance(chunks, Sequence) or isinstance(chunks, (str, bytes)) or not chunks:
+        raise FinalizationError("training orchestration contains no ordered chunks")
+    orchestrated_run_dirs = tuple(
+        Path(str(chunk["training"]["run_directory"])).resolve()
+        for chunk in chunks
+    )
+    if training_run_dirs and tuple(
+        Path(value).resolve() for value in training_run_dirs
+    ) != orchestrated_run_dirs:
+        raise FinalizationError(
+            "legacy training_run_dirs disagree with prefinal orchestration chunks"
+        )
     baseline, _, baseline_workers = _validate_batch(
         baseline_aggregate_path,
         role="baseline",
@@ -1675,20 +2367,77 @@ def finalize_ppo_phase_delivery(
     promotion, validation_artifacts = _validate_promotion(
         promotion_decision_path,
         root=root,
+        baseline=baseline,
+        baseline_workers=baseline_workers,
+        validation=validation,
+        validation_workers=validation_workers,
         validation_checkpoint_hash=validation_checkpoint_hash,
     )
     locked, locked_workers = _validate_locked_test(locked_test_aggregate_path)
-    checkpoint_manifests, improved_hash, improved_path = _validate_checkpoint_manifests(
+    (
+        checkpoint_manifests,
+        improved_hash,
+        improved_path,
+        improved_manifest,
+        inference_export_manifest,
+    ) = _validate_checkpoint_manifests(
         checkpoint_manifest_paths,
         root=root,
         promotion=promotion,
         locked_test=locked,
     )
-    if improved_hash not in {
-        str(record["immutable_history_checkpoint"]["sha256"])
-        for record in training_runs
-    }:
-        raise FinalizationError("improved checkpoint is not byte-bound to a supplied training run")
+    inference_actor_export = _validate_inference_actor_export_run(
+        inference_actor_export_run_dir,
+        improved_checkpoint=improved_path,
+        improved_manifest=improved_manifest,
+        export_manifest=inference_export_manifest,
+    )
+    passing_promotions = tuple(
+        row
+        for row in orchestration_payload.get("promotion_decisions", ())
+        if isinstance(row, Mapping) and row.get("promoted") is True
+    )
+    terminal = orchestration_payload.get("terminal")
+    terminal_checkpoint = (
+        terminal.get("checkpoint") if isinstance(terminal, Mapping) else None
+    )
+    orchestration_promotion = passing_promotions[0] if len(passing_promotions) == 1 else None
+    orchestrated_candidate = (
+        orchestration_promotion.get("candidate_checkpoint")
+        if isinstance(orchestration_promotion, Mapping)
+        else None
+    )
+    if (
+        len(passing_promotions) != 1
+        or not isinstance(terminal, Mapping)
+        or not isinstance(terminal_checkpoint, Mapping)
+        or not isinstance(orchestration_promotion, Mapping)
+        or orchestration_promotion.get("record") != _snapshot_record(promotion)
+        or orchestration_promotion.get("bound_chunk_index")
+        != terminal.get("chunk_index")
+        or terminal.get("chunk_index") != len(chunks) - 1
+        or not isinstance(orchestrated_candidate, Mapping)
+        or dict(orchestrated_candidate) != dict(terminal_checkpoint)
+        or _path(
+            promotion.payload.get("candidate_checkpoint_path"),
+            base=promotion.path.parent,
+            label="cadence promotion candidate checkpoint",
+        )
+        != _path(
+            terminal_checkpoint.get("path"),
+            base=Path(__file__).resolve().parents[3],
+            label="orchestration terminal checkpoint",
+        )
+        or _require_hash(
+            promotion.payload.get("candidate_checkpoint_sha256"),
+            label="cadence promotion candidate checkpoint hash",
+        )
+        != terminal_checkpoint.get("sha256")
+        or terminal_checkpoint.get("sha256") != improved_hash
+    ):
+        raise FinalizationError(
+            "explicit cadence promotion is not the unique terminal orchestration decision/checkpoint"
+        )
     # Re-run the locked binding once the independently authorized final hash is known.
     locked, locked_workers = _validate_locked_test(
         locked_test_aggregate_path, expected_checkpoint_hash=improved_hash
@@ -1699,9 +2448,121 @@ def finalize_ppo_phase_delivery(
         root=root,
         improved_checkpoint_hash=improved_hash,
     )
-    reports, plots = _validate_reports_and_plots(
-        report_paths, plot_paths, root=root
+    reporting, final_aggregates, final_metrics = _validate_five_role_reporting(
+        root=root,
+        aggregate_paths=final_lifecycle_aggregate_paths,
+        metric_paths=final_lifecycle_metric_paths,
+        training_orchestration_manifest_path=training_orchestration_manifest_path,
+        report_paths=report_paths,
+        plot_paths=plot_paths,
     )
+    lifecycle = reporting.get("five_role_artifact_provenance")
+    initial_orchestration = orchestration_payload.get("initial_checkpoint")
+    initial_lifecycle = (
+        lifecycle.get("checkpoint_initial") if isinstance(lifecycle, Mapping) else None
+    )
+    smoke_lifecycle = (
+        lifecycle.get("checkpoint_smoke") if isinstance(lifecycle, Mapping) else None
+    )
+    first_chunk = chunks[0] if isinstance(chunks[0], Mapping) else None
+    first_training = (
+        first_chunk.get("training") if isinstance(first_chunk, Mapping) else None
+    )
+    smoke_history = (
+        first_training.get("immutable_history_checkpoint")
+        if isinstance(first_training, Mapping)
+        else None
+    )
+    canonical_smoke = orchestration_payload.get("canonical_smoke_checkpoint")
+    orchestration_creation_identities = {
+        (
+            Path(str(record.get("path", ""))).resolve(),
+            str(record.get("sha256", "")),
+        )
+        for record in orchestration.get("source_file_records", ())
+        if isinstance(record, Mapping)
+        and Path(str(record.get("path", ""))).name
+        == "committed_runtime_identity.before.json"
+    }
+    lifecycle_creation_rows = [
+        record
+        for role in FINAL_LIFECYCLE_ROLES[1:]
+        for record in (
+            lifecycle.get(role) if isinstance(lifecycle, Mapping) else None,
+        )
+        if isinstance(record, Mapping)
+    ]
+    lifecycle_creation_identities = {
+        (
+            Path(str(record.get("creation_runtime_identity_path", ""))).resolve(),
+            str(record.get("creation_runtime_identity_sha256", "")),
+        )
+        for record in lifecycle_creation_rows
+    }
+    if (
+        not isinstance(initial_orchestration, Mapping)
+        or not isinstance(initial_lifecycle, Mapping)
+        or Path(str(initial_orchestration.get("path", ""))).resolve()
+        != Path(str(initial_lifecycle.get("checkpoint_path", ""))).resolve()
+        or initial_orchestration.get("sha256")
+        != initial_lifecycle.get("checkpoint_sha256")
+        or Path(str(initial_orchestration.get("manifest_path", ""))).resolve()
+        != Path(
+            str(initial_lifecycle.get("checkpoint_manifest_path", ""))
+        ).resolve()
+        or initial_orchestration.get("manifest_sha256")
+        != initial_lifecycle.get("checkpoint_manifest_sha256")
+        or not isinstance(smoke_lifecycle, Mapping)
+        or not isinstance(first_chunk, Mapping)
+        or first_chunk.get("stage") != "smoke"
+        or not isinstance(smoke_history, Mapping)
+        or smoke_history.get("sha256")
+        != smoke_lifecycle.get("checkpoint_sha256")
+        or not isinstance(canonical_smoke, Mapping)
+        or Path(str(canonical_smoke.get("path", ""))).resolve()
+        != Path(str(smoke_lifecycle.get("checkpoint_path", ""))).resolve()
+        or canonical_smoke.get("sha256")
+        != smoke_lifecycle.get("checkpoint_sha256")
+        or Path(str(canonical_smoke.get("manifest_path", ""))).resolve()
+        != Path(
+            str(smoke_lifecycle.get("checkpoint_manifest_path", ""))
+        ).resolve()
+        or canonical_smoke.get("manifest_sha256")
+        != smoke_lifecycle.get("checkpoint_manifest_sha256")
+        or len(lifecycle_creation_rows) != 4
+        or any(
+            not str(record.get("creation_runtime_identity_path", "")).strip()
+            or _SHA256.fullmatch(
+                str(record.get("creation_runtime_identity_sha256", ""))
+            )
+            is None
+            for record in lifecycle_creation_rows
+        )
+        or not lifecycle_creation_identities.issubset(
+            orchestration_creation_identities
+        )
+    ):
+        raise FinalizationError(
+            "training orchestration is not bound to the five-role initial/smoke/runtime-creation provenance"
+        )
+
+    reporting_outputs = reporting.get("outputs")
+    if not isinstance(reporting_outputs, Sequence) or isinstance(
+        reporting_outputs, (str, bytes)
+    ):
+        raise FinalizationError("strict reporting verification omitted output records")
+    reports = tuple(
+        dict(record)
+        for record in reporting_outputs
+        if Path(str(record.get("path", ""))).name in REPORT_FILENAMES
+    )
+    plots = tuple(
+        dict(record)
+        for record in reporting_outputs
+        if Path(str(record.get("path", ""))).name in PLOT_FILENAMES
+    )
+    if len(reports) != len(REPORT_FILENAMES) or len(plots) != len(PLOT_FILENAMES):
+        raise FinalizationError("strict reporting output inventory is incomplete")
 
     training_payload: dict[str, Any] = {
         "schema": TRAINING_MANIFEST_SCHEMA,
@@ -1709,20 +2570,25 @@ def finalize_ppo_phase_delivery(
         "status": "PASS",
         "success_inferred_from_filename": False,
         "paths_and_sha256_recomputed": True,
-        "required_stages": list(REQUIRED_TRAINING_STAGES),
-        "stage_sequence": [row["stage"] for row in training_runs],
-        "training_run_count": len(training_runs),
-        "terminal_global_policy_decisions": training_runs[-1][
-            "global_policy_decisions"
-        ],
-        "terminal_checkpoint_sha256": training_runs[-1][
-            "immutable_history_checkpoint"
-        ]["sha256"],
+        "required_stages": list(orchestration_payload["required_stages"]),
+        "stage_sequence": [row["stage"] for row in chunks],
+        "training_run_count": len(chunks),
+        "terminal_global_policy_decisions": terminal["global_policy_decisions"],
+        "terminal_checkpoint_sha256": terminal["checkpoint"]["sha256"],
         "all_run_lifecycles_succeeded": True,
         "all_frozen_hash_audits_passed": True,
         "all_save_load_round_trips_passed": True,
         "all_reward_telemetry_complete": True,
-        "training_runs": list(training_runs),
+        "prefinal_training_orchestration": {
+            "manifest": {
+                "path": str(orchestration["path"]),
+                "bytes": int(orchestration["bytes"]),
+                "sha256": str(orchestration["sha256"]),
+            },
+            "status": orchestration["status"],
+            "payload": orchestration_payload,
+            "source_file_records": list(orchestration["source_file_records"]),
+        },
     }
     evaluation_payload: dict[str, Any] = {
         "schema": EVALUATION_MANIFEST_SCHEMA,
@@ -1757,6 +2623,7 @@ def finalize_ppo_phase_delivery(
             "improved_path": str(improved_path),
             "improved_sha256": improved_hash,
             "manifests": list(checkpoint_manifests),
+            "inference_actor_export": inference_actor_export,
             "two_stage_promotion_passed": True,
         },
         "video": {
@@ -1767,6 +2634,12 @@ def finalize_ppo_phase_delivery(
         },
         "reports": list(reports),
         "plots": list(plots),
+        "final_lifecycle": {
+            "roles": list(FINAL_LIFECYCLE_ROLES),
+            "aggregates": list(final_aggregates),
+            "metrics": list(final_metrics),
+            "reporting_verification": reporting,
+        },
     }
     training_content = _json_bytes(training_payload)
     evaluation_content = _json_bytes(evaluation_payload)

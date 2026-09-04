@@ -13,6 +13,7 @@ from wlr50_clean.ppo import cli
 CONFIG_SHA256 = "a" * 64
 FROZEN_MANIFEST_SHA256 = "b" * 64
 GIT_COMMIT = "c" * 40
+FROZEN_SOURCE_HEAD = "7d6bfda0da593e2cace2accd8bc81d300bdd9288"
 RUN_SEED = 1001
 NUM_ENVS = 8
 EXPECTED_SEED_ROWS = tuple(range(1001, 1001 + NUM_ENVS))
@@ -162,7 +163,7 @@ def _write_finalized_benchmark(
         "project_root": str(root.parent.resolve()),
         "frozen_manifest": str((root.parent / "frozen_fsm_hashes.json").resolve()),
         "frozen_manifest_sha256": FROZEN_MANIFEST_SHA256,
-        "source_head": GIT_COMMIT,
+        "source_head": FROZEN_SOURCE_HEAD,
         "protected_file_count": 29,
         "entries": [],
         "mismatches": [],

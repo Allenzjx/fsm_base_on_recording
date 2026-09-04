@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import ExitStack
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -9,6 +10,10 @@ import pytest
 from wlr50_clean.ppo import cli
 from wlr50_clean.ppo import checkpoint_promotion
 from wlr50_clean.ppo.rl_library_wrapper import CHECKPOINT_RUNTIME_CONTRACT_FIELDS
+from wlr50_clean.ppo.phase_snapshots import (
+    phase_snapshot_bundle_file_hashes,
+    validated_phase_snapshot_bundle_record,
+)
 from wlr50_clean.ppo.evaluation_artifacts import (
     CANONICAL_EPISODE_FILES,
     collect_fresh_process_episode_workers,
@@ -25,22 +30,39 @@ _TEST_FROZEN_HASHES = {
 
 
 def _best_validation_manifest(checkpoint: Path) -> Path:
+    torch = pytest.importorskip("torch")
     path = checkpoint.with_name("checkpoint_best_validation_manifest.json")
-    payload = {
+    snapshot_bundle = validated_phase_snapshot_bundle_record(
+        cli.DEFAULT_PHASE_SNAPSHOT_ROOT
+    )
+    infos = {
         "schema": checkpoint_promotion.CHECKPOINT_MANIFEST_SCHEMA,
         "stage": "full-episode",
         "training_seed": 1001,
         "global_policy_decisions": 100_000,
+        "source_git_commit": "a" * 40,
+        "committed_runtime_content_sha256": "b" * 64,
         "actor_observation_dimension": 125,
         "critic_observation_dimension": 125,
         "residual_dimension": 12,
         "physics_hz": 120.0,
         "decision_hz": 15.0,
-        "files": {"training.yaml": "f" * 64},
+        "files": {
+            "training.yaml": "f" * 64,
+            **phase_snapshot_bundle_file_hashes(snapshot_bundle),
+        },
         **_TEST_FROZEN_HASHES,
+        "phase_snapshot_manifest": snapshot_bundle["manifest_path"],
+        "phase_snapshot_manifest_sha256": snapshot_bundle["manifest_sha256"],
+        "phase_snapshot_bundle_sha256": snapshot_bundle["bundle_sha256"],
+        "phase_snapshot_bundle": snapshot_bundle,
         "publication_role": "best_validation",
         "validation_promotion_authorized": True,
         "locked_test_authorized": False,
+    }
+    torch.save({"infos": infos}, checkpoint)
+    payload = {
+        **infos,
         "checkpoint_path": str(checkpoint.resolve()),
         "checkpoint_sha256": cli._sha256(checkpoint),
     }
@@ -169,7 +191,9 @@ def test_evaluate_steps_episode_directly_and_writes_canonical_streams(
     monkeypatch.setattr(
         rl_library_wrapper,
         "load_checkpoint_round_trip",
-        lambda selected_runner, path: checkpoint_infos,
+        lambda selected_runner, path, *, captured_bundle: dict(
+            captured_bundle.embedded_infos
+        ),
     )
     action_calls = []
 
@@ -223,9 +247,13 @@ def test_evaluate_steps_episode_directly_and_writes_canonical_streams(
         interface_config=cli.DEFAULT_INTERFACE_CONFIG,
         run_dir=run_dir,
         maximum_duration_s=200.0,
+        _checkpoint_runtime_capture_stack=ExitStack(),
     )
 
-    assert cli._evaluate(args, object()) == 0
+    try:
+        assert cli._evaluate(args, object()) == 0
+    finally:
+        args._checkpoint_runtime_capture_stack.close()
     assert construction == {
         "max_iterations": 1,
         "reset_seeds": (2001,),
@@ -321,13 +349,16 @@ def test_evaluate_rejects_empty_checkpoint_infos_before_episode_execution(
     monkeypatch.setattr(
         rl_library_wrapper,
         "load_checkpoint_round_trip",
-        lambda runner, path: {},
+        lambda runner, path, *, captured_bundle: {},
     )
+    monkeypatch.setattr(cli, "_current_checkpoint_runtime_contract", lambda args: {})
     monkeypatch.setattr(
         live_stream_writer,
         "LiveStreamWriter",
         lambda *args, **kwargs: pytest.fail("writer must not be created"),
     )
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
     args = SimpleNamespace(
         checkpoint=checkpoint,
         checkpoint_manifest=checkpoint_manifest,
@@ -337,13 +368,18 @@ def test_evaluate_rejects_empty_checkpoint_infos_before_episode_execution(
         seed=2001,
         training_config=cli.DEFAULT_TRAINING_CONFIG,
         interface_config=cli.DEFAULT_INTERFACE_CONFIG,
+        run_dir=run_dir,
+        _checkpoint_runtime_capture_stack=ExitStack(),
     )
 
-    with pytest.raises(
-        rl_library_wrapper.RlLibraryConfigurationError,
-        match="infos have the wrong schema",
-    ):
-        cli._evaluate(args, object())
+    try:
+        with pytest.raises(
+            rl_library_wrapper.RlLibraryConfigurationError,
+            match="infos have the wrong schema",
+        ):
+            cli._evaluate(args, object())
+    finally:
+        args._checkpoint_runtime_capture_stack.close()
 
 
 def _write_worker(
@@ -486,7 +522,7 @@ def test_aggregate_evaluations_requires_and_summarizes_five_fresh_workers(
     assert all(len(row["trial_manifest_sha256"]) == 64 for row in payload["workers"])
 
 
-def test_aggregate_evaluations_keeps_valid_failure_evidence_and_fails_gate(
+def test_aggregate_evaluations_keeps_valid_physical_failure_evidence_with_successful_capture(
     tmp_path: Path,
 ) -> None:
     checkpoint = tmp_path / "checkpoint_best_validation.pt"
@@ -516,7 +552,7 @@ def test_aggregate_evaluations_keeps_valid_failure_evidence_and_fails_gate(
         deterministic=True,
     )
 
-    assert cli._aggregate_evaluations(args) == 2
+    assert cli._aggregate_evaluations(args) == 0
     payload = json.loads(
         (aggregate_dir / "checkpoint_evaluation_aggregate.json").read_text()
     )
@@ -670,6 +706,11 @@ def test_baseline_script_collects_five_workers_for_shared_aggregator() -> None:
     assert '"--evaluation-run-dir"' in script
     assert '-Subcommand "export-baseline-evaluation"' in script
     assert '"--episode-dir"' in script
+    assert "fsm_baseline_evaluation_aggregate.json" in script
+    assert "$Aggregate.passed -ne $true" in script
+    assert script.index("$Aggregate.passed -ne $true") < script.index(
+        '-Subcommand "export-baseline-evaluation"'
+    )
     assert "export-baseline-evaluation" not in cli.LIVE_COMMANDS
 
 

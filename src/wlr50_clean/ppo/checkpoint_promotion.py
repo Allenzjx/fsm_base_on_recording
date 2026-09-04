@@ -16,20 +16,26 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import io
 import importlib.util
 import json
 import math
 import os
 import re
 import shutil
+import stat
+import struct
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from .artifacts import atomic_write_json, sha256_file
+from .checkpoint_runtime_capture import CapturedCheckpointBundle
 
 
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+DEFAULT_PHASE_SNAPSHOT_ROOT = PROJECT_ROOT / "reference" / "ppo_phase_snapshots"
 PROMOTION_DECISION_SCHEMA = "wlr50_clean.ppo_evaluation_artifacts.v1"
 CHECKPOINT_MANIFEST_SCHEMA = "wlr50_clean.phase_residual_checkpoint_manifest.v1"
 CHECKPOINT_VALIDATION_PROMOTION_SCHEMA = (
@@ -102,6 +108,26 @@ _FROZEN_PATH_BY_HASH_FIELD = {
 }
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
+_PHASE_SNAPSHOT_CONTRACT_FIELDS = (
+    "phase_snapshot_manifest",
+    "phase_snapshot_manifest_sha256",
+    "phase_snapshot_bundle_sha256",
+    "phase_snapshot_bundle",
+)
+_CHECKPOINT_EMBEDDED_REQUIRED_FIELDS = (
+    "schema",
+    "stage",
+    "training_seed",
+    "global_policy_decisions",
+    "actor_observation_dimension",
+    "critic_observation_dimension",
+    "residual_dimension",
+    "physics_hz",
+    "decision_hz",
+    "files",
+    *FROZEN_HASH_FIELDS,
+    *_PHASE_SNAPSHOT_CONTRACT_FIELDS,
+)
 
 
 class CheckpointPromotionError(RuntimeError):
@@ -171,11 +197,11 @@ class _LockedTestEvidence:
 def _load_json_snapshot(
     path: Path | str, *, label: str
 ) -> tuple[Path, Mapping[str, Any], str]:
-    source = Path(path).resolve()
+    source = _unredirected_absolute_path(path, label=label)
     if not source.is_file():
         raise CheckpointPromotionError(f"{label} is missing: {source}")
     try:
-        encoded = source.read_bytes()
+        encoded = _read_regular_file_snapshot(source, label=label)
         value = json.loads(encoded.decode("utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise CheckpointPromotionError(f"{label} is not valid UTF-8 JSON: {source}") from exc
@@ -207,23 +233,194 @@ def _hash(value: Any, *, label: str) -> str:
     return result
 
 
-def _validate_checkpoint(
-    checkpoint_path: Path | str,
-    manifest_path: Path | str,
-) -> _CheckpointEvidence:
-    checkpoint = Path(checkpoint_path).resolve()
-    manifest_file = Path(manifest_path).resolve()
-    if not checkpoint.is_file() or checkpoint.stat().st_size <= 0:
-        raise CheckpointPromotionError(f"candidate checkpoint is missing or empty: {checkpoint}")
-    manifest_file, manifest, manifest_hash = _load_json_snapshot(
-        manifest_file, label="candidate checkpoint manifest"
+def _unredirected_absolute_path(path: Path | str, *, label: str) -> Path:
+    """Resolve a lexical path only after rejecting every symlink/junction component."""
+
+    absolute = Path(os.path.abspath(os.fspath(Path(path))))
+    for component in reversed((absolute, *absolute.parents)):
+        try:
+            status = component.lstat()
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            raise CheckpointPromotionError(
+                f"cannot inspect {label} path component: {component}"
+            ) from exc
+        is_junction = getattr(component, "is_junction", None)
+        attributes = int(getattr(status, "st_file_attributes", 0))
+        if (
+            component.is_symlink()
+            or (callable(is_junction) and is_junction())
+            or attributes & 0x400
+        ):
+            raise CheckpointPromotionError(
+                f"{label} contains a symlink or reparse point: {component}"
+            )
+    resolved = absolute.resolve()
+    if resolved != absolute:
+        raise CheckpointPromotionError(f"{label} path is redirected")
+    return resolved
+
+
+def _read_regular_file_snapshot(path: Path, *, label: str) -> bytes:
+    """Capture one nonempty regular file once and detect concurrent replacement."""
+
+    try:
+        with path.open("rb") as stream:
+            before = os.fstat(stream.fileno())
+            if not stat.S_ISREG(before.st_mode):
+                raise CheckpointPromotionError(f"{label} is not a regular file")
+            payload = stream.read()
+            after = os.fstat(stream.fileno())
+    except CheckpointPromotionError:
+        raise
+    except OSError as exc:
+        raise CheckpointPromotionError(f"{label} cannot be read: {path}") from exc
+    if (
+        not payload
+        or before.st_size != len(payload)
+        or after.st_size != len(payload)
+        or before.st_mtime_ns != after.st_mtime_ns
+        or before.st_ctime_ns != after.st_ctime_ns
+    ):
+        raise CheckpointPromotionError(f"{label} is empty or changed while being captured")
+    return payload
+
+
+def _read_checkpoint_snapshot(checkpoint: Path) -> bytes:
+    """Capture one regular, unredirected checkpoint file exactly once."""
+
+    return _read_regular_file_snapshot(checkpoint, label="candidate checkpoint")
+
+
+def _load_embedded_checkpoint_infos(checkpoint_bytes: bytes) -> Mapping[str, Any]:
+    """Read RSL infos with PyTorch's restricted weights-only unpickler."""
+
+    try:
+        import torch  # type: ignore
+    except ImportError as exc:
+        raise CheckpointPromotionError(
+            "offline checkpoint validation requires PyTorch to inspect embedded infos"
+        ) from exc
+    try:
+        payload = torch.load(
+            io.BytesIO(checkpoint_bytes),
+            map_location="cpu",
+            weights_only=True,
+        )
+    except Exception as exc:
+        raise CheckpointPromotionError(
+            "checkpoint cannot be safely decoded to verify embedded infos"
+        ) from exc
+    if not isinstance(payload, Mapping) or not isinstance(payload.get("infos"), Mapping):
+        raise CheckpointPromotionError("checkpoint omits embedded RSL infos")
+    return payload["infos"]
+
+
+def _validate_checkpoint_snapshot_contract(
+    manifest: Mapping[str, Any],
+    embedded_infos: Mapping[str, Any],
+) -> None:
+    from .phase_snapshots import (
+        PhaseSnapshotError,
+        capture_validated_phase_snapshot_bundle,
+        phase_snapshot_bundle_file_hashes,
     )
+
+    try:
+        current_bundle = capture_validated_phase_snapshot_bundle(
+            DEFAULT_PHASE_SNAPSHOT_ROOT,
+            canonical_root=DEFAULT_PHASE_SNAPSHOT_ROOT,
+        ).as_record()
+        required_files = phase_snapshot_bundle_file_hashes(current_bundle)
+    except (OSError, PhaseSnapshotError) as exc:
+        raise CheckpointPromotionError(
+            f"current phase snapshot bundle is invalid: {exc}"
+        ) from exc
+    expected_fields = {
+        "phase_snapshot_manifest": current_bundle["manifest_path"],
+        "phase_snapshot_manifest_sha256": current_bundle["manifest_sha256"],
+        "phase_snapshot_bundle_sha256": current_bundle["bundle_sha256"],
+        "phase_snapshot_bundle": current_bundle,
+    }
+    differing = [
+        field
+        for field, expected in expected_fields.items()
+        if manifest.get(field) != expected
+    ]
+    if differing:
+        raise CheckpointPromotionError(
+            "checkpoint manifest lacks the current phase snapshot contract: "
+            + ", ".join(differing)
+        )
+    files = manifest.get("files")
+    if not isinstance(files, Mapping):
+        raise CheckpointPromotionError("checkpoint manifest omits files hash evidence")
+    missing = [path for path in required_files if path not in files]
+    mismatched = [
+        path
+        for path, digest in required_files.items()
+        if path in files and files[path] != digest
+    ]
+    if missing or mismatched:
+        raise CheckpointPromotionError(
+            "checkpoint manifest does not bind all 27 phase snapshot files"
+        )
+
+    missing_embedded = [
+        field for field in _CHECKPOINT_EMBEDDED_REQUIRED_FIELDS if field not in embedded_infos
+    ]
+    if missing_embedded:
+        raise CheckpointPromotionError(
+            "checkpoint embedded infos differ from snapshot-bound sidecar; "
+            "missing required fields: "
+            + ", ".join(missing_embedded)
+        )
+    embedded_differences = [
+        field
+        for field in _CHECKPOINT_EMBEDDED_REQUIRED_FIELDS
+        if embedded_infos.get(field) != manifest.get(field)
+    ]
+    if embedded_differences:
+        raise CheckpointPromotionError(
+            "checkpoint embedded infos differ from snapshot-bound sidecar: "
+            + ", ".join(embedded_differences)
+        )
+    # Every value originally saved inside RSL's ``infos`` must survive into
+    # the sidecar.  Publication-only fields may be added later, but existing
+    # training provenance can never be removed or rewritten.
+    differing_saved_fields = [
+        field
+        for field, value in embedded_infos.items()
+        if field not in manifest or manifest[field] != value
+    ]
+    if differing_saved_fields:
+        raise CheckpointPromotionError(
+            "checkpoint sidecar rewrites embedded training provenance: "
+            + ", ".join(sorted(str(field) for field in differing_saved_fields))
+        )
+
+
+def _validate_checkpoint_payload(
+    *,
+    checkpoint: Path,
+    checkpoint_sha256: str,
+    embedded_infos: Mapping[str, Any],
+    manifest_file: Path,
+    manifest: Mapping[str, Any],
+    manifest_hash: str,
+) -> _CheckpointEvidence:
+    """Validate already-captured checkpoint metadata without reopening its files."""
+
     if manifest.get("schema") != CHECKPOINT_MANIFEST_SCHEMA:
         raise CheckpointPromotionError("candidate checkpoint manifest has the wrong schema")
-    declared_path = Path(str(manifest.get("checkpoint_path", ""))).resolve()
+    declared_path = _unredirected_absolute_path(
+        str(manifest.get("checkpoint_path", "")),
+        label="declared checkpoint",
+    )
     if declared_path != checkpoint:
         raise CheckpointPromotionError("checkpoint manifest is bound to a different file")
-    actual_hash = sha256_file(checkpoint)
+    actual_hash = _hash(checkpoint_sha256, label="captured checkpoint hash")
     if _hash(manifest.get("checkpoint_sha256"), label="manifest checkpoint hash") != actual_hash:
         raise CheckpointPromotionError("checkpoint bytes do not match the checkpoint manifest")
     try:
@@ -251,6 +448,7 @@ def _validate_checkpoint(
         raise CheckpointPromotionError("checkpoint manifest timing is not 120/15 Hz")
     for key in FROZEN_HASH_FIELDS:
         _hash(manifest.get(key), label=f"checkpoint {key}")
+    _validate_checkpoint_snapshot_contract(manifest, embedded_infos)
     return _CheckpointEvidence(
         checkpoint=checkpoint,
         checkpoint_sha256=actual_hash,
@@ -262,16 +460,59 @@ def _validate_checkpoint(
     )
 
 
+def _validate_checkpoint(
+    checkpoint_path: Path | str,
+    manifest_path: Path | str,
+) -> _CheckpointEvidence:
+    checkpoint = _unredirected_absolute_path(
+        checkpoint_path, label="candidate checkpoint"
+    )
+    checkpoint_bytes = _read_checkpoint_snapshot(checkpoint)
+    embedded_infos = _load_embedded_checkpoint_infos(checkpoint_bytes)
+    manifest_file, manifest, manifest_hash = _load_json_snapshot(
+        manifest_path, label="candidate checkpoint manifest"
+    )
+    return _validate_checkpoint_payload(
+        checkpoint=checkpoint,
+        checkpoint_sha256=hashlib.sha256(checkpoint_bytes).hexdigest(),
+        embedded_infos=embedded_infos,
+        manifest_file=manifest_file,
+        manifest=manifest,
+        manifest_hash=manifest_hash,
+    )
+
+
+def _validate_captured_checkpoint(
+    capture: CapturedCheckpointBundle,
+) -> _CheckpointEvidence:
+    """Build evidence exclusively from one immutable live-command capture."""
+
+    try:
+        capture.assert_unchanged()
+    except RuntimeError as exc:
+        raise CheckpointPromotionError(
+            f"captured checkpoint changed before inference export: {exc}"
+        ) from exc
+    return _validate_checkpoint_payload(
+        checkpoint=capture.source_checkpoint_path,
+        checkpoint_sha256=capture.checkpoint_sha256,
+        embedded_infos=capture.embedded_infos,
+        manifest_file=capture.source_manifest_path,
+        manifest=capture.manifest_payload,
+        manifest_hash=capture.manifest_sha256,
+    )
+
+
 def validate_checkpoint_artifact_provenance(
     checkpoint_path: Path | str,
     manifest_path: Path | str,
 ) -> CheckpointArtifactProvenance:
-    """Validate an offline checkpoint/sidecar pair without loading Isaac or Torch.
+    """Validate an offline checkpoint/sidecar pair without loading Isaac.
 
     This is the offline counterpart to ``validate_resume_checkpoint_provenance``:
-    it cannot inspect RSL's embedded ``infos`` without loading the runner, but it
-    strictly binds the actual checkpoint bytes to the declared sidecar path and
-    SHA-256 while enforcing the complete phase-residual policy ABI.
+    it safely decodes RSL's embedded ``infos`` with Torch's restricted loader,
+    binds those exact checkpoint bytes to the sidecar, and enforces the complete
+    phase-residual policy ABI.
     """
 
     evidence = _validate_checkpoint(checkpoint_path, manifest_path)
@@ -282,6 +523,119 @@ def validate_checkpoint_artifact_provenance(
         manifest_sha256=evidence.manifest_sha256,
         manifest=dict(evidence.manifest),
     )
+
+
+def _validate_decision_aggregate_binding(
+    value: Any,
+    *,
+    role: str,
+    checkpoint: _CheckpointEvidence,
+) -> Mapping[str, Any]:
+    if not isinstance(value, Mapping):
+        raise CheckpointPromotionError(
+            f"promotion decision omits {role} aggregate binding"
+        )
+    records = value.get("source_file_records")
+    if (
+        value.get("schema") != "wlr50_clean.validation_aggregate_binding.v1"
+        or value.get("role") != role
+        or value.get("physical_passed") is not True
+        or value.get("seeds") != list(VALIDATION_SEEDS)
+        or not isinstance(value.get("worker_run_dirs"), list)
+        or len(value["worker_run_dirs"]) != len(VALIDATION_SEEDS)
+        or len(set(value["worker_run_dirs"])) != len(VALIDATION_SEEDS)
+        or not isinstance(value.get("canonical_episode_dirs"), list)
+        or len(value["canonical_episode_dirs"]) != len(VALIDATION_SEEDS)
+        or len(set(value["canonical_episode_dirs"])) != len(VALIDATION_SEEDS)
+        or not isinstance(records, list)
+        or not records
+        or any(not isinstance(row, Mapping) for row in records)
+    ):
+        raise CheckpointPromotionError(
+            f"promotion {role} aggregate binding is malformed"
+        )
+    paths = [str(row.get("path", "")) for row in records]
+    if paths != sorted(paths) or len(paths) != len(set(paths)):
+        raise CheckpointPromotionError(
+            f"promotion {role} aggregate source inventory is invalid"
+        )
+    for index, row in enumerate(records):
+        path = Path(str(row.get("path", ""))).resolve()
+        digest = str(row.get("sha256", ""))
+        if (
+            set(row) != {"path", "bytes", "sha256"}
+            or not path.is_file()
+            or isinstance(row.get("bytes"), bool)
+            or not isinstance(row.get("bytes"), int)
+            or row["bytes"] < 0
+            or len(digest) != 64
+            or any(character not in "0123456789abcdef" for character in digest)
+            or path.stat().st_size != row["bytes"]
+            or sha256_file(path) != digest
+        ):
+            raise CheckpointPromotionError(
+                f"promotion {role} aggregate source {index} is stale"
+            )
+    encoded = json.dumps(
+        records, sort_keys=True, separators=(",", ":"), allow_nan=False
+    ).encode("utf-8")
+    if hashlib.sha256(encoded).hexdigest() != value.get("source_file_set_sha256"):
+        raise CheckpointPromotionError(
+            f"promotion {role} aggregate source-set hash is invalid"
+        )
+    aggregate_path = Path(str(value.get("path", ""))).resolve()
+    aggregate_record = next(
+        (row for row in records if Path(str(row.get("path", ""))).resolve() == aggregate_path),
+        None,
+    )
+    if (
+        aggregate_record is None
+        or aggregate_record.get("bytes") != value.get("bytes")
+        or aggregate_record.get("sha256") != value.get("sha256")
+    ):
+        raise CheckpointPromotionError(
+            f"promotion {role} aggregate is absent from its source inventory"
+        )
+    _, aggregate, aggregate_hash = _load_json_snapshot(
+        aggregate_path, label=f"promotion {role} aggregate"
+    )
+    expected_worker_role = "baseline" if role == "baseline" else "candidate"
+    aggregate_workers = aggregate.get("workers")
+    if (
+        aggregate_hash != value.get("sha256")
+        or aggregate.get("schema") != "wlr50_clean.fresh_process_episode_batch.v1"
+        or aggregate.get("role") != expected_worker_role
+        or aggregate.get("seed_set") != "validation"
+        or aggregate.get("seeds") != list(VALIDATION_SEEDS)
+        or aggregate.get("canonical_episode_dirs")
+        != value.get("canonical_episode_dirs")
+        or not isinstance(aggregate_workers, list)
+        or any(not isinstance(row, Mapping) for row in aggregate_workers)
+        or [str(row.get("run_dir", "")) for row in aggregate_workers]
+        != value.get("worker_run_dirs")
+        or aggregate.get("passed") is not True
+    ):
+        raise CheckpointPromotionError(
+            f"promotion {role} aggregate payload differs from its binding"
+        )
+    if role == "candidate":
+        if (
+            Path(str(value.get("checkpoint_path", ""))).resolve()
+            != checkpoint.checkpoint
+            or value.get("checkpoint_sha256") != checkpoint.checkpoint_sha256
+            or Path(str(value.get("checkpoint_manifest_path", ""))).resolve()
+            != checkpoint.manifest_path
+            or value.get("checkpoint_manifest_sha256") != checkpoint.manifest_sha256
+            or Path(str(aggregate.get("checkpoint", ""))).resolve()
+            != checkpoint.checkpoint
+            or aggregate.get("checkpoint_sha256") != checkpoint.checkpoint_sha256
+        ):
+            raise CheckpointPromotionError(
+                "promotion candidate aggregate checkpoint binding differs"
+            )
+    elif aggregate.get("checkpoint") is not None:
+        raise CheckpointPromotionError("promotion baseline aggregate names a checkpoint")
+    return dict(value)
 
 
 def _validate_promotion_decision(
@@ -349,6 +703,16 @@ def _validate_promotion_decision(
         decision.get("candidate_checkpoint_sha256"), label="promotion candidate hash"
     ) != checkpoint.checkpoint_sha256:
         raise CheckpointPromotionError("promotion decision checkpoint hash mismatch")
+    _validate_decision_aggregate_binding(
+        decision.get("baseline_evaluation_aggregate"),
+        role="baseline",
+        checkpoint=checkpoint,
+    )
+    _validate_decision_aggregate_binding(
+        decision.get("candidate_validation_aggregate"),
+        role="candidate",
+        checkpoint=checkpoint,
+    )
     return path, decision, decision_hash
 
 
@@ -785,6 +1149,12 @@ def promote_best_validation_checkpoint(
                 "promotion_decision_sha256": decision_hash,
                 "validation_seeds": list(VALIDATION_SEEDS),
                 "validation_promotion": dict(decision["promotion"]),
+                "baseline_evaluation_aggregate": dict(
+                    decision["baseline_evaluation_aggregate"]
+                ),
+                "candidate_validation_aggregate": dict(
+                    decision["candidate_validation_aggregate"]
+                ),
                 "validation_promotion_authorized": True,
                 "locked_test_authorized": False,
                 "publication_role": "best_validation",
@@ -809,6 +1179,12 @@ def promote_best_validation_checkpoint(
             "promotion_decision_sha256": decision_hash,
             "validation_seeds": list(VALIDATION_SEEDS),
             "promotion": dict(decision["promotion"]),
+            "baseline_evaluation_aggregate": dict(
+                decision["baseline_evaluation_aggregate"]
+            ),
+            "candidate_validation_aggregate": dict(
+                decision["candidate_validation_aggregate"]
+            ),
             "published_best_validation": {
                 "path": str(artifacts.best_checkpoint),
                 "sha256": checkpoint.checkpoint_sha256,
@@ -827,6 +1203,16 @@ def promote_best_validation_checkpoint(
             or sha256_file(decision_path) != decision_hash
         ):
             raise CheckpointPromotionError("validation promotion input changed during publication")
+        _validate_decision_aggregate_binding(
+            decision["baseline_evaluation_aggregate"],
+            role="baseline",
+            checkpoint=checkpoint,
+        )
+        _validate_decision_aggregate_binding(
+            decision["candidate_validation_aggregate"],
+            role="candidate",
+            checkpoint=checkpoint,
+        )
         _publish_bundle_no_replace(
             (
                 (stage_best, artifacts.best_checkpoint),
@@ -1546,6 +1932,28 @@ def _maximum_tensor_error(left: Any, right: Any) -> float:
     return float(torch.max(torch.abs(left - right)).item()) if left.numel() else 0.0
 
 
+def _canonical_float32_tensor_evidence(value: Any, *, label: str) -> dict[str, Any]:
+    """Serialize one finite CPU tensor as canonical little-endian float32 evidence."""
+
+    import torch  # type: ignore
+
+    try:
+        tensor = value.detach().to(device="cpu", dtype=torch.float32).contiguous()
+        shape = [int(part) for part in tensor.shape]
+        flat = [float(item) for item in tensor.reshape(-1).tolist()]
+    except Exception as exc:
+        raise CheckpointPromotionError(f"{label} is not a serializable tensor") from exc
+    if not bool(torch.isfinite(tensor).all().item()):
+        raise CheckpointPromotionError(f"{label} contains NaN or infinity")
+    encoded = struct.pack(f"<{len(flat)}f", *flat)
+    return {
+        "encoding": "little_endian_ieee754_float32_c_order",
+        "shape": shape,
+        "values": tensor.tolist(),
+        "sha256": hashlib.sha256(encoded).hexdigest(),
+    }
+
+
 def _onnx_available() -> tuple[bool, str]:
     if importlib.util.find_spec("onnx") is None:
         return False, "onnx package is not installed"
@@ -1565,13 +1973,26 @@ def export_inference_actor(
     source_checkpoint_path: Path | str,
     source_manifest_path: Path | str,
     output_root: Path | str,
+    captured_bundle: CapturedCheckpointBundle | None = None,
     batch_size: int = 4,
     absolute_tolerance: float = 1.0e-6,
     relative_tolerance: float = 1.0e-5,
 ) -> InferenceActorArtifacts:
     """Export and independently verify the deterministic inference-only actor."""
 
-    checkpoint = _validate_checkpoint(source_checkpoint_path, source_manifest_path)
+    if captured_bundle is None:
+        checkpoint = _validate_checkpoint(source_checkpoint_path, source_manifest_path)
+    else:
+        source_checkpoint = Path(source_checkpoint_path).resolve()
+        source_manifest = Path(source_manifest_path).resolve()
+        if (
+            source_checkpoint != captured_bundle.source_checkpoint_path
+            or source_manifest != captured_bundle.source_manifest_path
+        ):
+            raise CheckpointPromotionError(
+                "inference export capture belongs to a different checkpoint pair"
+            )
+        checkpoint = _validate_captured_checkpoint(captured_bundle)
     if (
         checkpoint.manifest.get("publication_role") != "improved"
         or checkpoint.manifest.get("validation_promotion_authorized") is not True
@@ -1772,6 +2193,14 @@ def export_inference_actor(
             }
 
         parameter_count = sum(int(parameter.numel()) for parameter in actor.parameters())
+        verification_input = _canonical_float32_tensor_evidence(
+            sample_cpu,
+            label="actor verification input",
+        )
+        loaded_runner_reference = _canonical_float32_tensor_evidence(
+            reference_cpu,
+            label="loaded runner reference output",
+        )
         evidence = {
             "schema": INFERENCE_EXPORT_SCHEMA,
             "valid": True,
@@ -1790,6 +2219,12 @@ def export_inference_actor(
             "residual_action_dimension": checkpoint.action_dimension,
             "test_batch_size": int(batch_size),
             "test_input": "deterministic linspace[-1,1] float32",
+            "verification_input_sha256": verification_input["sha256"],
+            "verification_input_float32": verification_input,
+            "loaded_runner_reference_output_sha256": loaded_runner_reference[
+                "sha256"
+            ],
+            "loaded_runner_reference_output_float32": loaded_runner_reference,
             "absolute_tolerance": atol,
             "relative_tolerance": rtol,
             "loaded_runner_output_shape": list(reference_cpu.shape),
@@ -1802,11 +2237,19 @@ def export_inference_actor(
         }
         stage_manifest = stage_manifests / INFERENCE_EXPORT_MANIFEST_NAME
         atomic_write_json(stage_manifest, evidence)
-        if (
-            sha256_file(checkpoint.checkpoint) != checkpoint.checkpoint_sha256
-            or sha256_file(checkpoint.manifest_path) != checkpoint.manifest_sha256
-        ):
-            raise CheckpointPromotionError("checkpoint changed during inference export")
+        if captured_bundle is None:
+            if (
+                sha256_file(checkpoint.checkpoint) != checkpoint.checkpoint_sha256
+                or sha256_file(checkpoint.manifest_path) != checkpoint.manifest_sha256
+            ):
+                raise CheckpointPromotionError("checkpoint changed during inference export")
+        else:
+            try:
+                captured_bundle.assert_unchanged()
+            except RuntimeError as exc:
+                raise CheckpointPromotionError(
+                    f"captured checkpoint changed during inference export: {exc}"
+                ) from exc
         pairs = [
             (stage_torchscript, torchscript_path),
             (stage_manifest, manifest_path),

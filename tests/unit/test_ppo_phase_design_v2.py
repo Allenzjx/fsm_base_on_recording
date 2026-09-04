@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 from dataclasses import replace
 from pathlib import Path
 
 import pytest
+import yaml
 
 from wlr50_clean.ppo.observation_schema import PPOObservationFrame
 from wlr50_clean.ppo.observation_schema_v2 import (
@@ -21,6 +23,7 @@ from wlr50_clean.ppo.phase_objectives import (
     PROMPT_CAPTURE_WEIGHTS,
     PROMPT_PHASE_WEIGHTS,
     STATE_IDS,
+    SUCCESSFUL_FSM_ATTITUDE_ENVELOPE_DERIVATION_SHA256,
     TRANSFER_PHASES,
     PhaseObjectiveError,
     PhysicalProgressState,
@@ -40,6 +43,29 @@ from wlr50_clean.ppo.reward_v2 import (
 
 
 REPOSITORY = Path(__file__).resolve().parents[2]
+
+
+def _attitude_envelope_digest(payload: dict[str, object]) -> str:
+    envelope = payload["successful_fsm_attitude_envelope"]
+    assert isinstance(envelope, dict)
+    canonical = {
+        name: envelope[name]
+        for name in (
+            "schema",
+            "source",
+            "derivation",
+            "excess_normalization_rad",
+            "phases",
+        )
+    }
+    return hashlib.sha256(
+        json.dumps(
+            canonical,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=True,
+        ).encode("utf-8")
+    ).hexdigest()
 
 
 def _v1_frame() -> PPOObservationFrame:
@@ -170,6 +196,107 @@ def test_transfer_set_is_exact_and_weight_interpolation_is_continuous() -> None:
         assert objective.level_penalty_fraction_at(0.0) == 0.0
         assert objective.level_penalty_fraction_at(1.0) == 1.0
         assert objective.weights_at(1.0).body_stability >= objective.weights_at(0.0).body_stability
+
+
+def test_transfer_attitude_envelopes_are_bound_to_frozen_trial043_evidence() -> None:
+    objectives = load_phase_objectives()
+    evidence = objectives.successful_fsm_attitude_envelope
+
+    assert evidence.derivation_sha256 == (
+        SUCCESSFUL_FSM_ATTITUDE_ENVELOPE_DERIVATION_SHA256
+    )
+    assert evidence.selected_trial_id == "trial_043_20260902_clean_v010"
+    assert tuple(evidence.phase_max_attitude_error_rad) == (
+        "P01",
+        "P04",
+        "P08",
+        "P10",
+        "P11",
+    )
+    assert evidence.phase_sample_counts == {
+        "P01": 1600,
+        "P04": 584,
+        "P08": 56,
+        "P10": 26,
+        "P11": 62,
+    }
+    assert evidence.phase_max_attitude_error_rad["P08"] == pytest.approx(
+        0.22242370433007352
+    )
+    assert evidence.phase_max_attitude_error_rad["P11"] == pytest.approx(
+        0.17444540287005458
+    )
+    assert evidence.source["frozen_manifest_sha256"] == (
+        "bd6f1c43322fcd428475d4377c7c7737a21b01699bb105b6ec4b38a8bd3f60aa"
+    )
+    assert evidence.source["level_reference_snapshot_sha256"] == (
+        "6eaeb2a7291c8802880f73cfa555a8264a072adcb666f3fc34432958d4c08507"
+    )
+    for state_id in STATE_IDS:
+        objective = objectives.phase(state_id)
+        if state_id in TRANSFER_PHASES:
+            assert objective.successful_fsm_attitude_envelope_rad == pytest.approx(
+                evidence.phase_max_attitude_error_rad[state_id]
+            )
+            assert (
+                objective.attitude_envelope_excess_normalization_rad
+                == evidence.excess_normalization_rad
+            )
+        else:
+            assert objective.successful_fsm_attitude_envelope_rad is None
+            assert objective.attitude_envelope_excess_normalization_rad is None
+
+
+def test_attitude_envelope_value_tamper_fails_closed(tmp_path: Path) -> None:
+    source = REPOSITORY / "configs" / "ppo_phase_objectives_v2.yaml"
+    payload = yaml.safe_load(source.read_text(encoding="utf-8"))
+    payload["successful_fsm_attitude_envelope"]["phases"]["P08"][
+        "max_attitude_error_rad"
+    ] += 0.01
+    changed = tmp_path / "tampered_phase_objectives.yaml"
+    changed.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+
+    with pytest.raises(PhaseObjectiveError, match="derivation digest mismatch"):
+        load_phase_objectives(changed)
+
+
+def test_attitude_envelope_source_hash_rederivation_still_fails_locked_v1(
+    tmp_path: Path,
+) -> None:
+    source = REPOSITORY / "configs" / "ppo_phase_objectives_v2.yaml"
+    payload = yaml.safe_load(source.read_text(encoding="utf-8"))
+    envelope = payload["successful_fsm_attitude_envelope"]
+    envelope["source"]["observation_stream_sha256"] = "0" * 64
+    envelope["derivation_sha256"] = _attitude_envelope_digest(payload)
+    changed = tmp_path / "rederived_tampered_phase_objectives.yaml"
+    changed.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+
+    with pytest.raises(PhaseObjectiveError, match="not the locked v1 evidence"):
+        load_phase_objectives(changed)
+
+
+def test_attitude_envelope_loader_never_opens_raw_recording_streams(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    opened: list[Path] = []
+    original_open = Path.open
+
+    def tracked_open(path: Path, *args: object, **kwargs: object):
+        opened.append(path.resolve())
+        return original_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", tracked_open)
+    load_phase_objectives()
+
+    assert opened
+    assert all(path.suffix != ".jsonl" for path in opened)
+    assert all(path == REPOSITORY or REPOSITORY in path.parents for path in opened)
+    assert {
+        "ppo_phase_objectives_v2.yaml",
+        "frozen_successful_fsm_manifest.json",
+        "manifest.json",
+        "snapshot.json",
+    }.issubset({path.name for path in opened})
 
 
 def test_phase_potential_uses_only_physical_terms_and_global_formula() -> None:

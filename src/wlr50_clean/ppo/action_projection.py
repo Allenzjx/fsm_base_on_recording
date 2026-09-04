@@ -176,6 +176,7 @@ class ProjectionResult:
     remaining_recording_envelope_diagnostic_full12: tuple[float, ...]
     recording_envelope_exceeded_full12: tuple[bool, ...]
     rate_projected_residual_full12: tuple[float, ...]
+    phase_scale_projected_residual_full12: tuple[float, ...]
     limit_projected_residual_full12: tuple[float, ...]
     safe_projected_residual_full12: tuple[float, ...]
     applied_action_full12: tuple[float, ...]
@@ -490,6 +491,7 @@ class ActionProjector:
                     )
                 ),
                 rate_projected_residual_full12=zeros,
+                phase_scale_projected_residual_full12=zeros,
                 limit_projected_residual_full12=zeros,
                 safe_projected_residual_full12=zeros,
                 applied_action_full12=nominal,
@@ -534,6 +536,25 @@ class ActionProjector:
             value if mask else 0.0
             for value, mask in zip(rate_candidate, effective_mask, strict=True)
         )
+        # The rate limiter is stateful and therefore cannot, by itself, enforce
+        # a newly smaller phase scale when ``previous`` came from another
+        # phase (or from an untrusted caller).  Reapply the current phase's
+        # physical M*S bound after slew/mask projection.  Hard safety still
+        # runs last and may deliberately override this policy residual bound.
+        physical_phase_caps = tuple(
+            phase_scale * physical_scale
+            for phase_scale, physical_scale in zip(
+                scales,
+                self.config.physical_residual_scale_full12,
+                strict=True,
+            )
+        )
+        phase_scale_projected = tuple(
+            _clamp(value, -cap, cap)
+            for value, cap in zip(
+                rate_projected, physical_phase_caps, strict=True
+            )
+        )
         # Servo limits reserve the configured safety margin.  Work directly in
         # residual space so the projection never subtracts two nearly equal
         # absolute commands to recover a tiny residual.  Besides avoiding
@@ -553,7 +574,7 @@ class ActionProjector:
         limit_residual = tuple(
             _clamp(residual_value, lower, upper)
             for residual_value, (lower, upper) in zip(
-                rate_projected, residual_intervals, strict=True
+                phase_scale_projected, residual_intervals, strict=True
             )
         )
         limit_action = tuple(
@@ -596,7 +617,9 @@ class ActionProjector:
             stages.append("residual_rate_limit")
         if rate_projected != rate_candidate:
             stages.append("phase_active_mask_post_rate")
-        if limit_residual != rate_projected:
+        if phase_scale_projected != rate_projected:
+            stages.append("phase_residual_scale_cap_post_rate")
+        if limit_residual != phase_scale_projected:
             stages.append("joint_safety_margin_or_wheel_speed_limit")
         safety_modified = safe_action != limit_action
         if safety_modified:
@@ -627,6 +650,7 @@ class ActionProjector:
                 )
             ),
             rate_projected_residual_full12=rate_projected,
+            phase_scale_projected_residual_full12=phase_scale_projected,
             limit_projected_residual_full12=limit_residual,
             safe_projected_residual_full12=safe_residual,
             applied_action_full12=tuple(safe_action),

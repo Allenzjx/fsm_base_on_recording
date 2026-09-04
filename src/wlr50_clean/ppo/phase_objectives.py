@@ -8,7 +8,10 @@ reward weights for the transfer-aware phases.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import math
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterator, Mapping
@@ -17,6 +20,15 @@ import yaml
 
 
 PHASE_OBJECTIVES_SCHEMA = "wlr50_clean.ppo_phase_objectives.v2"
+SUCCESSFUL_FSM_ATTITUDE_ENVELOPE_SCHEMA = (
+    "wlr50_clean.successful_fsm_attitude_envelope.v1"
+)
+# This digest is intentionally locked in code as well as declared in YAML.  A
+# caller cannot relabel arbitrary numbers as a successful-FSM envelope merely
+# by editing both the values and the self-declared digest in the config.
+SUCCESSFUL_FSM_ATTITUDE_ENVELOPE_DERIVATION_SHA256 = (
+    "ec769118f304e3b33635b37497c9d0e041793d3f3ce443d07b20443bddfbc7bc"
+)
 STATE_IDS = tuple(f"P{index:02d}" for index in range(1, 14))
 DENSE_FAMILIES = (
     "phase_task_progress",
@@ -26,9 +38,15 @@ DENSE_FAMILIES = (
     "residual_regularization",
 )
 TRANSFER_PHASES = frozenset({"P01", "P04", "P08", "P10", "P11"})
+TRANSFER_PHASE_IDS = ("P01", "P04", "P08", "P10", "P11")
+REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_PHASE_OBJECTIVES_PATH = (
-    Path(__file__).resolve().parents[3] / "configs" / "ppo_phase_objectives_v2.yaml"
+    REPOSITORY_ROOT / "configs" / "ppo_phase_objectives_v2.yaml"
 )
+_FROZEN_MANIFEST_PATH = "outputs/final/frozen_successful_fsm_manifest.json"
+_SNAPSHOT_MANIFEST_PATH = "reference/ppo_phase_snapshots/manifest.json"
+_LEVEL_REFERENCE_SNAPSHOT_PATH = "reference/ppo_phase_snapshots/P01/snapshot.json"
+_SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
 
 # These are the table values supplied in the phase-specific PPO specification.
 # P08/P11 use the active row here and have an additional prescribed capture row.
@@ -228,6 +246,29 @@ class TransferSchedule:
 
 
 @dataclass(frozen=True, slots=True)
+class SuccessfulFSMAttitudeEnvelope:
+    """Committed, runtime-verifiable provenance for transfer attitude limits.
+
+    The large source streams are deliberately not opened by this loader.  The
+    embedded extrema are instead locked by a versioned derivation digest and
+    anchored to the frozen publication plus its P01 level-reference snapshot.
+    """
+
+    schema: str
+    selected_trial_id: str
+    source: Mapping[str, Any]
+    derivation: Mapping[str, Any]
+    excess_normalization_rad: float
+    phase_sample_counts: Mapping[str, int]
+    phase_max_attitude_error_rad: Mapping[str, float]
+    derivation_sha256: str
+
+    def envelope_for(self, state_id: str) -> float | None:
+        value = self.phase_max_attitude_error_rad.get(state_id)
+        return None if value is None else float(value)
+
+
+@dataclass(frozen=True, slots=True)
 class PhaseObjective:
     state_id: str
     name: str
@@ -238,6 +279,8 @@ class PhaseObjective:
     contact_cost_terms: tuple[str, ...]
     prompt_weights: PhaseWeights
     transfer_schedule: TransferSchedule | None = None
+    successful_fsm_attitude_envelope_rad: float | None = None
+    attitude_envelope_excess_normalization_rad: float | None = None
 
     def __post_init__(self) -> None:
         if self.state_id not in STATE_IDS:
@@ -281,6 +324,32 @@ class PhaseObjective:
             raise PhaseObjectiveError(
                 f"{self.state_id} transfer schedule does not match authoritative set"
             )
+        has_envelope = self.successful_fsm_attitude_envelope_rad is not None
+        has_normalization = (
+            self.attitude_envelope_excess_normalization_rad is not None
+        )
+        if has_envelope != has_normalization or expects_transfer != has_envelope:
+            raise PhaseObjectiveError(
+                f"{self.state_id} successful-FSM attitude envelope must exist "
+                "exactly for transfer-aware phases"
+            )
+        if has_envelope:
+            envelope = _finite(
+                self.successful_fsm_attitude_envelope_rad,
+                f"{self.state_id}.successful_fsm_attitude_envelope_rad",
+            )
+            normalization = _finite(
+                self.attitude_envelope_excess_normalization_rad,
+                f"{self.state_id}.attitude_envelope_excess_normalization_rad",
+            )
+            if envelope < 0.0 or envelope >= math.pi:
+                raise PhaseObjectiveError(
+                    f"{self.state_id} attitude envelope must be within [0, pi)"
+                )
+            if normalization <= 0.0:
+                raise PhaseObjectiveError(
+                    f"{self.state_id} attitude-envelope normalization must be positive"
+                )
 
     def weights_at(self, physical_progress: float) -> PhaseWeights:
         _unit_interval(physical_progress, "physical phase progress")
@@ -304,12 +373,34 @@ class PhaseObjective:
 @dataclass(frozen=True, slots=True)
 class PhaseObjectivesConfig:
     phases: Mapping[str, PhaseObjective]
+    successful_fsm_attitude_envelope: SuccessfulFSMAttitudeEnvelope
 
     def __post_init__(self) -> None:
         if tuple(self.phases) != STATE_IDS:
             raise PhaseObjectiveError(
                 "phase objectives must preserve the authoritative P01--P13 order"
             )
+        evidence = self.successful_fsm_attitude_envelope
+        if tuple(evidence.phase_max_attitude_error_rad) != TRANSFER_PHASE_IDS:
+            raise PhaseObjectiveError(
+                "successful-FSM attitude envelope must cover exactly the transfer phases"
+            )
+        for state_id, objective in self.phases.items():
+            expected = evidence.envelope_for(state_id)
+            if objective.successful_fsm_attitude_envelope_rad != expected:
+                raise PhaseObjectiveError(
+                    f"{state_id} objective attitude envelope is not bound to evidence"
+                )
+            expected_normalization = (
+                evidence.excess_normalization_rad if expected is not None else None
+            )
+            if (
+                objective.attitude_envelope_excess_normalization_rad
+                != expected_normalization
+            ):
+                raise PhaseObjectiveError(
+                    f"{state_id} objective envelope normalization is not bound to evidence"
+                )
 
     def phase(self, state_id: str) -> PhaseObjective:
         try:
@@ -336,6 +427,309 @@ class PhysicalProgressState:
                     f"physical progress may not use time/recording source {name!r}"
                 )
             _unit_interval(value, f"physical progress term {name!r}")
+
+
+def _require_sha256(value: Any, label: str) -> str:
+    digest = str(value)
+    if _SHA256_PATTERN.fullmatch(digest) is None:
+        raise PhaseObjectiveError(f"{label} must be a lowercase SHA-256 digest")
+    return digest
+
+
+def _verified_repository_json(
+    relative_path: str,
+    expected_sha256: str,
+    label: str,
+) -> Mapping[str, Any]:
+    path = REPOSITORY_ROOT / Path(relative_path)
+    try:
+        payload_bytes = path.read_bytes()
+    except OSError as exc:
+        raise PhaseObjectiveError(f"cannot read {label} at {path}") from exc
+    actual_sha256 = hashlib.sha256(payload_bytes).hexdigest()
+    if actual_sha256 != expected_sha256:
+        raise PhaseObjectiveError(
+            f"{label} SHA-256 mismatch: expected {expected_sha256}, "
+            f"got {actual_sha256}"
+        )
+    try:
+        payload = json.loads(payload_bytes)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise PhaseObjectiveError(f"{label} is not valid JSON") from exc
+    if not isinstance(payload, Mapping):
+        raise PhaseObjectiveError(f"{label} root must be a mapping")
+    return payload
+
+
+def _load_successful_fsm_attitude_envelope(
+    raw: Any,
+) -> SuccessfulFSMAttitudeEnvelope:
+    if not isinstance(raw, Mapping):
+        raise PhaseObjectiveError(
+            "successful_fsm_attitude_envelope must be a mapping"
+        )
+    expected_envelope_keys = {
+        "schema",
+        "source",
+        "derivation",
+        "excess_normalization_rad",
+        "phases",
+        "derivation_sha256",
+    }
+    if set(raw) != expected_envelope_keys:
+        raise PhaseObjectiveError(
+            "successful_fsm_attitude_envelope fields are incomplete or unexpected"
+        )
+    if raw.get("schema") != SUCCESSFUL_FSM_ATTITUDE_ENVELOPE_SCHEMA:
+        raise PhaseObjectiveError(
+            "unsupported successful-FSM attitude-envelope schema"
+        )
+
+    source = raw.get("source")
+    expected_source_keys = {
+        "selected_trial_id",
+        "frozen_manifest_path",
+        "frozen_manifest_sha256",
+        "raw_trial_manifest_sha256",
+        "observation_stream_name",
+        "observation_stream_sha256",
+        "command_stream_name",
+        "command_stream_sha256",
+        "snapshot_manifest_path",
+        "snapshot_manifest_sha256",
+        "level_reference_snapshot_path",
+        "level_reference_snapshot_sha256",
+    }
+    if not isinstance(source, Mapping) or set(source) != expected_source_keys:
+        raise PhaseObjectiveError(
+            "successful-FSM attitude-envelope source fields are incomplete or unexpected"
+        )
+    expected_source_values = {
+        "selected_trial_id": "trial_043_20260902_clean_v010",
+        "frozen_manifest_path": _FROZEN_MANIFEST_PATH,
+        "observation_stream_name": "observation_120hz.jsonl",
+        "command_stream_name": "full12_commands_120hz.jsonl",
+        "snapshot_manifest_path": _SNAPSHOT_MANIFEST_PATH,
+        "level_reference_snapshot_path": _LEVEL_REFERENCE_SNAPSHOT_PATH,
+    }
+    for name, expected in expected_source_values.items():
+        if source.get(name) != expected:
+            raise PhaseObjectiveError(
+                f"successful-FSM attitude-envelope source {name} changed"
+            )
+    source_hashes = {
+        name: _require_sha256(
+            source.get(name), f"successful_fsm_attitude_envelope.source.{name}"
+        )
+        for name in (
+            "frozen_manifest_sha256",
+            "raw_trial_manifest_sha256",
+            "observation_stream_sha256",
+            "command_stream_sha256",
+            "snapshot_manifest_sha256",
+            "level_reference_snapshot_sha256",
+        )
+    }
+
+    derivation = raw.get("derivation")
+    expected_derivation_keys = {
+        "phase_assignment",
+        "level_reference",
+        "level_reference_orientation_wxyz",
+        "attitude_metric",
+        "statistic",
+        "runtime_reads_raw_trial_streams",
+    }
+    if not isinstance(derivation, Mapping) or set(derivation) != expected_derivation_keys:
+        raise PhaseObjectiveError(
+            "successful-FSM attitude-envelope derivation is incomplete or unexpected"
+        )
+    expected_derivation_values = {
+        "phase_assignment": "full12_commands_120hz.state_id_joined_on_physics_tick",
+        "level_reference": "P01_snapshot_tick_0_level_reference_orientation_wxyz",
+        "attitude_metric": "hypot(calibrated_roll_error_rad,calibrated_pitch_error_rad)",
+        "statistic": "maximum_over_all_120hz_samples_in_phase",
+    }
+    for name, expected in expected_derivation_values.items():
+        if derivation.get(name) != expected:
+            raise PhaseObjectiveError(
+                f"successful-FSM attitude-envelope derivation {name} changed"
+            )
+    if derivation.get("runtime_reads_raw_trial_streams") is not False:
+        raise PhaseObjectiveError(
+            "runtime must not read raw successful-FSM Recording streams"
+        )
+    orientation_raw = derivation.get("level_reference_orientation_wxyz")
+    if not isinstance(orientation_raw, list) or len(orientation_raw) != 4:
+        raise PhaseObjectiveError(
+            "successful-FSM level-reference orientation must be a four-vector"
+        )
+    orientation = tuple(
+        _finite(value, f"level_reference_orientation_wxyz[{index}]")
+        for index, value in enumerate(orientation_raw)
+    )
+    if not math.isclose(
+        math.sqrt(sum(value * value for value in orientation)),
+        1.0,
+        rel_tol=0.0,
+        abs_tol=1.0e-6,
+    ):
+        raise PhaseObjectiveError(
+            "successful-FSM level-reference orientation is not normalized"
+        )
+
+    normalization = _finite(
+        raw.get("excess_normalization_rad"),
+        "successful_fsm_attitude_envelope.excess_normalization_rad",
+    )
+    if normalization <= 0.0:
+        raise PhaseObjectiveError(
+            "successful-FSM attitude-envelope normalization must be positive"
+        )
+    phases_raw = raw.get("phases")
+    if not isinstance(phases_raw, Mapping) or tuple(phases_raw) != TRANSFER_PHASE_IDS:
+        raise PhaseObjectiveError(
+            "successful-FSM attitude envelope must cover exactly "
+            "P01/P04/P08/P10/P11"
+        )
+    phase_sample_counts: dict[str, int] = {}
+    phase_maxima: dict[str, float] = {}
+    for state_id in TRANSFER_PHASE_IDS:
+        row = phases_raw[state_id]
+        if not isinstance(row, Mapping) or set(row) != {
+            "sample_count",
+            "max_attitude_error_rad",
+        }:
+            raise PhaseObjectiveError(f"{state_id} attitude-envelope row is invalid")
+        sample_count = row.get("sample_count")
+        if isinstance(sample_count, bool) or not isinstance(sample_count, int):
+            raise PhaseObjectiveError(f"{state_id} envelope sample_count must be an integer")
+        if sample_count <= 0:
+            raise PhaseObjectiveError(f"{state_id} envelope sample_count must be positive")
+        maximum = _finite(
+            row.get("max_attitude_error_rad"),
+            f"{state_id}.max_attitude_error_rad",
+        )
+        if maximum < 0.0 or maximum >= math.pi:
+            raise PhaseObjectiveError(
+                f"{state_id} envelope maximum must be within [0, pi)"
+            )
+        phase_sample_counts[state_id] = sample_count
+        phase_maxima[state_id] = maximum
+
+    declared_derivation_sha256 = _require_sha256(
+        raw.get("derivation_sha256"),
+        "successful_fsm_attitude_envelope.derivation_sha256",
+    )
+    digest_payload = {
+        name: raw[name]
+        for name in (
+            "schema",
+            "source",
+            "derivation",
+            "excess_normalization_rad",
+            "phases",
+        )
+    }
+    calculated_derivation_sha256 = hashlib.sha256(
+        json.dumps(
+            digest_payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=True,
+        ).encode("utf-8")
+    ).hexdigest()
+    if declared_derivation_sha256 != calculated_derivation_sha256:
+        raise PhaseObjectiveError(
+            "successful-FSM attitude-envelope derivation digest mismatch"
+        )
+    if (
+        declared_derivation_sha256
+        != SUCCESSFUL_FSM_ATTITUDE_ENVELOPE_DERIVATION_SHA256
+    ):
+        raise PhaseObjectiveError(
+            "successful-FSM attitude-envelope derivation is not the locked v1 evidence"
+        )
+
+    frozen_manifest = _verified_repository_json(
+        _FROZEN_MANIFEST_PATH,
+        source_hashes["frozen_manifest_sha256"],
+        "frozen successful-FSM manifest",
+    )
+    if (
+        frozen_manifest.get("schema")
+        != "wlr50_clean.frozen_baseline_publication.v1"
+        or frozen_manifest.get("status")
+        != "FROZEN_PHYSICAL_SUCCESS_FSM_BASELINE"
+        or frozen_manifest.get("selected_trial_id")
+        != source["selected_trial_id"]
+    ):
+        raise PhaseObjectiveError(
+            "frozen successful-FSM manifest does not match envelope provenance"
+        )
+    raw_trial_manifest = frozen_manifest.get("raw_trial_manifest")
+    if (
+        not isinstance(raw_trial_manifest, Mapping)
+        or raw_trial_manifest.get("sha256")
+        != source_hashes["raw_trial_manifest_sha256"]
+        or raw_trial_manifest.get("artifact_hashes_verified") is not True
+    ):
+        raise PhaseObjectiveError(
+            "frozen successful-FSM raw-trial manifest binding is invalid"
+        )
+
+    snapshot_manifest = _verified_repository_json(
+        _SNAPSHOT_MANIFEST_PATH,
+        source_hashes["snapshot_manifest_sha256"],
+        "phase snapshot manifest",
+    )
+    snapshots = snapshot_manifest.get("snapshots")
+    p01_rows = (
+        [row for row in snapshots if isinstance(row, Mapping) and row.get("phase") == "P01"]
+        if isinstance(snapshots, list)
+        else []
+    )
+    if (
+        snapshot_manifest.get("schema")
+        != "wlr50_clean.ppo_phase_snapshot_manifest.v1"
+        or snapshot_manifest.get("source_trial") != source["selected_trial_id"]
+        or len(p01_rows) != 1
+        or p01_rows[0].get("source_tick") != 0
+        or p01_rows[0].get("file_sha256")
+        != source_hashes["level_reference_snapshot_sha256"]
+    ):
+        raise PhaseObjectiveError(
+            "P01 snapshot manifest binding does not match envelope provenance"
+        )
+    level_snapshot = _verified_repository_json(
+        _LEVEL_REFERENCE_SNAPSHOT_PATH,
+        source_hashes["level_reference_snapshot_sha256"],
+        "P01 level-reference snapshot",
+    )
+    root_state = level_snapshot.get("root_state")
+    if (
+        level_snapshot.get("schema")
+        != "wlr50_clean.ppo_phase_entry_snapshot.v1"
+        or level_snapshot.get("source_trial") != source["selected_trial_id"]
+        or level_snapshot.get("source_tick") != 0
+        or level_snapshot.get("fsm_state") != "P01"
+        or not isinstance(root_state, Mapping)
+        or tuple(root_state.get("orientation_wxyz", ())) != orientation
+    ):
+        raise PhaseObjectiveError(
+            "P01 level-reference snapshot does not match envelope derivation"
+        )
+
+    return SuccessfulFSMAttitudeEnvelope(
+        schema=SUCCESSFUL_FSM_ATTITUDE_ENVELOPE_SCHEMA,
+        selected_trial_id=str(source["selected_trial_id"]),
+        source=dict(source),
+        derivation=dict(derivation),
+        excess_normalization_rad=normalization,
+        phase_sample_counts=phase_sample_counts,
+        phase_max_attitude_error_rad=phase_maxima,
+        derivation_sha256=declared_derivation_sha256,
+    )
 
 
 def _load_transfer_schedule(raw: Mapping[str, Any], label: str) -> TransferSchedule:
@@ -388,6 +782,9 @@ def load_phase_objectives(
         set(forbidden)
     ):
         raise PhaseObjectiveError("progress_contract omits required forbidden sources")
+    envelope = _load_successful_fsm_attitude_envelope(
+        raw.get("successful_fsm_attitude_envelope")
+    )
 
     phases_raw = raw.get("phases")
     if not isinstance(phases_raw, Mapping) or tuple(phases_raw) != STATE_IDS:
@@ -444,8 +841,17 @@ def load_phase_objectives(
             contact_cost_terms=tuple(str(value) for value in contact_raw),
             prompt_weights=prompt_weights,
             transfer_schedule=transfer,
+            successful_fsm_attitude_envelope_rad=envelope.envelope_for(state_id),
+            attitude_envelope_excess_normalization_rad=(
+                envelope.excess_normalization_rad
+                if state_id in TRANSFER_PHASES
+                else None
+            ),
         )
-    return PhaseObjectivesConfig(phases=phases)
+    return PhaseObjectivesConfig(
+        phases=phases,
+        successful_fsm_attitude_envelope=envelope,
+    )
 
 
 def phase_local_potential(
@@ -513,13 +919,17 @@ __all__ = [
     "PROMPT_CAPTURE_WEIGHTS",
     "PROMPT_PHASE_WEIGHTS",
     "STATE_IDS",
+    "SUCCESSFUL_FSM_ATTITUDE_ENVELOPE_DERIVATION_SHA256",
+    "SUCCESSFUL_FSM_ATTITUDE_ENVELOPE_SCHEMA",
     "TRANSFER_PHASES",
+    "TRANSFER_PHASE_IDS",
     "PhaseObjective",
     "PhaseObjectiveError",
     "PhaseObjectivesConfig",
     "PhaseWeights",
     "PhysicalProgressState",
     "TransferSchedule",
+    "SuccessfulFSMAttitudeEnvelope",
     "global_phase_potential",
     "load_phase_objectives",
     "phase_local_potential",

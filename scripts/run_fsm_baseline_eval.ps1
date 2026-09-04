@@ -83,10 +83,40 @@ foreach ($EvaluationRunDir in $EvaluationRunDirs) {
     $AggregateArgs += @("--evaluation-run-dir", $EvaluationRunDir)
 }
 
-& (Join-Path $PSScriptRoot "_invoke_ppo_cli.ps1") `
-    -RunKind "baseline-fsm-eval-batch" -TrainingStage "baseline-fsm-eval-aggregate" `
-    -Subcommand "aggregate-evaluations" -ConfigPath $Configs -Seed $Seed `
-    -EnvironmentCount 1 -BaseCliArgs $AggregateArgs
+$AggregateOutput = @(
+    & (Join-Path $PSScriptRoot "_invoke_ppo_cli.ps1") `
+        -RunKind "baseline-fsm-eval-batch" -TrainingStage "baseline-fsm-eval-aggregate" `
+        -Subcommand "aggregate-evaluations" -ConfigPath $Configs -Seed $Seed `
+        -EnvironmentCount 1 -BaseCliArgs $AggregateArgs
+)
+$AggregateRunCandidates = @(
+    $AggregateOutput | Where-Object {
+        Test-Path -LiteralPath ([string]$_) -PathType Container
+    }
+)
+if ($AggregateRunCandidates.Count -ne 1) {
+    throw "baseline aggregate did not return exactly one managed run directory"
+}
+$AggregateRunDir = [IO.Path]::GetFullPath([string]$AggregateRunCandidates[0])
+$AggregatePath = Join-Path $AggregateRunDir "fsm_baseline_evaluation_aggregate.json"
+if (-not (Test-Path -LiteralPath $AggregatePath -PathType Leaf)) {
+    throw "baseline aggregate omitted fsm_baseline_evaluation_aggregate.json"
+}
+try {
+    $Aggregate = Get-Content -LiteralPath $AggregatePath -Raw |
+        ConvertFrom-Json -ErrorAction Stop
+} catch {
+    throw "baseline aggregate is not valid JSON: $AggregatePath"
+}
+if ([string]$Aggregate.schema -ne "wlr50_clean.fresh_process_episode_batch.v1" -or
+    [string]$Aggregate.role -ne "baseline" -or
+    [string]$Aggregate.seed_set -ne "validation" -or
+    [int]$Aggregate.episode_count -ne 5 -or
+    $Aggregate.fresh_process_per_episode -ne $true -or
+    $Aggregate.deterministic_evaluation -ne $true -or
+    $Aggregate.passed -ne $true) {
+    throw "baseline aggregate failed the canonical publication gate"
+}
 
 $ExportArgs = @(
     "--training-config", $Configs[0],

@@ -724,7 +724,13 @@ class ResidualEpisodeEnv:
                 break
         assert decision is not None and projections
         end = self.frame
-        reward_breakdown = self._reward(start, end, projections[-1].safe_projected_residual_full12)
+        reward_breakdown = self._reward(
+            start,
+            end,
+            projections[-1].safe_projected_residual_full12,
+            termination_reason=decision.reason,
+            controller_blocked=controller_blocked,
+        )
         # A frozen-controller dead end is a real task failure for PPO, not a
         # time-limit truncation.  Treating it as a timeout would let the value
         # target bootstrap across a failed episode and would omit the configured
@@ -734,19 +740,19 @@ class ResidualEpisodeEnv:
             not terminated
             and (decision.truncated or phase_curriculum_boundary)
         )
-        reason = (
-            "CONTROLLER_BLOCKED"
-            if controller_blocked
-            else (
-                decision.reason.value
-                if decision.reason is not None
-                else (
-                    PHASE_CURRICULUM_BOUNDARY_REASON
-                    if phase_curriculum_boundary
-                    else None
-                )
-            )
-        )
+        # Preserve the evaluator's primary physical/success reason in episode
+        # evidence.  A controller dead end is a fallback terminal classification
+        # and only supersedes a simultaneous time-limit truncation.
+        if decision.reason not in {None, TerminationReason.TIMEOUT}:
+            reason = decision.reason.value
+        elif controller_blocked:
+            reason = "CONTROLLER_BLOCKED"
+        elif decision.reason is not None:
+            reason = decision.reason.value
+        elif phase_curriculum_boundary:
+            reason = PHASE_CURRICULUM_BOUNDARY_REASON
+        else:
+            reason = None
         residual = projections[-1].safe_projected_residual_full12
         self.previous_previous_residual = self.previous_residual
         self.previous_residual = residual
@@ -810,6 +816,9 @@ class ResidualEpisodeEnv:
         start: AuthoritativeFrame,
         end: AuthoritativeFrame,
         residual: Sequence[float],
+        *,
+        termination_reason: TerminationReason | None,
+        controller_blocked: bool,
     ) -> RewardBreakdownV2:
         previous_progress = self.signals.progress(start)
         current_progress = self.signals.progress(end)
@@ -817,6 +826,23 @@ class ResidualEpisodeEnv:
         attitude = math.hypot(
             float(level.get("roll_error_to_level_rad", 0.0)),
             float(level.get("pitch_error_to_level_rad", 0.0)),
+        )
+        phase_objective = self.reward_calculator.objectives.phase(start.state_id)
+        envelope = phase_objective.successful_fsm_attitude_envelope_rad
+        envelope_normalization = (
+            phase_objective.attitude_envelope_excess_normalization_rad
+        )
+        if (envelope is None) != (envelope_normalization is None):
+            raise ResidualDirectEnvError(
+                f"{start.state_id} has an incomplete successful-FSM attitude envelope"
+            )
+        attitude_envelope_excess = (
+            0.0
+            if envelope is None
+            else _clamp01(
+                max(0.0, attitude - float(envelope))
+                / float(envelope_normalization)
+            )
         )
         angular = _member(end.info["raw_observation"], "base")
         angular_rate = _norm(_member(angular, "angular_velocity_w_rad_s", (0.0, 0.0, 0.0)))
@@ -853,22 +879,40 @@ class ResidualEpisodeEnv:
                 )
             )
         )
-        source = end.termination_signals
         phase_completed = STATE_IDS.index(end.state_id) > STATE_IDS.index(start.state_id)
-        failure = bool(
-            source.body_collision
-            or source.wheel_only_climb
-            or end.info.get("controller_task_result")
-            == "INCOMPLETE_CONTROLLER_BLOCKED"
+        # Event reward classification must be identical to the single primary
+        # reason selected by TerminationEvaluatorV2.  Physical signals can
+        # legitimately co-occur (for example a body collision and a fall);
+        # independently OR-ing event families would either double penalize or
+        # violate RewardSignalsV2's mutual-exclusion contract.
+        task_failure_reasons = {
+            TerminationReason.BODY_COLLISION,
+            TerminationReason.WHEEL_ONLY_CLIMB,
+        }
+        safety_abort_reasons = {
+            TerminationReason.FALL,
+            TerminationReason.NAN_INF,
+            TerminationReason.HARD_JOINT_LIMIT,
+            TerminationReason.PHYSICS_EXPLOSION,
+        }
+        task_failure = bool(
+            termination_reason in task_failure_reasons
+            or (
+                controller_blocked
+                and termination_reason not in task_failure_reasons
+                and termination_reason not in safety_abort_reasons
+                and termination_reason is not TerminationReason.SUCCESS
+            )
         )
-        safety_abort = source.fall or source.nan_inf or source.hard_joint_limit or source.physics_explosion
+        safety_abort = termination_reason in safety_abort_reasons
+        final_success = termination_reason is TerminationReason.SUCCESS
         return self.reward_calculator.evaluate(
             RewardSignalsV2(
                 previous_progress=previous_progress,
                 current_progress=current_progress,
                 lifecycle=str(start.info.get("controller_lifecycle", "EXECUTE_MOTION")),
                 calibrated_attitude_error=_clamp01(attitude / 0.35),
-                successful_fsm_attitude_envelope_excess=_clamp01(max(0.0, attitude - 0.15) / 0.20),
+                successful_fsm_attitude_envelope_excess=attitude_envelope_excess,
                 body_angular_rate=_clamp01(angular_rate / 2.0),
                 body_angular_acceleration=_clamp01(acceleration / 20.0),
                 contact_motion_costs=self.signals.contact_costs(start, end),
@@ -876,8 +920,8 @@ class ResidualEpisodeEnv:
                 residual_second_difference=_clamp01(second_difference),
                 residual_magnitude=_clamp01(_rms(normalized)),
                 phase_completion=phase_completed,
-                final_success=source.success,
-                task_failure=failure,
+                final_success=final_success,
+                task_failure=task_failure,
                 safety_abort=safety_abort,
             )
         )

@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
+import struct
 
 import pytest
 
@@ -24,6 +25,7 @@ from wlr50_clean.ppo.evaluation_artifacts import (
     TERMINATION_SUMMARY_FILENAME,
 )
 from wlr50_clean.ppo.final_reporting import PLOT_FILENAMES, REPORT_FILENAMES
+from wlr50_clean.ppo.training_orchestration import TRAINING_ORCHESTRATION_SCHEMA
 from wlr50_clean.ppo.video_artifacts import (
     COMPARISON_VIDEO_NAME,
     DIAGNOSTIC_VIDEO_NAME,
@@ -55,6 +57,267 @@ def _record(path: Path, *, relative_to: Path | None = None) -> dict:
         "bytes": source.stat().st_size,
         "sha256": artifacts.sha256_file(source),
     }
+
+
+def _aggregate_binding(
+    aggregate_path: Path,
+    *,
+    role: str,
+    checkpoint_path: Path | None = None,
+    checkpoint_manifest_path: Path | None = None,
+) -> dict:
+    aggregate = json.loads(aggregate_path.read_text(encoding="utf-8"))
+    records = [_record(aggregate_path)]
+    payload = {
+        "schema": "wlr50_clean.validation_aggregate_binding.v1",
+        "path": str(aggregate_path.resolve()),
+        "bytes": aggregate_path.stat().st_size,
+        "sha256": artifacts.sha256_file(aggregate_path),
+        "role": role,
+        "physical_passed": True,
+        "seeds": list(checkpoint.VALIDATION_SEEDS),
+        "worker_run_dirs": [str(Path(row["run_dir"]).resolve()) for row in aggregate["workers"]],
+        "canonical_episode_dirs": [
+            str(Path(value).resolve()) for value in aggregate["canonical_episode_dirs"]
+        ],
+        "source_file_records": records,
+        "source_file_set_sha256": hashlib.sha256(
+            json.dumps(
+                records,
+                sort_keys=True,
+                separators=(",", ":"),
+                allow_nan=False,
+            ).encode("utf-8")
+        ).hexdigest(),
+    }
+    if role == "candidate":
+        assert checkpoint_path is not None and checkpoint_manifest_path is not None
+        payload.update(
+            {
+                "checkpoint_path": str(checkpoint_path.resolve()),
+                "checkpoint_sha256": artifacts.sha256_file(checkpoint_path),
+                "checkpoint_manifest_path": str(checkpoint_manifest_path.resolve()),
+                "checkpoint_manifest_sha256": artifacts.sha256_file(
+                    checkpoint_manifest_path
+                ),
+            }
+        )
+    return payload
+
+
+@pytest.fixture(autouse=True)
+def _bridge_prefinal_contracts(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep legacy deep fixtures focused below the newly tested strict edges."""
+
+    def validate_orchestration(path, **_kwargs):
+        selected = Path(path).resolve()
+        payload = json.loads(selected.read_text(encoding="utf-8"))
+        return {
+            "path": str(selected),
+            "bytes": selected.stat().st_size,
+            "sha256": artifacts.sha256_file(selected),
+            "payload": payload,
+            "source_file_records": payload.get("source_file_records", []),
+            "status": payload["status"],
+            "valid": payload["valid"],
+        }
+
+    def validate_reporting(
+        *, root, aggregate_paths, metric_paths, report_paths, plot_paths, **_kwargs
+    ):
+        aggregate_records = tuple(
+            subject._file_record(aggregate_paths[role], root=root)
+            for role in subject.FINAL_LIFECYCLE_ROLES
+        )
+        metric_records = tuple(
+            subject._file_record(path, root=root) for path in metric_paths
+        )
+        output_records = tuple(
+            subject._file_record(path, root=root)
+            for path in (*plot_paths, *report_paths)
+        )
+        lifecycle = {
+            role: {
+                "aggregate_path": aggregate_records[index]["path"],
+                "aggregate_sha256": aggregate_records[index]["sha256"],
+                "source_groups": [{"seed": seed} for seed in range(5)],
+                **(
+                    {
+                        "checkpoint_path": str(
+                            (
+                                root
+                                / "checkpoints"
+                                / "checkpoint_initial_zero_residual.pt"
+                            ).resolve()
+                        ),
+                        "checkpoint_sha256": artifacts.sha256_file(
+                            root
+                            / "checkpoints"
+                            / "checkpoint_initial_zero_residual.pt"
+                        ),
+                        "checkpoint_manifest_path": str(
+                            (
+                                root
+                                / "checkpoints"
+                                / "checkpoint_initial_zero_residual_manifest.json"
+                            ).resolve()
+                        ),
+                        "checkpoint_manifest_sha256": artifacts.sha256_file(
+                            root
+                            / "checkpoints"
+                            / "checkpoint_initial_zero_residual_manifest.json"
+                        ),
+                    }
+                    if role == "checkpoint_initial"
+                    else {}
+                ),
+                **(
+                    {
+                        "checkpoint_path": str(
+                            (root / "checkpoints" / "checkpoint_smoke.pt").resolve()
+                        ),
+                        "checkpoint_sha256": artifacts.sha256_file(
+                            root / "checkpoints" / "checkpoint_smoke.pt"
+                        ),
+                        "checkpoint_manifest_path": str(
+                            (
+                                root
+                                / "checkpoints"
+                                / "checkpoint_smoke_manifest.json"
+                            ).resolve()
+                        ),
+                        "checkpoint_manifest_sha256": artifacts.sha256_file(
+                            root
+                            / "checkpoints"
+                            / "checkpoint_smoke_manifest.json"
+                        ),
+                    }
+                    if role == "checkpoint_smoke"
+                    else {}
+                ),
+                **(
+                    {
+                        "creation_runtime_identity_path": str(
+                            (
+                                root
+                                / "prefinal"
+                                / "committed_runtime_identity.before.json"
+                            ).resolve()
+                        ),
+                        "creation_runtime_identity_sha256": artifacts.sha256_file(
+                            root
+                            / "prefinal"
+                            / "committed_runtime_identity.before.json"
+                        ),
+                    }
+                    if role != "pure_fsm"
+                    else {}
+                ),
+            }
+            for index, role in enumerate(subject.FINAL_LIFECYCLE_ROLES)
+        }
+        return (
+            {
+                "schema": "wlr50_clean.ppo_final_reporting.v1",
+                "valid": True,
+                "outputs": list(output_records),
+                "input_files": [*aggregate_records, *metric_records],
+                "five_role_artifact_provenance": lifecycle,
+            },
+            aggregate_records,
+            metric_records,
+        )
+
+    class CapturedAggregate:
+        def __init__(self, record: dict) -> None:
+            self._record = record
+
+        def as_record(self) -> dict:
+            return self._record
+
+        def assert_unchanged(self) -> None:
+            return None
+
+    def capture_aggregate(
+        path,
+        *,
+        role,
+        expected_checkpoint_path=None,
+        expected_checkpoint_manifest_path=None,
+        **_kwargs,
+    ):
+        return CapturedAggregate(
+            _aggregate_binding(
+                Path(path),
+                role=role,
+                checkpoint_path=(
+                    None
+                    if expected_checkpoint_path is None
+                    else Path(expected_checkpoint_path)
+                ),
+                checkpoint_manifest_path=(
+                    None
+                    if expected_checkpoint_manifest_path is None
+                    else Path(expected_checkpoint_manifest_path)
+                ),
+            )
+        )
+
+    def validate_finalized_run(run_dir, **_kwargs):
+        directory = Path(run_dir).resolve()
+        manifest_path = directory / "run_manifest.json"
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+        return {
+            "directory": directory,
+            "payload": payload,
+            "identity": payload["identity"],
+            "artifacts": payload["artifacts"],
+            "configs": (),
+            "run_manifest": _record(manifest_path),
+            "frozen_audits": (),
+            "committed_runtime_identities": (),
+            "committed_runtime_identity_before_payload": {
+                "files": [{"path": "pyproject.toml"}]
+            },
+        }
+
+    def verify_videos(
+        validation_path,
+        checksum_path,
+        *,
+        output_root,
+        expected_improved_checkpoint_sha256,
+        **_kwargs,
+    ):
+        selected = Path(validation_path).resolve()
+        payload = json.loads(selected.read_text(encoding="utf-8"))
+        records = {}
+        for key, row in payload["videos"].items():
+            path = Path(row["path"])
+            if artifacts.sha256_file(path) != row["sha256"]:
+                raise subject.PPOVideoArtifactError(
+                    f"video {key} SHA-256 mismatch"
+                )
+            records[key] = _record(path)
+        assert payload["videos"]["ppo_improved"]["source_checkpoint_sha256"] == (
+            expected_improved_checkpoint_sha256
+        )
+        return {
+            "valid": True,
+            "status": "PASS",
+            "validation": _record(selected),
+            "video_checksums": _record(Path(checksum_path)),
+            "videos": records,
+            "source_episodes": payload["source_episodes"],
+            "diagnostic_overlay": _record(Path(payload["diagnostic_ass"]["path"])),
+            "publication_run": {"valid": True},
+        }
+
+    monkeypatch.setattr(subject, "validate_training_orchestration_manifest", validate_orchestration)
+    monkeypatch.setattr(subject, "_validate_five_role_reporting", validate_reporting)
+    monkeypatch.setattr(subject, "capture_validation_aggregate", capture_aggregate)
+    monkeypatch.setattr(subject, "_validate_finalized_run", validate_finalized_run)
+    monkeypatch.setattr(subject, "verify_final_video_publication", verify_videos)
 
 
 def _make_training_runs(tmp_path: Path, output: Path) -> tuple[list[Path], Path, Path]:
@@ -417,12 +680,24 @@ def _make_fixture(tmp_path: Path, *, promoted: bool = True) -> dict:
         (metrics / name).write_text("evidence\npass\n", encoding="utf-8")
     checks = {gate: promoted for gate in checkpoint.REQUIRED_PROMOTION_GATES}
     promotion_path = metrics / PROMOTION_DECISION_FILENAME
+    baseline_binding = _aggregate_binding(
+        baseline_aggregate,
+        role="baseline",
+    )
+    candidate_binding = _aggregate_binding(
+        validation_aggregate,
+        role="candidate",
+        checkpoint_path=candidate,
+        checkpoint_manifest_path=candidate_manifest,
+    )
     promotion_payload = {
         "schema": checkpoint.PROMOTION_DECISION_SCHEMA,
         "baseline_checkpoint": "pure_fsm",
         "candidate_checkpoint": "candidate",
         "candidate_checkpoint_path": str(candidate),
         "candidate_checkpoint_sha256": artifacts.sha256_file(candidate),
+        "baseline_evaluation_aggregate": baseline_binding,
+        "candidate_validation_aggregate": candidate_binding,
         "paired_seeds": list(checkpoint.VALIDATION_SEEDS),
         "paired_episode_count": 5,
         "minimum_paired_seeds": 5,
@@ -468,6 +743,8 @@ def _make_fixture(tmp_path: Path, *, promoted: bool = True) -> dict:
             "locked_test_authorized": False,
             "promotion_decision": str(promotion),
             "promotion_decision_sha256": artifacts.sha256_file(promotion),
+            "baseline_evaluation_aggregate": baseline_binding,
+            "candidate_validation_aggregate": candidate_binding,
             "checkpoint_path": str(best.resolve()),
             "checkpoint_sha256": artifacts.sha256_file(best),
         },
@@ -487,6 +764,8 @@ def _make_fixture(tmp_path: Path, *, promoted: bool = True) -> dict:
             "source_manifest_sha256": artifacts.sha256_file(candidate_manifest),
             "promotion_decision": str(promotion),
             "promotion_decision_sha256": artifacts.sha256_file(promotion),
+            "baseline_evaluation_aggregate": baseline_binding,
+            "candidate_validation_aggregate": candidate_binding,
             "validation_seeds": list(checkpoint.VALIDATION_SEEDS),
             "promotion": promotion_payload["promotion"],
             "published_best_validation": {
@@ -521,6 +800,8 @@ def _make_fixture(tmp_path: Path, *, promoted: bool = True) -> dict:
             "source_best_validation_manifest_sha256": artifacts.sha256_file(best_manifest),
             "promotion_decision": str(promotion),
             "promotion_decision_sha256": artifacts.sha256_file(promotion),
+            "baseline_evaluation_aggregate": baseline_binding,
+            "candidate_validation_aggregate": candidate_binding,
             "validation_promotion_manifest": str(validation_promotion),
             "validation_promotion_manifest_sha256": artifacts.sha256_file(validation_promotion),
             "locked_test_aggregate": str(locked),
@@ -563,7 +844,30 @@ def _make_fixture(tmp_path: Path, *, promoted: bool = True) -> dict:
     )
 
     torchscript_actor = checkpoints / checkpoint.TORCHSCRIPT_ACTOR_NAME
-    torchscript_actor.write_bytes(b"synthetic-inference-only-torchscript")
+    torch = pytest.importorskip("torch")
+    torch.manual_seed(42)
+    actor = torch.nn.Sequential(torch.nn.Linear(125, 12), torch.nn.Tanh()).eval()
+    torch.jit.save(torch.jit.script(actor), str(torchscript_actor))
+    verification_input = torch.linspace(
+        -1.0, 1.0, steps=4 * 125, dtype=torch.float32
+    ).reshape(4, 125)
+    with torch.inference_mode():
+        reference_output = actor(verification_input)
+
+    def tensor_evidence(value) -> dict:
+        tensor = value.detach().to(dtype=torch.float32, device="cpu").contiguous()
+        flat = [float(item) for item in tensor.reshape(-1).tolist()]
+        return {
+            "encoding": "little_endian_ieee754_float32_c_order",
+            "shape": list(tensor.shape),
+            "values": tensor.tolist(),
+            "sha256": hashlib.sha256(
+                struct.pack(f"<{len(flat)}f", *flat)
+            ).hexdigest(),
+        }
+
+    input_evidence = tensor_evidence(verification_input)
+    reference_evidence = tensor_evidence(reference_output)
     inference_manifest = _json(
         output / "manifests" / checkpoint.INFERENCE_EXPORT_MANIFEST_NAME,
         {
@@ -580,6 +884,16 @@ def _make_fixture(tmp_path: Path, *, promoted: bool = True) -> dict:
             "source_checkpoint_sha256": artifacts.sha256_file(improved),
             "source_manifest": str(improved_manifest),
             "source_manifest_sha256": artifacts.sha256_file(improved_manifest),
+            "observation_dimension": 125,
+            "residual_action_dimension": 12,
+            "test_batch_size": 4,
+            "test_input": "deterministic linspace[-1,1] float32",
+            "verification_input_sha256": input_evidence["sha256"],
+            "verification_input_float32": input_evidence,
+            "loaded_runner_reference_output_sha256": reference_evidence["sha256"],
+            "loaded_runner_reference_output_float32": reference_evidence,
+            "absolute_tolerance": 1.0e-6,
+            "relative_tolerance": 1.0e-5,
             "torchscript": {
                 "valid": True,
                 "status": "PASS",
@@ -588,15 +902,85 @@ def _make_fixture(tmp_path: Path, *, promoted: bool = True) -> dict:
                 "sha256": artifacts.sha256_file(torchscript_actor),
                 "bytes": torchscript_actor.stat().st_size,
                 "reloaded": True,
+                "output_shape": [4, 12],
                 "finite": True,
                 "deterministic": True,
                 "equivalent_to_loaded_runner": True,
+                "maximum_absolute_error": 0.0,
             },
             "onnx": {
                 "status": "UNSUPPORTED",
                 "supported": False,
                 "reason": "synthetic test runtime",
                 "path": None,
+            },
+        },
+    )
+    inference_run = (
+        tmp_path
+        / "runs"
+        / "ppo_phase_v1"
+        / "inference-actor-export"
+        / "export-1"
+    )
+    inference_run.mkdir(parents=True)
+    inference_started = _json(
+        inference_run / "run_manifest.started.json",
+        {"schema": artifacts.RUN_MANIFEST_SCHEMA, "lifecycle": "STARTED"},
+    )
+    inference_stdout = inference_run / "stdout.log"
+    inference_stderr = inference_run / "stderr.log"
+    inference_stdout.write_text("actor exported\n", encoding="utf-8")
+    inference_stderr.write_bytes(b"")
+    private_capture = (
+        inference_run / ".checkpoint-pins" / "inference-actor-export-test"
+    )
+    inference_result = _json(
+        inference_run / "inference_actor_export.json",
+        {
+            "schema": "wlr50_clean.ppo_inference_actor_export_cli.v1",
+            "live_rsl_runner_loaded": True,
+            "episode_stepped": False,
+            "deterministic_mean_policy": True,
+            "runner_checkpoint_infos_verified": True,
+            "checkpoint_runtime_capture_verified": True,
+            "checkpoint_runtime_capture": {
+                "schema": "wlr50_clean.checkpoint_runtime_capture.v1",
+                "source_checkpoint_path": str(improved.resolve()),
+                "source_checkpoint_sha256": artifacts.sha256_file(improved),
+                "source_manifest_path": str(improved_manifest.resolve()),
+                "source_manifest_sha256": artifacts.sha256_file(improved_manifest),
+                "private_checkpoint_path": str(
+                    (private_capture / "checkpoint.pt").resolve()
+                ),
+                "private_manifest_path": str(
+                    (private_capture / "checkpoint_manifest.json").resolve()
+                ),
+                "private_copy_exclusive": True,
+                "runner_loads_private_copy_only": True,
+            },
+            "checkpoint": str(improved.resolve()),
+            "checkpoint_manifest": str(improved_manifest.resolve()),
+            "torchscript_actor": str(torchscript_actor.resolve()),
+            "onnx_actor": None,
+            "export_manifest": str(inference_manifest.resolve()),
+        },
+    )
+    inference_run_manifest = _json(
+        inference_run / "run_manifest.json",
+        {
+            "identity": {"training_stage": "improved-inference-actor-export"},
+            "started_manifest": _record(
+                inference_started, relative_to=inference_run
+            ),
+            "logs": {
+                "stdout.log": _record(inference_stdout, relative_to=inference_run),
+                "stderr.log": _record(inference_stderr, relative_to=inference_run),
+            },
+            "artifacts": {
+                "inference_actor_export.json": _record(
+                    inference_result, relative_to=inference_run
+                )
             },
         },
     )
@@ -712,9 +1096,140 @@ def _make_fixture(tmp_path: Path, *, promoted: bool = True) -> dict:
         path.write_bytes(b"\x89PNG\r\n\x1a\nsynthetic-plot")
         plots.append(path)
 
+    initial_checkpoint = (
+        output / "checkpoints" / "checkpoint_initial_zero_residual.pt"
+    )
+    initial_checkpoint.write_bytes(b"synthetic-initial-zero-residual")
+    initial_manifest = _json(
+        output
+        / "checkpoints"
+        / "checkpoint_initial_zero_residual_manifest.json",
+        {
+            "schema": checkpoint.CHECKPOINT_MANIFEST_SCHEMA,
+            "stage": "initial_zero_residual",
+            "global_policy_decisions": 0,
+            "checkpoint_path": str(initial_checkpoint.resolve()),
+            "checkpoint_sha256": artifacts.sha256_file(initial_checkpoint),
+        },
+    )
+    smoke_checkpoint = output / "checkpoints" / "checkpoint_smoke.pt"
+    smoke_checkpoint.write_bytes(b"synthetic-smoke-history")
+    smoke_manifest = _json(
+        output / "checkpoints" / "checkpoint_smoke_manifest.json",
+        {
+            "schema": checkpoint.CHECKPOINT_MANIFEST_SCHEMA,
+            "stage": "smoke",
+            "checkpoint_path": str(smoke_checkpoint.resolve()),
+            "checkpoint_sha256": artifacts.sha256_file(smoke_checkpoint),
+        },
+    )
+    creation_identity = (
+        output / "prefinal" / "committed_runtime_identity.before.json"
+    )
+    creation_identity.parent.mkdir(parents=True, exist_ok=True)
+    creation_identity.write_text("{}\n", encoding="utf-8")
+
+    orchestration = _json(
+        output / "prefinal" / "training_orchestration_manifest.json",
+        {
+            "schema": TRAINING_ORCHESTRATION_SCHEMA,
+            "status": "PROMOTION_FOUND",
+            "valid": True,
+            "initial_checkpoint": {
+                "path": str(initial_checkpoint.resolve()),
+                "sha256": artifacts.sha256_file(initial_checkpoint),
+                "manifest_path": str(initial_manifest.resolve()),
+                "manifest_sha256": artifacts.sha256_file(initial_manifest),
+            },
+            "smoke_checkpoint": {
+                "path": str(smoke_checkpoint.resolve()),
+                "sha256": artifacts.sha256_file(smoke_checkpoint),
+                "manifest_path": str(smoke_manifest.resolve()),
+                "manifest_sha256": artifacts.sha256_file(smoke_manifest),
+            },
+            "canonical_smoke_checkpoint": {
+                "path": str(smoke_checkpoint.resolve()),
+                "sha256": artifacts.sha256_file(smoke_checkpoint),
+                "manifest_path": str(smoke_manifest.resolve()),
+                "manifest_sha256": artifacts.sha256_file(smoke_manifest),
+            },
+            "required_stages": list(subject.REQUIRED_TRAINING_STAGES),
+            "chunks": [
+                {
+                    "stage": stage,
+                    "training": {
+                        "run_directory": str(run_dir),
+                        **(
+                            {
+                                "immutable_history_checkpoint": {
+                                    "path": str(smoke_checkpoint.resolve()),
+                                    "sha256": artifacts.sha256_file(
+                                        smoke_checkpoint
+                                    ),
+                                }
+                            }
+                            if stage == "smoke"
+                            else {}
+                        ),
+                    },
+                }
+                for stage, run_dir in zip(
+                    subject.REQUIRED_TRAINING_STAGES, run_dirs, strict=True
+                )
+            ],
+            "terminal": {
+                "chunk_index": len(subject.REQUIRED_TRAINING_STAGES) - 1,
+                "stage": subject.REQUIRED_TRAINING_STAGES[-1],
+                "global_policy_decisions": 24,
+                "checkpoint": {
+                    "path": str(candidate.resolve()),
+                    "bytes": candidate.stat().st_size,
+                    "sha256": artifacts.sha256_file(candidate),
+                },
+            },
+            "promotion_decisions": [
+                {
+                    "promoted": True,
+                    "record": _record(promotion),
+                    "bound_chunk_index": len(subject.REQUIRED_TRAINING_STAGES) - 1,
+                    "candidate_checkpoint": {
+                        "path": str(candidate.resolve()),
+                        "bytes": candidate.stat().st_size,
+                        "sha256": artifacts.sha256_file(candidate),
+                    },
+                }
+            ],
+            "source_file_records": [_record(creation_identity)],
+        },
+    )
+    final_aggregates = {}
+    for role in subject.FINAL_LIFECYCLE_ROLES:
+        final_aggregates[role] = _json(
+            output / "final-lifecycle" / role / "evaluation_aggregate.json",
+            {"role": role},
+        )
+    final_metric_paths = [
+        metrics / name
+        for name in (
+            BASELINE_EPISODE_FILENAME,
+            BASELINE_PHASE_FILENAME,
+            CANDIDATE_EPISODE_FILENAME,
+            CANDIDATE_PHASE_FILENAME,
+            CHECKPOINT_COMPARISON_FILENAME,
+            PHASE_COMPARISON_FILENAME,
+            RESIDUAL_ACTIVITY_FILENAME,
+            REWARD_CONTRIBUTION_FILENAME,
+            TERMINATION_SUMMARY_FILENAME,
+            PROMOTION_DECISION_FILENAME,
+        )
+    ]
+
     return {
         "output_root": output,
         "training_run_dirs": run_dirs,
+        "training_orchestration_manifest_path": orchestration,
+        "final_lifecycle_aggregate_paths": final_aggregates,
+        "final_lifecycle_metric_paths": final_metric_paths,
         "baseline_aggregate_path": baseline_aggregate,
         "baseline_metric_paths": [baseline_episode, baseline_phase, baseline_manifest],
         "validation_aggregate_path": validation_aggregate,
@@ -728,6 +1243,7 @@ def _make_fixture(tmp_path: Path, *, promoted: bool = True) -> dict:
             final_promotion,
             inference_manifest,
         ],
+        "inference_actor_export_run_dir": inference_run,
         "video_validation_path": video_validation,
         "video_checksum_path": video_checksum,
         "report_paths": reports,
@@ -785,6 +1301,53 @@ def test_failed_promotion_content_cannot_be_overridden_by_names(tmp_path: Path) 
     assert not (manifests / "checksums.sha256").exists()
 
 
+def test_orchestration_must_bind_the_explicit_terminal_promotion_bytes(
+    tmp_path: Path,
+) -> None:
+    inputs = _make_fixture(tmp_path)
+    orchestration_path = inputs["training_orchestration_manifest_path"]
+    orchestration = json.loads(orchestration_path.read_text(encoding="utf-8"))
+    orchestration["promotion_decisions"][0]["record"]["sha256"] = "0" * 64
+    orchestration_path.write_text(
+        json.dumps(orchestration, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(subject.FinalizationError, match="terminal orchestration"):
+        subject.finalize_ppo_phase_delivery(**inputs)
+
+    manifests = inputs["output_root"] / "manifests"
+    assert not (manifests / "training_manifest.json").exists()
+    assert not (manifests / "evaluation_manifest.json").exists()
+    assert not (manifests / "checksums.sha256").exists()
+
+
+def test_candidate_decision_cannot_splice_another_five_worker_aggregate(
+    tmp_path: Path,
+) -> None:
+    inputs = _make_fixture(tmp_path)
+    validation, checkpoint_hash, workers = subject._validate_batch(
+        inputs["validation_aggregate_path"],
+        role="candidate",
+        seed_set="validation",
+        seeds=checkpoint.VALIDATION_SEEDS,
+    )
+    decision = json.loads(
+        inputs["promotion_decision_path"].read_text(encoding="utf-8")
+    )
+    binding = dict(decision["candidate_validation_aggregate"])
+    binding["worker_run_dirs"] = list(reversed(binding["worker_run_dirs"]))
+
+    with pytest.raises(subject.FinalizationError, match="worker/canonical"):
+        subject._validate_paired_aggregate_binding(
+            binding,
+            role="candidate",
+            aggregate=validation,
+            workers=workers,
+            validation_checkpoint_hash=checkpoint_hash,
+        )
+
+
 def test_video_tampering_is_detected_before_any_final_output(tmp_path: Path) -> None:
     inputs = _make_fixture(tmp_path)
     video = inputs["output_root"] / "videos" / PPO_VIDEO_NAME
@@ -797,6 +1360,74 @@ def test_video_tampering_is_detected_before_any_final_output(tmp_path: Path) -> 
     assert not (manifests / "training_manifest.json").exists()
     assert not (manifests / "evaluation_manifest.json").exists()
     assert not (manifests / "checksums.sha256").exists()
+
+
+def test_inference_actor_requires_verified_managed_live_export_run(
+    tmp_path: Path,
+) -> None:
+    inputs = _make_fixture(tmp_path)
+    run_dir = inputs["inference_actor_export_run_dir"]
+    result_path = run_dir / "inference_actor_export.json"
+    result = json.loads(result_path.read_text(encoding="utf-8"))
+    result["runner_checkpoint_infos_verified"] = False
+    _json(result_path, result)
+    manifest_path = run_dir / "run_manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["artifacts"]["inference_actor_export.json"] = _record(
+        result_path, relative_to=run_dir
+    )
+    _json(manifest_path, manifest)
+
+    with pytest.raises(subject.FinalizationError, match="live result is incomplete"):
+        subject.finalize_ppo_phase_delivery(**inputs)
+
+    manifests = inputs["output_root"] / "manifests"
+    assert not (manifests / "training_manifest.json").exists()
+    assert not (manifests / "evaluation_manifest.json").exists()
+    assert not (manifests / "checksums.sha256").exists()
+
+
+def test_finalizer_independently_executes_actor_against_runner_reference(
+    tmp_path: Path,
+) -> None:
+    torch = pytest.importorskip("torch")
+    inputs = _make_fixture(tmp_path)
+    actor_path = inputs["output_root"] / "checkpoints" / checkpoint.TORCHSCRIPT_ACTOR_NAME
+    torch.manual_seed(999)
+    different_actor = torch.nn.Sequential(
+        torch.nn.Linear(125, 12), torch.nn.Tanh()
+    ).eval()
+    torch.jit.save(torch.jit.script(different_actor), str(actor_path))
+    export_manifest_path = (
+        inputs["output_root"]
+        / "manifests"
+        / checkpoint.INFERENCE_EXPORT_MANIFEST_NAME
+    )
+    export_manifest = json.loads(export_manifest_path.read_text(encoding="utf-8"))
+    export_manifest["torchscript"]["bytes"] = actor_path.stat().st_size
+    export_manifest["torchscript"]["sha256"] = artifacts.sha256_file(actor_path)
+    _json(export_manifest_path, export_manifest)
+
+    with pytest.raises(subject.FinalizationError, match="loaded-runner reference"):
+        subject.finalize_ppo_phase_delivery(**inputs)
+
+
+def test_managed_actor_export_must_clean_private_checkpoint_copies(
+    tmp_path: Path,
+) -> None:
+    inputs = _make_fixture(tmp_path)
+    result_path = (
+        inputs["inference_actor_export_run_dir"] / "inference_actor_export.json"
+    )
+    result = json.loads(result_path.read_text(encoding="utf-8"))
+    private_checkpoint = Path(
+        result["checkpoint_runtime_capture"]["private_checkpoint_path"]
+    )
+    private_checkpoint.parent.mkdir(parents=True)
+    private_checkpoint.write_bytes(b"leftover private checkpoint")
+
+    with pytest.raises(subject.FinalizationError, match="outside its managed run"):
+        subject.finalize_ppo_phase_delivery(**inputs)
 
 
 def test_conflicting_final_manifest_preflights_without_partial_write(tmp_path: Path) -> None:

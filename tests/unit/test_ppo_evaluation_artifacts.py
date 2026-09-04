@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 import math
 from dataclasses import replace
@@ -12,6 +13,7 @@ import pytest
 from wlr50_clean.infrastructure.command_batch import FULL12_ORDER
 from wlr50_clean.ppo import checkpoint_promotion
 from wlr50_clean.ppo import evaluation_artifacts as subject
+from wlr50_clean.ppo import final_reporting
 from wlr50_clean.ppo.evaluation import (
     LiveRunCalibration,
     LiveRunEvaluation,
@@ -20,6 +22,10 @@ from wlr50_clean.ppo.evaluation import (
 )
 from wlr50_clean.ppo.phase_action_masks_v2 import DEFAULT_PHASE_ACTION_CONFIG_V2
 from wlr50_clean.ppo.phase_objectives import DENSE_FAMILIES
+from wlr50_clean.ppo.phase_snapshots import (
+    phase_snapshot_bundle_file_hashes,
+    validated_phase_snapshot_bundle_record,
+)
 from wlr50_clean.ppo.stability_metrics import LOWER_IS_BETTER, PHASE_IDS
 
 
@@ -52,6 +58,14 @@ def _fake_evaluation(
             "pitch_rate_peak_abs_rad_s": multiplier * 0.20,
             "roll_rate_peak_abs_rad_s": multiplier * 0.18,
             "wheel_slip_integral": multiplier * 0.03,
+            "residual_high_frequency_fraction": multiplier * 0.01,
+            "applied_high_frequency_fraction": multiplier * 0.02,
+            "residual_spectrum_normalization": "phase_scale_full12",
+            "residual_spectral_energy_fraction_0p0_0p5_hz": 0.10,
+            "residual_spectral_energy_fraction_0p5_1p0_hz": 0.20,
+            "residual_spectral_energy_fraction_1p0_2p0_hz": 0.30,
+            "residual_spectral_energy_fraction_2p0_3p0_hz": 0.20,
+            "residual_spectral_energy_fraction_3p0_nyquist_hz": 0.20,
             "active_leg_min_clearance_m": 0.02,
             "home_pose_error_rms_deg": multiplier * 1.0,
             "phase_completion_observed": True,
@@ -149,7 +163,9 @@ def _fake_evaluation(
 def _paired_runs(tmp_path: Path) -> tuple[list[LiveRunEvaluation], list[LiveRunEvaluation]]:
     baseline = [
         _fake_evaluation(
-            tmp_path / f"baseline_{seed}",
+            tmp_path
+            / f"baseline_worker_{seed}"
+            / f"episode_000_seed_{seed}",
             seed=seed,
             multiplier=1.0,
             residual_nonzero=False,
@@ -158,7 +174,9 @@ def _paired_runs(tmp_path: Path) -> tuple[list[LiveRunEvaluation], list[LiveRunE
     ]
     candidate = [
         _fake_evaluation(
-            tmp_path / f"candidate_{seed}",
+            tmp_path
+            / f"candidate_worker_{seed}"
+            / f"episode_000_seed_{seed}",
             seed=seed,
             multiplier=0.90,
             residual_nonzero=True,
@@ -168,9 +186,364 @@ def _paired_runs(tmp_path: Path) -> tuple[list[LiveRunEvaluation], list[LiveRunE
     return baseline, candidate
 
 
+def _aggregate_binding(
+    tmp_path: Path,
+    *,
+    role: str,
+    runs: list[LiveRunEvaluation],
+    checkpoint: Path | None = None,
+    checkpoint_manifest: Path | None = None,
+) -> dict[str, object]:
+    selected_runs = sorted(runs, key=lambda run: int(run.seed))
+    source = tmp_path / f".{role}_aggregate_source.json"
+    canonical_dirs = [str(run.run_directory.resolve()) for run in selected_runs]
+    worker_dirs = [str(Path(path).resolve().parent) for path in canonical_dirs]
+    source_payload = {
+        "schema": "wlr50_clean.fresh_process_episode_batch.v1",
+        "role": "baseline" if role == "baseline" else "candidate",
+        "seed_set": "validation",
+        "seeds": [int(run.seed) for run in selected_runs],
+        "canonical_episode_dirs": canonical_dirs,
+        "workers": [{"run_dir": path} for path in worker_dirs],
+        "passed": True,
+        "checkpoint": str(checkpoint.resolve()) if checkpoint is not None else None,
+        "checkpoint_sha256": (
+            subject.sha256_file(checkpoint) if checkpoint is not None else None
+        ),
+    }
+    source.write_text(
+        json.dumps(source_payload, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    record = {
+        "path": str(source.resolve()),
+        "bytes": source.stat().st_size,
+        "sha256": subject.sha256_file(source),
+    }
+    records = [record]
+    binding: dict[str, object] = {
+        "schema": "wlr50_clean.validation_aggregate_binding.v1",
+        "path": record["path"],
+        "bytes": record["bytes"],
+        "sha256": record["sha256"],
+        "role": role,
+        "physical_passed": role == "baseline" or all(
+            run.termination.task_success
+            and run.termination.completed_p01_p13
+            and not run.termination.body_collision
+            and not run.termination.wheel_only_climb
+            and not run.termination.physics_explosion_or_fall
+            and not run.termination.safety_abort
+            and run.termination.duration_s <= 200.0
+            and run.termination.runtime_recording_access_count == 0
+            for run in selected_runs
+        ),
+        "seeds": [int(run.seed) for run in selected_runs],
+        "worker_run_dirs": worker_dirs,
+        "canonical_episode_dirs": canonical_dirs,
+        "source_file_records": records,
+        "source_file_set_sha256": hashlib.sha256(
+            json.dumps(
+                records, sort_keys=True, separators=(",", ":"), allow_nan=False
+            ).encode("utf-8")
+        ).hexdigest(),
+    }
+    if checkpoint is not None:
+        manifest = checkpoint_manifest
+        if manifest is None:
+            manifest = tmp_path / ".candidate_aggregate_checkpoint_manifest.json"
+            manifest.write_text("{}\n", encoding="utf-8")
+        binding.update(
+            checkpoint_path=str(checkpoint.resolve()),
+            checkpoint_sha256=subject.sha256_file(checkpoint),
+            checkpoint_manifest_path=str(manifest.resolve()),
+            checkpoint_manifest_sha256=subject.sha256_file(manifest),
+        )
+    return binding
+
+
+def _paired_binding_kwargs(
+    tmp_path: Path,
+    baseline: list[LiveRunEvaluation],
+    candidate: list[LiveRunEvaluation],
+    checkpoint: Path | None = None,
+    checkpoint_manifest: Path | None = None,
+) -> dict[str, object]:
+    return {
+        "baseline_evaluation_aggregate": _aggregate_binding(
+            tmp_path, role="baseline", runs=baseline
+        ),
+        "candidate_validation_aggregate": _aggregate_binding(
+            tmp_path,
+            role="candidate",
+            runs=candidate,
+            checkpoint=checkpoint,
+            checkpoint_manifest=checkpoint_manifest,
+        ),
+    }
+
+
 def _csv_rows(path: Path) -> list[dict[str, str]]:
     with path.open(newline="", encoding="utf-8") as stream:
         return list(csv.DictReader(stream))
+
+
+def _trust_synthetic_runtime_identity(monkeypatch: pytest.MonkeyPatch) -> None:
+    identity = {
+        "schema": "wlr50_clean.committed_runtime_identity.v1",
+        "git_commit": "0" * 40,
+        "file_count": 1,
+        "aggregate_sha256": "1" * 64,
+        "content_sha256": "3" * 64,
+        "files": [{"path": "pyproject.toml", "bytes": 1, "sha256": "2" * 64}],
+    }
+
+    def validate(run_dir, _run_manifest, **_kwargs):
+        path = Path(run_dir) / "run_manifest.json"
+        record = {
+            "path": str(path.resolve()),
+            "bytes": path.stat().st_size,
+            "sha256": subject.sha256_file(path),
+        }
+        return record, record, identity
+
+    monkeypatch.setattr(subject, "_validate_worker_runtime_identity", validate)
+    monkeypatch.setattr(
+        subject, "_validate_current_committed_runtime_identity", lambda _identity: None
+    )
+    monkeypatch.setattr(
+        final_reporting,
+        "_validate_current_committed_runtime_identity",
+        lambda _identity: None,
+    )
+
+
+def _write_final_lifecycle_aggregate(
+    tmp_path: Path,
+    *,
+    role: str,
+    checkpoint_bytes: bytes | None,
+    failed_seed: int | None = None,
+    promotion_decision: Path | None = None,
+) -> Path:
+    worker_role = "baseline" if role == "pure_fsm" else "candidate"
+    checkpoint_names = {
+        "checkpoint_initial": "checkpoint_initial_zero_residual.pt",
+        "checkpoint_smoke": "checkpoint_smoke.pt",
+        "checkpoint_best": "checkpoint_best_validation.pt",
+        "checkpoint_improved": "checkpoint_improved.pt",
+    }
+    checkpoint = None
+    manifest = None
+    if checkpoint_bytes is not None:
+        creation_identity = (
+            tmp_path
+            / "synthetic-creation-run"
+            / "committed_runtime_identity.before.json"
+        )
+        creation_identity.parent.mkdir(parents=True, exist_ok=True)
+        if not creation_identity.exists():
+            creation_identity.write_text("{}\n", encoding="utf-8")
+        checkpoint = tmp_path / "checkpoints" / checkpoint_names[role]
+        checkpoint.parent.mkdir(parents=True, exist_ok=True)
+        checkpoint.write_bytes(checkpoint_bytes)
+        manifest = checkpoint.with_name(f"{checkpoint.stem}_manifest.json")
+        manifest_payload = {
+            "schema": "wlr50_clean.phase_residual_checkpoint_manifest.v1",
+            "training_seed": 1001,
+            "source_git_commit": "0" * 40,
+            "committed_runtime_content_sha256": "3" * 64,
+            "creation_runtime_identity_sha256": subject.sha256_file(
+                creation_identity
+            ),
+            "creation_runtime_identity_path": str(creation_identity.resolve()),
+            "checkpoint_path": str(checkpoint.resolve()),
+            "checkpoint_sha256": subject.sha256_file(checkpoint),
+        }
+        if promotion_decision is not None:
+            manifest_payload.update(
+                {
+                    "promotion_decision": str(promotion_decision.resolve()),
+                    "promotion_decision_sha256": subject.sha256_file(
+                        promotion_decision
+                    ),
+                }
+            )
+        manifest.write_text(
+            json.dumps(
+                manifest_payload,
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+    worker_dirs: list[Path] = []
+    for seed in subject.BASELINE_VALIDATION_SEEDS:
+        run_dir = tmp_path / f"{role}_workers" / f"worker_{seed}"
+        episode_dir = run_dir / f"episode_000_seed_{seed}"
+        episode_dir.mkdir(parents=True)
+        (run_dir / "run_manifest.json").write_text(
+            json.dumps({"lifecycle": "SUCCEEDED", "exit_code": 0}) + "\n",
+            encoding="utf-8",
+        )
+        for name in subject.CANONICAL_EPISODE_FILES:
+            payload = (
+                {
+                    "seed": seed,
+                    "action_projection_audit": {
+                        "exact_pair_contact_contract_valid": True,
+                    },
+                }
+                if name == "trial_manifest.json"
+                else {}
+            )
+            (episode_dir / name).write_text(
+                json.dumps(payload) + "\n", encoding="utf-8"
+            )
+        physical_failure = seed == failed_seed
+        episode = {
+            "seed": seed,
+            "task_success": not physical_failure,
+            "duration_s": 100.0,
+            "body_collision": physical_failure,
+            "wheel_only_climb": False,
+            "safety_abort": False,
+            "under_maximum_duration": True,
+            "recording_runtime_access_count": 0,
+            "in_episode_root_write_count": 0,
+            "canonical_episode_dir": str(episode_dir.resolve()),
+        }
+        worker_passed = not physical_failure
+        if checkpoint is None:
+            result = {
+                "schema": "wlr50_clean.live_residual_gate.v1",
+                "mode": "zero",
+                "episode_count": 1,
+                "passed": worker_passed,
+                "episodes": [episode],
+            }
+            result_name = "acceptance.json"
+        else:
+            assert manifest is not None
+            result = {
+                "schema": "wlr50_clean.ppo_checkpoint_evaluation.v1",
+                "checkpoint": str(checkpoint.resolve()),
+                "checkpoint_sha256": subject.sha256_file(checkpoint),
+                "checkpoint_manifest": str(manifest.resolve()),
+                "checkpoint_manifest_sha256": subject.sha256_file(manifest),
+                "fresh_process_single_episode": True,
+                "vec_env_step_called": False,
+                "deterministic_mean_policy": True,
+                "episode_count": 1,
+                "passed": worker_passed,
+                "episodes": [episode],
+            }
+            result_name = "checkpoint_evaluation.json"
+        (run_dir / result_name).write_text(
+            json.dumps(result, sort_keys=True) + "\n", encoding="utf-8"
+        )
+        worker_dirs.append(run_dir)
+
+    batch = subject.collect_fresh_process_episode_workers(
+        worker_dirs,
+        seeds=subject.BASELINE_VALIDATION_SEEDS,
+        role=worker_role,
+        checkpoint_path=checkpoint,
+    )
+    episodes = [dict(row) for row in batch.episode_rows]
+    worker_gate_pass_count = sum(
+        row.get("worker_gate_passed") is True for row in batch.worker_rows
+    )
+    passed = bool(
+        all(row["task_success"] is True for row in episodes)
+        and all(row["body_collision"] is False for row in episodes)
+        and all(row["wheel_only_climb"] is False for row in episodes)
+        and all(row["safety_abort"] is False for row in episodes)
+        and all(row["under_maximum_duration"] is True for row in episodes)
+        and all(row["recording_runtime_access_count"] == 0 for row in episodes)
+        and all(row["in_episode_root_write_count"] == 0 for row in episodes)
+        and worker_gate_pass_count == len(subject.BASELINE_VALIDATION_SEEDS)
+    )
+    aggregate = {
+        "schema": "wlr50_clean.fresh_process_episode_batch.v1",
+        "role": worker_role,
+        "checkpoint": None if checkpoint is None else str(checkpoint.resolve()),
+        "checkpoint_sha256": (
+            None if checkpoint is None else subject.sha256_file(checkpoint)
+        ),
+        "seed_set": "validation",
+        "seeds": list(batch.seeds),
+        "canonical_episode_dirs": [str(path) for path in batch.canonical_episode_dirs],
+        "fresh_process_per_episode": True,
+        "deterministic_evaluation": True,
+        "deterministic_mean_policy": True if checkpoint is not None else None,
+        "pure_fsm_zero_residual": True if checkpoint is None else None,
+        "episode_count": 5,
+        "success_count": sum(row["task_success"] is True for row in episodes),
+        "body_collision_count": sum(row["body_collision"] is True for row in episodes),
+        "wheel_only_climb_count": 0,
+        "safety_abort_count": 0,
+        "all_under_maximum_duration": True,
+        "passed": passed,
+        "worker_gate_pass_count": worker_gate_pass_count,
+        "workers": [dict(row) for row in batch.worker_rows],
+        "episodes": episodes,
+    }
+    aggregate_path = tmp_path / f"{role}_aggregate" / "evaluation_aggregate.json"
+    aggregate_path.parent.mkdir()
+    aggregate_path.write_text(
+        json.dumps(aggregate, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    return aggregate_path
+
+
+def _final_lifecycle_aggregates(tmp_path: Path) -> dict[str, Path]:
+    promoted_bytes = b"promoted best-validation checkpoint"
+    terminal_checkpoint = tmp_path / "training" / "terminal_checkpoint.pt"
+    terminal_checkpoint.parent.mkdir(parents=True)
+    terminal_checkpoint.write_bytes(promoted_bytes)
+    cadence_decision = tmp_path / "cadence" / "promotion_decision.json"
+    cadence_decision.parent.mkdir(parents=True)
+    cadence_decision.write_text(
+        json.dumps(
+            {
+                "candidate_checkpoint_path": str(terminal_checkpoint.resolve()),
+                "candidate_checkpoint_sha256": subject.sha256_file(
+                    terminal_checkpoint
+                ),
+            },
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return {
+        "pure_fsm": _write_final_lifecycle_aggregate(
+            tmp_path, role="pure_fsm", checkpoint_bytes=None
+        ),
+        "checkpoint_initial": _write_final_lifecycle_aggregate(
+            tmp_path, role="checkpoint_initial", checkpoint_bytes=b"initial checkpoint"
+        ),
+        "checkpoint_smoke": _write_final_lifecycle_aggregate(
+            tmp_path,
+            role="checkpoint_smoke",
+            checkpoint_bytes=b"smoke checkpoint",
+            failed_seed=2003,
+        ),
+        "checkpoint_best": _write_final_lifecycle_aggregate(
+            tmp_path,
+            role="checkpoint_best",
+            checkpoint_bytes=promoted_bytes,
+            promotion_decision=cadence_decision,
+        ),
+        "checkpoint_improved": _write_final_lifecycle_aggregate(
+            tmp_path,
+            role="checkpoint_improved",
+            checkpoint_bytes=promoted_bytes,
+            promotion_decision=cadence_decision,
+        ),
+    }
 
 
 def _canonical_baseline_dirs(tmp_path: Path) -> list[Path]:
@@ -292,11 +665,34 @@ def test_canonical_sequence_rejects_duplicate_seed_and_incomplete_phases(
     complete = _fake_evaluation(
         first, seed=3, multiplier=1.0, residual_nonzero=True
     )
-    incomplete = replace(complete, phase_rows=complete.phase_rows[:-1])
+    incomplete = replace(
+        complete,
+        phase_rows=complete.phase_rows[:-1],
+        residual_activity_rows=complete.residual_activity_rows[:-1],
+        reward_contribution_rows=complete.reward_contribution_rows[:-1],
+    )
     monkeypatch.setattr(subject, "evaluate_live_run", lambda *args, **kwargs: incomplete)
     with pytest.raises(subject.EvaluationArtifactError, match="ordered P01-P13 exactly"):
         subject.evaluate_canonical_episode_dirs(
             (first,), seeds=(3,), residual_calibration=_simple_calibration()
+        )
+
+    accepted = subject.evaluate_canonical_episode_dirs(
+        (first,),
+        seeds=(3,),
+        residual_calibration=_simple_calibration(),
+        require_complete_phase_sequence=False,
+    )
+    assert tuple(row["phase"] for row in accepted[0].phase_rows) == PHASE_IDS[:-1]
+
+    out_of_order = replace(incomplete, phase_rows=tuple(reversed(incomplete.phase_rows)))
+    monkeypatch.setattr(subject, "evaluate_live_run", lambda *args, **kwargs: out_of_order)
+    with pytest.raises(subject.EvaluationArtifactError, match="contiguous canonical phase prefix"):
+        subject.evaluate_canonical_episode_dirs(
+            (first,),
+            seeds=(3,),
+            residual_calibration=_simple_calibration(),
+            require_complete_phase_sequence=False,
         )
 
 
@@ -335,6 +731,7 @@ def test_paired_export_is_complete_sorted_and_byte_idempotent(tmp_path: Path) ->
         candidate_checkpoint_name="checkpoint_best_validation",
         candidate_checkpoint_path=checkpoint,
         residual_calibration_evidence=subject.build_versioned_residual_activity_calibration(),
+        **_paired_binding_kwargs(tmp_path, baseline, candidate, checkpoint),
     )
 
     assert len(_csv_rows(paths.baseline_episode_metrics)) == 5
@@ -376,6 +773,7 @@ def test_paired_export_is_complete_sorted_and_byte_idempotent(tmp_path: Path) ->
         candidate_checkpoint_name="checkpoint_best_validation",
         candidate_checkpoint_path=checkpoint,
         residual_calibration_evidence=subject.build_versioned_residual_activity_calibration(),
+        **_paired_binding_kwargs(tmp_path, baseline, candidate, checkpoint),
     )
     assert repeated == paths
     assert {
@@ -386,27 +784,44 @@ def test_paired_export_is_complete_sorted_and_byte_idempotent(tmp_path: Path) ->
 def test_exported_promotion_decision_is_accepted_by_checkpoint_promotion(
     tmp_path: Path,
 ) -> None:
+    torch = pytest.importorskip("torch")
     baseline, candidate = _paired_runs(tmp_path)
     checkpoint = tmp_path / "candidate.pt"
-    checkpoint.write_bytes(b"synthetic trained RSL checkpoint bytes")
+    snapshot_bundle = validated_phase_snapshot_bundle_record(
+        checkpoint_promotion.DEFAULT_PHASE_SNAPSHOT_ROOT
+    )
+    infos = {
+        "schema": checkpoint_promotion.CHECKPOINT_MANIFEST_SCHEMA,
+        "stage": "full-episode",
+        "training_seed": 1001,
+        "global_policy_decisions": 100_000,
+        "source_git_commit": "a" * 40,
+        "committed_runtime_content_sha256": "b" * 64,
+        "actor_observation_dimension": 125,
+        "critic_observation_dimension": 125,
+        "residual_dimension": 12,
+        "physics_hz": 120.0,
+        "decision_hz": 15.0,
+        "files": {
+            "training.yaml": "f" * 64,
+            **phase_snapshot_bundle_file_hashes(snapshot_bundle),
+        },
+        "controller_hash": "a" * 64,
+        "environment_hash": "b" * 64,
+        "observation_schema_hash": "c" * 64,
+        "action_schema_hash": "d" * 64,
+        "reward_config_hash": "e" * 64,
+        "phase_snapshot_manifest": snapshot_bundle["manifest_path"],
+        "phase_snapshot_manifest_sha256": snapshot_bundle["manifest_sha256"],
+        "phase_snapshot_bundle_sha256": snapshot_bundle["bundle_sha256"],
+        "phase_snapshot_bundle": snapshot_bundle,
+    }
+    torch.save({"infos": infos}, checkpoint)
     checkpoint_manifest = tmp_path / "candidate_manifest.json"
     checkpoint_manifest.write_text(
         json.dumps(
             {
-                "schema": checkpoint_promotion.CHECKPOINT_MANIFEST_SCHEMA,
-                "stage": "full-episode",
-                "training_seed": 1001,
-                "global_policy_decisions": 100_000,
-                "actor_observation_dimension": 125,
-                "critic_observation_dimension": 125,
-                "residual_dimension": 12,
-                "physics_hz": 120.0,
-                "decision_hz": 15.0,
-                "controller_hash": "a" * 64,
-                "environment_hash": "b" * 64,
-                "observation_schema_hash": "c" * 64,
-                "action_schema_hash": "d" * 64,
-                "reward_config_hash": "e" * 64,
+                **infos,
                 "checkpoint_path": str(checkpoint.resolve()),
                 "checkpoint_sha256": subject.sha256_file(checkpoint),
             },
@@ -423,6 +838,13 @@ def test_exported_promotion_decision_is_accepted_by_checkpoint_promotion(
         candidate_checkpoint_name="candidate",
         candidate_checkpoint_path=checkpoint,
         residual_calibration_evidence=subject.build_versioned_residual_activity_calibration(),
+        **_paired_binding_kwargs(
+            tmp_path,
+            baseline,
+            candidate,
+            checkpoint,
+            checkpoint_manifest,
+        ),
     )
 
     exported = json.loads(paths.promotion_decision.read_text(encoding="utf-8"))
@@ -441,6 +863,34 @@ def test_exported_promotion_decision_is_accepted_by_checkpoint_promotion(
         output_root=tmp_path / "publication",
     )
     assert promoted.best_checkpoint.read_bytes() == checkpoint.read_bytes()
+
+
+def test_initial_checkpoint_requires_exact_zero_full12_actor_output() -> None:
+    torch = pytest.importorskip("torch")
+    import io
+
+    payload = {
+        "actor_state_dict": {
+            "actor.0.weight": torch.ones((32, 125)),
+            "actor.0.bias": torch.zeros(32),
+            "actor.output.weight": torch.zeros((12, 32)),
+            "actor.output.bias": torch.zeros(12),
+        },
+        "infos": {},
+    }
+    stream = io.BytesIO()
+    torch.save(payload, stream)
+    subject._require_initial_zero_actor_output(
+        stream.getvalue(), {"residual_dimension": 12}
+    )
+
+    payload["actor_state_dict"]["actor.output.bias"][3] = 1.0e-12
+    stream = io.BytesIO()
+    torch.save(payload, stream)
+    with pytest.raises(subject.EvaluationArtifactError, match="exact zero"):
+        subject._require_initial_zero_actor_output(
+            stream.getvalue(), {"residual_dimension": 12}
+        )
 
 
 def test_baseline_only_export_evaluates_five_canonical_dirs_and_is_idempotent(
@@ -588,6 +1038,7 @@ def test_promotion_json_preserves_the_exact_first_failed_gate(tmp_path: Path) ->
         candidate_runs=unsafe,
         frozen_hashes_unchanged=True,
         candidate_checkpoint_name="unsafe_candidate",
+        **_paired_binding_kwargs(tmp_path, baseline, unsafe),
     )
     payload = json.loads(paths.promotion_decision.read_text(encoding="utf-8"))
 
@@ -602,6 +1053,61 @@ def test_promotion_json_preserves_the_exact_first_failed_gate(tmp_path: Path) ->
     assert first_failed == "body_collision_zero"
 
 
+def test_partial_candidate_batch_publishes_strict_failed_decision(
+    tmp_path: Path,
+) -> None:
+    baseline, candidate = _paired_runs(tmp_path)
+    failed = list(candidate)
+    phase_prefix = PHASE_IDS[:5]
+    failed[0] = replace(
+        failed[0],
+        termination=replace(
+            failed[0].termination,
+            result="BODY_COLLISION",
+            reason="synthetic early physical failure",
+            final_state_id=phase_prefix[-1],
+            completed_phases=phase_prefix[:-1],
+            completed_p01_p13=False,
+            task_success=False,
+            body_collision=True,
+            failed_checks=("body_collision",),
+        ),
+        episode_row={
+            **failed[0].episode_row,
+            "task_result": "BODY_COLLISION",
+            "task_success": False,
+            "completed_p01_p13": False,
+            "body_collision": True,
+            "home_recovery_action_jerk_rms": None,
+        },
+        phase_rows=failed[0].phase_rows[: len(phase_prefix)],
+        residual_activity_rows=failed[0].residual_activity_rows[: len(phase_prefix)],
+        reward_contribution_rows=failed[0].reward_contribution_rows[: len(phase_prefix)],
+    )
+
+    paths = subject.export_paired_evaluation_artifacts(
+        tmp_path / "partial-failed-metrics",
+        baseline_runs=baseline,
+        candidate_runs=failed,
+        frozen_hashes_unchanged=True,
+        candidate_checkpoint_name="failed_candidate",
+        **_paired_binding_kwargs(tmp_path, baseline, failed),
+    )
+    payload = json.loads(paths.promotion_decision.read_text(encoding="utf-8"))
+
+    assert payload["candidate_validation_aggregate"]["physical_passed"] is False
+    assert payload["promotion"]["promoted"] is False
+    assert payload["first_failed_gate"] == "p01_p13_completed"
+    assert tuple(
+        row["gate"] for row in payload["checks_in_evaluation_order"]
+    ) == checkpoint_promotion.REQUIRED_PROMOTION_GATES
+    comparison_rows = _csv_rows(paths.phase_metric_comparison)
+    assert len(comparison_rows) == len(PHASE_IDS)
+    assert all(row["comparison_available"] == "False" for row in comparison_rows)
+    assert comparison_rows[-1]["candidate_phase_observed_in_all_runs"] == "False"
+    assert len(_csv_rows(paths.candidate_phase_metrics)) == 4 * len(PHASE_IDS) + 5
+
+
 def test_export_rejects_unmatched_or_duplicate_seeds_before_writing(tmp_path: Path) -> None:
     baseline, candidate = _paired_runs(tmp_path)
     mismatched = list(candidate)
@@ -614,6 +1120,7 @@ def test_export_rejects_unmatched_or_duplicate_seeds_before_writing(tmp_path: Pa
             candidate_runs=mismatched,
             frozen_hashes_unchanged=True,
             candidate_checkpoint_name="candidate",
+            **_paired_binding_kwargs(tmp_path, baseline, mismatched),
         )
     assert not output.exists()
 
@@ -626,6 +1133,7 @@ def test_export_rejects_unmatched_or_duplicate_seeds_before_writing(tmp_path: Pa
             candidate_runs=duplicate,
             frozen_hashes_unchanged=True,
             candidate_checkpoint_name="candidate",
+            **_paired_binding_kwargs(tmp_path, baseline, duplicate),
         )
     assert not output.exists()
 
@@ -646,6 +1154,7 @@ def test_export_preflights_nonidentical_existing_file_before_any_creation(
             candidate_runs=candidate,
             frozen_hashes_unchanged=True,
             candidate_checkpoint_name="candidate",
+            **_paired_binding_kwargs(tmp_path, baseline, candidate),
         )
 
     assert list(output.iterdir()) == [conflict]
@@ -667,6 +1176,7 @@ def test_export_requires_all_candidate_reward_and_residual_phase_rows(
             candidate_runs=missing_reward,
             frozen_hashes_unchanged=True,
             candidate_checkpoint_name="candidate",
+            **_paired_binding_kwargs(tmp_path, baseline, missing_reward),
         )
 
     missing_residual = list(candidate)
@@ -680,4 +1190,394 @@ def test_export_requires_all_candidate_reward_and_residual_phase_rows(
             candidate_runs=missing_residual,
             frozen_hashes_unchanged=True,
             candidate_checkpoint_name="candidate",
+            **_paired_binding_kwargs(tmp_path, baseline, missing_residual),
         )
+
+
+def test_final_lifecycle_export_has_exact_five_roles_and_improved_only_detail(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    aggregates = _final_lifecycle_aggregates(tmp_path)
+    multipliers = {
+        "pure_fsm": 1.0,
+        "checkpoint_initial": 1.0,
+        "checkpoint_smoke": 0.96,
+        "checkpoint_best": 0.91,
+        "checkpoint_improved": 0.90,
+    }
+
+    def evaluate(directories, *, seeds, **_kwargs):
+        role = Path(directories[0]).parent.parent.name.removesuffix("_workers")
+        runs = []
+        for directory, seed in zip(directories, seeds, strict=True):
+            run = _fake_evaluation(
+                Path(directory),
+                seed=seed,
+                multiplier=multipliers[role],
+                residual_nonzero=role not in {"pure_fsm", "checkpoint_initial"},
+            )
+            if role == "checkpoint_smoke" and seed == 2003:
+                partial_phases = PHASE_IDS[:10]
+                termination = replace(
+                    run.termination,
+                    result="BODY_COLLISION",
+                    reason="synthetic intermediate physical failure",
+                    final_state_id="P10",
+                    completed_phases=partial_phases[:9],
+                    completed_p01_p13=False,
+                    task_success=False,
+                    body_collision=True,
+                    failed_checks=("body_collision",),
+                )
+                episode_row = {
+                    **run.episode_row,
+                    "task_result": termination.result,
+                    "task_success": False,
+                    "completed_p01_p13": False,
+                    "body_collision": True,
+                    "home_recovery_action_jerk_rms": None,
+                }
+                run = replace(
+                    run,
+                    termination=termination,
+                    episode_row=episode_row,
+                    phase_rows=run.phase_rows[:10],
+                    residual_activity_rows=run.residual_activity_rows[:10],
+                    reward_contribution_rows=run.reward_contribution_rows[:10],
+                )
+            runs.append(run)
+        return tuple(runs)
+
+    monkeypatch.setattr(subject, "evaluate_canonical_episode_dirs", evaluate)
+    monkeypatch.setattr(
+        subject, "_validate_checkpoint_role_contract", lambda **_kwargs: ()
+    )
+    _trust_synthetic_runtime_identity(monkeypatch)
+    paths = subject.export_final_lifecycle_evaluation_artifacts(
+        tmp_path / "metrics",
+        pure_fsm_aggregate=aggregates["pure_fsm"],
+        checkpoint_initial_aggregate=aggregates["checkpoint_initial"],
+        checkpoint_smoke_aggregate=aggregates["checkpoint_smoke"],
+        checkpoint_best_aggregate=aggregates["checkpoint_best"],
+        checkpoint_improved_aggregate=aggregates["checkpoint_improved"],
+        frozen_hashes_unchanged=True,
+        residual_calibration_evidence=subject.build_versioned_residual_activity_calibration(),
+    )
+
+    checkpoint_rows = _csv_rows(paths.checkpoint_comparison)
+    assert [row["role"] for row in checkpoint_rows] == list(
+        subject.FINAL_LIFECYCLE_ROLES
+    )
+    assert [row["checkpoint"] for row in checkpoint_rows] == list(
+        subject.FINAL_LIFECYCLE_ROLES
+    )
+    assert checkpoint_rows[0]["checkpoint_path"] == ""
+    assert all(
+        len(row["evaluation_aggregate_sha256"]) == 64 for row in checkpoint_rows
+    )
+    assert checkpoint_rows[3]["checkpoint_sha256"] == checkpoint_rows[4][
+        "checkpoint_sha256"
+    ]
+    termination_rows = _csv_rows(paths.termination_summary)
+    assert len(termination_rows) == 25
+    termination_roles = [row["checkpoint"] for row in termination_rows]
+    assert termination_roles == [
+        role for role in subject.FINAL_LIFECYCLE_ROLES for _ in range(5)
+    ]
+    smoke_failure = next(
+        row
+        for row in termination_rows
+        if row["checkpoint"] == "checkpoint_smoke" and row["seed"] == "2003"
+    )
+    assert smoke_failure["task_success"] == "False"
+    assert smoke_failure["body_collision"] == "True"
+    assert checkpoint_rows[2]["task_success_count"] == "4"
+    assert checkpoint_rows[2]["mean_home_recovery_action_jerk_rms"] == ""
+    phase_rows = _csv_rows(paths.phase_metric_comparison)
+    assert len(phase_rows) == 13
+    assert [row["phase"] for row in phase_rows] == list(PHASE_IDS)
+    assert {row["baseline_checkpoint"] for row in phase_rows} == {"pure_fsm"}
+    assert {row["improved_checkpoint"] for row in phase_rows} == {
+        "checkpoint_improved"
+    }
+    assert {
+        row["checkpoint"] for row in _csv_rows(paths.residual_activity_by_phase)
+    } == {"checkpoint_improved"}
+    assert {
+        row["checkpoint"] for row in _csv_rows(paths.reward_contribution_by_phase)
+    } == {"checkpoint_improved"}
+    promotion = json.loads(paths.promotion_decision.read_text(encoding="utf-8"))
+    assert promotion["bundle_kind"] == subject.FINAL_LIFECYCLE_BUNDLE_KIND
+    assert promotion["final_lifecycle_roles"] == list(subject.FINAL_LIFECYCLE_ROLES)
+    assert promotion["promotion"]["promoted"] is True
+    pure_evidence = subject.validate_final_lifecycle_aggregate_evidence(
+        aggregates["pure_fsm"], role="pure_fsm"
+    )
+    baseline_bundle = subject.export_baseline_evaluation_artifacts(
+        paths.output_directory,
+        episode_directories=pure_evidence.canonical_episode_dirs,
+        seeds=pure_evidence.seeds,
+        residual_calibration_evidence=(
+            subject.build_versioned_residual_activity_calibration()
+        ),
+        baseline_name="pure_fsm",
+    )
+    assert baseline_bundle.manifest.is_file()
+
+    orchestration_path = tmp_path / "training_orchestration_manifest.json"
+    orchestration_path.write_text("{}\n", encoding="utf-8")
+    initial_record = promotion["final_lifecycle_evidence"]["checkpoint_initial"]
+    improved_record = promotion["final_lifecycle_evidence"]["checkpoint_improved"]
+    smoke_record = promotion["final_lifecycle_evidence"]["checkpoint_smoke"]
+    improved_manifest_payload = json.loads(
+        Path(improved_record["checkpoint_manifest_path"]).read_text(
+            encoding="utf-8"
+        )
+    )
+    cadence_decision_path = Path(improved_manifest_payload["promotion_decision"])
+    cadence_decision = json.loads(
+        cadence_decision_path.read_text(encoding="utf-8")
+    )
+    cadence_checkpoint_path = Path(
+        cadence_decision["candidate_checkpoint_path"]
+    )
+    cadence_checkpoint_record = {
+        "path": str(cadence_checkpoint_path.resolve()),
+        "bytes": cadence_checkpoint_path.stat().st_size,
+        "sha256": subject.sha256_file(cadence_checkpoint_path),
+    }
+    cadence_decision_record = {
+        "path": str(cadence_decision_path.resolve()),
+        "bytes": cadence_decision_path.stat().st_size,
+        "sha256": subject.sha256_file(cadence_decision_path),
+    }
+    creation_identity_path = Path(
+        initial_record["creation_runtime_identity_path"]
+    )
+    monkeypatch.setattr(
+        final_reporting,
+        "validate_training_orchestration_manifest",
+        lambda *_args, **_kwargs: {
+            "path": str(orchestration_path.resolve()),
+            "bytes": orchestration_path.stat().st_size,
+            "sha256": subject.sha256_file(orchestration_path),
+            "payload": {
+                "schema": final_reporting.TRAINING_ORCHESTRATION_SCHEMA,
+                "valid": True,
+                "status": "PROMOTION_FOUND",
+                "training_seed": 1001,
+                "git_commit": "0" * 40,
+                "initial_checkpoint": {
+                    "path": initial_record["checkpoint_path"],
+                    "sha256": initial_record["checkpoint_sha256"],
+                    "manifest_path": initial_record["checkpoint_manifest_path"],
+                    "manifest_sha256": initial_record[
+                        "checkpoint_manifest_sha256"
+                    ],
+                },
+                "smoke_checkpoint": {
+                    "path": smoke_record["checkpoint_path"],
+                    "sha256": smoke_record["checkpoint_sha256"],
+                    "manifest_path": smoke_record["checkpoint_manifest_path"],
+                    "manifest_sha256": smoke_record[
+                        "checkpoint_manifest_sha256"
+                    ],
+                },
+                "canonical_smoke_checkpoint": {
+                    "path": smoke_record["checkpoint_path"],
+                    "sha256": smoke_record["checkpoint_sha256"],
+                    "manifest_path": smoke_record["checkpoint_manifest_path"],
+                    "manifest_sha256": smoke_record[
+                        "checkpoint_manifest_sha256"
+                    ],
+                },
+                "terminal": {
+                    "chunk_index": 0,
+                    "checkpoint": cadence_checkpoint_record,
+                },
+                "chunks": [
+                    {
+                        "stage": "smoke",
+                        "training": {
+                            "immutable_history_checkpoint": {
+                                "path": promotion["final_lifecycle_evidence"][
+                                    "checkpoint_smoke"
+                                ]["checkpoint_path"],
+                                "sha256": promotion["final_lifecycle_evidence"][
+                                    "checkpoint_smoke"
+                                ]["checkpoint_sha256"],
+                            }
+                        },
+                    }
+                ],
+                "promotion_decisions": [
+                        {
+                            "promoted": True,
+                            "record": cadence_decision_record,
+                            "bound_chunk_index": 0,
+                            "candidate_checkpoint": cadence_checkpoint_record,
+                        }
+                ],
+            },
+            "source_file_records": [
+                {
+                    "path": str(creation_identity_path.resolve()),
+                    "bytes": creation_identity_path.stat().st_size,
+                    "sha256": subject.sha256_file(creation_identity_path),
+                }
+            ],
+            "status": "PROMOTION_FOUND",
+            "valid": True,
+        },
+    )
+    evidence = final_reporting._load_evidence(
+        paths.output_directory,
+        phase_objectives_config=final_reporting.DEFAULT_PHASE_OBJECTIVES_PATH,
+        phase_action_config=final_reporting.DEFAULT_PHASE_ACTION_CONFIG_V2,
+        reward_config=final_reporting.DEFAULT_REWARD_PATH_V2,
+        reward_migration_config=final_reporting.DEFAULT_MIGRATION_PATH,
+        training_orchestration_manifest=orchestration_path,
+    )
+    assert evidence.final_lifecycle is True
+    assert evidence.checkpoint_roles == subject.FINAL_LIFECYCLE_ROLES
+    training_report = final_reporting._training_report(evidence)
+    improvement_report = final_reporting._improvement_report(evidence)
+    assert all(f"| {role} |" in training_report for role in subject.FINAL_LIFECYCLE_ROLES)
+    assert all(f"| {role} |" in improvement_report for role in subject.FINAL_LIFECYCLE_ROLES)
+    reporting_paths = final_reporting.generate_final_reporting_bundle(
+        paths.output_directory,
+        tmp_path / "final-reporting",
+        training_orchestration_manifest=orchestration_path,
+    )
+    assert all(path.is_file() for path in reporting_paths.files())
+
+
+def test_final_lifecycle_export_rejects_seed_label_and_manifest_tampering(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    aggregates = _final_lifecycle_aggregates(tmp_path)
+    monkeypatch.setattr(
+        subject,
+        "evaluate_canonical_episode_dirs",
+        lambda directories, *, seeds, **_kwargs: tuple(
+            _fake_evaluation(
+                Path(directory),
+                seed=seed,
+                multiplier=0.9,
+                residual_nonzero=("pure_fsm_workers" not in str(directory)),
+            )
+            for directory, seed in zip(directories, seeds, strict=True)
+        ),
+    )
+    monkeypatch.setattr(
+        subject, "_validate_checkpoint_role_contract", lambda **_kwargs: ()
+    )
+    _trust_synthetic_runtime_identity(monkeypatch)
+    tampered = json.loads(aggregates["checkpoint_smoke"].read_text(encoding="utf-8"))
+    tampered["seeds"][-1] = 9999
+    aggregates["checkpoint_smoke"].write_text(
+        json.dumps(tampered) + "\n", encoding="utf-8"
+    )
+    with pytest.raises(subject.EvaluationArtifactError, match="validation seeds"):
+        subject.export_final_lifecycle_evaluation_artifacts(
+            tmp_path / "seed-failure",
+            pure_fsm_aggregate=aggregates["pure_fsm"],
+            checkpoint_initial_aggregate=aggregates["checkpoint_initial"],
+            checkpoint_smoke_aggregate=aggregates["checkpoint_smoke"],
+            checkpoint_best_aggregate=aggregates["checkpoint_best"],
+            checkpoint_improved_aggregate=aggregates["checkpoint_improved"],
+            frozen_hashes_unchanged=True,
+        )
+    assert not (tmp_path / "seed-failure").exists()
+
+    aggregates = _final_lifecycle_aggregates(tmp_path / "manifest-case")
+    improved_payload = json.loads(
+        aggregates["checkpoint_improved"].read_text(encoding="utf-8")
+    )
+    improved_result = Path(improved_payload["workers"][0]["worker_result"])
+    result_payload = json.loads(improved_result.read_text(encoding="utf-8"))
+    Path(result_payload["checkpoint_manifest"]).write_text(
+        "{}\n", encoding="utf-8"
+    )
+    with pytest.raises(subject.EvaluationArtifactError, match="manifest SHA-256 is stale"):
+        subject.export_final_lifecycle_evaluation_artifacts(
+            tmp_path / "manifest-failure",
+            pure_fsm_aggregate=aggregates["pure_fsm"],
+            checkpoint_initial_aggregate=aggregates["checkpoint_initial"],
+            checkpoint_smoke_aggregate=aggregates["checkpoint_smoke"],
+            checkpoint_best_aggregate=aggregates["checkpoint_best"],
+            checkpoint_improved_aggregate=aggregates["checkpoint_improved"],
+            frozen_hashes_unchanged=True,
+        )
+    assert not (tmp_path / "manifest-failure").exists()
+
+    aggregates = _final_lifecycle_aggregates(tmp_path / "label-case")
+    with pytest.raises(subject.EvaluationArtifactError, match="checkpoint_initial must bind"):
+        subject.export_final_lifecycle_evaluation_artifacts(
+            tmp_path / "label-failure",
+            pure_fsm_aggregate=aggregates["pure_fsm"],
+            checkpoint_initial_aggregate=aggregates["checkpoint_smoke"],
+            checkpoint_smoke_aggregate=aggregates["checkpoint_initial"],
+            checkpoint_best_aggregate=aggregates["checkpoint_best"],
+            checkpoint_improved_aggregate=aggregates["checkpoint_improved"],
+            frozen_hashes_unchanged=True,
+        )
+    assert not (tmp_path / "label-failure").exists()
+
+
+def test_final_lifecycle_only_allows_physical_failure_for_intermediate_roles(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        subject, "_validate_checkpoint_role_contract", lambda **_kwargs: ()
+    )
+    _trust_synthetic_runtime_identity(monkeypatch)
+    initial = _write_final_lifecycle_aggregate(
+        tmp_path / "initial",
+        role="checkpoint_initial",
+        checkpoint_bytes=b"initial checkpoint",
+        failed_seed=2002,
+    )
+    evidence = subject._final_lifecycle_aggregate_evidence(
+        initial, role="checkpoint_initial"
+    )
+    assert evidence.role == "checkpoint_initial"
+
+    best = _write_final_lifecycle_aggregate(
+        tmp_path / "best",
+        role="checkpoint_best",
+        checkpoint_bytes=b"best checkpoint",
+        failed_seed=2002,
+    )
+    with pytest.raises(subject.EvaluationArtifactError, match="must pass every"):
+        subject._final_lifecycle_aggregate_evidence(best, role="checkpoint_best")
+
+
+def test_final_reporting_rejects_legacy_two_role_bundle_by_default(
+    tmp_path: Path,
+) -> None:
+    baseline, candidate = _paired_runs(tmp_path)
+    checkpoint = tmp_path / "candidate.pt"
+    checkpoint.write_bytes(b"candidate")
+    metrics = subject.export_paired_evaluation_artifacts(
+        tmp_path / "legacy-metrics",
+        baseline_runs=baseline,
+        candidate_runs=candidate,
+        frozen_hashes_unchanged=True,
+        candidate_checkpoint_name="candidate",
+        candidate_checkpoint_path=checkpoint,
+        **_paired_binding_kwargs(tmp_path, baseline, candidate, checkpoint),
+    )
+    with pytest.raises(final_reporting.FinalReportingError, match="five-role"):
+        final_reporting.generate_final_reporting_bundle(
+            metrics.output_directory,
+            tmp_path / "must-not-be-final",
+            training_orchestration_manifest=tmp_path
+            / "training_orchestration_manifest.json",
+        )
+    assert not (tmp_path / "must-not-be-final").exists()
+
+    paths = final_reporting.generate_nonfinal_two_role_reporting_bundle_for_testing(
+        metrics.output_directory, tmp_path / "explicit-nonfinal"
+    )
+    assert all(path.is_file() for path in paths.files())

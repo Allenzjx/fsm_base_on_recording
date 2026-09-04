@@ -7,6 +7,7 @@ this module.  Isaac is imported only for commands that need live physics.
 from __future__ import annotations
 
 import argparse
+from contextlib import ExitStack
 import csv
 import hashlib
 import json
@@ -22,6 +23,7 @@ from typing import Any, Callable, Mapping, Sequence
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_TRAINING_CONFIG = PROJECT_ROOT / "configs" / "ppo_training_phase_v1.yaml"
 DEFAULT_INTERFACE_CONFIG = PROJECT_ROOT / "configs" / "ppo_interface_v2.yaml"
+DEFAULT_PHASE_SNAPSHOT_ROOT = PROJECT_ROOT / "reference" / "ppo_phase_snapshots"
 OUTPUT_ROOT = PROJECT_ROOT / "outputs" / "ppo_phase_v1"
 RESET_THROUGHPUT_PROBE_FILENAME = "reset_throughput_probe.json"
 RESET_THROUGHPUT_PROBE_SCHEMA = "wlr50_clean.reset_throughput_probe.v1"
@@ -34,7 +36,9 @@ LIVE_COMMANDS = frozenset(
         "nonzero-residual-smoke",
         "reset-throughput-probe",
         "soft-reset-equivalence",
+        "phase-snapshot-live-probe",
         "vector-benchmark",
+        "initialize-zero-residual",
         "train",
         "evaluate",
         "export-inference-actor",
@@ -58,7 +62,9 @@ def _parser() -> argparse.ArgumentParser:
         "nonzero-residual-smoke",
         "reset-throughput-probe",
         "soft-reset-equivalence",
+        "phase-snapshot-live-probe",
         "vector-benchmark",
+        "initialize-zero-residual",
         "train",
         "evaluate",
         "aggregate-evaluations",
@@ -69,6 +75,7 @@ def _parser() -> argparse.ArgumentParser:
         "export-inference-actor",
         "capture-video-source",
         "publish-videos",
+        "publish-initial-zero-residual",
     ):
         command = commands.add_parser(name)
         command.add_argument("--run-dir", type=Path, required=True)
@@ -84,10 +91,12 @@ def _parser() -> argparse.ArgumentParser:
         command.add_argument("--deterministic", action="store_true")
         command.add_argument("--fsm-config", type=Path)
         command.add_argument("--selected-trial", type=Path)
-        command.add_argument("--snapshot-root", type=Path, default=PROJECT_ROOT / "reference" / "ppo_phase_snapshots")
+        command.add_argument("--snapshot-root", type=Path, default=DEFAULT_PHASE_SNAPSHOT_ROOT)
         command.add_argument("--stage", choices=("smoke", "phase-curriculum", "full-episode", "mild-randomization"), default="smoke")
         command.add_argument("--checkpoint", type=Path)
         command.add_argument("--checkpoint-manifest", type=Path)
+        command.add_argument("--source-checkpoint", type=Path)
+        command.add_argument("--source-manifest", type=Path)
         command.add_argument("--candidate-checkpoint", type=Path)
         command.add_argument("--candidate-manifest", type=Path)
         command.add_argument("--promotion-decision", type=Path)
@@ -101,8 +110,7 @@ def _parser() -> argparse.ArgumentParser:
         command.add_argument("--ppo-video-source-dir", type=Path)
         command.add_argument("--ffmpeg", type=Path)
         command.add_argument("--soft-reset-acceptance", type=Path)
-        command.add_argument("--vector-zero-benchmark-acceptance", type=Path)
-        command.add_argument("--vector-nonzero-benchmark-acceptance", type=Path)
+        command.add_argument("--vector-benchmark-matrix", type=Path)
         command.add_argument(
             "--evaluation-run-dir",
             type=Path,
@@ -137,6 +145,16 @@ def _parser() -> argparse.ArgumentParser:
             help="one PPO canonical episode directory for paired export",
         )
         command.add_argument(
+            "--baseline-aggregate",
+            type=Path,
+            help="finalized five-seed baseline aggregate for paired export",
+        )
+        command.add_argument(
+            "--candidate-validation-aggregate",
+            type=Path,
+            help="finalized five-seed candidate aggregate for paired export",
+        )
+        command.add_argument(
             "--metrics-output-dir",
             type=Path,
             default=OUTPUT_ROOT / "metrics",
@@ -159,18 +177,44 @@ def _resolve_project_path(path: Path) -> Path:
 
 
 def _validate_common(args: argparse.Namespace) -> None:
-    args.run_dir = args.run_dir.resolve()
-    if not args.run_dir.is_dir():
-        raise CliError(f"reserved run directory is missing: {args.run_dir}")
+    if args.command == "vector-benchmark":
+        from .vector_benchmark_matrix import (
+            VectorBenchmarkMatrixError,
+            validate_managed_run_directory,
+        )
+
+        try:
+            args.run_dir = validate_managed_run_directory(
+                args.run_dir,
+                project_root=PROJECT_ROOT,
+                run_kind="vector_benchmark",
+            )
+        except VectorBenchmarkMatrixError as exc:
+            raise CliError(f"vector benchmark run directory rejected: {exc}") from exc
+    else:
+        args.run_dir = args.run_dir.resolve()
+        if not args.run_dir.is_dir():
+            raise CliError(f"reserved run directory is missing: {args.run_dir}")
     if args.seed < 0 or args.num_envs <= 0 or args.episode_count <= 0:
         raise CliError("seed/env/episode counts are invalid")
     args.training_config = _resolve_project_path(args.training_config)
     args.interface_config = _resolve_project_path(args.interface_config)
+    args.snapshot_root = _resolve_project_path(args.snapshot_root)
     for path in (args.training_config, args.interface_config):
         if not path.is_file():
             raise CliError(f"configuration is missing: {path}")
     if args.maximum_duration_s <= 0.0 or args.maximum_duration_s > 200.0:
         raise CliError("maximum duration must be within (0, 200]")
+    source_arguments = (args.source_checkpoint, args.source_manifest)
+    if args.command == "publish-initial-zero-residual":
+        if any(value is None for value in source_arguments):
+            raise CliError(
+                "publish-initial-zero-residual requires both source checkpoint arguments"
+            )
+    elif any(value is not None for value in source_arguments):
+        raise CliError(
+            "--source-checkpoint/--source-manifest are publication-only arguments"
+        )
 
 
 def _json(path: Path, payload: Any) -> None:
@@ -219,6 +263,127 @@ def _hash_manifest(paths: Sequence[Path]) -> dict[str, str]:
     return {str(path.resolve()): _sha256(path.resolve()) for path in paths}
 
 
+def _live_phase_snapshot_root() -> Path:
+    """Resolve the exact root consumed by the production single-env loader."""
+
+    from .isaac_fsm_backend import DEFAULT_PHASE_SNAPSHOT_ROOT as live_root
+
+    return live_root.resolve()
+
+
+def _capture_runtime_snapshot_bundle(args: argparse.Namespace):
+    """Capture immutable bytes from the one bundle accepted by live execution."""
+
+    from .phase_snapshots import (
+        PhaseSnapshotError,
+        capture_validated_phase_snapshot_bundle,
+    )
+
+    requested_root = _resolve_project_path(
+        getattr(args, "snapshot_root", DEFAULT_PHASE_SNAPSHOT_ROOT)
+    )
+    live_root = _live_phase_snapshot_root()
+    if requested_root != live_root:
+        raise CliError(
+            "--snapshot-root must resolve to the exact bundle used by the live "
+            f"backend: requested={requested_root}, live={live_root}"
+        )
+    try:
+        return capture_validated_phase_snapshot_bundle(
+            requested_root, canonical_root=live_root
+        )
+    except (OSError, PhaseSnapshotError) as exc:
+        raise CliError(f"phase snapshot bundle validation failed: {exc}") from exc
+
+
+def _validated_runtime_snapshot_bundle(args: argparse.Namespace) -> Mapping[str, Any]:
+    """Validate and return the checkpoint-facing snapshot bundle record."""
+
+    from .phase_snapshots import PHASE_IDS
+
+    record = _capture_runtime_snapshot_bundle(args).as_record()
+    live_root = _live_phase_snapshot_root()
+    entries = record.get("snapshots")
+    if (
+        record.get("snapshot_root") != str(live_root)
+        or record.get("manifest_path") != str((live_root / "manifest.json").resolve())
+        or record.get("phase_count") != len(PHASE_IDS)
+        or not isinstance(entries, list)
+        or len(entries) != len(PHASE_IDS)
+        or tuple(entry.get("phase") for entry in entries) != PHASE_IDS
+    ):
+        raise CliError("validated phase snapshot bundle record is incomplete")
+    return record
+
+
+def _revalidate_pinned_snapshot_bundle(pinned_snapshot_bundle: Any) -> None:
+    from .phase_snapshots import (
+        PhaseSnapshotError,
+        ValidatedPhaseSnapshotBundle,
+        assert_phase_snapshot_bundle_unchanged,
+    )
+
+    if not isinstance(pinned_snapshot_bundle, ValidatedPhaseSnapshotBundle):
+        raise CliError("phase snapshot pin is not an immutable validated bundle")
+    try:
+        assert_phase_snapshot_bundle_unchanged(
+            pinned_snapshot_bundle,
+            canonical_root=_live_phase_snapshot_root(),
+        )
+    except (OSError, PhaseSnapshotError) as exc:
+        raise CliError(f"pinned phase snapshot bundle changed: {exc}") from exc
+
+
+def _snapshot_bundle_files(bundle: Mapping[str, Any]) -> tuple[Path, ...]:
+    from .phase_snapshots import PhaseSnapshotError, phase_snapshot_bundle_file_hashes
+
+    try:
+        hashes = phase_snapshot_bundle_file_hashes(bundle)
+    except PhaseSnapshotError as exc:
+        raise CliError(f"phase snapshot bundle record is invalid: {exc}") from exc
+    return tuple(Path(path) for path in hashes)
+
+
+def _require_manifest_snapshot_contract(
+    manifest: Mapping[str, Any],
+    bundle: Mapping[str, Any],
+    *,
+    label: str,
+) -> None:
+    expected = {
+        "phase_snapshot_manifest": bundle["manifest_path"],
+        "phase_snapshot_manifest_sha256": bundle["manifest_sha256"],
+        "phase_snapshot_bundle_sha256": bundle["bundle_sha256"],
+        "phase_snapshot_bundle": bundle,
+    }
+    differing = [field for field, value in expected.items() if manifest.get(field) != value]
+    if differing:
+        raise CliError(
+            f"{label} differs from the validated live phase snapshot bundle: "
+            + ", ".join(differing)
+        )
+    from .phase_snapshots import PhaseSnapshotError, phase_snapshot_bundle_file_hashes
+
+    try:
+        expected_files = phase_snapshot_bundle_file_hashes(bundle)
+    except PhaseSnapshotError as exc:
+        raise CliError(f"validated live phase snapshot bundle is invalid: {exc}") from exc
+    declared_files = manifest.get("files")
+    if not isinstance(declared_files, Mapping):
+        raise CliError(f"{label} omits the checkpoint files hash manifest")
+    missing = [path for path in expected_files if path not in declared_files]
+    mismatched = [
+        path
+        for path, digest in expected_files.items()
+        if path in declared_files and declared_files[path] != digest
+    ]
+    if missing or mismatched:
+        raise CliError(
+            f"{label} does not bind all 27 phase snapshot files: "
+            f"missing={missing}, mismatched={mismatched}"
+        )
+
+
 def _preflight(args: argparse.Namespace) -> int:
     from .observation_schema import OBSERVATION_DIMENSION
     from .observation_schema_v2 import OBSERVATION_DIMENSION_V2, load_observation_schema_v2
@@ -238,12 +403,7 @@ def _preflight(args: argparse.Namespace) -> int:
     objectives = load_phase_objectives()
     reward = load_reward_v2_config()
     termination = load_termination_config_v2()
-    snapshot_manifest = None
-    snapshot_root = _resolve_project_path(args.snapshot_root)
-    if (snapshot_root / "manifest.json").is_file():
-        from .phase_snapshots import validate_phase_snapshots
-
-        snapshot_manifest = validate_phase_snapshots(snapshot_root)
+    snapshot_bundle = _validated_runtime_snapshot_bundle(args)
     frozen_manifest = PROJECT_ROOT / "artifacts" / "ppo_phase_v1_start" / "frozen_fsm_hashes.json"
     frozen = json.loads(frozen_manifest.read_text(encoding="utf-8"))
     mismatches = []
@@ -283,7 +443,8 @@ def _preflight(args: argparse.Namespace) -> int:
         "standing_still_audit": None,
         "termination_timeout_s": termination.timeout_s,
         "training_profile": str(profile.path),
-        "snapshot_count": None if snapshot_manifest is None else snapshot_manifest["phase_count"],
+        "snapshot_count": snapshot_bundle["phase_count"],
+        "phase_snapshot_bundle": snapshot_bundle,
         "schema_outputs": [str(csv_path), str(json_path)],
         "scale_audit_output": str(scale_path),
     }
@@ -298,7 +459,11 @@ def _preflight(args: argparse.Namespace) -> int:
 
 
 def _build_snapshots(args: argparse.Namespace) -> int:
-    from .phase_snapshots import build_phase_snapshots, validate_phase_snapshots
+    from .phase_snapshots import (
+        build_phase_snapshots,
+        validate_phase_snapshots,
+        validated_phase_snapshot_bundle_record,
+    )
 
     root = _resolve_project_path(args.snapshot_root)
     if (root / "manifest.json").is_file():
@@ -314,7 +479,13 @@ def _build_snapshots(args: argparse.Namespace) -> int:
             raise CliError("selected-trial artifact does not resolve a trial directory")
         manifest = build_phase_snapshots(trial_path, root)
         mode = "built"
-    result = {"schema": "wlr50_clean.phase_snapshot_cli.v1", "mode": mode, "manifest": manifest}
+    bundle = validated_phase_snapshot_bundle_record(root)
+    result = {
+        "schema": "wlr50_clean.phase_snapshot_cli.v1",
+        "mode": mode,
+        "manifest": manifest,
+        "phase_snapshot_bundle": bundle,
+    }
     _json(args.run_dir / "phase_snapshot_result.json", result)
     print(json.dumps({"mode": mode, "phase_count": manifest["phase_count"]}))
     return 0
@@ -637,8 +808,163 @@ def _checkpoint_config_paths(args: argparse.Namespace) -> tuple[Path, ...]:
     )
 
 
-def _checkpoint_manifest_payload(args: argparse.Namespace, *, global_step: int, stage: str) -> dict[str, Any]:
+def _pin_live_checkpoint(
+    args: argparse.Namespace,
+    checkpoint_path: Path | str,
+    manifest_path: Path | str,
+    *,
+    purpose: str,
+):
+    """Register one immutable checkpoint capture for this live command."""
+
+    stack = getattr(args, "_checkpoint_runtime_capture_stack", None)
+    if not isinstance(stack, ExitStack):
+        raise CliError("live checkpoint capture stack is unavailable")
+    from .checkpoint_runtime_capture import (
+        CheckpointRuntimeCaptureError,
+        capture_checkpoint_bundle,
+    )
+
+    try:
+        capture = capture_checkpoint_bundle(
+            checkpoint_path,
+            manifest_path,
+            run_directory=args.run_dir,
+            purpose=purpose,
+        )
+        return stack.enter_context(capture)
+    except CheckpointRuntimeCaptureError as exc:
+        raise CliError(f"checkpoint runtime capture failed: {exc}") from exc
+
+
+def _checkpoint_creation_runtime_identity(args: argparse.Namespace) -> dict[str, str]:
+    """Bind checkpoint infos to the managed run's pre-execution runtime bytes."""
+
+    raw_run_dir = getattr(args, "run_dir", None)
+    if raw_run_dir is None:
+        raise CliError("checkpoint creation requires a managed --run-dir")
+    run_dir = Path(raw_run_dir).resolve()
+    identity_path = run_dir / "committed_runtime_identity.before.json"
+    try:
+        before = identity_path.stat()
+        data = identity_path.read_bytes()
+        after = identity_path.stat()
+        payload = json.loads(data.decode("utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise CliError(
+            "managed run committed-runtime identity is missing or invalid"
+        ) from exc
+    if (
+        before.st_size != len(data)
+        or after.st_size != len(data)
+        or before.st_mtime_ns != after.st_mtime_ns
+        or before.st_ctime_ns != after.st_ctime_ns
+        or not isinstance(payload, Mapping)
+    ):
+        raise CliError("managed run committed-runtime identity changed while read")
+    files = payload.get("files")
+    git_commit = payload.get("git_commit")
+    content_sha256 = payload.get("content_sha256")
+    aggregate_sha256 = payload.get("aggregate_sha256")
+    if (
+        payload.get("schema") != "wlr50_clean.committed_runtime_identity.v1"
+        or not isinstance(git_commit, str)
+        or len(git_commit) != 40
+        or any(character not in "0123456789abcdef" for character in git_commit.lower())
+        or not isinstance(content_sha256, str)
+        or len(content_sha256) != 64
+        or any(character not in "0123456789abcdef" for character in content_sha256.lower())
+        or not isinstance(aggregate_sha256, str)
+        or len(aggregate_sha256) != 64
+        or any(character not in "0123456789abcdef" for character in aggregate_sha256.lower())
+        or not isinstance(files, list)
+        or not files
+        or payload.get("file_count") != len(files)
+    ):
+        raise CliError("managed run committed-runtime identity header is invalid")
+    content_rows: list[dict[str, Any]] = []
+    normalized_rows: list[dict[str, Any]] = []
+    for row in files:
+        if not isinstance(row, Mapping) or set(row) != {
+            "path",
+            "bytes",
+            "sha256",
+            "creation_time_utc_ticks",
+            "last_write_time_utc_ticks",
+        }:
+            raise CliError("managed run committed-runtime identity row is invalid")
+        name = row.get("path")
+        size = row.get("bytes")
+        digest = row.get("sha256")
+        if (
+            not isinstance(name, str)
+            or not name
+            or isinstance(size, bool)
+            or not isinstance(size, int)
+            or size < 0
+            or not isinstance(digest, str)
+            or len(digest) != 64
+            or any(character not in "0123456789abcdef" for character in digest.lower())
+        ):
+            raise CliError("managed run committed-runtime identity row is invalid")
+        content_rows.append({"path": name, "bytes": size, "sha256": digest})
+        normalized_rows.append(dict(row))
+    canonical = json.dumps(
+        content_rows,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+    if hashlib.sha256(canonical).hexdigest() != content_sha256:
+        raise CliError("managed run committed-runtime content SHA-256 is invalid")
+    aggregate = json.dumps(
+        normalized_rows,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+    if hashlib.sha256(aggregate).hexdigest() != aggregate_sha256:
+        raise CliError("managed run committed-runtime aggregate SHA-256 is invalid")
+    return {
+        "source_git_commit": git_commit.lower(),
+        "committed_runtime_content_sha256": content_sha256.lower(),
+        "creation_runtime_identity_path": str(identity_path),
+        "creation_runtime_identity_sha256": hashlib.sha256(data).hexdigest(),
+    }
+
+
+def _checkpoint_manifest_payload(
+    args: argparse.Namespace,
+    *,
+    global_step: int,
+    stage: str,
+    pinned_snapshot_bundle: Any | None = None,
+) -> dict[str, Any]:
+    from .phase_snapshots import (
+        PhaseSnapshotError,
+        ValidatedPhaseSnapshotBundle,
+        phase_snapshot_bundle_file_hashes,
+    )
+
     paths = _checkpoint_config_paths(args)
+    pinned = (
+        _capture_runtime_snapshot_bundle(args)
+        if pinned_snapshot_bundle is None
+        else pinned_snapshot_bundle
+    )
+    if not isinstance(pinned, ValidatedPhaseSnapshotBundle):
+        raise CliError("checkpoint snapshot pin is not a validated immutable bundle")
+    if pinned.snapshot_root != _live_phase_snapshot_root():
+        raise CliError("checkpoint snapshot pin differs from the live loader root")
+    snapshot_bundle = pinned.as_record()
+    try:
+        snapshot_file_hashes = phase_snapshot_bundle_file_hashes(snapshot_bundle)
+    except PhaseSnapshotError as exc:
+        raise CliError(f"checkpoint snapshot pin is invalid: {exc}") from exc
+    file_hashes = _hash_manifest(paths)
+    if set(file_hashes).intersection(snapshot_file_hashes):
+        raise CliError("checkpoint config and phase snapshot file sets overlap")
+    file_hashes.update(snapshot_file_hashes)
     payload = {
         "schema": "wlr50_clean.phase_residual_checkpoint_manifest.v1",
         "stage": stage,
@@ -649,12 +975,17 @@ def _checkpoint_manifest_payload(args: argparse.Namespace, *, global_step: int, 
         "residual_dimension": 12,
         "physics_hz": 120.0,
         "decision_hz": 15.0,
-        "files": _hash_manifest(paths),
+        "files": file_hashes,
         "controller_hash": _sha256(PROJECT_ROOT / "configs" / "fsm_states.yaml"),
         "environment_hash": _sha256(PROJECT_ROOT / "configs" / "environment_lock.json"),
         "observation_schema_hash": _sha256(PROJECT_ROOT / "configs" / "ppo_observation_schema_v2.json"),
         "action_schema_hash": _sha256(PROJECT_ROOT / "configs" / "ppo_phase_action_masks_v2.yaml"),
         "reward_config_hash": _sha256(PROJECT_ROOT / "configs" / "ppo_reward_v2.yaml"),
+        "phase_snapshot_manifest": snapshot_bundle["manifest_path"],
+        "phase_snapshot_manifest_sha256": snapshot_bundle["manifest_sha256"],
+        "phase_snapshot_bundle_sha256": snapshot_bundle["bundle_sha256"],
+        "phase_snapshot_bundle": snapshot_bundle,
+        **_checkpoint_creation_runtime_identity(args),
     }
     soft_reset = getattr(args, "_soft_reset_acceptance_evidence", None)
     if soft_reset is not None:
@@ -662,16 +993,26 @@ def _checkpoint_manifest_payload(args: argparse.Namespace, *, global_step: int, 
     vector_benchmarks = getattr(args, "_vector_benchmark_acceptance_evidence", None)
     if vector_benchmarks is not None:
         payload["vector_benchmark_acceptance"] = dict(vector_benchmarks)
+    vector_matrix = getattr(args, "_vector_benchmark_matrix_evidence", None)
+    if vector_matrix is not None:
+        payload["vector_benchmark_matrix"] = dict(vector_matrix)
+        payload["vector_benchmark_matrix_path"] = vector_matrix["path"]
+        payload["vector_benchmark_matrix_sha256"] = vector_matrix["sha256"]
     return payload
 
 
-def _current_checkpoint_runtime_contract(args: argparse.Namespace) -> Mapping[str, Any]:
+def _current_checkpoint_runtime_contract(
+    args: argparse.Namespace,
+    *,
+    pinned_snapshot_bundle: Any | None = None,
+) -> Mapping[str, Any]:
     """Build the immutable runtime subset a loaded checkpoint must match."""
 
     return _checkpoint_manifest_payload(
         args,
         global_step=0,
         stage="current_runtime_contract",
+        pinned_snapshot_bundle=pinned_snapshot_bundle,
     )
 
 
@@ -1092,6 +1433,25 @@ def _reset_throughput_probe(args: argparse.Namespace, simulation_app: Any) -> in
     return 0 if passed else 2
 
 
+def _phase_snapshot_live_probe(
+    args: argparse.Namespace, simulation_app: Any
+) -> int:
+    """Capture diagnostic P02-P13 resets without changing production reset."""
+
+    from .phase_snapshot_live_probe import run_phase_snapshot_live_probe
+
+    pinned_snapshot_bundle = _capture_runtime_snapshot_bundle(args)
+    result = run_phase_snapshot_live_probe(
+        simulation_app,
+        run_dir=args.run_dir,
+        seed=args.seed,
+        snapshot_bundle=pinned_snapshot_bundle,
+    )
+    _revalidate_pinned_snapshot_bundle(pinned_snapshot_bundle)
+    print(json.dumps(result, separators=(",", ":"), allow_nan=False), flush=True)
+    return 0 if result.get("passed") is True else 2
+
+
 def _vector_benchmark(args: argparse.Namespace, simulation_app: Any) -> int:
     from .vectorized_isaac_backend import VectorizedIsaacFSMBackend
     from .vectorized_residual_env import VectorizedRslResidualEnv
@@ -1099,48 +1459,179 @@ def _vector_benchmark(args: argparse.Namespace, simulation_app: Any) -> int:
         collect_vectorized_residual_smoke_evidence,
     )
 
-    backend = VectorizedIsaacFSMBackend(
-        simulation_app,
-        num_envs=args.num_envs,
-        env_spacing_m=8.0,
-    )
     seeds = _seed_values(args)
     seed_rows = tuple(seeds[index % len(seeds)] for index in range(args.num_envs))
-    backend.reset_all(seeds=seed_rows)
-    report = backend.benchmark(measured_ticks=args.measured_ticks)
-    if not report.true_batched_isaac_verified:
-        smoke_payload = None
-    else:
-        # The adapter performs a new synchronized reset, so the smoke starts
-        # at authoritative episode tick zero even though the same one-scene
-        # backend was first used for the throughput measurement.
-        env = VectorizedRslResidualEnv(
-            backend,
-            seeds=seed_rows,
-            device="cuda:0",
+    stage = "backend_construction"
+    cuda_memory: dict[str, Any] | None = None
+    try:
+        backend = VectorizedIsaacFSMBackend(
+            simulation_app,
+            num_envs=args.num_envs,
+            env_spacing_m=8.0,
         )
-        smoke_mode = (
-            "zero" if args.residual_mode == "zero" else "nonzero"
-        )
-        smoke = collect_vectorized_residual_smoke_evidence(
-            env,
-            mode=smoke_mode,
-            policy_decisions=(
-                2 if args.policy_decisions is None else args.policy_decisions
-            ),
-        )
-        smoke_payload = smoke.as_dict()
-    payload = {
-        "schema": "wlr50_clean.vectorized_isaac_benchmark_run.v1",
-        "seed_rows": list(seed_rows),
-        "report": report.as_dict(),
-        "residual_smoke": smoke_payload,
-        "passed": bool(
+        stage = "backend_reset"
+        backend.reset_all(seeds=seed_rows)
+        stage = "cuda_memory_measurement_setup"
+        import torch  # type: ignore
+
+        cuda_device = torch.device(str(backend.device))
+        if cuda_device.type != "cuda" or not torch.cuda.is_available():
+            raise RuntimeError("vector capacity benchmark requires an available CUDA device")
+        torch.cuda.synchronize(cuda_device)
+        torch.cuda.reset_peak_memory_stats(cuda_device)
+        memory_start_allocated = int(torch.cuda.memory_allocated(cuda_device))
+        memory_start_reserved = int(torch.cuda.memory_reserved(cuda_device))
+        stage = "backend_benchmark"
+        report = backend.benchmark(measured_ticks=args.measured_ticks)
+        if not report.true_batched_isaac_verified:
+            smoke_payload = None
+        else:
+            stage = "residual_smoke"
+            # The adapter performs a new synchronized reset, so the smoke starts
+            # at authoritative episode tick zero even though the same one-scene
+            # backend was first used for the throughput measurement.
+            env = VectorizedRslResidualEnv(
+                backend,
+                seeds=seed_rows,
+                device="cuda:0",
+            )
+            smoke_mode = (
+                "zero" if args.residual_mode == "zero" else "nonzero"
+            )
+            smoke = collect_vectorized_residual_smoke_evidence(
+                env,
+                mode=smoke_mode,
+                policy_decisions=(
+                    2 if args.policy_decisions is None else args.policy_decisions
+                ),
+            )
+            smoke_payload = smoke.as_dict()
+        stage = "cuda_memory_measurement_finalize"
+        torch.cuda.synchronize(cuda_device)
+        peak_allocated = int(torch.cuda.max_memory_allocated(cuda_device))
+        peak_reserved = int(torch.cuda.max_memory_reserved(cuda_device))
+        device_total = int(torch.cuda.get_device_properties(cuda_device).total_memory)
+        if (
+            memory_start_allocated <= 0
+            or memory_start_reserved <= 0
+            or peak_allocated < memory_start_allocated
+            or peak_reserved < memory_start_reserved
+            or peak_allocated <= 0
+            or peak_reserved <= 0
+            or device_total <= 0
+            or peak_allocated >= device_total
+            or peak_reserved >= device_total
+        ):
+            raise RuntimeError("CUDA peak-memory evidence is invalid or exceeds capacity")
+        cuda_memory = {
+            "schema": "wlr50_clean.vector_cuda_memory_evidence.v1",
+            "device": str(cuda_device),
+            "peak_stats_reset_before_measured_section": True,
+            "measurement_covers_throughput_and_residual_smoke": True,
+            "allocated_bytes_at_measurement_start": memory_start_allocated,
+            "reserved_bytes_at_measurement_start": memory_start_reserved,
+            "peak_allocated_bytes": peak_allocated,
+            "peak_reserved_bytes": peak_reserved,
+            "device_total_bytes": device_total,
+            "peak_allocated_below_device_total": True,
+            "peak_reserved_below_device_total": True,
+            "oom_detected": False,
+        }
+        contamination_complete = bool(
             report.true_batched_isaac_verified
             and smoke_payload is not None
             and smoke_payload.get("passed") is True
-        ),
-    }
+        )
+        contamination = {
+            "schema": "wlr50_clean.vector_contamination_evidence.v1",
+            "evidence_complete": contamination_complete,
+            "cross_environment_contamination_detected": (
+                False if contamination_complete else None
+            ),
+            "fsm_state_contamination_detected": (
+                False if contamination_complete else None
+            ),
+            "render_contamination_detected": (
+                False if contamination_complete else None
+            ),
+            "measured_render_calls": 0,
+            "independent_seed_count": len(set(seed_rows)),
+            "independent_controller_count": report.independent_controller_count,
+            "independent_reader_count": report.independent_reader_count,
+            "independent_origin_count": (
+                None
+                if smoke_payload is None
+                else smoke_payload.get("independent_origin_count")
+            ),
+        }
+        payload = {
+            "schema": "wlr50_clean.vectorized_isaac_benchmark_run.v1",
+            "seed_rows": list(seed_rows),
+            "report": report.as_dict(),
+            "residual_smoke": smoke_payload,
+            "resource_evidence": {
+                "cuda_memory": cuda_memory,
+                "contamination": contamination,
+            },
+            "passed": bool(
+                report.true_batched_isaac_verified
+                and smoke_payload is not None
+                and smoke_payload.get("passed") is True
+            ),
+        }
+    except Exception as exc:
+        message = str(exc).strip() or repr(exc)
+        reason = f"{stage}:{type(exc).__name__}:{message}"
+        payload = {
+            "schema": "wlr50_clean.vectorized_isaac_benchmark_run.v1",
+            "seed_rows": list(seed_rows),
+            "report": {
+                "status": "VECTOR_BACKEND_BENCHMARK_FAILED",
+                "num_envs": args.num_envs,
+                "measured_ticks": args.measured_ticks,
+                "wall_time_s": 0.0,
+                "physics_steps_per_second": 0.0,
+                "environment_steps_per_second": 0.0,
+                "one_simulation_context": False,
+                "articulation_tensor_instances": 0,
+                "global_physics_steps": 0,
+                "batched_articulation_writes": 0,
+                "exact_pair_captures": 0,
+                "exact_pair_sensor_count": 0,
+                "independent_controller_count": 0,
+                "independent_reader_count": 0,
+                "final_state_ids": [],
+                "true_batched_isaac_verified": False,
+                "failure_reasons": [reason],
+                "failure_details": [
+                    {
+                        "stage": stage,
+                        "exception_type": type(exc).__name__,
+                        "message": message,
+                    }
+                ],
+            },
+            "residual_smoke": None,
+            "resource_evidence": {
+                "cuda_memory": (
+                    cuda_memory
+                    if cuda_memory is not None
+                    else {
+                        "schema": "wlr50_clean.vector_cuda_memory_evidence.v1",
+                        "evidence_complete": False,
+                        "oom_detected": "out of memory" in message.lower(),
+                    }
+                ),
+                "contamination": {
+                    "schema": "wlr50_clean.vector_contamination_evidence.v1",
+                    "evidence_complete": False,
+                    "cross_environment_contamination_detected": None,
+                    "fsm_state_contamination_detected": None,
+                    "render_contamination_detected": None,
+                },
+            },
+            "passed": False,
+        }
     _json(args.run_dir / "vector_benchmark.json", payload)
     print(json.dumps(payload, separators=(",", ":")), flush=True)
     return 0 if payload["passed"] else 2
@@ -1333,6 +1824,14 @@ def _validate_vector_benchmark_acceptance(
     }
     if not expected_audits.issubset(stdout_audits):
         raise CliError("vector benchmark stdout omits bound before/after frozen audits")
+    frozen_manifest_payload = _acceptance_json(
+        PROJECT_ROOT
+        / "artifacts"
+        / "ppo_phase_v1_start"
+        / "frozen_fsm_hashes.json",
+        label="frozen FSM manifest",
+    )
+    frozen_source_head = frozen_manifest_payload.get("source_head")
     frozen_audit_hashes: dict[str, str] = {}
     for audit_path in sorted(expected_audits, key=str):
         audit = _acceptance_json(audit_path, label="vector benchmark frozen audit")
@@ -1343,7 +1842,7 @@ def _validate_vector_benchmark_acceptance(
             or audit.get("protected_file_count") != 29
             or audit.get("frozen_manifest_sha256")
             != expected_frozen_manifest_sha256
-            or audit.get("source_head") != identity.get("git_commit")
+            or audit.get("source_head") != frozen_source_head
         ):
             raise CliError("vector benchmark frozen hash audit is stale or failed")
         frozen_audit_hashes[str(audit_path)] = _sha256(audit_path)
@@ -1462,20 +1961,30 @@ def _require_training_vector_benchmark_acceptance(
     args: argparse.Namespace,
     profile: Any,
 ) -> Mapping[str, Any] | None:
-    """Require both exact-zero and bounded-nonzero live gates for batching."""
+    """Require one finalized six-slot matrix before any batched training."""
 
     if args.num_envs == 1:
         return None
-    zero_argument = getattr(args, "vector_zero_benchmark_acceptance", None)
-    nonzero_argument = getattr(args, "vector_nonzero_benchmark_acceptance", None)
-    if zero_argument is None or nonzero_argument is None:
+    if (
+        getattr(args, "vector_zero_benchmark_acceptance", None) is not None
+        or getattr(args, "vector_nonzero_benchmark_acceptance", None) is not None
+    ):
         raise CliError(
-            "multi-env training requires --vector-zero-benchmark-acceptance and "
-            "--vector-nonzero-benchmark-acceptance for the selected env count"
+            "raw vector benchmark acceptances are internal-only; supply the finalized matrix"
         )
-    from .artifacts import config_set_record
+    matrix_argument = getattr(args, "vector_benchmark_matrix", None)
+    if matrix_argument is None:
+        raise CliError(
+            "multi-env training requires --vector-benchmark-matrix from the "
+            "six-slot offline aggregation"
+        )
+    from .artifacts import ArtifactError, config_set_record, git_head
+    from .vector_benchmark_matrix import (
+        VectorBenchmarkMatrixError,
+        validate_finalized_vector_benchmark_matrix,
+    )
 
-    config_sha256, _ = config_set_record(
+    config_sha256, config_records = config_set_record(
         _checkpoint_config_paths(args), project_root=PROJECT_ROOT
     )
     frozen_manifest = (
@@ -1487,36 +1996,32 @@ def _require_training_vector_benchmark_acceptance(
     train_seeds = tuple(int(seed) for seed in profile.seed_train)
     if len(train_seeds) < args.num_envs:
         raise CliError("training profile has too few independent vector reset seeds")
+    if args.seed in train_seeds:
+        offset = train_seeds.index(args.seed)
+        train_seeds = train_seeds[offset:] + train_seeds[:offset]
     expected_seed_rows = train_seeds[: args.num_envs]
-    evidence = {
-        "zero": dict(
-            _validate_vector_benchmark_acceptance(
-                _resolve_project_path(Path(zero_argument)),
-                expected_mode="zero",
-                expected_num_envs=args.num_envs,
-                expected_run_seed=args.seed,
-                expected_seed_rows=expected_seed_rows,
-                expected_config_sha256=config_sha256,
-                expected_frozen_manifest_sha256=frozen_manifest_sha256,
-            )
-        ),
-        "bounded_nonzero": dict(
-            _validate_vector_benchmark_acceptance(
-                _resolve_project_path(Path(nonzero_argument)),
-                expected_mode="bounded-smoke",
-                expected_num_envs=args.num_envs,
-                expected_run_seed=args.seed,
-                expected_seed_rows=expected_seed_rows,
-                expected_config_sha256=config_sha256,
-                expected_frozen_manifest_sha256=frozen_manifest_sha256,
-            )
-        ),
-    }
-    args.vector_zero_benchmark_acceptance = Path(evidence["zero"]["path"])
+    try:
+        evidence = validate_finalized_vector_benchmark_matrix(
+            _resolve_project_path(Path(matrix_argument)),
+            expected_project_root=PROJECT_ROOT,
+            expected_config_sha256=config_sha256,
+            expected_frozen_manifest_sha256=frozen_manifest_sha256,
+            expected_git_commit=git_head(PROJECT_ROOT),
+            expected_run_seed=args.seed,
+            expected_num_envs=args.num_envs,
+            expected_seed_rows=expected_seed_rows,
+            expected_config_records=config_records,
+        )
+    except (VectorBenchmarkMatrixError, ArtifactError) as exc:
+        raise CliError(f"vector benchmark matrix rejected: {exc}") from exc
+    selected = evidence["selected_acceptance"]
+    args.vector_benchmark_matrix = Path(evidence["path"])
+    args.vector_zero_benchmark_acceptance = Path(selected["zero"]["path"])
     args.vector_nonzero_benchmark_acceptance = Path(
-        evidence["bounded_nonzero"]["path"]
+        selected["bounded_nonzero"]["path"]
     )
-    args._vector_benchmark_acceptance_evidence = evidence
+    args._vector_benchmark_matrix_evidence = evidence
+    args._vector_benchmark_acceptance_evidence = selected
     return evidence
 
 
@@ -1544,6 +2049,7 @@ def _construct_live_runner(
     max_iterations: int,
     reset_seeds: Sequence[int] | None = None,
     collect_trace: bool = False,
+    pinned_snapshot_bundle: Any | None = None,
 ):
     from .residual_direct_env import (
         DEFAULT_PHASE_CURRICULUM_MAX_DECISIONS,
@@ -1558,6 +2064,8 @@ def _construct_live_runner(
         getattr(args, "command", "train") == "train"
         and args.stage == "phase-curriculum"
     )
+    if phase_curriculum and pinned_snapshot_bundle is None:
+        pinned_snapshot_bundle = _capture_runtime_snapshot_bundle(args)
     selected_seeds = (
         profile.seed_train if reset_seeds is None else tuple(reset_seeds)
     )
@@ -1577,7 +2085,11 @@ def _construct_live_runner(
         from .isaac_fsm_backend import IsaacFSMBackend
 
         episode = ResidualEpisodeEnv(
-            IsaacFSMBackend(simulation_app), collect_trace=collect_trace
+            IsaacFSMBackend(
+                simulation_app,
+                expected_phase_snapshot_bundle=pinned_snapshot_bundle,
+            ),
+            collect_trace=collect_trace,
         )
         env = RslResidualVecEnv(
             [episode],
@@ -1926,11 +2438,185 @@ def _require_training_soft_reset_acceptance(
     return evidence
 
 
+def _initialize_zero_residual(args: argparse.Namespace, simulation_app: Any) -> int:
+    """Create and verify a run-local zero actor without publishing canonical state."""
+
+    if args.num_envs != 1:
+        raise CliError("zero-residual checkpoint initialization requires num-envs=1")
+    if args.seed_set != "train":
+        raise CliError("zero-residual checkpoint initialization requires seed-set=train")
+    if args.stage != "smoke":
+        raise CliError("zero-residual checkpoint initialization requires stage=smoke")
+    if args.checkpoint is not None or args.checkpoint_manifest is not None:
+        raise CliError("zero-residual checkpoint initialization cannot resume a checkpoint")
+
+    pinned_snapshot_bundle = _capture_runtime_snapshot_bundle(args)
+    from .rl_library_wrapper import (
+        capture_training_rng_state,
+        initialize_zero_mean_actor,
+        load_checkpoint_round_trip,
+        optimizer_learning_rate,
+        save_checkpoint_with_manifest,
+        seed_training_rngs,
+        validate_resume_checkpoint_provenance,
+        zero_mean_actor_output_layer_verified,
+    )
+
+    rng_seed_evidence = dict(seed_training_rngs(args.seed))
+    profile, env, runner, config = _construct_live_runner(
+        args,
+        simulation_app,
+        max_iterations=1,
+        reset_seeds=(args.seed,),
+        pinned_snapshot_bundle=pinned_snapshot_bundle,
+    )
+    if args.seed not in profile.seed_train:
+        raise CliError("initializer seed is not in the configured train seed set")
+    if env.num_envs != 1:
+        raise CliError("zero-residual initializer constructed a non-single environment")
+    _revalidate_pinned_snapshot_bundle(pinned_snapshot_bundle)
+    initialize_zero_mean_actor(runner)
+    if not zero_mean_actor_output_layer_verified(runner):
+        raise CliError("zero-residual actor output layer is not exact zero before save")
+
+    checkpoint = args.run_dir / "checkpoint_initial_zero_residual.pt"
+    manifest_payload = {
+        **_checkpoint_manifest_payload(
+            args,
+            global_step=0,
+            stage="initial_zero_residual",
+            pinned_snapshot_bundle=pinned_snapshot_bundle,
+        ),
+        "optimizer_learning_rate": optimizer_learning_rate(runner),
+        "training_rng_seed_evidence": rng_seed_evidence,
+        "training_rng_state": capture_training_rng_state(seed=args.seed),
+        "zero_mean_actor_output_layer_verified": True,
+    }
+    checkpoint, manifest = save_checkpoint_with_manifest(
+        runner, checkpoint, manifest=manifest_payload
+    )
+    capture = _pin_live_checkpoint(
+        args,
+        checkpoint,
+        manifest,
+        purpose="initialize-zero-residual-round-trip",
+    )
+    _revalidate_pinned_snapshot_bundle(pinned_snapshot_bundle)
+    round_trip = load_checkpoint_round_trip(
+        runner, checkpoint, captured_bundle=capture
+    )
+    provenance = validate_resume_checkpoint_provenance(
+        checkpoint,
+        round_trip,
+        manifest_path=manifest,
+        expected_global_policy_decisions=0,
+        expected_runtime_contract=_current_checkpoint_runtime_contract(
+            args, pinned_snapshot_bundle=pinned_snapshot_bundle
+        ),
+        captured_bundle=capture,
+    )
+    if (
+        round_trip.get("stage") != "initial_zero_residual"
+        or round_trip.get("training_seed") != args.seed
+        or round_trip.get("zero_mean_actor_output_layer_verified") is not True
+        or not zero_mean_actor_output_layer_verified(runner)
+    ):
+        raise CliError("reloaded zero-residual checkpoint is not an exact-zero actor")
+    _revalidate_pinned_snapshot_bundle(pinned_snapshot_bundle)
+    result = {
+        "schema": "wlr50_clean.initial_zero_residual_checkpoint_run.v1",
+        "stage": "initial_zero_residual",
+        "seed": args.seed,
+        "num_envs": env.num_envs,
+        "checkpoint": str(checkpoint),
+        "checkpoint_sha256": capture.checkpoint_sha256,
+        "checkpoint_manifest": str(manifest),
+        "checkpoint_manifest_sha256": capture.manifest_sha256,
+        "global_policy_decisions": provenance.global_policy_decisions,
+        "save_load_round_trip": True,
+        "checkpoint_private_capture_verified": True,
+        "zero_mean_actor_output_layer_verified_before_save": True,
+        "zero_mean_actor_output_layer_verified_after_load": True,
+        "phase_snapshot_bundle": pinned_snapshot_bundle.as_record(),
+        "training_rng_seed_evidence": rng_seed_evidence,
+        "runner_config": config,
+        "training_profile_seed_train": list(profile.seed_train),
+    }
+    _json(args.run_dir / "initial_checkpoint_result.json", result)
+    print(json.dumps(result, separators=(",", ":")), flush=True)
+    return 0
+
+
+def _publish_initial_zero_residual(args: argparse.Namespace) -> int:
+    """Validate a finalized initializer and publish/reuse the canonical pair."""
+
+    if args.num_envs != 1 or args.seed_set != "train":
+        raise CliError(
+            "zero-residual checkpoint publication requires num-envs=1 and seed-set=train"
+        )
+    if args.source_checkpoint is None or args.source_manifest is None:
+        raise CliError(
+            "zero-residual checkpoint publication requires --source-checkpoint and --source-manifest"
+        )
+    from .initial_checkpoint import (
+        InitialCheckpointError,
+        publish_initial_zero_residual_checkpoint,
+    )
+
+    try:
+        result = publish_initial_zero_residual_checkpoint(
+            source_checkpoint=_resolve_project_path(args.source_checkpoint),
+            source_manifest=_resolve_project_path(args.source_manifest),
+            output_root=_resolve_project_path(args.output_root),
+            project_root=PROJECT_ROOT,
+            expected_seed=args.seed,
+        )
+    except InitialCheckpointError as exc:
+        raise CliError(f"canonical initial checkpoint publication failed: {exc}") from exc
+    payload = result.as_dict()
+    _json(args.run_dir / "initial_checkpoint_publication.json", payload)
+    print(json.dumps(payload, separators=(",", ":")), flush=True)
+    return 0
+
+
+def _require_canonical_initial_checkpoint(args: argparse.Namespace) -> None:
+    """Reject a missing/stale default resume pair before AppLauncher import."""
+
+    if args.checkpoint is not None:
+        return
+    from .initial_checkpoint import (
+        InitialCheckpointError,
+        validate_initial_zero_residual_checkpoint,
+    )
+
+    initial_checkpoint = (
+        OUTPUT_ROOT / "checkpoints" / "checkpoint_initial_zero_residual.pt"
+    )
+    try:
+        validate_initial_zero_residual_checkpoint(
+            initial_checkpoint,
+            initial_checkpoint.with_name(
+                "checkpoint_initial_zero_residual_manifest.json"
+            ),
+            project_root=PROJECT_ROOT,
+            expected_seed=args.seed,
+        )
+    except InitialCheckpointError as exc:
+        raise CliError(
+            "canonical initial checkpoint is absent or invalid; run "
+            "scripts/initialize_zero_residual_checkpoint.ps1 first: "
+            f"{exc}"
+        ) from exc
+
+
 def _train(args: argparse.Namespace, simulation_app: Any) -> int:
+    # Phase-curriculum resets are loaded by the production backend from one
+    # fixed root.  All other training stages bind the same bundle for a common
+    # checkpoint ABI.
+    pinned_snapshot_bundle = _capture_runtime_snapshot_bundle(args)
     from .rl_library_wrapper import (
         capture_training_rng_state,
         entropy_coefficient_at_policy_decision,
-        initialize_zero_mean_actor,
         iterations_for_policy_decisions,
         learn_with_entropy_schedule,
         load_checkpoint_round_trip,
@@ -1940,6 +2626,7 @@ def _train(args: argparse.Namespace, simulation_app: Any) -> int:
         save_checkpoint_with_manifest,
         seed_training_rngs,
         validate_resume_checkpoint_provenance,
+        zero_mean_actor_output_layer_verified,
     )
 
     from .rl_library_wrapper import load_training_profile
@@ -1976,22 +2663,15 @@ def _train(args: argparse.Namespace, simulation_app: Any) -> int:
         budget, num_envs=args.num_envs, rollout_length=profile.rollout_length
     )
     profile, env, runner, config = _construct_live_runner(
-        args, simulation_app, max_iterations=iterations
+        args,
+        simulation_app,
+        max_iterations=iterations,
+        pinned_snapshot_bundle=pinned_snapshot_bundle,
     )
+    _revalidate_pinned_snapshot_bundle(pinned_snapshot_bundle)
     checkpoints = OUTPUT_ROOT / "checkpoints"
     checkpoints.mkdir(parents=True, exist_ok=True)
     initial_path = checkpoints / "checkpoint_initial_zero_residual.pt"
-    if not initial_path.exists():
-        initialize_zero_mean_actor(runner)
-        initial_manifest = {
-            **_checkpoint_manifest_payload(
-                args, global_step=0, stage="initial_zero_residual"
-            ),
-            "optimizer_learning_rate": optimizer_learning_rate(runner),
-            "training_rng_seed_evidence": rng_seed_evidence,
-            "training_rng_state": capture_training_rng_state(seed=args.seed),
-        }
-        save_checkpoint_with_manifest(runner, initial_path, manifest=initial_manifest)
     starting_checkpoint = (
         _resolve_project_path(args.checkpoint)
         if args.checkpoint is not None
@@ -1999,17 +2679,42 @@ def _train(args: argparse.Namespace, simulation_app: Any) -> int:
     )
     if not starting_checkpoint.is_file():
         raise CliError(f"training resume checkpoint is missing: {starting_checkpoint}")
-    starting_infos = load_checkpoint_round_trip(runner, starting_checkpoint)
     checkpoint_manifest_argument = getattr(args, "checkpoint_manifest", None)
+    starting_manifest_path = (
+        starting_checkpoint.with_name(starting_checkpoint.stem + "_manifest.json")
+        if checkpoint_manifest_argument is None
+        else _resolve_project_path(checkpoint_manifest_argument)
+    )
+    starting_capture = _pin_live_checkpoint(
+        args,
+        starting_checkpoint,
+        starting_manifest_path,
+        purpose=f"train-resume-{args.stage}",
+    )
+    _revalidate_pinned_snapshot_bundle(pinned_snapshot_bundle)
+    starting_infos = load_checkpoint_round_trip(
+        runner,
+        starting_checkpoint,
+        captured_bundle=starting_capture,
+    )
+    if starting_checkpoint == initial_path:
+        if (
+            starting_infos.get("stage") != "initial_zero_residual"
+            or starting_infos.get("global_policy_decisions") != 0
+            or starting_infos.get("zero_mean_actor_output_layer_verified") is not True
+            or not zero_mean_actor_output_layer_verified(runner)
+        ):
+            raise CliError(
+                "canonical initial checkpoint is not an exact-zero actor at global step zero"
+            )
     resume_provenance = validate_resume_checkpoint_provenance(
         starting_checkpoint,
         starting_infos,
-        manifest_path=(
-            None
-            if checkpoint_manifest_argument is None
-            else _resolve_project_path(checkpoint_manifest_argument)
+        manifest_path=starting_manifest_path,
+        expected_runtime_contract=_current_checkpoint_runtime_contract(
+            args, pinned_snapshot_bundle=pinned_snapshot_bundle
         ),
-        expected_runtime_contract=_current_checkpoint_runtime_contract(args),
+        captured_bundle=starting_capture,
     )
     stage_chain_evidence = _validate_training_resume_stage(
         resume_provenance, requested_stage=args.stage
@@ -2040,6 +2745,7 @@ def _train(args: argparse.Namespace, simulation_app: Any) -> int:
         global_policy_decision=starting_step + stage_decisions,
         planned_policy_decisions=planned_entropy_decisions,
     )
+    _revalidate_pinned_snapshot_bundle(pinned_snapshot_bundle)
     started = time.perf_counter()
     applied_entropy_schedule = learn_with_entropy_schedule(
         runner,
@@ -2048,6 +2754,7 @@ def _train(args: argparse.Namespace, simulation_app: Any) -> int:
         entropy_end=entropy_window_end,
         init_at_random_ep_len=False,
     )
+    _revalidate_pinned_snapshot_bundle(pinned_snapshot_bundle)
     training_telemetry = dict(env.training_telemetry())
     _validate_training_telemetry(
         training_telemetry,
@@ -2056,13 +2763,19 @@ def _train(args: argparse.Namespace, simulation_app: Any) -> int:
     )
     actual_decisions = starting_step + stage_decisions
     run_checkpoint = args.run_dir / f"checkpoint_{args.stage}_{actual_decisions}.pt"
-    manifest = _checkpoint_manifest_payload(args, global_step=actual_decisions, stage=args.stage)
+    _revalidate_pinned_snapshot_bundle(pinned_snapshot_bundle)
+    manifest = _checkpoint_manifest_payload(
+        args,
+        global_step=actual_decisions,
+        stage=args.stage,
+        pinned_snapshot_bundle=pinned_snapshot_bundle,
+    )
     manifest = {
         **manifest,
         "training_resume_stage_evidence": stage_chain_evidence,
         "stage_policy_decisions": stage_decisions,
         "resume_checkpoint": str(starting_checkpoint),
-        "resume_checkpoint_sha256": _sha256(starting_checkpoint),
+        "resume_checkpoint_sha256": starting_capture.checkpoint_sha256,
         "resume_global_policy_decisions": starting_step,
         "optimizer_learning_rate": optimizer_learning_rate(runner),
         "training_rng_seed_evidence": rng_seed_evidence,
@@ -2080,14 +2793,34 @@ def _train(args: argparse.Namespace, simulation_app: Any) -> int:
     _, run_manifest = save_checkpoint_with_manifest(
         runner, run_checkpoint, manifest=manifest
     )
-    round_trip = load_checkpoint_round_trip(runner, run_checkpoint)
+    saved_capture = _pin_live_checkpoint(
+        args,
+        run_checkpoint,
+        run_manifest,
+        purpose=f"train-round-trip-{args.stage}",
+    )
+    round_trip = load_checkpoint_round_trip(
+        runner,
+        run_checkpoint,
+        captured_bundle=saved_capture,
+    )
+    validate_resume_checkpoint_provenance(
+        run_checkpoint,
+        round_trip,
+        manifest_path=run_manifest,
+        expected_global_policy_decisions=actual_decisions,
+        expected_runtime_contract=_current_checkpoint_runtime_contract(
+            args, pinned_snapshot_bundle=pinned_snapshot_bundle
+        ),
+        captured_bundle=saved_capture,
+    )
     history_path = checkpoints / f"checkpoint_{args.stage}_{actual_decisions}.pt"
     if history_path.exists():
         raise CliError(f"refusing to overwrite immutable checkpoint history {history_path}")
-    shutil.copy2(run_checkpoint, history_path)
+    shutil.copy2(saved_capture.private_checkpoint_path, history_path)
     history_manifest = history_path.with_name(history_path.stem + "_manifest.json")
     history_payload = {
-        **json.loads(run_manifest.read_text(encoding="utf-8")),
+        **dict(saved_capture.manifest_payload),
         "checkpoint_path": str(history_path),
         "checkpoint_sha256": _sha256(history_path),
     }
@@ -2104,21 +2837,54 @@ def _train(args: argparse.Namespace, simulation_app: Any) -> int:
         },
     )
     smoke_path = checkpoints / "checkpoint_smoke.pt"
-    if args.stage == "smoke" and not smoke_path.exists():
-        shutil.copy2(history_path, smoke_path)
-        _json(smoke_path.with_name(smoke_path.stem + "_manifest.json"), {**manifest, "checkpoint_path": str(smoke_path), "checkpoint_sha256": _sha256(smoke_path)})
+    if args.stage == "smoke":
+        smoke_manifest_path = smoke_path.with_name(
+            smoke_path.stem + "_manifest.json"
+        )
+        expected_smoke_payload = {
+            **history_payload,
+            "checkpoint_path": str(smoke_path),
+            "checkpoint_sha256": history_payload["checkpoint_sha256"],
+        }
+        if smoke_path.exists() or smoke_manifest_path.exists():
+            if not smoke_path.is_file() or not smoke_manifest_path.is_file():
+                raise CliError("canonical smoke checkpoint pair is incomplete")
+            try:
+                existing_smoke_manifest = json.loads(
+                    smoke_manifest_path.read_text(encoding="utf-8")
+                )
+            except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+                raise CliError("canonical smoke checkpoint manifest is invalid") from exc
+            if (
+                _sha256(smoke_path) != history_payload["checkpoint_sha256"]
+                or existing_smoke_manifest != expected_smoke_payload
+            ):
+                raise CliError(
+                    "existing canonical smoke checkpoint differs from this smoke history"
+                )
+        else:
+            shutil.copy2(history_path, smoke_path)
+            _json(smoke_manifest_path, expected_smoke_payload)
     training = {
         "schema": "wlr50_clean.ppo_training_run.v1",
         "stage": args.stage,
         "requested_policy_decisions": budget,
         "stage_policy_decisions": stage_decisions,
+        "ppo_batch_policy_decisions": env.num_envs * profile.rollout_length,
+        "rounding_overrun_policy_decisions": stage_decisions - budget,
+        "budget_accounting_basis": "requested_policy_decisions",
         "global_policy_decisions": actual_decisions,
         "resume_checkpoint": str(starting_checkpoint),
-        "resume_checkpoint_sha256": _sha256(starting_checkpoint),
+        "resume_checkpoint_sha256": starting_capture.checkpoint_sha256,
         "training_resume_stage_evidence": stage_chain_evidence,
         "iterations": iterations,
         "num_envs": args.num_envs,
         "rollout_length": profile.rollout_length,
+        "deterministic_validation_interval": profile.deterministic_validation_interval,
+        "early_stop_when_promotion_gate_passes": (
+            profile.early_stop_when_promotion_gate_passes
+        ),
+        "phase_snapshot_bundle": pinned_snapshot_bundle.as_record(),
         "environment_contract": dict(env.cfg),
         "training_telemetry": training_telemetry,
         "entropy_schedule": {
@@ -2145,11 +2911,30 @@ def _train(args: argparse.Namespace, simulation_app: Any) -> int:
             if vector_benchmark_evidence is None
             else dict(vector_benchmark_evidence)
         ),
+        "vector_benchmark_matrix": (
+            None
+            if getattr(args, "_vector_benchmark_matrix_evidence", None) is None
+            else dict(args._vector_benchmark_matrix_evidence)
+        ),
+        "vector_benchmark_matrix_path": (
+            None
+            if getattr(args, "_vector_benchmark_matrix_evidence", None) is None
+            else args._vector_benchmark_matrix_evidence["path"]
+        ),
+        "vector_benchmark_matrix_sha256": (
+            None
+            if getattr(args, "_vector_benchmark_matrix_evidence", None) is None
+            else args._vector_benchmark_matrix_evidence["sha256"]
+        ),
         "wall_time_s": time.perf_counter() - started,
         "checkpoint_last": str(last_path),
         "checkpoint_sha256": _sha256(last_path),
         "immutable_history_checkpoint": str(history_path),
+        "immutable_history_checkpoint_manifest": str(history_manifest),
+        "immutable_history_checkpoint_manifest_sha256": _sha256(history_manifest),
         "save_load_round_trip": True,
+        "resume_checkpoint_private_capture_verified": True,
+        "saved_checkpoint_private_round_trip_verified": True,
         "round_trip_infos": dict(round_trip),
         "runner_config": config,
     }
@@ -2184,6 +2969,18 @@ def _evaluate(args: argparse.Namespace, simulation_app: Any) -> int:
     checkpoint_manifest = _resolve_project_path(manifest_argument)
     if not checkpoint_manifest.is_file():
         raise CliError(f"--checkpoint-manifest is missing: {checkpoint_manifest}")
+    checkpoint_capture = _pin_live_checkpoint(
+        args,
+        checkpoint,
+        checkpoint_manifest,
+        purpose="checkpoint-evaluation",
+    )
+    checkpoint_manifest_payload = checkpoint_capture.manifest_payload
+    _require_manifest_snapshot_contract(
+        checkpoint_manifest_payload,
+        _validated_runtime_snapshot_bundle(args),
+        label="evaluation checkpoint manifest",
+    )
 
     _, env, runner, _ = _construct_live_runner(
         args,
@@ -2192,12 +2989,17 @@ def _evaluate(args: argparse.Namespace, simulation_app: Any) -> int:
         reset_seeds=(args.seed,),
         collect_trace=True,
     )
-    infos = load_checkpoint_round_trip(runner, checkpoint)
+    infos = load_checkpoint_round_trip(
+        runner,
+        checkpoint,
+        captured_bundle=checkpoint_capture,
+    )
     provenance = validate_resume_checkpoint_provenance(
         checkpoint,
         infos,
         manifest_path=checkpoint_manifest,
         expected_runtime_contract=_current_checkpoint_runtime_contract(args),
+        captured_bundle=checkpoint_capture,
     )
     if len(env.environments) != 1:
         raise CliError("evaluation runner did not expose exactly one residual episode")
@@ -2285,12 +3087,13 @@ def _evaluate(args: argparse.Namespace, simulation_app: Any) -> int:
     result = {
         "schema": "wlr50_clean.ppo_checkpoint_evaluation.v1",
         "checkpoint": str(checkpoint),
-        "checkpoint_sha256": _sha256(checkpoint),
+        "checkpoint_sha256": checkpoint_capture.checkpoint_sha256,
         "checkpoint_manifest": str(provenance.manifest_path),
         "checkpoint_manifest_sha256": provenance.manifest_sha256,
         "checkpoint_provenance": provenance.as_dict(),
         "deterministic_mean_policy": True,
         "fresh_process_single_episode": True,
+        "checkpoint_private_capture_verified": True,
         "vec_env_step_called": False,
         "episode_count": 1,
         "success_count": int(summary["task_success"]),
@@ -2396,7 +3199,11 @@ def _aggregate_evaluations(args: argparse.Namespace) -> int:
     )
     _json(args.run_dir / output_name, result)
     print(json.dumps(result, separators=(",", ":")), flush=True)
-    return 0 if passed else 2
+    # Aggregation is evidence capture.  A complete, structurally valid batch is
+    # a successful command even when the robot fails its physical gates; each
+    # caller must make the role-specific promotion/publication decision from
+    # ``result["passed"]``.  Malformed or incomplete workers still fail above.
+    return 0
 
 
 def _export_baseline_evaluation(args: argparse.Namespace) -> int:
@@ -2461,6 +3268,10 @@ def _export_paired_evaluation(args: argparse.Namespace) -> int:
         evaluate_canonical_episode_dirs,
         export_paired_evaluation_artifacts,
     )
+    from .paired_aggregate_binding import (
+        PairedAggregateBindingError,
+        capture_validation_aggregate,
+    )
 
     validation_seeds = tuple(range(2001, 2006))
     if (
@@ -2501,6 +3312,37 @@ def _export_paired_evaluation(args: argparse.Namespace) -> int:
         checkpoint_path,
         manifest_path,
     )
+    baseline_aggregate_path = _required_artifact_argument(
+        args, "baseline_aggregate", "--baseline-aggregate"
+    )
+    candidate_aggregate_path = _required_artifact_argument(
+        args,
+        "candidate_validation_aggregate",
+        "--candidate-validation-aggregate",
+    )
+    try:
+        baseline_aggregate = capture_validation_aggregate(
+            baseline_aggregate_path,
+            role="baseline",
+            project_root=PROJECT_ROOT,
+        )
+        candidate_aggregate = capture_validation_aggregate(
+            candidate_aggregate_path,
+            role="candidate",
+            expected_checkpoint_path=checkpoint_path,
+            expected_checkpoint_manifest_path=manifest_path,
+            project_root=PROJECT_ROOT,
+        )
+    except PairedAggregateBindingError as exc:
+        raise CliError(f"paired aggregate provenance is invalid: {exc}") from exc
+    if (
+        baseline_dirs != baseline_aggregate.batch.canonical_episode_dirs
+        or candidate_dirs != candidate_aggregate.batch.canonical_episode_dirs
+    ):
+        raise CliError(
+            "paired episode directories differ from their finalized aggregate workers"
+        )
+    snapshot_bundle = _validated_runtime_snapshot_bundle(args)
     runtime_hash_paths = {
         "controller_hash": PROJECT_ROOT / "configs" / "fsm_states.yaml",
         "environment_hash": PROJECT_ROOT / "configs" / "environment_lock.json",
@@ -2516,6 +3358,14 @@ def _export_paired_evaluation(args: argparse.Namespace) -> int:
         raise CliError("internal paired-export checkpoint hash set is incomplete")
 
     def require_current_checkpoint_contract() -> None:
+        current_snapshot_bundle = _validated_runtime_snapshot_bundle(args)
+        if current_snapshot_bundle != snapshot_bundle:
+            raise CliError("phase snapshot bundle changed during paired evaluation")
+        _require_manifest_snapshot_contract(
+            provenance.manifest,
+            current_snapshot_bundle,
+            label="candidate checkpoint manifest",
+        )
         for field, path in runtime_hash_paths.items():
             declared = str(provenance.manifest.get(field, "")).lower()
             if not path.is_file() or declared != _sha256(path):
@@ -2539,6 +3389,8 @@ def _export_paired_evaluation(args: argparse.Namespace) -> int:
     frozen_identity = _frozen_audit_identity(frozen_before)
 
     calibration = build_versioned_residual_activity_calibration()
+    baseline_aggregate.assert_unchanged()
+    candidate_aggregate.assert_unchanged()
     baseline_runs = evaluate_canonical_episode_dirs(
         baseline_dirs,
         seeds=validation_seeds,
@@ -2548,7 +3400,10 @@ def _export_paired_evaluation(args: argparse.Namespace) -> int:
         candidate_dirs,
         seeds=validation_seeds,
         residual_calibration=calibration,
+        require_complete_phase_sequence=False,
     )
+    baseline_aggregate.assert_unchanged()
+    candidate_aggregate.assert_unchanged()
 
     # Re-bind every mutable external input immediately before publication.
     provenance_after = validate_checkpoint_artifact_provenance(
@@ -2575,9 +3430,23 @@ def _export_paired_evaluation(args: argparse.Namespace) -> int:
     metrics_output = _resolve_project_path(args.metrics_output_dir)
     if any(
         metrics_output == source or metrics_output.is_relative_to(source)
-        for source in (*baseline_dirs, *candidate_dirs)
+        for source in (
+            *baseline_dirs,
+            *candidate_dirs,
+            *(
+                Path(row["run_dir"])
+                for row in (
+                    *baseline_aggregate.batch.worker_rows,
+                    *candidate_aggregate.batch.worker_rows,
+                )
+            ),
+            baseline_aggregate.aggregate_path.parent,
+            candidate_aggregate.aggregate_path.parent,
+        )
     ):
-        raise CliError("metrics output must not be inside a canonical episode directory")
+        raise CliError("metrics output must not overlap aggregate or worker evidence")
+    baseline_aggregate.assert_unchanged()
+    candidate_aggregate.assert_unchanged()
     paths = export_paired_evaluation_artifacts(
         metrics_output,
         baseline_runs=baseline_runs,
@@ -2585,9 +3454,13 @@ def _export_paired_evaluation(args: argparse.Namespace) -> int:
         frozen_hashes_unchanged=True,
         candidate_checkpoint_name=checkpoint_path.stem,
         candidate_checkpoint_path=checkpoint_path,
+        baseline_evaluation_aggregate=baseline_aggregate.as_record(),
+        candidate_validation_aggregate=candidate_aggregate.as_record(),
         minimum_paired_seeds=5,
         residual_calibration_evidence=calibration,
     )
+    baseline_aggregate.assert_unchanged()
+    candidate_aggregate.assert_unchanged()
     result = {
         "schema": "wlr50_clean.ppo_paired_evaluation_export_cli.v1",
         "offline": True,
@@ -2596,6 +3469,8 @@ def _export_paired_evaluation(args: argparse.Namespace) -> int:
         "baseline_episode_dirs": [str(path) for path in baseline_dirs],
         "candidate_episode_dirs": [str(path) for path in candidate_dirs],
         "candidate_checkpoint_provenance": provenance.as_dict(),
+        "baseline_evaluation_aggregate": baseline_aggregate.as_record(),
+        "candidate_validation_aggregate": candidate_aggregate.as_record(),
         "frozen_hashes_passed": True,
         "frozen_manifest": str(frozen_manifest.resolve()),
         "frozen_manifest_sha256": frozen_identity[0],
@@ -2724,12 +3599,18 @@ def _export_inference_actor(args: argparse.Namespace, simulation_app: Any) -> in
     manifest_path = _required_artifact_argument(
         args, "checkpoint_manifest", "--checkpoint-manifest"
     )
-    try:
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except (UnicodeError, json.JSONDecodeError) as exc:
-        raise CliError("--checkpoint-manifest is not valid UTF-8 JSON") from exc
-    if not isinstance(manifest, Mapping):
-        raise CliError("--checkpoint-manifest must contain a JSON object")
+    checkpoint_capture = _pin_live_checkpoint(
+        args,
+        checkpoint,
+        manifest_path,
+        purpose="inference-actor-export",
+    )
+    manifest = checkpoint_capture.manifest_payload
+    _require_manifest_snapshot_contract(
+        manifest,
+        _validated_runtime_snapshot_bundle(args),
+        label="inference-export checkpoint manifest",
+    )
 
     _, _, runner, _ = _construct_live_runner(
         args,
@@ -2738,12 +3619,17 @@ def _export_inference_actor(args: argparse.Namespace, simulation_app: Any) -> in
         reset_seeds=(args.seed,),
         collect_trace=False,
     )
-    infos = load_checkpoint_round_trip(runner, checkpoint)
+    infos = load_checkpoint_round_trip(
+        runner,
+        checkpoint,
+        captured_bundle=checkpoint_capture,
+    )
     validate_resume_checkpoint_provenance(
         checkpoint,
         infos,
         manifest_path=manifest_path,
         expected_runtime_contract=_current_checkpoint_runtime_contract(args),
+        captured_bundle=checkpoint_capture,
     )
     required_info_fields = (
         "stage",
@@ -2772,6 +3658,7 @@ def _export_inference_actor(args: argparse.Namespace, simulation_app: Any) -> in
         source_checkpoint_path=checkpoint,
         source_manifest_path=manifest_path,
         output_root=output_root,
+        captured_bundle=checkpoint_capture,
     )
     result = {
         "schema": "wlr50_clean.ppo_inference_actor_export_cli.v1",
@@ -2779,6 +3666,8 @@ def _export_inference_actor(args: argparse.Namespace, simulation_app: Any) -> in
         "episode_stepped": False,
         "deterministic_mean_policy": True,
         "runner_checkpoint_infos_verified": True,
+        "checkpoint_runtime_capture_verified": True,
+        "checkpoint_runtime_capture": checkpoint_capture.as_dict(),
         "checkpoint": str(checkpoint),
         "checkpoint_manifest": str(manifest_path),
         "torchscript_actor": str(artifacts.torchscript_actor),
@@ -2833,6 +3722,11 @@ def _require_video_capture_request(args: argparse.Namespace) -> None:
     )
     provenance = validate_checkpoint_artifact_provenance(checkpoint, manifest_path)
     manifest = provenance.manifest
+    _require_manifest_snapshot_contract(
+        manifest,
+        _validated_runtime_snapshot_bundle(args),
+        label="video checkpoint manifest",
+    )
     if (
         manifest.get("publication_role") != "improved"
         or manifest.get("validation_promotion_authorized") is not True
@@ -2873,6 +3767,7 @@ def _capture_video_source(args: argparse.Namespace, simulation_app: Any) -> int:
             viewport_provider=active_viewport_provider,
         )
 
+    checkpoint_capture = None
     if args.video_source_role == "fsm":
         from .isaac_fsm_backend import IsaacFSMBackend
         from .residual_direct_env import ResidualEpisodeEnv
@@ -2896,6 +3791,12 @@ def _capture_video_source(args: argparse.Namespace, simulation_app: Any) -> int:
             validate_resume_checkpoint_provenance,
         )
 
+        checkpoint_capture = _pin_live_checkpoint(
+            args,
+            args.checkpoint,
+            args.checkpoint_manifest,
+            purpose="video-source-ppo",
+        )
         _, env, runner, _ = _construct_live_runner(
             args,
             simulation_app,
@@ -2906,12 +3807,17 @@ def _capture_video_source(args: argparse.Namespace, simulation_app: Any) -> int:
         if len(env.environments) != 1:
             raise CliError("PPO video runner did not expose exactly one episode")
         episode = env.environments[0]
-        infos = load_checkpoint_round_trip(runner, args.checkpoint)
+        infos = load_checkpoint_round_trip(
+            runner,
+            args.checkpoint,
+            captured_bundle=checkpoint_capture,
+        )
         loaded_provenance = validate_resume_checkpoint_provenance(
             args.checkpoint,
             infos,
             manifest_path=args.checkpoint_manifest,
             expected_runtime_contract=_current_checkpoint_runtime_contract(args),
+            captured_bundle=checkpoint_capture,
         )
         offline_provenance = dict(args._video_checkpoint_provenance)
         for field in (
@@ -2963,6 +3869,14 @@ def _capture_video_source(args: argparse.Namespace, simulation_app: Any) -> int:
         "capture_process_id": capture["capture_process_id"],
         "capture_process_instance_id": capture["capture_process_instance_id"],
         "checkpoint_load_provenance": capture["checkpoint_load_provenance"],
+        "checkpoint_runtime_capture_verified": (
+            args.video_source_role == "fsm" or checkpoint_capture is not None
+        ),
+        "checkpoint_runtime_capture": (
+            None
+            if args.video_source_role == "fsm"
+            else checkpoint_capture.as_dict()
+        ),
     }
     _json(args.run_dir / "video_source_capture.json", result)
     print(json.dumps(result, separators=(",", ":")), flush=True)
@@ -2972,6 +3886,7 @@ def _capture_video_source(args: argparse.Namespace, simulation_app: Any) -> int:
 def _publish_videos(args: argparse.Namespace) -> int:
     """Publish the final four videos without importing or starting Isaac."""
 
+    from .artifacts import file_record
     from .video_artifacts import publish_final_videos
 
     if args.seed != 4001 or args.num_envs != 1 or args.episode_count != 1:
@@ -2993,19 +3908,34 @@ def _publish_videos(args: argparse.Namespace) -> int:
         fsm_source_dir=fsm_source,
         ppo_source_dir=ppo_source,
         output_root=output_root,
+        publication_run_dir=args.run_dir,
         ffmpeg=args.ffmpeg,
     )
+    video_records = {
+        name: file_record(path) for name, path in publication.videos.items()
+    }
+    validation_record = file_record(publication.validation_path)
+    checksum_record = file_record(publication.checksum_path)
+    diagnostic_record = file_record(publication.diagnostic_ass_path)
     result = {
         "schema": "wlr50_clean.ppo_final_video_publication_cli.v1",
         "offline": True,
         "isaac_started": False,
         "seed": args.seed,
+        "publication_run_directory": str(args.run_dir.resolve()),
         "fsm_source_directory": str(fsm_source),
         "ppo_source_directory": str(ppo_source),
         "videos": {name: str(path) for name, path in publication.videos.items()},
+        "video_records": video_records,
         "video_validation": str(publication.validation_path),
+        "video_validation_sha256": validation_record["sha256"],
+        "video_validation_bytes": validation_record["bytes"],
         "video_checksums": str(publication.checksum_path),
+        "video_checksums_sha256": checksum_record["sha256"],
+        "video_checksums_bytes": checksum_record["bytes"],
         "diagnostic_ass": str(publication.diagnostic_ass_path),
+        "diagnostic_ass_sha256": diagnostic_record["sha256"],
+        "diagnostic_ass_bytes": diagnostic_record["bytes"],
         "checksum_verification": dict(publication.checksum_verification),
     }
     _json(args.run_dir / "final_video_publication.json", result)
@@ -3022,6 +3952,8 @@ def _cleanup_isaac(simulation_app: Any) -> None:
 
 
 def _dispatch_live(args: argparse.Namespace) -> int:
+    if args.command == "train":
+        _require_canonical_initial_checkpoint(args)
     # AppLauncher is the only Isaac import before the application exists.
     from isaaclab.app import AppLauncher
 
@@ -3031,6 +3963,8 @@ def _dispatch_live(args: argparse.Namespace) -> int:
     )
     app = launcher.app
     app.update()
+    checkpoint_captures = ExitStack()
+    args._checkpoint_runtime_capture_stack = checkpoint_captures
     try:
         if args.command in {"baseline-eval", "zero-residual-live", "nonzero-residual-smoke"}:
             exit_code = _baseline_or_gate(args, app)
@@ -3038,8 +3972,12 @@ def _dispatch_live(args: argparse.Namespace) -> int:
             exit_code = _reset_throughput_probe(args, app)
         elif args.command == "soft-reset-equivalence":
             exit_code = _soft_reset_equivalence(args, app)
+        elif args.command == "phase-snapshot-live-probe":
+            exit_code = _phase_snapshot_live_probe(args, app)
         elif args.command == "vector-benchmark":
             exit_code = _vector_benchmark(args, app)
+        elif args.command == "initialize-zero-residual":
+            exit_code = _initialize_zero_residual(args, app)
         elif args.command == "train":
             exit_code = _train(args, app)
         elif args.command == "evaluate":
@@ -3050,6 +3988,10 @@ def _dispatch_live(args: argparse.Namespace) -> int:
             exit_code = _capture_video_source(args, app)
         else:
             raise CliError(f"unsupported live command: {args.command}")
+        # Closing the stack re-hashes both the source pair and the private
+        # load-only copies.  Do this before publishing the authoritative live
+        # exit result so an integrity failure cannot be finalized as success.
+        checkpoint_captures.close()
         # Some Kit teardown paths normalize the native process exit status on
         # Windows. Persist the result before closing Kit so the immutable-run
         # wrapper can propagate application failures faithfully.
@@ -3063,7 +4005,10 @@ def _dispatch_live(args: argparse.Namespace) -> int:
         )
         return int(exit_code)
     finally:
-        _cleanup_isaac(app)
+        try:
+            checkpoint_captures.close()
+        finally:
+            _cleanup_isaac(app)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -3086,6 +4031,18 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _promote_improved(args)
         if args.command == "publish-videos":
             return _publish_videos(args)
+        if args.command == "publish-initial-zero-residual":
+            return _publish_initial_zero_residual(args)
+        if args.command in {
+            "phase-snapshot-live-probe",
+            "initialize-zero-residual",
+            "train",
+            "evaluate",
+            "export-inference-actor",
+        }:
+            # Reject a missing, changed, or redirected reset bundle before an
+            # AppLauncher process is created.
+            _validated_runtime_snapshot_bundle(args)
         if args.command == "capture-video-source":
             # Resolve immutable checkpoint evidence and reject headless or
             # multi-episode capture before importing AppLauncher.

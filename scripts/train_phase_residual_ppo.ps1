@@ -7,8 +7,7 @@ param(
     [string]$Checkpoint,
     [string]$CheckpointManifest,
     [string]$SoftResetAcceptance,
-    [string]$VectorZeroBenchmarkAcceptance,
-    [string]$VectorNonzeroBenchmarkAcceptance,
+    [string]$VectorBenchmarkMatrix,
     [Parameter(ValueFromRemainingArguments = $true)][string[]]$CliArgs = @()
 )
 
@@ -52,14 +51,12 @@ if ($NumEnvs -eq 1) {
     $BaseArgs += @("--soft-reset-acceptance", $SoftResetAcceptance)
 }
 if ($NumEnvs -gt 1) {
-    if ([string]::IsNullOrWhiteSpace($VectorZeroBenchmarkAcceptance) -or
-        [string]::IsNullOrWhiteSpace($VectorNonzeroBenchmarkAcceptance)) {
-        throw "multi-env training requires both vector zero and bounded-nonzero benchmark acceptance artifacts"
+    if ([string]::IsNullOrWhiteSpace($VectorBenchmarkMatrix)) {
+        throw "multi-env training requires -VectorBenchmarkMatrix from the six-slot offline aggregation"
     }
-    $BaseArgs += @(
-        "--vector-zero-benchmark-acceptance", $VectorZeroBenchmarkAcceptance,
-        "--vector-nonzero-benchmark-acceptance", $VectorNonzeroBenchmarkAcceptance
-    )
+    $BaseArgs += @("--vector-benchmark-matrix", $VectorBenchmarkMatrix)
+} elseif (-not [string]::IsNullOrWhiteSpace($VectorBenchmarkMatrix)) {
+    throw "-VectorBenchmarkMatrix is only valid for multi-env training"
 }
 & (Join-Path $PSScriptRoot "_invoke_ppo_cli.ps1") `
     -RunKind "train" -TrainingStage $Stage -Subcommand "train" `

@@ -1,0 +1,67 @@
+schema: wlr50_clean.ppo_reward_migration.v1
+source:
+  path: configs/ppo_reward.yaml
+  schema: wlr50_clean.ppo_reward.v1
+  required_training_enabled: false
+target:
+  path: configs/ppo_reward_v2.yaml
+  schema: wlr50_clean.ppo_reward.v2
+  required_training_enabled: true
+
+# This is an audit map, not an executable reward configuration.  The legacy
+# file remains byte-preserved and inactive.  No v1 term is silently relabeled
+# as an independent v2 dense term: related signals are either merged into one
+# of the five v2 families or moved behind an explicit event/safety boundary.
+migrations:
+  - v1_concept: task_success
+    disposition: MOVED_TO_EVENT
+    v2_destinations: [event.final_success]
+    rationale: Final task truth remains owned by the frozen FSM and is paid once as an event.
+  - v1_concept: forward_progress
+    disposition: MERGED_INTO_DENSE_FAMILY
+    v2_destinations: [dense.phase_task_progress]
+    rationale: Generic forward displacement is replaced by bounded phase-specific physical potential change.
+  - v1_concept: phase_progress
+    disposition: MERGED_INTO_DENSE_FAMILY
+    v2_destinations: [dense.phase_task_progress]
+    rationale: Progress is represented once by the global phase potential and is never elapsed-time survival reward.
+  - v1_concept: active_leg_clearance
+    disposition: MERGED_INTO_DENSE_FAMILY
+    v2_destinations: [dense.phase_task_progress, dense.contact_motion_quality]
+    rationale: Clearance contributes only in the relevant lift potential or as a phase-specific clearance shortfall cost.
+  - v1_concept: body_collision_penalty
+    disposition: MOVED_TO_SAFETY_EVENT
+    v2_destinations: [safety.body_collision_override, event.task_failure]
+    rationale: Body collision remains the frozen FSM's authoritative task-failure class and is not a tradeable dense penalty or generic safety abort.
+  - v1_concept: wheel_only_climb_penalty
+    disposition: MOVED_TO_SAFETY_EVENT
+    v2_destinations: [safety.wheel_only_climb_override, event.task_failure]
+    rationale: Wheel-only climb remains the frozen FSM's authoritative task-failure class and is not a tradeable dense penalty or generic safety abort.
+  - v1_concept: fall_penalty
+    disposition: MOVED_TO_SAFETY_EVENT
+    v2_destinations: [event.safety_abort]
+    rationale: A fall terminates the task and cannot be offset by dense progress.
+  - v1_concept: residual_magnitude_penalty
+    disposition: MERGED_INTO_DENSE_FAMILY
+    v2_destinations: [dense.residual_regularization]
+    rationale: Residual magnitude is normalized once inside the single residual regularization family.
+  - v1_concept: action_rate_penalty
+    disposition: MERGED_INTO_DENSE_FAMILY
+    v2_destinations: [dense.control_smoothness]
+    rationale: First- and second-difference action costs share one normalized smoothness family.
+  - v1_concept: joint_limit_penalty
+    disposition: MOVED_TO_SAFETY_EVENT
+    v2_destinations: [safety.joint_margin_projection, event.safety_abort]
+    rationale: Joint margins are enforced before actuation and hard violations are non-tradeable aborts.
+  - v1_concept: body_angular_velocity_penalty
+    disposition: MERGED_INTO_DENSE_FAMILY
+    v2_destinations: [dense.body_stability]
+    rationale: Phase-aware roll and pitch rates are combined with calibrated attitude and angular acceleration.
+  - v1_concept: pitch_roll_penalty
+    disposition: MERGED_INTO_DENSE_FAMILY
+    v2_destinations: [dense.body_stability]
+    rationale: Raw absolute Euler penalties are replaced by calibrated, transfer-aware attitude cost.
+  - v1_concept: support_diagnostic
+    disposition: MERGED_WITH_POSITIVE_SURVIVAL_REMOVED
+    v2_destinations: [dense.phase_task_progress, dense.contact_motion_quality]
+    rationale: Support continuity remains physical evidence while positive standing-still reward is removed.

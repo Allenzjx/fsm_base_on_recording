@@ -27,6 +27,7 @@ from .stability_metrics import (
     PHASE_IDS,
     PRIORITY_PHASES,
     PromotionDecision,
+    _paired_duration_diagnostics,
     StabilitySample,
     compare_phase_metrics,
     evaluate_promotion,
@@ -984,7 +985,23 @@ def evaluate_live_run(
         observation_hazards=hazards,
     )
 
-    phase_rows = summarize_phase_samples(samples, physics_hz=physics_hz)
+    if residual_calibration is None:
+        # Even callers that do not request activity-threshold evaluation must
+        # never mix servo degrees and wheel rad/s in residual spectral power.
+        # Normalize each channel by the versioned physical cap for its phase.
+        from .phase_action_masks_v2 import load_phase_action_masks_v2
+
+        phase_actions = load_phase_action_masks_v2()
+        spectral_scale_full12 = {
+            phase: phase_actions.physical_scale_for(phase) for phase in STATE_IDS
+        }
+    else:
+        spectral_scale_full12 = residual_calibration.phase_scale_full12
+    phase_rows = summarize_phase_samples(
+        samples,
+        phase_scale_full12=spectral_scale_full12,
+        physics_hz=physics_hz,
+    )
     transition_action = _transition_action_metrics(commands)
     phase_times = _mapping(manifest.get("phase_times", {}), "phase_times")
     completed_set = set(termination.completed_phases)
@@ -1142,15 +1159,36 @@ def evaluate_live_run(
 
 def _aggregate_phase_rows(
     runs: Sequence[LiveRunEvaluation],
+    *,
+    require_complete: bool = True,
 ) -> tuple[dict[str, float | str], ...]:
     indexed = [
         {str(row["phase"]): row for row in run.phase_rows}
         for run in runs
     ]
-    if any(set(rows) != set(PHASE_IDS) for rows in indexed):
-        raise OfflineEvaluationError("paired promotion requires P01-P13 metrics in every run")
+    if not indexed:
+        raise OfflineEvaluationError("paired promotion requires non-empty phase evidence")
+    phase_sequences = [
+        tuple(str(row.get("phase", "")) for row in run.phase_rows)
+        for run in runs
+    ]
+    if require_complete:
+        if any(sequence != PHASE_IDS for sequence in phase_sequences):
+            raise OfflineEvaluationError(
+                "paired promotion requires P01-P13 metrics in every run"
+            )
+        phases = PHASE_IDS
+    else:
+        if any(
+            not sequence or sequence != PHASE_IDS[: len(sequence)]
+            for sequence in phase_sequences
+        ):
+            raise OfflineEvaluationError(
+                "failed candidate phase metrics must be a non-empty P01 prefix"
+            )
+        phases = PHASE_IDS[: min(len(sequence) for sequence in phase_sequences)]
     result: list[dict[str, float | str]] = []
-    for phase in PHASE_IDS:
+    for phase in phases:
         row: dict[str, float | str] = {"phase": phase}
         common = set.intersection(*(set(rows[phase]) for rows in indexed))
         for name in sorted(common):
@@ -1211,42 +1249,113 @@ def paired_baseline_candidate_promotion(
     ):
         raise OfflineEvaluationError("baseline/candidate seeds are not unique and paired")
     baseline_phase = _aggregate_phase_rows(baseline_runs)
-    candidate_phase = _aggregate_phase_rows(candidate_runs)
-    phase_comparison = tuple(compare_phase_metrics(baseline_phase, candidate_phase))
+    candidate_complete = all(
+        tuple(str(row.get("phase", "")) for row in run.phase_rows) == PHASE_IDS
+        for run in candidate_runs
+    )
+    candidate_phase = _aggregate_phase_rows(
+        candidate_runs, require_complete=candidate_complete
+    )
 
     def episode_mean(runs: Sequence[LiveRunEvaluation], name: str) -> float:
         return float(np.mean([_finite(run.episode_row[name], name) for run in runs]))
 
-    pitch_improvement = _improvement(
-        episode_mean(baseline_runs, "overall_pitch_rate_rms_rad_s"),
-        episode_mean(candidate_runs, "overall_pitch_rate_rms_rad_s"),
-    )
-    impulse_improvement = _improvement(
-        episode_mean(baseline_runs, "placement_contact_impulse_n_s"),
-        episode_mean(candidate_runs, "placement_contact_impulse_n_s"),
-    )
-    home_improvement = _improvement(
-        episode_mean(baseline_runs, "home_recovery_action_jerk_rms"),
-        episode_mean(candidate_runs, "home_recovery_action_jerk_rms"),
-    )
-    base_decision = evaluate_promotion(
-        baseline_episodes=[
+    def optional_improvement(name: str) -> float:
+        try:
+            return _improvement(
+                episode_mean(baseline_runs, name),
+                episode_mean(candidate_runs, name),
+            )
+        except (KeyError, OfflineEvaluationError):
+            # Early physical failures may truthfully lack a terminal P13 metric.
+            # The incomplete-P01 gate below is authoritative; zero here is an
+            # explicit non-improvement, never evidence for promotion.
+            return 0.0
+
+    pitch_improvement = optional_improvement("overall_pitch_rate_rms_rad_s")
+    impulse_improvement = optional_improvement("placement_contact_impulse_n_s")
+    home_improvement = optional_improvement("home_recovery_action_jerk_rms")
+    if candidate_complete:
+        phase_comparison = tuple(compare_phase_metrics(baseline_phase, candidate_phase))
+        base_decision = evaluate_promotion(
+            baseline_episodes=[
+                run.termination.episode_outcome(run.seed) for run in baseline_runs
+            ],
+            candidate_episodes=[
+                run.termination.episode_outcome(run.seed) for run in candidate_runs
+            ],
+            phase_comparison_rows=phase_comparison,
+            overall_pitch_rate_improvement=pitch_improvement,
+            placement_impulse_improvement=impulse_improvement,
+            home_jerk_improvement=home_improvement,
+            frozen_hashes_unchanged=frozen_hashes_unchanged,
+            recording_runtime_access_count=sum(
+                run.termination.runtime_recording_access_count
+                for run in candidate_runs
+            ),
+        )
+        checks = dict(base_decision.checks)
+    else:
+        # A complete five-worker batch with an early physical failure is valid
+        # evidence, but it cannot support any cross-phase stability claim.  We
+        # preserve the canonical gate order and fail at P01-P13 before any
+        # synthetic or missing metric could influence promotion.
+        baseline_outcomes = [
             run.termination.episode_outcome(run.seed) for run in baseline_runs
-        ],
-        candidate_episodes=[
+        ]
+        candidate_outcomes = [
             run.termination.episode_outcome(run.seed) for run in candidate_runs
-        ],
-        phase_comparison_rows=phase_comparison,
-        overall_pitch_rate_improvement=pitch_improvement,
-        placement_impulse_improvement=impulse_improvement,
-        home_jerk_improvement=home_improvement,
-        frozen_hashes_unchanged=frozen_hashes_unchanged,
-        recording_runtime_access_count=sum(
-            run.termination.runtime_recording_access_count
-            for run in candidate_runs
-        ),
-    )
-    checks = dict(base_decision.checks)
+        ]
+        baseline_success = sum(row.task_success for row in baseline_outcomes) / len(
+            baseline_outcomes
+        )
+        candidate_success = sum(row.task_success for row in candidate_outcomes) / len(
+            candidate_outcomes
+        )
+        duration_gate, duration_diagnostics = _paired_duration_diagnostics(
+            baseline_outcomes, candidate_outcomes
+        )
+        checks = {
+            "p01_p13_completed": False,
+            "task_success_rate_not_below_fsm": candidate_success >= baseline_success,
+            "body_collision_zero": not any(row.body_collision for row in candidate_outcomes),
+            "wheel_only_climb_zero": not any(
+                row.wheel_only_climb for row in candidate_outcomes
+            ),
+            "fall_or_physics_explosion_zero": not any(
+                row.physics_explosion_or_fall for row in candidate_outcomes
+            ),
+            "safety_abort_zero": not any(row.safety_abort for row in candidate_outcomes),
+            "duration_each_under_200_s": all(
+                row.duration_s <= 200.0 for row in candidate_outcomes
+            ),
+            "duration_not_over_fsm_by_15pct": duration_gate,
+            "frozen_hashes_unchanged": bool(frozen_hashes_unchanged),
+            "recording_runtime_access_zero": not any(
+                run.termination.runtime_recording_access_count
+                for run in candidate_runs
+            ),
+            "global_stability_improvement_at_least_5pct": False,
+            "at_least_4_of_5_priority_phases_improve": False,
+            "no_priority_phase_degrades_over_10pct": False,
+            "one_visual_key_metric_gate": False,
+        }
+        phase_comparison = tuple(
+            {
+                "phase": phase,
+                "comparison_available": False,
+                "reason": "candidate_incomplete_p01_p13",
+            }
+            for phase in PHASE_IDS
+        )
+        base_decision = PromotionDecision(
+            promoted=False,
+            first_failed_gate="p01_p13_completed",
+            checks=checks,
+            global_stability_improvement_fraction=0.0,
+            improved_priority_phase_count=0,
+            duration_pair_diagnostics=duration_diagnostics,
+        )
     checks["level_calibration_quality_passed"] = all(
         run.calibration.quality_passed
         for run in tuple(baseline_runs) + tuple(candidate_runs)

@@ -2,9 +2,9 @@
 param(
     [int]$Seed = 1001,
     [ValidateSet(8, 16, 32)][int]$NumEnvs = 8,
-    [ValidateRange(1, 10000)][int]$MeasuredTicks = 32,
+    [ValidateRange(1200, 100000)][int]$MeasuredTicks = 1200,
     [ValidateSet("zero", "bounded-smoke")][string]$ResidualMode = "zero",
-    [ValidateRange(1, 16)][int]$PolicyDecisions = 2,
+    [ValidateRange(128, 4096)][int]$PolicyDecisions = 128,
     [Parameter(ValueFromRemainingArguments = $true)][string[]]$CliArgs = @()
 )
 
@@ -34,4 +34,5 @@ $BaseArgs = @(
 & (Join-Path $PSScriptRoot "_invoke_ppo_cli.ps1") `
     -RunKind "vector_benchmark" -TrainingStage "backend-benchmark" `
     -Subcommand "vector-benchmark" -ConfigPath $Configs -Seed $Seed `
-    -EnvironmentCount $NumEnvs -BaseCliArgs $BaseArgs -CliArgs $CliArgs
+    -EnvironmentCount $NumEnvs -BaseCliArgs $BaseArgs `
+    -ReturnFinalizedEvidenceFailure -CliArgs $CliArgs

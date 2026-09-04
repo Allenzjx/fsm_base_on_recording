@@ -229,6 +229,8 @@ class TransitionActionJumpMetric:
     carried_projected_residual_full12: tuple[float, ...]
     dropped_forbidden_residual_full12: tuple[float, ...]
     forbidden_channel_indices: tuple[int, ...]
+    clipped_phase_scale_excess_residual_full12: tuple[float, ...]
+    phase_scale_clipped_channel_indices: tuple[int, ...]
     residual_step_full12: tuple[float, ...]
     applied_action_jump_full12: tuple[float, ...]
     max_abs_servo_action_jump_deg: float
@@ -340,9 +342,23 @@ class PhaseTransitionBridge:
             bridge_mask = bridge_mask[:8] + (0, 0, 0, 0)
 
         source_previous = self._previous_projected
-        carried = tuple(
+        mask_retained = tuple(
             value if enabled else 0.0
             for value, enabled in zip(source_previous, bridge_mask, strict=True)
+        )
+        physical_phase_caps = tuple(
+            fraction * physical
+            for fraction, physical in zip(
+                self.projector.config.scale_for(state_id),
+                self.projector.config.physical_residual_scale_full12,
+                strict=True,
+            )
+        )
+        carried = tuple(
+            max(-cap, min(cap, value))
+            for value, cap in zip(
+                mask_retained, physical_phase_caps, strict=True
+            )
         )
         transition = self._state_id is not None and self._state_id != state_id
         retained_nonzero = transition and any(value != 0.0 for value in carried)
@@ -378,12 +394,22 @@ class PhaseTransitionBridge:
             residual_step = tuple(
                 current - previous
                 for current, previous in zip(
-                    result.rate_projected_residual_full12, carried, strict=True
+                    result.phase_scale_projected_residual_full12,
+                    carried,
+                    strict=True,
                 )
             )
             dropped = tuple(
                 previous - kept
-                for previous, kept in zip(source_previous, carried, strict=True)
+                for previous, kept in zip(
+                    source_previous, mask_retained, strict=True
+                )
+            )
+            scale_clipped = tuple(
+                retained - kept
+                for retained, kept in zip(
+                    mask_retained, carried, strict=True
+                )
             )
             metric = TransitionActionJumpMetric(
                 from_state_id=str(self._state_id),
@@ -397,6 +423,12 @@ class PhaseTransitionBridge:
                         zip(source_previous, bridge_mask, strict=True)
                     )
                     if previous != 0.0 and not enabled
+                ),
+                clipped_phase_scale_excess_residual_full12=scale_clipped,
+                phase_scale_clipped_channel_indices=tuple(
+                    index
+                    for index, excess in enumerate(scale_clipped)
+                    if excess != 0.0
                 ),
                 residual_step_full12=residual_step,
                 applied_action_jump_full12=applied_jump,

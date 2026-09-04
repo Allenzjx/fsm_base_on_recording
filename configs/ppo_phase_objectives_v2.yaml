@@ -13,6 +13,37 @@ progress_contract:
   forbidden_sources: [elapsed_time, recording_time_cursor, accepted_steps]
   global_potential: (phase_index_minus_one + phase_local_potential) / 13
 
+successful_fsm_attitude_envelope:
+  schema: wlr50_clean.successful_fsm_attitude_envelope.v1
+  source:
+    selected_trial_id: trial_043_20260902_clean_v010
+    frozen_manifest_path: outputs/final/frozen_successful_fsm_manifest.json
+    frozen_manifest_sha256: bd6f1c43322fcd428475d4377c7c7737a21b01699bb105b6ec4b38a8bd3f60aa
+    raw_trial_manifest_sha256: ac3a3e613edf21e92abd06b7daa0c66437c4a323ba3ae4616fcb03b5b67988cb
+    observation_stream_name: observation_120hz.jsonl
+    observation_stream_sha256: b046ae0a9d90c68d142ac8b82638d7d06316be24c75e792ff4a4ea3bbffba440
+    command_stream_name: full12_commands_120hz.jsonl
+    command_stream_sha256: 9c333ee79712ade21784d05be81aeb08506901c2ed3c907fc066e95e711d633a
+    snapshot_manifest_path: reference/ppo_phase_snapshots/manifest.json
+    snapshot_manifest_sha256: dc79db3e81dd753d962493c03b6e8590a4b78a69099b3b0c8b9b5e93a45dd391
+    level_reference_snapshot_path: reference/ppo_phase_snapshots/P01/snapshot.json
+    level_reference_snapshot_sha256: 6eaeb2a7291c8802880f73cfa555a8264a072adcb666f3fc34432958d4c08507
+  derivation:
+    phase_assignment: full12_commands_120hz.state_id_joined_on_physics_tick
+    level_reference: P01_snapshot_tick_0_level_reference_orientation_wxyz
+    level_reference_orientation_wxyz: [0.9999808073043823, -1.026025438477518e-05, -0.006009926088154316, 0.0015246823895722628]
+    attitude_metric: hypot(calibrated_roll_error_rad,calibrated_pitch_error_rad)
+    statistic: maximum_over_all_120hz_samples_in_phase
+    runtime_reads_raw_trial_streams: false
+  excess_normalization_rad: 0.20
+  phases:
+    P01: {sample_count: 1600, max_attitude_error_rad: 0.30267525864202122}
+    P04: {sample_count: 584, max_attitude_error_rad: 0.07501478677536154}
+    P08: {sample_count: 56, max_attitude_error_rad: 0.22242370433007352}
+    P10: {sample_count: 26, max_attitude_error_rad: 0.16588650991003867}
+    P11: {sample_count: 62, max_attitude_error_rad: 0.17444540287005458}
+  derivation_sha256: ec769118f304e3b33635b37497c9d0e041793d3f3ce443d07b20443bddfbc7bc
+
 phases:
   P01:
     name: INITIAL_LOAD_TRANSFER_FR

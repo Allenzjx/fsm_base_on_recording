@@ -1,13 +1,24 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import subprocess
+from contextlib import redirect_stdout
+from dataclasses import asdict
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 
 from wlr50_clean.ppo import video_artifacts
+from wlr50_clean.ppo import cli
+from wlr50_clean.ppo.artifacts import (
+    RUN_MANIFEST_SCHEMA,
+    RunIdentity,
+    config_set_record,
+    finalize_run,
+)
 
 
 def _json(path: Path, payload: dict) -> None:
@@ -31,8 +42,9 @@ def _source_episode(
     role: str,
     seed: int,
     decision_count: int,
+    directory_name: str | None = None,
 ) -> Path:
-    root = parent / role
+    root = parent / (directory_name or role)
     root.mkdir()
     video = root / "actual_viewport_video.mp4"
     video.write_bytes(f"real-{role}-viewport-video".encode())
@@ -220,6 +232,409 @@ def _source_episode(
     return root
 
 
+def _runtime_identity(project: Path, config: Path) -> dict:
+    relative = config.relative_to(project).as_posix()
+    row = {
+        "path": relative,
+        "bytes": config.stat().st_size,
+        "sha256": _sha(config),
+        "creation_time_utc_ticks": 1,
+        "last_write_time_utc_ticks": 2,
+    }
+    aggregate = hashlib.sha256(
+        json.dumps([row], separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    content = hashlib.sha256(
+        json.dumps(
+            [{key: row[key] for key in ("path", "bytes", "sha256")}],
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+    return {
+        "schema": "wlr50_clean.committed_runtime_identity.v1",
+        "git_commit": "a" * 40,
+        "file_count": 1,
+        "content_sha256": content,
+        "aggregate_sha256": aggregate,
+        "files": [row],
+    }
+
+
+def _frozen_audit(project: Path, *, checked_at: str) -> dict:
+    frozen_manifest = project / "artifacts" / "ppo_phase_v1_start" / "frozen_fsm_hashes.json"
+    manifest = json.loads(frozen_manifest.read_text(encoding="utf-8"))
+    rows = []
+    for name, expected in sorted(manifest["protected_files"].items()):
+        actual = _sha(project / name)
+        rows.append(
+            {
+                "path": name,
+                "expected_sha256": expected,
+                "actual_sha256": actual,
+                "exists": True,
+                "valid": actual == expected,
+            }
+        )
+    return {
+        "schema": "wlr50_clean.frozen_fsm_hash_audit.v1",
+        "checked_at_utc": checked_at,
+        "project_root": str(project),
+        "frozen_manifest": str(frozen_manifest),
+        "frozen_manifest_sha256": _sha(frozen_manifest),
+        "source_head": manifest["source_head"],
+        "protected_file_count": len(rows),
+        "passed": True,
+        "mismatches": [],
+        "entries": rows,
+    }
+
+
+def _fixture_project(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> tuple[Path, Path, dict]:
+    project = tmp_path / "project"
+    config = project / "configs" / "test.yaml"
+    config.parent.mkdir(parents=True)
+    config.write_text("locked: true\n", encoding="utf-8")
+    protected = project / "configs" / "frozen.txt"
+    protected.write_bytes(b"frozen-bytes")
+    manifest = project / "artifacts" / "ppo_phase_v1_start" / "frozen_fsm_hashes.json"
+    manifest.parent.mkdir(parents=True)
+    _json(
+        manifest,
+        {
+            "algorithm": "sha256",
+            "source_head": "c" * 40,
+            "protected_files": {"configs/frozen.txt": _sha(protected)},
+        },
+    )
+    runtime = _runtime_identity(project, config)
+    monkeypatch.setattr(video_artifacts, "_PROJECT_ROOT", project)
+    monkeypatch.setattr(
+        video_artifacts, "_validate_current_runtime_identity", lambda _identity: None
+    )
+    return project, config, runtime
+
+
+def _started_run(
+    project: Path,
+    config: Path,
+    runtime: dict,
+    *,
+    run_kind: str,
+    training_stage: str,
+    subcommand: str,
+    invocation: list[str],
+) -> Path:
+    config_sha, config_records = config_set_record([config], project_root=project)
+    identity = RunIdentity(
+        timestamp_utc="2026-09-04T01:00:00Z",
+        git_commit=runtime["git_commit"],
+        config_sha256=config_sha,
+        seed=4001,
+        environment_count=1,
+        training_stage=training_stage,
+    )
+    run_dir = project / "runs" / "ppo_phase_v1" / run_kind / identity.run_id
+    run_dir.mkdir(parents=True)
+    _json(
+        run_dir / "run_manifest.started.json",
+        {
+            "schema": RUN_MANIFEST_SCHEMA,
+            "lifecycle": "STARTED",
+            "immutable_run_directory": True,
+            "run_id": identity.run_id,
+            "run_kind": run_kind,
+            "run_dir": str(run_dir),
+            "project_root": str(project),
+            "identity": asdict(identity),
+            "configs": config_records,
+            "entrypoint": "wlr50_clean.ppo.cli",
+            "subcommand": subcommand,
+            "invocation_arguments": invocation,
+        },
+    )
+    _json(run_dir / "committed_runtime_identity.before.json", runtime)
+    _json(
+        run_dir / "frozen_hashes.before.json",
+        _frozen_audit(project, checked_at="2026-09-04T01:00:01Z"),
+    )
+    return run_dir
+
+
+def _managed_source_episode(
+    project: Path,
+    config: Path,
+    runtime: dict,
+    *,
+    role: str,
+    decision_count: int = 13,
+    ffmpeg: Path | None = None,
+) -> Path:
+    invocation = [
+        "--training-config",
+        str(config),
+        "--interface-config",
+        str(config),
+        "--episode-count",
+        "1",
+        "--deterministic",
+        "--capture-fps",
+        "15",
+        "--maximum-duration-s",
+        "200",
+        "--no-headless",
+        "--video-source-role",
+        role,
+        *( ["--residual-mode", "zero"] if role == "fsm" else [
+            "--checkpoint",
+            "<checkpoint>",
+            "--checkpoint-manifest",
+            "<checkpoint-manifest>",
+        ] ),
+        "--run-dir",
+        "<reserved-immutable-run-dir>",
+        "--seed",
+        "4001",
+        "--num-envs",
+        "1",
+    ]
+    run_dir = _started_run(
+        project,
+        config,
+        runtime,
+        run_kind=f"video-source-{role}",
+        training_stage=f"video-source-{role}-fresh-process",
+        subcommand="capture-video-source",
+        invocation=invocation,
+    )
+    source = _source_episode(
+        run_dir,
+        role=role,
+        seed=4001,
+        decision_count=decision_count,
+        directory_name="video_source",
+    )
+    if ffmpeg is not None:
+        frame_count = decision_count + 32
+        completed = subprocess.run(
+            [
+                str(ffmpeg),
+                "-hide_banner",
+                "-nostdin",
+                "-v",
+                "error",
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                "testsrc2=size=1280x720:rate=15",
+                "-frames:v",
+                str(frame_count),
+                "-c:v",
+                "libx264",
+                "-preset",
+                "ultrafast",
+                "-pix_fmt",
+                "yuv420p",
+                str(source / "actual_viewport_video.mp4"),
+            ],
+            capture_output=True,
+            text=True,
+            errors="replace",
+            check=False,
+        )
+        if completed.returncode != 0:
+            pytest.skip(f"bundled ffmpeg cannot make fixture video: {completed.stderr[-500:]}")
+        recorder_path = source / "viewport_buffer_video_manifest.json"
+        recorder = json.loads(recorder_path.read_text(encoding="utf-8"))
+        recorder["video_sha256"] = _sha(source / "actual_viewport_video.mp4")
+        _json(recorder_path, recorder)
+        source_manifest_path = source / "ppo_video_source_manifest.json"
+        refreshed = json.loads(source_manifest_path.read_text(encoding="utf-8"))
+        refreshed["raw_video_sha256"] = _sha(source / "actual_viewport_video.mp4")
+        _json(source_manifest_path, refreshed)
+    source_manifest = json.loads(
+        (source / "ppo_video_source_manifest.json").read_text(encoding="utf-8")
+    )
+    if role == "ppo":
+        invocation[invocation.index("--checkpoint") + 1] = source_manifest[
+            "source_checkpoint"
+        ]
+        invocation[invocation.index("--checkpoint-manifest") + 1] = source_manifest[
+            "source_checkpoint_manifest"
+        ]
+        started_path = run_dir / "run_manifest.started.json"
+        started = json.loads(started_path.read_text(encoding="utf-8"))
+        started["invocation_arguments"] = invocation
+        _json(started_path, started)
+    checkpoint_capture = (
+        None
+        if role == "fsm"
+        else {
+            "schema": "wlr50_clean.checkpoint_runtime_capture.v1",
+            "source_checkpoint_path": source_manifest["source_checkpoint"],
+            "source_checkpoint_sha256": source_manifest[
+                "source_checkpoint_sha256"
+            ],
+            "source_manifest_path": source_manifest[
+                "source_checkpoint_manifest"
+            ],
+            "source_manifest_sha256": source_manifest[
+                "source_checkpoint_manifest_sha256"
+            ],
+            "private_checkpoint_path": str(run_dir / ".checkpoint-pins" / "model.pt"),
+            "private_manifest_path": str(run_dir / ".checkpoint-pins" / "manifest.json"),
+            "private_copy_exclusive": True,
+            "runner_loads_private_copy_only": True,
+        }
+    )
+    capture = {
+        "schema": "wlr50_clean.ppo_video_source_capture_cli.v1",
+        "video_source_role": role,
+        "fresh_process_single_episode": True,
+        "seed": 4001,
+        "headless": False,
+        "active_viewport_configured": True,
+        "source_directory": str(source),
+        "source_manifest": str(source / "ppo_video_source_manifest.json"),
+        "source_video": str(source / "actual_viewport_video.mp4"),
+        "capture_process_id": source_manifest["capture_process_id"],
+        "capture_process_instance_id": source_manifest[
+            "capture_process_instance_id"
+        ],
+        "checkpoint_load_provenance": source_manifest[
+            "checkpoint_load_provenance"
+        ],
+        "checkpoint_runtime_capture_verified": True,
+        "checkpoint_runtime_capture": checkpoint_capture,
+    }
+    _json(run_dir / "video_source_capture.json", capture)
+    _json(
+        run_dir / "live_command_result.json",
+        {
+            "schema": "wlr50_clean.live_command_result.v1",
+            "command": "capture-video-source",
+            "exit_code": 0,
+        },
+    )
+    _json(run_dir / "committed_runtime_identity.after.json", runtime)
+    _json(
+        run_dir / "frozen_hashes.after.json",
+        _frozen_audit(project, checked_at="2026-09-04T01:00:02Z"),
+    )
+    before_line = {
+        "audit": str(run_dir / "frozen_hashes.before.json"),
+        "passed": True,
+    }
+    after_line = {
+        "audit": str(run_dir / "frozen_hashes.after.json"),
+        "passed": True,
+    }
+    (run_dir / "stdout.log").write_text(
+        "\n".join(
+            json.dumps(row, separators=(",", ":"))
+            for row in (before_line, capture, after_line)
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (run_dir / "stderr.log").write_bytes(b"")
+    finalize_run(run_dir, exit_code=0)
+    return source
+
+
+def _finish_publication_run(
+    project: Path,
+    config: Path,
+    runtime: dict,
+    *,
+    fsm_source: Path,
+    ppo_source: Path,
+    output_root: Path,
+    ffmpeg: Path,
+) -> tuple[Path, dict]:
+    invocation = [
+        "--training-config",
+        str(config),
+        "--interface-config",
+        str(config),
+        "--episode-count",
+        "1",
+        "--deterministic",
+        "--fsm-video-source-dir",
+        str(fsm_source),
+        "--ppo-video-source-dir",
+        str(ppo_source),
+        "--output-root",
+        str(output_root),
+        "--ffmpeg",
+        str(ffmpeg),
+        "--run-dir",
+        "<reserved-immutable-run-dir>",
+        "--seed",
+        "4001",
+        "--num-envs",
+        "1",
+    ]
+    run_dir = _started_run(
+        project,
+        config,
+        runtime,
+        run_kind="video-publication",
+        training_stage="video-publication-offline",
+        subcommand="publish-videos",
+        invocation=invocation,
+    )
+    arguments = type(
+        "Args",
+        (),
+        {
+            "seed": 4001,
+            "num_envs": 1,
+            "episode_count": 1,
+            "deterministic": True,
+            "fsm_video_source_dir": fsm_source,
+            "ppo_video_source_dir": ppo_source,
+            "output_root": output_root,
+            "ffmpeg": ffmpeg,
+            "run_dir": run_dir,
+        },
+    )()
+    stdout = io.StringIO()
+    with redirect_stdout(stdout):
+        assert cli._publish_videos(arguments) == 0
+    result = json.loads(
+        (run_dir / "final_video_publication.json").read_text(encoding="utf-8")
+    )
+    _json(run_dir / "committed_runtime_identity.after.json", runtime)
+    _json(
+        run_dir / "frozen_hashes.after.json",
+        _frozen_audit(project, checked_at="2026-09-04T01:00:02Z"),
+    )
+    rows = [
+        json.dumps(
+            {
+                "audit": str(run_dir / "frozen_hashes.before.json"),
+                "passed": True,
+            },
+            separators=(",", ":"),
+        ),
+        stdout.getvalue().strip(),
+        json.dumps(
+            {
+                "audit": str(run_dir / "frozen_hashes.after.json"),
+                "passed": True,
+            },
+            separators=(",", ":"),
+        ),
+    ]
+    (run_dir / "stdout.log").write_text("\n".join(rows) + "\n", encoding="utf-8")
+    (run_dir / "stderr.log").write_bytes(b"")
+    finalize_run(run_dir, exit_code=0)
+    return run_dir, result
+
+
 def _install_fake_video_tools(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -265,6 +680,28 @@ def _install_fake_video_tools(
     monkeypatch.setattr(video_artifacts, "find_ffmpeg", lambda _: executable)
     monkeypatch.setattr(video_artifacts.subprocess, "run", fake_run)
     monkeypatch.setattr(video_artifacts, "validate_mp4", fake_validate)
+    runtime_identity = {
+        "schema": "wlr50_clean.committed_runtime_identity.v1",
+        "git_commit": "a" * 40,
+        "content_sha256": "b" * 64,
+    }
+
+    def fake_managed_source(_source, *, role):
+        return video_artifacts._ManagedRunValidation(
+            evidence={"role": role, "managed": True},
+            runtime_identity=runtime_identity,
+        )
+
+    monkeypatch.setattr(
+        video_artifacts, "_validate_source_managed_run", fake_managed_source
+    )
+    monkeypatch.setattr(
+        video_artifacts,
+        "_publication_reservation_evidence",
+        lambda *args, **kwargs: video_artifacts._ManagedRunValidation(
+            evidence={"managed": True}, runtime_identity=runtime_identity
+        ),
+    )
     return calls
 
 
@@ -281,6 +718,7 @@ def test_publish_four_videos_with_real_time_padding_trace_overlay_and_checksums(
         fsm_source_dir=fsm,
         ppo_source_dir=ppo,
         output_root=output,
+        publication_run_dir=tmp_path / "publication-run",
     )
 
     assert {path.name for path in publication.videos.values()} == {
@@ -347,6 +785,7 @@ def test_publication_rejects_different_seeds_before_encoding(
             fsm_source_dir=fsm,
             ppo_source_dir=ppo,
             output_root=tmp_path / "final",
+            publication_run_dir=tmp_path / "publication-run",
         )
     assert calls == []
 
@@ -373,6 +812,7 @@ def test_publication_rejects_zero_residual_ppo_trace(
             fsm_source_dir=fsm,
             ppo_source_dir=ppo,
             output_root=tmp_path / "final",
+            publication_run_dir=tmp_path / "publication-run",
         )
     assert calls == []
 
@@ -394,6 +834,7 @@ def test_publication_rejects_environment_identity_mismatch(
             fsm_source_dir=fsm,
             ppo_source_dir=ppo,
             output_root=tmp_path / "final",
+            publication_run_dir=tmp_path / "publication-run",
         )
     assert calls == []
 
@@ -410,6 +851,7 @@ def test_publication_is_immutable_and_refuses_a_second_build(
         fsm_source_dir=fsm,
         ppo_source_dir=ppo,
         output_root=output,
+        publication_run_dir=tmp_path / "publication-run",
     )
     first_call_count = len(calls)
 
@@ -418,5 +860,136 @@ def test_publication_is_immutable_and_refuses_a_second_build(
             fsm_source_dir=fsm,
             ppo_source_dir=ppo,
             output_root=output,
+            publication_run_dir=tmp_path / "publication-run",
         )
     assert len(calls) == first_call_count
+
+
+def test_managed_source_verifier_binds_wrapper_runtime_frozen_stdout_and_inventory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project, config, runtime = _fixture_project(tmp_path, monkeypatch)
+    source = _managed_source_episode(
+        project, config, runtime, role="fsm"
+    )
+
+    evidence = video_artifacts.verify_video_source_managed_run(source, role="fsm")
+
+    assert evidence["run_kind"] == "video-source-fsm"
+    assert evidence["git_commit"] == runtime["git_commit"]
+    assert evidence["committed_runtime_content_sha256"] == runtime["content_sha256"]
+    assert evidence["run_manifest"]["sha256"] == _sha(source.parent / "run_manifest.json")
+    assert evidence["stdout"]["sha256"] == _sha(source.parent / "stdout.log")
+
+
+def test_managed_source_verifier_rejects_stdout_tamper_fail_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project, config, runtime = _fixture_project(tmp_path, monkeypatch)
+    source = _managed_source_episode(project, config, runtime, role="fsm")
+    with (source.parent / "stdout.log").open("ab") as stream:
+        stream.write(b"tamper\n")
+
+    with pytest.raises(
+        video_artifacts.PPOVideoArtifactError, match="stdout.log record is stale"
+    ):
+        video_artifacts.verify_video_source_managed_run(source, role="fsm")
+
+
+def test_managed_source_verifier_rejects_external_and_redirected_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project, config, runtime = _fixture_project(tmp_path, monkeypatch)
+    (tmp_path / "external").mkdir()
+    external = _source_episode(
+        tmp_path / "external",
+        role="fsm",
+        seed=4001,
+        decision_count=13,
+    )
+    with pytest.raises(
+        video_artifacts.PPOVideoArtifactError, match="outside the canonical managed runs root"
+    ):
+        video_artifacts.verify_video_source_managed_run(external, role="fsm")
+
+    source = _managed_source_episode(project, config, runtime, role="fsm")
+    manifest = source / "ppo_video_source_manifest.json"
+    real_manifest = source / "real-source-manifest.json"
+    manifest.rename(real_manifest)
+    try:
+        manifest.symlink_to(real_manifest)
+    except OSError:
+        pytest.skip("this Windows account cannot create symbolic links")
+    with pytest.raises(
+        video_artifacts.PPOVideoArtifactError, match="symbolic link|reparse point"
+    ):
+        video_artifacts.verify_video_source_managed_run(source, role="fsm")
+
+
+def test_real_ffmpeg_publication_is_fully_decoded_and_binds_final_wrapper(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    try:
+        ffmpeg = video_artifacts.find_ffmpeg(None)
+    except FileNotFoundError:
+        pytest.skip("ffmpeg is unavailable")
+    project, config, runtime = _fixture_project(tmp_path, monkeypatch)
+    fsm = _managed_source_episode(
+        project, config, runtime, role="fsm", decision_count=13, ffmpeg=ffmpeg
+    )
+    ppo = _managed_source_episode(
+        project, config, runtime, role="ppo", decision_count=14, ffmpeg=ffmpeg
+    )
+    output = project / "outputs" / "ppo_phase_v1"
+    publication_run, result = _finish_publication_run(
+        project,
+        config,
+        runtime,
+        fsm_source=fsm,
+        ppo_source=ppo,
+        output_root=output,
+        ffmpeg=ffmpeg,
+    )
+    improved_hash = json.loads(
+        (ppo / "ppo_video_source_manifest.json").read_text(encoding="utf-8")
+    )["source_checkpoint_sha256"]
+
+    verified = video_artifacts.verify_final_video_publication(
+        result["video_validation"],
+        result["video_checksums"],
+        output_root=output,
+        expected_improved_checkpoint_sha256=improved_hash,
+        ffmpeg=ffmpeg,
+    )
+
+    assert verified["valid"] is True
+    assert set(verified["videos"]) == {
+        "fsm_baseline",
+        "ppo_improved",
+        "comparison",
+        "ppo_diagnostic",
+    }
+    validation = json.loads(Path(result["video_validation"]).read_text(encoding="utf-8"))
+    assert all(row["codec"] == "h264" for row in validation["videos"].values())
+    assert all(row["pixel_format"] == "yuv420p" for row in validation["videos"].values())
+    assert all(row["full_decode"] is True for row in validation["videos"].values())
+    assert verified["publication_run"]["run_manifest"]["sha256"] == _sha(
+        publication_run / "run_manifest.json"
+    )
+
+    with (publication_run / "stdout.log").open("ab") as stream:
+        stream.write(b"tamper\n")
+    with pytest.raises(
+        video_artifacts.PPOVideoArtifactError, match="stdout.log record is stale"
+    ):
+        video_artifacts.verify_final_video_publication(
+            result["video_validation"],
+            result["video_checksums"],
+            output_root=output,
+            expected_improved_checkpoint_sha256=improved_hash,
+            ffmpeg=ffmpeg,
+        )

@@ -23,6 +23,18 @@ LOWER_IS_BETTER = (
     "action_jerk_rms",
 )
 
+# Fixed non-overlapping bands for the public residual spectrum.  Energy at
+# DC is deliberately excluded: the plot is intended to show temporal action
+# activity, while a constant offset is already represented by residual RMS.
+# The final band is clipped to the actual Nyquist frequency by the FFT.
+RESIDUAL_SPECTRUM_BANDS_HZ = (
+    (0.0, 0.5, "0p0_0p5"),
+    (0.5, 1.0, "0p5_1p0"),
+    (1.0, 2.0, "1p0_2p0"),
+    (2.0, 3.0, "2p0_3p0"),
+    (3.0, math.inf, "3p0_nyquist"),
+)
+
 # The paired artifact retains every metric in ``LOWER_IS_BETTER``, but a
 # phase's primary score must only average quantities that are physically
 # meaningful in that phase.  In particular, a zero placement impulse outside
@@ -123,6 +135,55 @@ def _high_frequency_fraction(signal: np.ndarray, dt_s: float, cutoff_hz: float =
     return float(np.sum(spectrum[frequencies >= cutoff_hz]) / total)
 
 
+def residual_spectrum_band_fractions(
+    signal: np.ndarray,
+    dt_s: float,
+) -> dict[str, float]:
+    """Return real FFT energy fractions in the fixed public frequency bands.
+
+    ``signal`` is a time-by-channel array sampled at ``dt_s``.  The transform
+    is performed on every channel after removing its mean, then channel power
+    is summed.  Fractions therefore describe the actual multichannel residual
+    time series without inventing PSD samples from aggregate metrics.
+    """
+
+    values = np.asarray(signal, dtype=float)
+    if values.ndim != 2:
+        raise MetricsError("residual spectrum signal must be a 2D time-by-channel array")
+    if not math.isfinite(float(dt_s)) or dt_s <= 0.0:
+        raise MetricsError("residual spectrum dt_s must be finite and positive")
+    if not np.all(np.isfinite(values)):
+        raise MetricsError("residual spectrum signal contains non-finite values")
+    keys = tuple(
+        f"residual_spectral_energy_fraction_{label}_hz"
+        for _lower, _upper, label in RESIDUAL_SPECTRUM_BANDS_HZ
+    )
+    if values.shape[0] < 4:
+        return {key: 0.0 for key in keys}
+
+    centered = values - np.mean(values, axis=0, keepdims=True)
+    power = np.square(np.abs(np.fft.rfft(centered, axis=0)))
+    frequencies = np.fft.rfftfreq(values.shape[0], d=float(dt_s))
+    # Remove DC from both numerator and denominator.  Half-open finite bands
+    # assign every positive-frequency FFT bin exactly once; the last band
+    # includes Nyquist.
+    positive = frequencies > 0.0
+    total = float(np.sum(power[positive]))
+    if total <= 1.0e-20:
+        return {key: 0.0 for key in keys}
+
+    result: dict[str, float] = {}
+    for (lower, upper, _label), key in zip(
+        RESIDUAL_SPECTRUM_BANDS_HZ, keys, strict=True
+    ):
+        if math.isinf(upper):
+            selected = (frequencies >= lower) & positive
+        else:
+            selected = (frequencies >= lower) & (frequencies < upper) & positive
+        result[key] = float(np.sum(power[selected]) / total)
+    return result
+
+
 def _settling_time(
     *,
     time: np.ndarray,
@@ -164,7 +225,9 @@ def _settling_time(
 
 
 def summarize_phase_samples(
-    samples: Iterable[StabilitySample], *, physics_hz: float = 120.0,
+    samples: Iterable[StabilitySample], *,
+    phase_scale_full12: Mapping[str, Sequence[float]],
+    physics_hz: float = 120.0,
     settling_attitude_tolerance_rad: float = math.radians(2.0),
     settling_rate_tolerance_rad_s: float = math.radians(5.0),
     settling_hold_s: float = 0.25,
@@ -191,6 +254,21 @@ def summarize_phase_samples(
         )
         slip = np.asarray([row.wheel_slip4 for row in group], dtype=float)
         residual = np.asarray([row.residual_full12 for row in group], dtype=float)
+        scale = np.asarray(
+            _finite_vector(phase_scale_full12[phase], 12, f"{phase} residual scale"),
+            dtype=float,
+        )
+        if np.any(scale < 0.0) or not np.any(scale > 0.0):
+            raise MetricsError(f"{phase} residual scale must be nonnegative and nonzero")
+        disabled = scale <= 0.0
+        if np.any(np.abs(residual[:, disabled]) > 1.0e-12):
+            raise MetricsError(f"{phase} has residual activity on a zero-scale channel")
+        normalized_residual = np.divide(
+            residual,
+            scale[None, :],
+            out=np.zeros_like(residual),
+            where=scale[None, :] > 0.0,
+        )
         nominal = np.asarray([row.nominal_full12 for row in group], dtype=float)
         applied = np.asarray([row.applied_full12 for row in group], dtype=float)
         residual_rate = np.diff(residual, axis=0)
@@ -241,6 +319,8 @@ def summarize_phase_samples(
                 "action_jerk_rms": _vector_rms(applied_jerk),
                 "residual_high_frequency_fraction": _high_frequency_fraction(residual, dt),
                 "applied_high_frequency_fraction": _high_frequency_fraction(applied, dt),
+                "residual_spectrum_normalization": "phase_scale_full12",
+                **residual_spectrum_band_fractions(normalized_residual, dt),
             }
         )
     return result
@@ -326,6 +406,66 @@ class PromotionDecision:
     checks: Mapping[str, bool]
     global_stability_improvement_fraction: float
     improved_priority_phase_count: int
+    duration_pair_diagnostics: Mapping[str, object]
+
+
+def _paired_duration_diagnostics(
+    baseline_episodes: Sequence[EpisodeOutcome],
+    candidate_episodes: Sequence[EpisodeOutcome],
+) -> tuple[bool, dict[str, object]]:
+    """Evaluate the 15% duration cap on each explicitly paired seed.
+
+    A group mean is retained as a reporting diagnostic, but it has no gate
+    authority: a fast candidate on one seed must not conceal a slowdown over
+    15% on another matched seed.
+    """
+
+    rows: list[dict[str, object]] = []
+    for baseline, candidate in zip(
+        baseline_episodes, candidate_episodes, strict=True
+    ):
+        baseline_duration = float(baseline.duration_s)
+        candidate_duration = float(candidate.duration_s)
+        if (
+            not math.isfinite(baseline_duration)
+            or not math.isfinite(candidate_duration)
+            or baseline_duration <= 0.0
+            or candidate_duration < 0.0
+        ):
+            raise MetricsError(
+                "paired promotion episode durations must be finite with a "
+                "positive baseline and non-negative candidate"
+            )
+        allowed = baseline_duration * 1.15
+        ratio = candidate_duration / baseline_duration
+        rows.append(
+            {
+                "seed": int(baseline.seed),
+                "baseline_duration_s": baseline_duration,
+                "candidate_duration_s": candidate_duration,
+                "allowed_duration_s": allowed,
+                "candidate_to_baseline_ratio": ratio,
+                "passed": candidate_duration <= allowed,
+            }
+        )
+    failed_rows = [row for row in rows if row["passed"] is not True]
+    worst = max(rows, key=lambda row: float(row["candidate_to_baseline_ratio"]))
+    baseline_mean = float(np.mean([float(row["baseline_duration_s"]) for row in rows]))
+    candidate_mean = float(np.mean([float(row["candidate_duration_s"]) for row in rows]))
+    return not failed_rows, {
+        "gate_semantics": "all_matched_seed_pairs_candidate_le_1p15_times_baseline",
+        "paired_rows": tuple(rows),
+        "baseline_mean_duration_s": baseline_mean,
+        "candidate_mean_duration_s": candidate_mean,
+        "mean_candidate_to_baseline_ratio": candidate_mean / baseline_mean,
+        "first_violating_seed": (
+            None if not failed_rows else int(failed_rows[0]["seed"])
+        ),
+        "worst_seed": int(worst["seed"]),
+        "worst_candidate_to_baseline_ratio": float(
+            worst["candidate_to_baseline_ratio"]
+        ),
+    }
 
 
 def evaluate_promotion(
@@ -345,8 +485,9 @@ def evaluate_promotion(
         raise MetricsError("baseline and candidate seeds are not paired")
     baseline_success = sum(e.task_success for e in baseline_episodes) / len(baseline_episodes)
     candidate_success = sum(e.task_success for e in candidate_episodes) / len(candidate_episodes)
-    baseline_duration = float(np.mean([e.duration_s for e in baseline_episodes]))
-    candidate_duration = float(np.mean([e.duration_s for e in candidate_episodes]))
+    duration_gate, duration_diagnostics = _paired_duration_diagnostics(
+        baseline_episodes, candidate_episodes
+    )
     phase_rows = {str(row["phase"]): row for row in phase_comparison_rows}
     stability = global_stability_improvement(phase_comparison_rows)
     priority_scores = [float(phase_rows[p]["primary_phase_score_improvement_fraction"]) for p in PRIORITY_PHASES]
@@ -361,7 +502,7 @@ def evaluate_promotion(
         ),
         "safety_abort_zero": not any(e.safety_abort for e in candidate_episodes),
         "duration_each_under_200_s": all(e.duration_s <= 200.0 for e in candidate_episodes),
-        "duration_not_over_fsm_by_15pct": candidate_duration <= baseline_duration * 1.15,
+        "duration_not_over_fsm_by_15pct": duration_gate,
         "frozen_hashes_unchanged": bool(frozen_hashes_unchanged),
         "recording_runtime_access_zero": int(recording_runtime_access_count) == 0,
         "global_stability_improvement_at_least_5pct": stability >= 0.05,
@@ -380,6 +521,7 @@ def evaluate_promotion(
         checks=checks,
         global_stability_improvement_fraction=stability,
         improved_priority_phase_count=improved_priority,
+        duration_pair_diagnostics=duration_diagnostics,
     )
 
 

@@ -28,6 +28,7 @@ from typing import Any, Callable, Mapping, Sequence
 from .action_projection import SafetyProjection
 from .observation_schema import NonFiniteObservationError, PPOObservationFrame
 from .ppo_env_adapter import AuthoritativeFrame
+from .phase_snapshots import ValidatedPhaseSnapshotBundle
 from .reward_terms import RewardSignals
 from .termination import TerminationSignals
 
@@ -274,11 +275,22 @@ class IsaacFSMBackend:
         fsm_path: Path | str = DEFAULT_FSM_PATH,
         motion_contract_path: Path | str = DEFAULT_MOTION_CONTRACT_PATH,
         dependencies: BackendDependencies | None = None,
+        expected_phase_snapshot_bundle: ValidatedPhaseSnapshotBundle | None = None,
     ) -> None:
         self.simulation_app = simulation_app
         self.fsm_path = Path(fsm_path).resolve()
         self.motion_contract_path = Path(motion_contract_path).resolve()
         self._dependencies = dependencies
+        if (
+            expected_phase_snapshot_bundle is not None
+            and expected_phase_snapshot_bundle.snapshot_root
+            != DEFAULT_PHASE_SNAPSHOT_ROOT.resolve()
+        ):
+            raise IsaacFSMBackendError(
+                "injected phase snapshot bundle does not use the production loader root"
+            )
+        self._expected_phase_snapshot_bundle = expected_phase_snapshot_bundle
+        self._phase_snapshot_integrity_failed = False
         self._scene: Any | None = None
         self._adapter: Any | None = None
         self._reader: Any | None = None
@@ -354,11 +366,29 @@ class IsaacFSMBackend:
         snapshot_phase = _snapshot_phase_option(reset_options)
         loaded_snapshot: LoadedPhaseSnapshot | None = None
         if snapshot_phase is not None:
-            if dependencies.load_phase_snapshot is None:
+            if self._phase_snapshot_integrity_failed:
+                raise IsaacFSMBackendError(
+                    "phase snapshot integrity previously failed in this backend"
+                )
+            if (
+                self._expected_phase_snapshot_bundle is None
+                and dependencies.load_phase_snapshot is None
+            ):
                 raise IsaacFSMBackendError(
                     "phase curriculum requested but no validated snapshot loader exists"
                 )
-            loaded_snapshot = dependencies.load_phase_snapshot(snapshot_phase)
+            try:
+                loaded_snapshot = (
+                    _load_validated_phase_snapshot(
+                        snapshot_phase,
+                        expected_bundle=self._expected_phase_snapshot_bundle,
+                    )
+                    if self._expected_phase_snapshot_bundle is not None
+                    else dependencies.load_phase_snapshot(snapshot_phase)
+                )
+            except Exception:
+                self._phase_snapshot_integrity_failed = True
+                raise
             if loaded_snapshot.phase_id != snapshot_phase:
                 raise IsaacFSMBackendError(
                     "phase snapshot loader returned a different FSM state"
@@ -1612,50 +1642,48 @@ def _snapshot_phase_option(options: Mapping[str, Any]) -> str | None:
     return value
 
 
-def _load_validated_phase_snapshot(phase_id: str) -> LoadedPhaseSnapshot:
-    """Load only the local derived snapshot set; never follow source-trial paths."""
+def _load_validated_phase_snapshot(
+    phase_id: str,
+    *,
+    expected_bundle: ValidatedPhaseSnapshotBundle | None = None,
+) -> LoadedPhaseSnapshot:
+    """Load one snapshot from one immutable buffer pinned to the local bundle."""
 
     from .phase_snapshots import (
-        SNAPSHOT_SCHEMA,
-        validate_phase_snapshots,
+        PhaseSnapshotError,
+        assert_phase_snapshot_bundle_unchanged,
+        capture_validated_phase_snapshot_bundle,
+        load_validated_phase_snapshot_payload,
     )
 
     if phase_id not in PHASE_IDS:
         raise IsaacFSMBackendError(f"unknown phase snapshot {phase_id!r}")
     root = DEFAULT_PHASE_SNAPSHOT_ROOT.resolve()
     try:
-        manifest = validate_phase_snapshots(root)
+        if expected_bundle is None:
+            bundle = capture_validated_phase_snapshot_bundle(
+                root, canonical_root=root
+            )
+        else:
+            if expected_bundle.snapshot_root != root:
+                raise PhaseSnapshotError(
+                    "pinned phase snapshot bundle uses a different loader root"
+                )
+            bundle = assert_phase_snapshot_bundle_unchanged(
+                expected_bundle, canonical_root=root
+            )
+        payload, entry = load_validated_phase_snapshot_payload(bundle, phase_id)
     except Exception as exc:
         raise IsaacFSMBackendError(
-            f"phase snapshot manifest validation failed: {type(exc).__name__}: {exc}"
+            f"phase snapshot bundle validation failed: {type(exc).__name__}: {exc}"
         ) from exc
-    rows = tuple(manifest.get("snapshots", ()))
-    selected = next((row for row in rows if row.get("phase") == phase_id), None)
-    if selected is None:
-        raise IsaacFSMBackendError(f"validated snapshot manifest lacks {phase_id}")
-    snapshot_path = (root / phase_id / "snapshot.json").resolve()
-    if root not in snapshot_path.parents:
-        raise IsaacFSMBackendError("phase snapshot resolved outside the locked local root")
-    try:
-        payload = json.loads(snapshot_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise IsaacFSMBackendError(f"cannot read local phase snapshot {phase_id}") from exc
-    if not isinstance(payload, Mapping) or payload.get("schema") != SNAPSHOT_SCHEMA:
-        raise IsaacFSMBackendError(f"phase snapshot {phase_id} has an invalid schema")
     _validate_phase_snapshot_payload(payload, phase_id)
-    file_hash = _sha256_file(snapshot_path)
-    state_hash = str(payload["state_sha256"])
-    if (
-        state_hash != str(selected.get("state_sha256"))
-        or file_hash != str(selected.get("file_sha256"))
-    ):
-        raise IsaacFSMBackendError(f"phase snapshot {phase_id} hash proof disagrees")
     return LoadedPhaseSnapshot(
         phase_id=phase_id,
-        payload=dict(payload),
-        state_sha256=state_hash,
-        file_sha256=file_hash,
-        snapshot_path=snapshot_path,
+        payload=payload,
+        state_sha256=entry.state_sha256,
+        file_sha256=entry.file_sha256,
+        snapshot_path=entry.snapshot_path,
     )
 
 

@@ -9,7 +9,7 @@ import pytest
 
 from wlr50_clean.ppo import cli, residual_direct_env as residual_subject
 from wlr50_clean.ppo.action_projection import SafetyProjection
-from wlr50_clean.ppo.phase_objectives import DENSE_FAMILIES
+from wlr50_clean.ppo.phase_objectives import DENSE_FAMILIES, load_phase_objectives
 from wlr50_clean.ppo.residual_direct_env import (
     PHASE_CURRICULUM_BOUNDARY_REASON,
     PHASE_CURRICULUM_BASELINE_DECISIONS,
@@ -28,6 +28,10 @@ from wlr50_clean.ppo.termination import (
     TerminationDecision,
     TerminationReason,
     TerminationSignals,
+)
+from wlr50_clean.ppo.termination_v2 import (
+    TerminationEvaluatorV2,
+    TerminationSignalsV2,
 )
 
 
@@ -124,6 +128,7 @@ class _BoundaryEpisode(ResidualEpisodeEnv):
         start: SimpleNamespace,
         end: SimpleNamespace,
         residual: tuple[float, ...],
+        **_: object,
     ) -> _TestReward:
         return _TestReward()
 
@@ -208,10 +213,50 @@ def test_controller_blocked_beats_same_tick_timeout_without_bootstrap() -> None:
     assert step.info["termination_reason"] == "CONTROLLER_BLOCKED"
 
 
+def test_controller_blocked_does_not_hide_primary_physical_failure_reason() -> None:
+    class _ExplosionAtBlockedTick:
+        def evaluate(self, signals, *, episode_time_s: float) -> TerminationDecision:
+            exploded = episode_time_s >= 3.0 / 120.0
+            return TerminationDecision(
+                terminated=exploded,
+                truncated=False,
+                reason=TerminationReason.PHYSICS_EXPLOSION if exploded else None,
+                triggered_reasons=(
+                    (TerminationReason.PHYSICS_EXPLOSION,) if exploded else ()
+                ),
+                diagnostics=(),
+            )
+
+    backend = _BoundaryBackend(
+        starting_phase="P05",
+        next_phase="P05",
+        transition_tick=999,
+        controller_blocked_tick=3,
+    )
+    env = _BoundaryEpisode(
+        backend,
+        termination_evaluator=_ExplosionAtBlockedTick(),
+    )
+    env.reset(seed=1001)
+
+    step = env.step(ZERO12)
+
+    assert step.terminated is True
+    assert step.truncated is False
+    assert step.info["termination_reason"] == "PHYSICS_EXPLOSION"
+
+
 def test_controller_blocked_activates_task_failure_reward_event() -> None:
     captured: dict[str, object] = {}
 
     class _Calculator:
+        objectives = SimpleNamespace(
+            phase=lambda phase_id: SimpleNamespace(
+                successful_fsm_attitude_envelope_rad=None,
+                attitude_envelope_excess_normalization_rad=None,
+            )
+        )
+
         def evaluate(self, signals):
             captured["signals"] = signals
             return _TestReward()
@@ -242,9 +287,162 @@ def test_controller_blocked_activates_task_failure_reward_event() -> None:
         termination_signals=TerminationSignals(),
     )
 
-    env._reward(start, end, ZERO12)
+    env._reward(
+        start,
+        end,
+        ZERO12,
+        termination_reason=None,
+        controller_blocked=True,
+    )
 
     assert captured["signals"].task_failure is True
+
+
+@pytest.mark.parametrize(
+    ("signals", "expected_reason", "task_failure", "safety_abort"),
+    (
+        (
+            TerminationSignals(body_collision=True, fall=True),
+            TerminationReason.BODY_COLLISION,
+            True,
+            False,
+        ),
+        (
+            TerminationSignals(body_collision=True, physics_explosion=True),
+            TerminationReason.PHYSICS_EXPLOSION,
+            False,
+            True,
+        ),
+    ),
+)
+def test_reward_terminal_event_reuses_primary_termination_reason_when_faults_cooccur(
+    signals: TerminationSignals,
+    expected_reason: TerminationReason,
+    task_failure: bool,
+    safety_abort: bool,
+) -> None:
+    captured: dict[str, object] = {}
+    decision = TerminationEvaluatorV2().evaluate(
+        TerminationSignalsV2(
+            body_collision=signals.body_collision,
+            wheel_only_climb=signals.wheel_only_climb,
+            fall=signals.fall,
+            nan_inf=signals.nan_inf,
+            hard_joint_limit=signals.hard_joint_limit,
+            physics_explosion=signals.physics_explosion,
+        ),
+        episode_time_s=1.0,
+    )
+    assert decision.reason is expected_reason
+
+    class _Calculator:
+        objectives = SimpleNamespace(
+            phase=lambda phase_id: SimpleNamespace(
+                successful_fsm_attitude_envelope_rad=None,
+                attitude_envelope_excess_normalization_rad=None,
+            )
+        )
+
+        def evaluate(self, reward_signals):
+            captured["signals"] = reward_signals
+            return _TestReward()
+
+    env = ResidualEpisodeEnv.__new__(ResidualEpisodeEnv)
+    env.signals = SimpleNamespace(
+        progress=lambda frame: 0.0,
+        contact_costs=lambda start, end: {},
+    )
+    env.reward_calculator = _Calculator()
+    env.phase_actions = SimpleNamespace(
+        physical_scale_for=lambda phase_id: (1.0,) * 12
+    )
+    env.previous_residual = ZERO12
+    env.previous_previous_residual = ZERO12
+    base = SimpleNamespace(angular_velocity_w_rad_s=(0.0, 0.0, 0.0))
+    start = SimpleNamespace(
+        state_id="P05",
+        info={"raw_observation": SimpleNamespace(base=base)},
+    )
+    end = SimpleNamespace(
+        state_id="P05",
+        info={"raw_observation": SimpleNamespace(base=base), "level_calibration": {}},
+        termination_signals=signals,
+    )
+
+    env._reward(
+        start,
+        end,
+        ZERO12,
+        termination_reason=decision.reason,
+        controller_blocked=False,
+    )
+
+    reward_signals = captured["signals"]
+    assert reward_signals.task_failure is task_failure
+    assert reward_signals.safety_abort is safety_abort
+    assert sum(
+        (reward_signals.final_success, reward_signals.task_failure, reward_signals.safety_abort)
+    ) == 1
+
+
+@pytest.mark.parametrize("phase_id", ("P08", "P11"))
+def test_reward_uses_frozen_per_phase_attitude_envelope(phase_id: str) -> None:
+    captured: list[object] = []
+
+    class _Calculator:
+        objectives = load_phase_objectives()
+
+        def evaluate(self, reward_signals):
+            captured.append(reward_signals)
+            return _TestReward()
+
+    env = ResidualEpisodeEnv.__new__(ResidualEpisodeEnv)
+    env.signals = SimpleNamespace(
+        progress=lambda frame: 0.0,
+        contact_costs=lambda start, end: {},
+    )
+    env.reward_calculator = _Calculator()
+    env.phase_actions = SimpleNamespace(
+        physical_scale_for=lambda state_id: (1.0,) * 12
+    )
+    env.previous_residual = ZERO12
+    env.previous_previous_residual = ZERO12
+    base = SimpleNamespace(angular_velocity_w_rad_s=(0.0, 0.0, 0.0))
+    start = SimpleNamespace(
+        state_id=phase_id,
+        info={"raw_observation": SimpleNamespace(base=base)},
+    )
+    objective = env.reward_calculator.objectives.phase(phase_id)
+    envelope = objective.successful_fsm_attitude_envelope_rad
+    normalization = objective.attitude_envelope_excess_normalization_rad
+    assert envelope is not None
+    assert normalization is not None
+
+    for attitude, expected in (
+        (envelope, 0.0),
+        (envelope + normalization / 2.0, 0.5),
+        (envelope + normalization * 2.0, 1.0),
+    ):
+        end = SimpleNamespace(
+            state_id=phase_id,
+            info={
+                "raw_observation": SimpleNamespace(base=base),
+                "level_calibration": {
+                    "roll_error_to_level_rad": attitude,
+                    "pitch_error_to_level_rad": 0.0,
+                },
+            },
+        )
+        env._reward(
+            start,
+            end,
+            ZERO12,
+            termination_reason=None,
+            controller_blocked=False,
+        )
+        assert captured[-1].successful_fsm_attitude_envelope_excess == pytest.approx(
+            expected
+        )
 
 
 def test_v2_snapshot_observation_uses_authoritative_previous_action(
@@ -426,7 +624,12 @@ def test_cli_wires_curriculum_only_for_phase_curriculum_stage(
         phase_curriculum_reset_cycle_samples=128,
         phase_curriculum_occupancy_tolerance=0.02,
     )
-    monkeypatch.setattr(isaac_fsm_backend, "IsaacFSMBackend", lambda app: object())
+    backend_calls: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        isaac_fsm_backend,
+        "IsaacFSMBackend",
+        lambda app, **kwargs: backend_calls.append(kwargs) or object(),
+    )
     monkeypatch.setattr(
         residual_direct_env,
         "ResidualEpisodeEnv",
@@ -469,7 +672,9 @@ def test_cli_wires_curriculum_only_for_phase_curriculum_stage(
         PHASE_CURRICULUM_TARGET_DECISION_FRACTIONS
     )
     assert captures[0]["phase_curriculum_occupancy_tolerance_fraction"] == 0.02
+    assert backend_calls[0]["expected_phase_snapshot_bundle"] is not None
     assert captures[1]["training_phase_reset_schedule"] is None
+    assert backend_calls[1]["expected_phase_snapshot_bundle"] is None
     assert captures[1]["end_curriculum_sample_at_phase_boundary"] is False
     assert captures[1]["phase_curriculum_max_decisions"] == 64
     assert captures[1]["phase_curriculum_target_decision_fractions"] is None

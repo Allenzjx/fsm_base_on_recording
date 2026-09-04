@@ -251,6 +251,27 @@ def test_phase_mask_is_reapplied_after_rate_limit_with_nonzero_prior() -> None:
     assert "phase_active_mask_post_rate" in result.clipping_stages
 
 
+def test_current_phase_scale_is_reapplied_after_rate_limit_with_untrusted_prior() -> None:
+    from wlr50_clean.ppo.phase_action_masks_v2 import build_action_projector_v2
+
+    projector = build_action_projector_v2()
+    result = projector.project(
+        ZERO,
+        state_id="P02",
+        nominal_action_full12=ZERO,
+        reference_action_full12=ZERO,
+        reference_delta_full12=ZERO,
+        previous_projected_residual_full12=(10.0,) + ZERO[1:],
+        runtime_action_mask_full12=(1,) * 12,
+        dt_s=1.0 / 120.0,
+    )
+
+    assert result.rate_projected_residual_full12[0] > 1.5
+    assert result.phase_scale_projected_residual_full12[0] == pytest.approx(1.5)
+    assert result.safe_projected_residual_full12[0] == pytest.approx(1.5)
+    assert "phase_residual_scale_cap_post_rate" in result.clipping_stages
+
+
 def test_hard_safety_is_last_and_can_stop_wheels_or_override() -> None:
     nominal = ZERO[:8] + (1.0, 1.0, 1.0, 1.0)
     stopped = _project(

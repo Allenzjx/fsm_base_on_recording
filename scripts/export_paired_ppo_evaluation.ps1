@@ -1,6 +1,12 @@
 [CmdletBinding(PositionalBinding = $false)]
 param(
     [Parameter(Mandatory = $true)]
+    [string]$BaselineAggregate,
+
+    [Parameter(Mandatory = $true)]
+    [string]$CandidateValidationAggregate,
+
+    [Parameter(Mandatory = $true)]
     [ValidateCount(5, 5)]
     [string[]]$BaselineEpisodeDir,
 
@@ -55,6 +61,8 @@ $BaseArgs = @(
     "--episode-count", [string]$EpisodeCount,
     "--candidate-checkpoint", $CandidateCheckpoint,
     "--candidate-manifest", $CandidateManifest,
+    "--baseline-aggregate", $BaselineAggregate,
+    "--candidate-validation-aggregate", $CandidateValidationAggregate,
     "--metrics-output-dir", $MetricsOutputDir
 )
 foreach ($Directory in $BaselineEpisodeDir) {

@@ -23,6 +23,8 @@ from typing import Any, Mapping, Sequence
 
 import yaml
 
+from .checkpoint_runtime_capture import CapturedCheckpointBundle
+
 
 TRAINING_SCHEMA = "wlr50_clean.ppo_training.phase_specific_stability.v1"
 CHECKPOINT_MANIFEST_SCHEMA = "wlr50_clean.phase_residual_checkpoint_manifest.v1"
@@ -30,6 +32,8 @@ RSL_DISTRIBUTION = "rsl-rl-lib"
 RSL_VERSION = "5.0.1"
 TRAINING_RNG_STATE_SCHEMA = "wlr50_clean.training_rng_state.v1"
 CHECKPOINT_RUNTIME_CONTRACT_FIELDS = (
+    "source_git_commit",
+    "committed_runtime_content_sha256",
     "actor_observation_dimension",
     "critic_observation_dimension",
     "residual_dimension",
@@ -41,6 +45,10 @@ CHECKPOINT_RUNTIME_CONTRACT_FIELDS = (
     "observation_schema_hash",
     "action_schema_hash",
     "reward_config_hash",
+    "phase_snapshot_manifest",
+    "phase_snapshot_manifest_sha256",
+    "phase_snapshot_bundle_sha256",
+    "phase_snapshot_bundle",
 )
 DEFAULT_TRAINING_PATH = (
     Path(__file__).resolve().parents[3] / "configs" / "ppo_training_phase_v1.yaml"
@@ -85,6 +93,8 @@ class TrainingProfile:
     entropy_start: float
     entropy_end: float
     max_grad_norm: float
+    deterministic_validation_interval: int
+    early_stop_when_promotion_gate_passes: bool
     budgets: Mapping[str, int]
     phase_sampling: Mapping[str, float]
 
@@ -189,9 +199,50 @@ def load_training_profile(
         or not math.isclose(sum(phase_sampling.values()), 1.0, abs_tol=1e-12)
     ):
         raise RlLibraryConfigurationError("phase sampling must cover P01-P13 and sum to one")
-    budgets = {str(k): int(v) for k, v in payload["budgets_policy_decisions"].items() if k != "early_stop_when_promotion_gate_passes"}
+    raw_budgets = payload.get("budgets_policy_decisions")
+    stage_budget_keys = (
+        "smoke",
+        "phase_curriculum",
+        "full_episode",
+        "mild_randomization",
+    )
+    budget_control_keys = {
+        "deterministic_validation_interval",
+        "early_stop_when_promotion_gate_passes",
+    }
+    if not isinstance(raw_budgets, Mapping) or set(raw_budgets) != (
+        set(stage_budget_keys) | budget_control_keys
+    ):
+        raise RlLibraryConfigurationError(
+            "budgets_policy_decisions must contain exactly four stages plus "
+            "deterministic validation and early-stop controls"
+        )
+    if any(
+        isinstance(raw_budgets[key], bool) or not isinstance(raw_budgets[key], int)
+        for key in stage_budget_keys
+    ):
+        raise RlLibraryConfigurationError("training stage budgets must be strict integers")
+    budgets = {key: raw_budgets[key] for key in stage_budget_keys}
     if any(value < 0 for value in budgets.values()):
         raise RlLibraryConfigurationError("training budgets cannot be negative")
+    deterministic_validation_interval = raw_budgets[
+        "deterministic_validation_interval"
+    ]
+    if (
+        isinstance(deterministic_validation_interval, bool)
+        or not isinstance(deterministic_validation_interval, int)
+        or deterministic_validation_interval <= 0
+    ):
+        raise RlLibraryConfigurationError(
+            "deterministic_validation_interval must be a positive integer"
+        )
+    early_stop_when_promotion_gate_passes = raw_budgets[
+        "early_stop_when_promotion_gate_passes"
+    ]
+    if type(early_stop_when_promotion_gate_passes) is not bool:
+        raise RlLibraryConfigurationError(
+            "early_stop_when_promotion_gate_passes must be a strict boolean"
+        )
 
     env = payload["environment"]
     counts = tuple(int(item) for item in env["benchmark_env_counts"])
@@ -264,6 +315,10 @@ def load_training_profile(
         entropy_start=entropy_start,
         entropy_end=entropy_end,
         max_grad_norm=_positive_float(ppo["max_grad_norm"], "max grad norm"),
+        deterministic_validation_interval=deterministic_validation_interval,
+        early_stop_when_promotion_gate_passes=(
+            early_stop_when_promotion_gate_passes
+        ),
         budgets=budgets,
         phase_sampling=phase_sampling,
     )
@@ -622,6 +677,28 @@ def initialize_zero_mean_actor(runner: Any) -> None:
             linears[-1].bias.zero_()
 
 
+def zero_mean_actor_output_layer_verified(runner: Any) -> bool:
+    """Return true only when the loaded actor's final affine map is exact zero."""
+
+    import torch  # type: ignore
+
+    linears = [
+        module
+        for module in runner.alg.actor.mlp.modules()
+        if isinstance(module, torch.nn.Linear)
+    ]
+    if not linears:
+        raise RlLibraryConfigurationError("RSL actor has no linear output layer")
+    output = linears[-1]
+    if not torch.isfinite(output.weight).all() or torch.count_nonzero(output.weight):
+        return False
+    if output.bias is not None and (
+        not torch.isfinite(output.bias).all() or torch.count_nonzero(output.bias)
+    ):
+        return False
+    return True
+
+
 def set_entropy_coefficient(runner: Any, value: float) -> None:
     coefficient = float(value)
     if not math.isfinite(coefficient) or coefficient < 0.0:
@@ -767,6 +844,7 @@ def validate_resume_checkpoint_provenance(
     manifest_path: Path | str | None = None,
     expected_global_policy_decisions: int | None = None,
     expected_runtime_contract: Mapping[str, Any] | None = None,
+    captured_bundle: CapturedCheckpointBundle | None = None,
 ) -> ResumeCheckpointProvenance:
     """Fail closed unless an RSL checkpoint and its sidecar describe one resume state.
 
@@ -777,10 +855,23 @@ def validate_resume_checkpoint_provenance(
     """
 
     checkpoint = Path(checkpoint_path).resolve()
-    if not checkpoint.is_file() or checkpoint.stat().st_size <= 0:
-        raise RlLibraryConfigurationError(
-            f"resume checkpoint is missing or empty: {checkpoint}"
-        )
+    if captured_bundle is None:
+        if not checkpoint.is_file() or checkpoint.stat().st_size <= 0:
+            raise RlLibraryConfigurationError(
+                f"resume checkpoint is missing or empty: {checkpoint}"
+            )
+    else:
+        if checkpoint != captured_bundle.source_checkpoint_path:
+            raise RlLibraryConfigurationError(
+                "captured checkpoint bundle belongs to a different source path"
+            )
+        try:
+            captured_bundle.assert_sources_unchanged()
+            captured_bundle.assert_private_copy_unchanged()
+        except RuntimeError as exc:
+            raise RlLibraryConfigurationError(
+                f"captured checkpoint bundle is no longer immutable: {exc}"
+            ) from exc
     if not isinstance(checkpoint_infos, Mapping):
         raise RlLibraryConfigurationError("resume checkpoint infos are missing or invalid")
     infos = dict(checkpoint_infos)
@@ -808,16 +899,23 @@ def validate_resume_checkpoint_provenance(
         if manifest_path is None
         else Path(manifest_path).resolve()
     )
-    if not sidecar.is_file() or sidecar.stat().st_size <= 0:
-        raise RlLibraryConfigurationError(
-            f"resume checkpoint manifest is missing or empty: {sidecar}"
-        )
-    try:
-        payload = json.loads(sidecar.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
-        raise RlLibraryConfigurationError(
-            f"resume checkpoint manifest is not valid JSON: {sidecar}"
-        ) from exc
+    if captured_bundle is None:
+        if not sidecar.is_file() or sidecar.stat().st_size <= 0:
+            raise RlLibraryConfigurationError(
+                f"resume checkpoint manifest is missing or empty: {sidecar}"
+            )
+        try:
+            payload = json.loads(sidecar.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            raise RlLibraryConfigurationError(
+                f"resume checkpoint manifest is not valid JSON: {sidecar}"
+            ) from exc
+    else:
+        if sidecar != captured_bundle.source_manifest_path:
+            raise RlLibraryConfigurationError(
+                "captured checkpoint bundle belongs to a different manifest path"
+            )
+        payload = dict(captured_bundle.manifest_payload)
     if not isinstance(payload, Mapping):
         raise RlLibraryConfigurationError("resume checkpoint manifest must be a JSON object")
     manifest = dict(payload)
@@ -839,7 +937,11 @@ def validate_resume_checkpoint_provenance(
         raise RlLibraryConfigurationError(
             "resume checkpoint manifest is bound to a different checkpoint path"
         )
-    actual_checkpoint_sha256 = sha256_file(checkpoint)
+    actual_checkpoint_sha256 = (
+        sha256_file(checkpoint)
+        if captured_bundle is None
+        else captured_bundle.checkpoint_sha256
+    )
     declared_checkpoint_sha256 = _checkpoint_digest(
         manifest.get("checkpoint_sha256"),
         label="resume checkpoint manifest checkpoint_sha256",
@@ -874,11 +976,24 @@ def validate_resume_checkpoint_provenance(
                     f"resume checkpoint runtime contract differs for {field!r}"
                 )
 
+    if captured_bundle is not None:
+        try:
+            captured_bundle.assert_loaded_infos(infos)
+            captured_bundle.assert_sources_unchanged()
+        except RuntimeError as exc:
+            raise RlLibraryConfigurationError(
+                f"captured checkpoint provenance changed: {exc}"
+            ) from exc
+
     return ResumeCheckpointProvenance(
         checkpoint_path=checkpoint,
         checkpoint_sha256=actual_checkpoint_sha256,
         manifest_path=sidecar,
-        manifest_sha256=sha256_file(sidecar),
+        manifest_sha256=(
+            sha256_file(sidecar)
+            if captured_bundle is None
+            else captured_bundle.manifest_sha256
+        ),
         global_policy_decisions=infos_step,
         stage=stage,
     )
@@ -962,10 +1077,29 @@ def synchronize_loaded_optimizer_learning_rate(
     return rate
 
 
-def load_checkpoint_round_trip(runner: Any, checkpoint_path: Path | str) -> Mapping[str, Any]:
-    target = Path(checkpoint_path).resolve()
-    if not target.is_file():
-        raise FileNotFoundError(target)
+def load_checkpoint_round_trip(
+    runner: Any,
+    checkpoint_path: Path | str,
+    *,
+    captured_bundle: CapturedCheckpointBundle | None = None,
+) -> Mapping[str, Any]:
+    source = Path(checkpoint_path).resolve()
+    if captured_bundle is None:
+        target = source
+        if not target.is_file():
+            raise FileNotFoundError(target)
+    else:
+        if source != captured_bundle.source_checkpoint_path:
+            raise RlLibraryConfigurationError(
+                "checkpoint loader received a capture for a different source path"
+            )
+        try:
+            captured_bundle.assert_unchanged()
+        except RuntimeError as exc:
+            raise RlLibraryConfigurationError(
+                f"checkpoint capture failed before runner load: {exc}"
+            ) from exc
+        target = captured_bundle.private_checkpoint_path
     infos = runner.load(str(target), strict=True, map_location=str(runner.device))
     if infos is None:
         return {}
@@ -974,6 +1108,14 @@ def load_checkpoint_round_trip(runner: Any, checkpoint_path: Path | str) -> Mapp
             "RSL checkpoint infos must be a mapping or null"
         )
     result = dict(infos)
+    if captured_bundle is not None:
+        try:
+            result = captured_bundle.assert_loaded_infos(result)
+            captured_bundle.assert_sources_unchanged()
+        except RuntimeError as exc:
+            raise RlLibraryConfigurationError(
+                f"checkpoint capture failed after runner load: {exc}"
+            ) from exc
     expected_rate = result.get("optimizer_learning_rate")
     if expected_rate is not None:
         synchronize_loaded_optimizer_learning_rate(runner, expected=expected_rate)
