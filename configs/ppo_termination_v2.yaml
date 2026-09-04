@@ -1,0 +1,24 @@
+schema: wlr50_clean.ppo_termination.v2
+training_enabled: true
+timeout_s: 200.0
+success_source: frozen_fsm_authoritative_task_success
+conformance_outside_30pct: diagnostic_only
+priority:
+  - NAN_INF
+  - PHYSICS_EXPLOSION
+  - BODY_COLLISION
+  - WHEEL_ONLY_CLIMB
+  - FALL
+  - HARD_JOINT_LIMIT
+  - SUCCESS
+  - TIMEOUT
+task_failures:
+  BODY_COLLISION: TASK_FAILURE_BODY_COLLISION
+  WHEEL_ONLY_CLIMB: TASK_FAILURE_WHEEL_ONLY_CLIMB
+safety_aborts:
+  - FALL
+  - NAN_INF
+  - HARD_JOINT_LIMIT
+  - PHYSICS_EXPLOSION
+sensor_contract_failure: infrastructure_abort
+

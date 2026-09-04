@@ -1,0 +1,518 @@
+{
+  "all_authoritative_success": true,
+  "all_p01_p13_complete": true,
+  "all_zero_residual": true,
+  "artifacts": {
+    "episode_metrics": {
+      "bytes": 2925,
+      "path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\outputs\\ppo_phase_v1\\metrics\\fsm_baseline_episode_metrics.csv",
+      "sha256": "6e21266287ac74ad2548d277ab25c594e8e48ef75ef43b1f1dd760f6cc44afeb"
+    },
+    "manifest": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\outputs\\ppo_phase_v1\\metrics\\fsm_baseline_evaluation_manifest.json",
+    "phase_metrics": {
+      "bytes": 49102,
+      "path": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\outputs\\ppo_phase_v1\\metrics\\fsm_baseline_phase_metrics.csv",
+      "sha256": "ce4fcb9ee2ed5cdef93461c90af89b2483222ff3128d25b3d6627e866bcf7f42"
+    }
+  },
+  "baseline": "pure_fsm",
+  "candidate_required": false,
+  "episode_count": 5,
+  "phase_count_per_episode": 13,
+  "phase_metric_row_count": 65,
+  "residual_activity_calibration": {
+    "activity_threshold_formula": "max(actuator_command_quantization_floor, 3*numeric_logging_noise_floor, 0.01*configured_phase_residual_scale)",
+    "environment_lock": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\configs\\environment_lock.json",
+    "environment_lock_sha256": "602f6e0893d999e5cb078aadf75541234440a3af918dc58e0154e80ff16ea3cb",
+    "full12_order": [
+      "front_left_hip",
+      "front_left_knee",
+      "front_right_hip",
+      "front_right_knee",
+      "rear_left_hip",
+      "rear_left_knee",
+      "rear_right_hip",
+      "rear_right_knee",
+      "front_left_ankle",
+      "front_right_ankle",
+      "rear_left_ankle",
+      "rear_right_ankle"
+    ],
+    "numeric_noise_derivation": "one binary64 ULP at each channel's maximum configured v2 phase scale",
+    "numeric_noise_floor_full12": [
+      4.440892098500626e-16,
+      8.881784197001252e-16,
+      4.440892098500626e-16,
+      8.881784197001252e-16,
+      4.440892098500626e-16,
+      8.881784197001252e-16,
+      4.440892098500626e-16,
+      8.881784197001252e-16,
+      1.3877787807814457e-17,
+      1.3877787807814457e-17,
+      1.3877787807814457e-17,
+      1.3877787807814457e-17
+    ],
+    "numeric_representation": "JSON/Python IEEE-754 binary64; actuator targets binary32",
+    "phase_action_config": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\configs\\ppo_phase_action_masks_v2.yaml",
+    "phase_action_config_sha256": "27e308bde77936a81bad21abcdbf1fb0afd06a64eac241c883eb37e6bcf2d6d2",
+    "phase_ids": [
+      "P01",
+      "P02",
+      "P03",
+      "P04",
+      "P05",
+      "P06",
+      "P07",
+      "P08",
+      "P09",
+      "P10",
+      "P11",
+      "P12",
+      "P13"
+    ],
+    "phase_scale_full12": {
+      "P01": [
+        1.5,
+        1.5,
+        1.0,
+        1.25,
+        2.25,
+        1.75,
+        1.5,
+        1.5,
+        0.08,
+        0.08,
+        0.08,
+        0.08
+      ],
+      "P02": [
+        1.5,
+        1.5,
+        0.75,
+        1.0,
+        1.5,
+        1.5,
+        1.5,
+        1.5,
+        0.06,
+        0.05,
+        0.06,
+        0.06
+      ],
+      "P03": [
+        1.5,
+        1.5,
+        2.5,
+        4.0,
+        1.5,
+        1.5,
+        1.5,
+        1.5,
+        0.08,
+        0.05,
+        0.08,
+        0.08
+      ],
+      "P04": [
+        1.25,
+        1.25,
+        1.5,
+        1.5,
+        2.0,
+        1.75,
+        1.5,
+        1.5,
+        0.06,
+        0.06,
+        0.06,
+        0.06
+      ],
+      "P05": [
+        3.0,
+        4.0,
+        1.5,
+        1.5,
+        1.5,
+        1.5,
+        1.5,
+        1.5,
+        0.05,
+        0.08,
+        0.08,
+        0.08
+      ],
+      "P06": [
+        1.25,
+        1.25,
+        1.25,
+        1.25,
+        1.25,
+        1.25,
+        1.25,
+        1.25,
+        0.12,
+        0.12,
+        0.12,
+        0.12
+      ],
+      "P07": [
+        1.5,
+        1.5,
+        1.5,
+        1.5,
+        1.5,
+        1.5,
+        2.0,
+        2.5,
+        0.08,
+        0.08,
+        0.08,
+        0.08
+      ],
+      "P08": [
+        2.0,
+        2.0,
+        1.25,
+        1.25,
+        1.25,
+        1.25,
+        2.0,
+        2.0,
+        0.05,
+        0.0,
+        0.0,
+        0.05
+      ],
+      "P09": [
+        1.5,
+        1.5,
+        1.5,
+        1.5,
+        1.5,
+        1.5,
+        3.0,
+        4.0,
+        0.08,
+        0.08,
+        0.08,
+        0.05
+      ],
+      "P10": [
+        1.5,
+        1.5,
+        1.5,
+        1.5,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        0.06,
+        0.06,
+        0.06,
+        0.06
+      ],
+      "P11": [
+        1.25,
+        1.25,
+        2.0,
+        2.0,
+        2.0,
+        2.0,
+        1.25,
+        1.25,
+        0.0,
+        0.05,
+        0.05,
+        0.0
+      ],
+      "P12": [
+        1.5,
+        1.5,
+        1.5,
+        1.5,
+        3.0,
+        4.0,
+        1.5,
+        1.5,
+        0.08,
+        0.08,
+        0.05,
+        0.08
+      ],
+      "P13": [
+        2.0,
+        1.5,
+        2.0,
+        1.5,
+        2.0,
+        1.5,
+        2.0,
+        1.5,
+        0.08,
+        0.08,
+        0.08,
+        0.08
+      ]
+    },
+    "quantization_floor_full12": [
+      0.0005729577951308233,
+      0.0005729577951308233,
+      0.0005729577951308233,
+      0.0005729577951308233,
+      0.0005729577951308233,
+      0.0005729577951308233,
+      0.0005729577951308233,
+      0.0005729577951308233,
+      2.384185791015625e-07,
+      2.384185791015625e-07,
+      2.384185791015625e-07,
+      2.384185791015625e-07
+    ],
+    "schema": "wlr50_clean.residual_activity_calibration.v1",
+    "servo_command_quantization_floor_deg": 0.0005729577951308233,
+    "servo_target_quantization_margin_rad": 1e-05,
+    "wheel_command_quantization_floor_rad_s": 2.384185791015625e-07,
+    "wheel_velocity_limit_rad_s": 2.0943951023931953
+  },
+  "schema": "wlr50_clean.fsm_baseline_evaluation.v1",
+  "source_episodes": [
+    {
+      "canonical_episode_dir": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\runs\\ppo_phase_v1\\zero-residual-live\\20260904T001910744470Z_g7d6bfda0da59_cb183070f52c8_s2001_n1_zero-residual-live-fresh-process-final-audit\\episode_000_seed_2001",
+      "files": [
+        {
+          "bytes": 38720597,
+          "name": "observation_120hz.jsonl",
+          "sha256": "2216bcbfab79b06090be71ee66e16e7eba216fade3d61b802e2f7674275a1ba0"
+        },
+        {
+          "bytes": 6556640,
+          "name": "full12_commands_120hz.jsonl",
+          "sha256": "3dbca1afb3eb18fb75a86df1b0add1dd5735028012bd3e172666a19bee90724c"
+        },
+        {
+          "bytes": 47632,
+          "name": "state_transitions.jsonl",
+          "sha256": "3564575926f72d93143c337f7d42b702c8bf6c20485782859319e060724fe578"
+        },
+        {
+          "bytes": 50104,
+          "name": "task_events.jsonl",
+          "sha256": "46b2437320ca6bfe46d246a81b0b368dfb9351f03fe6b1040c09b514d3bcd927"
+        },
+        {
+          "bytes": 1833014,
+          "name": "reward_15hz.jsonl",
+          "sha256": "b5e2d8e52c5f3e0d5e1e60c212fc45bce63c4b9a4a776a2b50d920e9ea98875f"
+        },
+        {
+          "bytes": 2751161,
+          "name": "policy_trace.jsonl",
+          "sha256": "80f4122c9db9e3807ceb346136c6a138ed5e0d0123a1a8a00226a757d89b0bae"
+        },
+        {
+          "bytes": 8989,
+          "name": "trial_manifest.json",
+          "sha256": "637b1ecfa698f2d6a452b8e7722b15fa3601b2ca3e6967b9ba3bd00b26028692"
+        },
+        {
+          "bytes": 2116,
+          "name": "episode_summary.json",
+          "sha256": "f49de553825ec84096a1410b134a9423889b79b05a258e58d68f5cf735449dad"
+        }
+      ],
+      "seed": 2001
+    },
+    {
+      "canonical_episode_dir": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\runs\\ppo_phase_v1\\zero-residual-live\\20260903T232455820180Z_g7d6bfda0da59_c9320e161bec4_s2002_n1_zero-residual-live-fresh-process\\episode_000_seed_2002",
+      "files": [
+        {
+          "bytes": 471533119,
+          "name": "observation_120hz.jsonl",
+          "sha256": "9bac333a0899ad9097f1d303c0739787f481fd61a51d774e265aa879ffd06216"
+        },
+        {
+          "bytes": 6556640,
+          "name": "full12_commands_120hz.jsonl",
+          "sha256": "3dbca1afb3eb18fb75a86df1b0add1dd5735028012bd3e172666a19bee90724c"
+        },
+        {
+          "bytes": 47632,
+          "name": "state_transitions.jsonl",
+          "sha256": "3564575926f72d93143c337f7d42b702c8bf6c20485782859319e060724fe578"
+        },
+        {
+          "bytes": 50104,
+          "name": "task_events.jsonl",
+          "sha256": "fda27a634eac170df57dc6ea492c45aa04518279abd9bc4637f952477467f571"
+        },
+        {
+          "bytes": 1831074,
+          "name": "reward_15hz.jsonl",
+          "sha256": "348499d790c37b0f1b4e1691592c45aaeda1154e22bebcfb82ef7d75a3d5c489"
+        },
+        {
+          "bytes": 2749221,
+          "name": "policy_trace.jsonl",
+          "sha256": "447dbf72d27988f1efed57fa9272edd508ddf2d0d7c4f115c12c308f1acf3d60"
+        },
+        {
+          "bytes": 8730,
+          "name": "trial_manifest.json",
+          "sha256": "7f4d9bb4abacfdaba3f2b299175fc88dee2cf6bf0a33db1948beaaf738e7bb02"
+        },
+        {
+          "bytes": 2080,
+          "name": "episode_summary.json",
+          "sha256": "7d383980f92c02e8a2e9af8b331723813e6a7f44b2bc630b16020413c272fbf6"
+        }
+      ],
+      "seed": 2002
+    },
+    {
+      "canonical_episode_dir": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\runs\\ppo_phase_v1\\zero-residual-live\\20260903T233758679805Z_g7d6bfda0da59_c9320e161bec4_s2003_n1_zero-residual-live-fresh-process\\episode_000_seed_2003",
+      "files": [
+        {
+          "bytes": 471533119,
+          "name": "observation_120hz.jsonl",
+          "sha256": "9bac333a0899ad9097f1d303c0739787f481fd61a51d774e265aa879ffd06216"
+        },
+        {
+          "bytes": 6556640,
+          "name": "full12_commands_120hz.jsonl",
+          "sha256": "3dbca1afb3eb18fb75a86df1b0add1dd5735028012bd3e172666a19bee90724c"
+        },
+        {
+          "bytes": 47632,
+          "name": "state_transitions.jsonl",
+          "sha256": "3564575926f72d93143c337f7d42b702c8bf6c20485782859319e060724fe578"
+        },
+        {
+          "bytes": 50104,
+          "name": "task_events.jsonl",
+          "sha256": "a38d49df4ab884539b968106ee17609b8b4747fd317b82794f832ae268188ed7"
+        },
+        {
+          "bytes": 1831074,
+          "name": "reward_15hz.jsonl",
+          "sha256": "348499d790c37b0f1b4e1691592c45aaeda1154e22bebcfb82ef7d75a3d5c489"
+        },
+        {
+          "bytes": 2749221,
+          "name": "policy_trace.jsonl",
+          "sha256": "850ef92080776dd5fa44493c2fcd645619dc36833a28fa4514180839b2b86230"
+        },
+        {
+          "bytes": 8730,
+          "name": "trial_manifest.json",
+          "sha256": "4ef3ef8c0701e15ddcaf084a1ff891502bbab61c8f25147fc8796036740e8fc6"
+        },
+        {
+          "bytes": 2080,
+          "name": "episode_summary.json",
+          "sha256": "e793449b76bbc59550219683a9dcc09c55700cb7faf7ad4ee85d9ca87c1072bb"
+        }
+      ],
+      "seed": 2003
+    },
+    {
+      "canonical_episode_dir": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\runs\\ppo_phase_v1\\zero-residual-live\\20260903T235118106915Z_g7d6bfda0da59_c9320e161bec4_s2004_n1_zero-residual-live-fresh-process\\episode_000_seed_2004",
+      "files": [
+        {
+          "bytes": 38720597,
+          "name": "observation_120hz.jsonl",
+          "sha256": "2216bcbfab79b06090be71ee66e16e7eba216fade3d61b802e2f7674275a1ba0"
+        },
+        {
+          "bytes": 6556640,
+          "name": "full12_commands_120hz.jsonl",
+          "sha256": "3dbca1afb3eb18fb75a86df1b0add1dd5735028012bd3e172666a19bee90724c"
+        },
+        {
+          "bytes": 47632,
+          "name": "state_transitions.jsonl",
+          "sha256": "3564575926f72d93143c337f7d42b702c8bf6c20485782859319e060724fe578"
+        },
+        {
+          "bytes": 50104,
+          "name": "task_events.jsonl",
+          "sha256": "e4ff70d4130a237523570fed309d0eacd1d94b2244c2b4aa4bde9154c2bc9a1e"
+        },
+        {
+          "bytes": 1831074,
+          "name": "reward_15hz.jsonl",
+          "sha256": "348499d790c37b0f1b4e1691592c45aaeda1154e22bebcfb82ef7d75a3d5c489"
+        },
+        {
+          "bytes": 2749221,
+          "name": "policy_trace.jsonl",
+          "sha256": "730beffab2089aa09d7e35b4425f2ba3235b0b2f0eb3e24f8c07c534616272cb"
+        },
+        {
+          "bytes": 8989,
+          "name": "trial_manifest.json",
+          "sha256": "22cdb09057cde220dd6e59e64e2d50dc8ae338113df93742e73d79eb5108b1bf"
+        },
+        {
+          "bytes": 2080,
+          "name": "episode_summary.json",
+          "sha256": "70907050d930a445bc008c4f81f4cd7fdc55a80b26b289081cbbda0f09a42ea4"
+        }
+      ],
+      "seed": 2004
+    },
+    {
+      "canonical_episode_dir": "C:\\robotics_sim\\wlr_robot\\fsm_base_on_recording_ppo_phase_v1\\runs\\ppo_phase_v1\\zero-residual-live\\20260904T000228072593Z_g7d6bfda0da59_c9320e161bec4_s2005_n1_zero-residual-live-fresh-process\\episode_000_seed_2005",
+      "files": [
+        {
+          "bytes": 38720597,
+          "name": "observation_120hz.jsonl",
+          "sha256": "2216bcbfab79b06090be71ee66e16e7eba216fade3d61b802e2f7674275a1ba0"
+        },
+        {
+          "bytes": 6556640,
+          "name": "full12_commands_120hz.jsonl",
+          "sha256": "3dbca1afb3eb18fb75a86df1b0add1dd5735028012bd3e172666a19bee90724c"
+        },
+        {
+          "bytes": 47632,
+          "name": "state_transitions.jsonl",
+          "sha256": "3564575926f72d93143c337f7d42b702c8bf6c20485782859319e060724fe578"
+        },
+        {
+          "bytes": 50104,
+          "name": "task_events.jsonl",
+          "sha256": "90b1dca5eca5610cba0b954aeec0cf5d867d459567be7cee89562fe1c62b0253"
+        },
+        {
+          "bytes": 1831074,
+          "name": "reward_15hz.jsonl",
+          "sha256": "348499d790c37b0f1b4e1691592c45aaeda1154e22bebcfb82ef7d75a3d5c489"
+        },
+        {
+          "bytes": 2749221,
+          "name": "policy_trace.jsonl",
+          "sha256": "ebe1e4621fc2015f814ee548561bafd86d34c17ecb865f6506fc5ddbb37f76e3"
+        },
+        {
+          "bytes": 8989,
+          "name": "trial_manifest.json",
+          "sha256": "c103c282aba9293366924bc352b9529a0201412bcdaba50bcb1f21a2a2765bab"
+        },
+        {
+          "bytes": 2080,
+          "name": "episode_summary.json",
+          "sha256": "ba7b474ae381f048b37c4201c1225fb212558124af00f3e6cd2f63928643c02f"
+        }
+      ],
+      "seed": 2005
+    }
+  ],
+  "validation_seeds": [
+    2001,
+    2002,
+    2003,
+    2004,
+    2005
+  ]
+}

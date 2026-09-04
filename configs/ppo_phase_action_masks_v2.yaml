@@ -1,0 +1,144 @@
+schema: wlr50_clean.ppo_phase_action_masks.v2
+training_enabled: true
+action_schema_name: wlr50_clean.residual_full12
+action_schema_version: 2
+nominal_action_dimension: 12
+residual_action_dimension: 12
+physics_hz: 120.0
+decision_hz: 15.0
+bounded_transform: tanh
+
+full12_order:
+  - front_left_hip
+  - front_left_knee
+  - front_right_hip
+  - front_right_knee
+  - rear_left_hip
+  - rear_left_knee
+  - rear_right_hip
+  - rear_right_knee
+  - front_left_ankle
+  - front_right_ankle
+  - rear_left_ankle
+  - rear_right_ankle
+
+# The mature v1 projector remains the single implementation of actuator
+# limits, joint margins, rate projection, and physical safety overrides.  This
+# file replaces only its phase masks, phase scales, and residual slew rates.
+base_projection_config: ppo_action_projection.yaml
+
+scale_derivation:
+  representation: physical_residual_cap_in_canonical_full12_units
+  servo_unit: deg
+  wheel_unit: rad_s
+  projector_conversion: physical_cap_divided_by_reserved_safe_action_span
+  actuator_limit_source: configs/environment_lock.json
+  joint_margin_source: configs/ppo_action_projection.yaml
+  successful_fsm_role_source: configs/ppo_phase_objectives_v2.yaml
+  sensitivity_method: conservative_role_tier_seed_pending_live_small_perturbation_smoke
+  live_small_perturbation_smoke_required_before_training_rollout: true
+  recording_envelope_used_as_hard_cap: false
+  recording_conformance_fraction_used_in_scale: false
+  maximum_initial_safe_span_fraction: 0.03
+  maximum_initial_servo_cap_deg: 4.0
+  maximum_initial_wheel_cap_rad_s: 0.12
+
+# Lower than the actuator/reference slew ceilings.  At 120 Hz these permit at
+# most 0.375 deg and 0.025 rad/s residual change per physics tick.
+residual_rate_limits:
+  servo_deg_s: 45.0
+  wheel_rad_s2: 3.0
+  applied_by: ActionProjector
+
+transition_bridge:
+  physics_hz: 120.0
+  project_previous_into_new_effective_mask: true
+  retain_allowed_residual_for_first_new_phase_tick: true
+  slew_to_zero_or_new_policy_target_after_handoff: true
+  reset_previous_residual_on_phase_change: false
+  forbidden_channels_zero_before_projection: true
+  safety_overrides_remain_authoritative: true
+  metric_name: phase_transition_action_jump
+
+# Arrays use full12_order.  Scales are maximum physical residuals after tanh,
+# before ActionProjector slew/limit/safety projection.  "high" sensitivity
+# receives the smallest cap; "blocked" accompanies a zero mask and zero cap.
+phases:
+  P01:
+    objective: INITIAL_LOAD_TRANSFER_FR
+    mask_full12: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+    scale_full12: [1.50, 1.50, 1.00, 1.25, 2.25, 1.75, 1.50, 1.50, 0.08, 0.08, 0.08, 0.08]
+    role_full12: [support, support, clearance, clearance, load_transfer, load_transfer, support, support, drive, drive, drive, drive]
+    sensitivity_full12: [high, high, high, high, medium, medium, high, high, medium, medium, medium, medium]
+  P02:
+    objective: FR_ACTIVE_LIFT
+    mask_full12: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+    scale_full12: [1.50, 1.50, 0.75, 1.00, 1.50, 1.50, 1.50, 1.50, 0.06, 0.05, 0.06, 0.06]
+    role_full12: [support, support, active_clearance, active_clearance, support, support, support, support, support_wheel, active_wheel, support_wheel, support_wheel]
+    sensitivity_full12: [high, high, high, high, high, high, high, high, high, high, high, high]
+  P03:
+    objective: FR_CROSS_AND_PLACE
+    mask_full12: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+    scale_full12: [1.50, 1.50, 2.50, 4.00, 1.50, 1.50, 1.50, 1.50, 0.08, 0.05, 0.08, 0.08]
+    role_full12: [support, support, active_swing, active_swing, support, support, support, support, support_wheel, placement_wheel, support_wheel, support_wheel]
+    sensitivity_full12: [high, high, medium, medium, high, high, high, high, high, high, high, high]
+  P04:
+    objective: FL_UNLOAD_PREP
+    mask_full12: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+    scale_full12: [1.25, 1.25, 1.50, 1.50, 2.00, 1.75, 1.50, 1.50, 0.06, 0.06, 0.06, 0.06]
+    role_full12: [active_clearance, active_clearance, support, support, load_transfer, load_transfer, support, support, transfer_wheel, transfer_wheel, transfer_wheel, transfer_wheel]
+    sensitivity_full12: [high, high, high, high, medium, medium, high, high, high, high, high, high]
+  P05:
+    objective: FL_ACTIVE_LIFT_AND_PLACE
+    mask_full12: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+    scale_full12: [3.00, 4.00, 1.50, 1.50, 1.50, 1.50, 1.50, 1.50, 0.05, 0.08, 0.08, 0.08]
+    role_full12: [active_swing, active_swing, support, support, support, support, support, support, placement_wheel, support_wheel, support_wheel, support_wheel]
+    sensitivity_full12: [medium, medium, high, high, high, high, high, high, high, high, high, high]
+  P06:
+    objective: FRONT_PAIR_ADVANCE
+    mask_full12: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+    scale_full12: [1.25, 1.25, 1.25, 1.25, 1.25, 1.25, 1.25, 1.25, 0.12, 0.12, 0.12, 0.12]
+    role_full12: [body_support, body_support, body_support, body_support, body_support, body_support, body_support, body_support, drive, drive, drive, drive]
+    sensitivity_full12: [high, high, high, high, high, high, high, high, medium, medium, medium, medium]
+  P07:
+    objective: REAR_ENTRY_ALIGNMENT
+    mask_full12: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+    scale_full12: [1.50, 1.50, 1.50, 1.50, 1.50, 1.50, 2.00, 2.50, 0.08, 0.08, 0.08, 0.08]
+    role_full12: [support, support, support, support, support, support, active_alignment, active_alignment, alignment_wheel, alignment_wheel, alignment_wheel, alignment_wheel]
+    sensitivity_full12: [high, high, high, high, high, high, medium, medium, high, high, high, high]
+  P08:
+    objective: FIRST_REAR_LOAD_TRANSFER
+    mask_full12: [1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1]
+    scale_full12: [2.00, 2.00, 1.25, 1.25, 1.25, 1.25, 2.00, 2.00, 0.05, 0.00, 0.00, 0.05]
+    role_full12: [load_capture, load_capture, support, support, support, support, unload, unload, capture_wheel, inactive, inactive, unload_wheel]
+    sensitivity_full12: [medium, medium, high, high, high, high, medium, medium, high, blocked, blocked, high]
+  P09:
+    objective: RR_ACTIVE_LIFT_AND_PLACE
+    mask_full12: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+    scale_full12: [1.50, 1.50, 1.50, 1.50, 1.50, 1.50, 3.00, 4.00, 0.08, 0.08, 0.08, 0.05]
+    role_full12: [support, support, support, support, support, support, active_swing, active_swing, support_wheel, support_wheel, support_wheel, placement_wheel]
+    sensitivity_full12: [high, high, high, high, high, high, medium, medium, high, high, high, high]
+  P10:
+    objective: SECOND_REAR_TRANSFER_PREP
+    mask_full12: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+    scale_full12: [1.50, 1.50, 1.50, 1.50, 2.00, 2.00, 2.00, 2.00, 0.06, 0.06, 0.06, 0.06]
+    role_full12: [support, support, support, support, active_clearance, active_clearance, load_transfer, load_transfer, transfer_wheel, transfer_wheel, transfer_wheel, transfer_wheel]
+    sensitivity_full12: [high, high, high, high, medium, medium, medium, medium, high, high, high, high]
+  P11:
+    objective: TRANSFER_TOWARD_FR
+    mask_full12: [1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 0]
+    scale_full12: [1.25, 1.25, 2.00, 2.00, 2.00, 2.00, 1.25, 1.25, 0.00, 0.05, 0.05, 0.00]
+    role_full12: [support, support, load_capture, load_capture, unload, unload, support, support, inactive, capture_wheel, unload_wheel, inactive]
+    sensitivity_full12: [high, high, medium, medium, medium, medium, high, high, blocked, high, high, blocked]
+  P12:
+    objective: RL_ACTIVE_LIFT_AND_PLACE
+    mask_full12: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+    scale_full12: [1.50, 1.50, 1.50, 1.50, 3.00, 4.00, 1.50, 1.50, 0.08, 0.08, 0.05, 0.08]
+    role_full12: [support, support, support, support, active_swing, active_swing, support, support, support_wheel, support_wheel, placement_wheel, support_wheel]
+    sensitivity_full12: [high, high, high, high, medium, medium, high, high, high, high, high, high]
+  P13:
+    objective: FINAL_ADVANCE_AND_RECOVERY
+    mask_full12: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+    scale_full12: [2.00, 1.50, 2.00, 1.50, 2.00, 1.50, 2.00, 1.50, 0.08, 0.08, 0.08, 0.08]
+    role_full12: [home_recovery, home_recovery, home_recovery, home_recovery, home_recovery, home_recovery, home_recovery, home_recovery, wheel_stop, wheel_stop, wheel_stop, wheel_stop]
+    sensitivity_full12: [high, high, high, high, high, high, high, high, high, high, high, high]

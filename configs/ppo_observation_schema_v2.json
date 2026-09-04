@@ -1,0 +1,289 @@
+{
+  "schema": "wlr50_clean.ppo_observation_schema.v2",
+  "schema_name": "wlr50_clean.actor_observation",
+  "schema_version": 2,
+  "dimension_policy": "sum_feature_sizes",
+  "v1_prefix_schema": "configs/ppo_observation_schema.json",
+  "nan_policy": "reject_episode",
+  "online_normalization_updates": false,
+  "normalization_statistics": {
+    "status": "TRAIN_ONLY_RUNNING_STATISTICS_NOT_YET_FITTED",
+    "update_scope": "train_only",
+    "frozen_for_validation_and_test": true
+  },
+  "state_ids": [
+    "P01", "P02", "P03", "P04", "P05", "P06", "P07",
+    "P08", "P09", "P10", "P11", "P12", "P13"
+  ],
+  "lifecycle_ids": ["WAIT_ENTRY", "EXECUTE_MOTION", "VERIFY_RESULT", "RECOVERY", "DONE"],
+  "full12_order": [
+    "front_left_hip", "front_left_knee", "front_right_hip", "front_right_knee",
+    "rear_left_hip", "rear_left_knee", "rear_right_hip", "rear_right_knee",
+    "front_left_ankle", "front_right_ankle", "rear_left_ankle", "rear_right_ankle"
+  ],
+  "features": [
+    {
+      "group": "state_one_hot",
+      "names": [
+        "state_is_P01", "state_is_P02", "state_is_P03", "state_is_P04",
+        "state_is_P05", "state_is_P06", "state_is_P07", "state_is_P08",
+        "state_is_P09", "state_is_P10", "state_is_P11", "state_is_P12", "state_is_P13"
+      ],
+      "units": "boolean",
+      "normalization": {"method": "identity"},
+      "clip": [0.0, 1.0],
+      "source": "fixed FSM state graph",
+      "frame": "fsm",
+      "deployability": "runtime_observable"
+    },
+    {
+      "group": "phase_progress",
+      "names": ["phase_progress"],
+      "units": "fraction",
+      "normalization": {"method": "identity"},
+      "clip": [0.0, 1.0],
+      "source": "FSM lifecycle and current compact motion progress",
+      "frame": "fsm",
+      "deployability": "runtime_observable"
+    },
+    {
+      "group": "joint_position_error",
+      "names": [
+        "front_left_hip_position_error", "front_left_knee_position_error",
+        "front_right_hip_position_error", "front_right_knee_position_error",
+        "rear_left_hip_position_error", "rear_left_knee_position_error",
+        "rear_right_hip_position_error", "rear_right_knee_position_error"
+      ],
+      "units": "deg",
+      "normalization": {"method": "fixed_scale", "scale": [135.0, 210.0, 135.0, 210.0, 135.0, 210.0, 135.0, 210.0]},
+      "clip": [-2.0, 2.0],
+      "source": "live joint readback minus current authoritative command",
+      "frame": "canonical_joint_command_space",
+      "deployability": "runtime_observable"
+    },
+    {
+      "group": "joint_velocity",
+      "names": [
+        "front_left_hip_velocity", "front_left_knee_velocity",
+        "front_right_hip_velocity", "front_right_knee_velocity",
+        "rear_left_hip_velocity", "rear_left_knee_velocity",
+        "rear_right_hip_velocity", "rear_right_knee_velocity"
+      ],
+      "units": "deg_s",
+      "normalization": {"method": "fixed_scale", "scale": 150.0},
+      "clip": [-4.0, 4.0],
+      "source": "live articulation joint velocity",
+      "frame": "canonical_joint_command_space",
+      "deployability": "runtime_observable"
+    },
+    {
+      "group": "wheel_velocity",
+      "names": ["front_left_ankle_velocity", "front_right_ankle_velocity", "rear_left_ankle_velocity", "rear_right_ankle_velocity"],
+      "units": "rad_s",
+      "normalization": {"method": "fixed_scale", "scale": 2.0943951023931953},
+      "clip": [-1.0, 1.0],
+      "source": "live articulation wheel velocity with canonical forward signs",
+      "frame": "canonical_joint_command_space",
+      "deployability": "runtime_observable"
+    },
+    {
+      "group": "wheel_contact_code",
+      "names": ["front_left_wheel_contact_code", "front_right_wheel_contact_code", "rear_left_wheel_contact_code", "rear_right_wheel_contact_code"],
+      "units": "enum_code",
+      "normalization": {"method": "fixed_scale", "scale": 3.0},
+      "clip": [-1.0, 1.0],
+      "source": "exact ground/obstacle pair classifier",
+      "frame": "contact_pair",
+      "deployability": "runtime_observable"
+    },
+    {
+      "group": "leg_air_top_crossing_history",
+      "names": [
+        "FL_active_lift_latched", "FL_front_face_crossed_latched", "FL_top_loaded_latched",
+        "FR_active_lift_latched", "FR_front_face_crossed_latched", "FR_top_loaded_latched",
+        "RL_active_lift_latched", "RL_front_face_crossed_latched", "RL_top_loaded_latched",
+        "RR_active_lift_latched", "RR_front_face_crossed_latched", "RR_top_loaded_latched"
+      ],
+      "units": "boolean",
+      "normalization": {"method": "identity"},
+      "clip": [0.0, 1.0],
+      "source": "live lift/front-plane/top-load latches",
+      "frame": "fsm_history",
+      "deployability": "runtime_observable"
+    },
+    {
+      "group": "body_orientation_wxyz",
+      "names": ["base_qw", "base_qx", "base_qy", "base_qz"],
+      "units": "unit_quaternion",
+      "normalization": {"method": "identity"},
+      "clip": [-1.0, 1.0],
+      "source": "live base rigid-body orientation",
+      "frame": "body_to_world_wxyz",
+      "deployability": "runtime_observable"
+    },
+    {
+      "group": "body_angular_velocity",
+      "names": ["base_angular_velocity_x", "base_angular_velocity_y", "base_angular_velocity_z"],
+      "units": "rad_s",
+      "normalization": {"method": "fixed_scale", "scale": 20.0},
+      "clip": [-1.0, 1.0],
+      "source": "live base rigid-body angular velocity (v1-compatible)",
+      "frame": "world",
+      "deployability": "runtime_observable"
+    },
+    {
+      "group": "obstacle_relative_geometry",
+      "names": [
+        "obstacle_front_dx", "obstacle_back_dx", "obstacle_left_dy", "obstacle_right_dy",
+        "obstacle_bottom_dz", "obstacle_top_dz", "obstacle_length", "obstacle_signed_width", "obstacle_height"
+      ],
+      "units": "m",
+      "normalization": {"method": "fixed_scale", "scale": [2.057375557085507, 2.057375557085507, 2.0, 2.0, 1.0, 1.0, 2.057375557085507, 2.0, 0.05]},
+      "clip": [-4.0, 4.0],
+      "source": "locked obstacle planes relative to live base position",
+      "frame": "world",
+      "deployability": "runtime_observable"
+    },
+    {
+      "group": "raw_full_body_com",
+      "names": ["full_body_com_x", "full_body_com_y", "full_body_com_z"],
+      "units": "m",
+      "normalization": {"method": "fixed_scale", "scale": [2.057375557085507, 2.0, 1.0]},
+      "clip": [-4.0, 4.0],
+      "source": "live mass-weighted 13-body center of mass",
+      "frame": "world",
+      "deployability": "runtime_observable"
+    },
+    {
+      "group": "support_diagnostics",
+      "names": ["support_signed_margin", "support_projection_inside", "support_count", "support_valid"],
+      "units": ["m", "ternary_code", "count", "boolean"],
+      "normalization": {"method": "fixed_scale", "scale": [1.0, 1.0, 13.0, 1.0]},
+      "clip": [-1.0, 1.0],
+      "source": "live support polygon diagnostics; unknown projection is -1",
+      "frame": "world_xy",
+      "deployability": "runtime_observable"
+    },
+    {
+      "group": "previous_action",
+      "names": [
+        "previous_front_left_hip", "previous_front_left_knee", "previous_front_right_hip", "previous_front_right_knee",
+        "previous_rear_left_hip", "previous_rear_left_knee", "previous_rear_right_hip", "previous_rear_right_knee",
+        "previous_front_left_ankle", "previous_front_right_ankle", "previous_rear_left_ankle", "previous_rear_right_ankle"
+      ],
+      "units": ["deg", "deg", "deg", "deg", "deg", "deg", "deg", "deg", "rad_s", "rad_s", "rad_s", "rad_s"],
+      "normalization": {"method": "fixed_scale", "scale": [135.0, 210.0, 135.0, 210.0, 135.0, 210.0, 135.0, 210.0, 2.0943951023931953, 2.0943951023931953, 2.0943951023931953, 2.0943951023931953]},
+      "clip": [-1.0, 1.0],
+      "source": "previous 15 Hz applied Full12 action",
+      "frame": "canonical_full12_command_space",
+      "deployability": "runtime_observable"
+    },
+    {
+      "group": "fsm_lifecycle_one_hot",
+      "names": ["lifecycle_is_WAIT_ENTRY", "lifecycle_is_EXECUTE_MOTION", "lifecycle_is_VERIFY_RESULT", "lifecycle_is_RECOVERY", "lifecycle_is_DONE"],
+      "units": "boolean",
+      "normalization": {"method": "identity"},
+      "clip": [0.0, 1.0],
+      "source": "frozen SensorFsmController lifecycle",
+      "frame": "fsm",
+      "deployability": "runtime_observable"
+    },
+    {
+      "group": "body_linear_velocity_body",
+      "names": ["base_linear_velocity_body_x", "base_linear_velocity_body_y", "base_linear_velocity_body_z"],
+      "units": "m_s",
+      "normalization": {"method": "fixed_scale", "scale": 5.0},
+      "clip": [-1.0, 1.0],
+      "source": "live base linear velocity rotated from world by inverse base quaternion",
+      "frame": "body",
+      "deployability": "runtime_observable"
+    },
+    {
+      "group": "imu_linear_acceleration_body",
+      "names": ["imu_linear_acceleration_body_x", "imu_linear_acceleration_body_y", "imu_linear_acceleration_body_z"],
+      "units": "m_s2",
+      "normalization": {"method": "fixed_scale", "scale": 50.0},
+      "clip": [-2.0, 2.0],
+      "source": "live IMU-equivalent base linear acceleration",
+      "frame": "body",
+      "deployability": "runtime_observable"
+    },
+    {
+      "group": "full_body_com_velocity",
+      "names": ["full_body_com_velocity_x", "full_body_com_velocity_y", "full_body_com_velocity_z"],
+      "units": "m_s",
+      "normalization": {"method": "fixed_scale", "scale": 5.0},
+      "clip": [-1.0, 1.0],
+      "source": "live mass-weighted 13-body center-of-mass velocity",
+      "frame": "world",
+      "deployability": "runtime_observable"
+    },
+    {
+      "group": "wheel_normal_force",
+      "names": ["front_left_wheel_normal_force", "front_right_wheel_normal_force", "rear_left_wheel_normal_force", "rear_right_wheel_normal_force"],
+      "units": "N",
+      "normalization": {"method": "fixed_scale", "scale": 50.0},
+      "clip": [0.0, 4.0],
+      "source": "sum of verified exact ground and obstacle pair normal forces",
+      "frame": "contact_pair_normal",
+      "deployability": "runtime_observable"
+    },
+    {
+      "group": "wheel_load_fraction",
+      "names": ["front_left_wheel_load_fraction", "front_right_wheel_load_fraction", "rear_left_wheel_load_fraction", "rear_right_wheel_load_fraction"],
+      "units": "fraction",
+      "normalization": {"method": "identity"},
+      "clip": [0.0, 1.0],
+      "source": "wheel normal force divided by four-wheel normal-force sum",
+      "frame": "contact_distribution",
+      "deployability": "runtime_observable"
+    },
+    {
+      "group": "wheel_longitudinal_slip",
+      "names": ["front_left_wheel_slip", "front_right_wheel_slip", "rear_left_wheel_slip", "rear_right_wheel_slip"],
+      "units": "ratio",
+      "normalization": {"method": "identity"},
+      "clip": [-4.0, 4.0],
+      "source": "(logical wheel surface speed - body forward speed) / robust speed denominator",
+      "frame": "body_forward_axis",
+      "deployability": "runtime_observable"
+    },
+    {
+      "group": "active_leg_wheel_bottom_clearance",
+      "names": ["active_leg_wheel_bottom_clearance"],
+      "units": "m",
+      "normalization": {"method": "fixed_scale", "scale": 0.20},
+      "clip": [-2.0, 2.0],
+      "source": "active wheel collider bottom minus obstacle top; zero when phase has no active leg",
+      "frame": "world_z_relative_to_obstacle_top",
+      "deployability": "runtime_observable"
+    },
+    {
+      "group": "active_leg_vertical_velocity",
+      "names": ["active_leg_vertical_velocity"],
+      "units": "m_s",
+      "normalization": {"method": "fixed_scale", "scale": 2.0},
+      "clip": [-2.0, 2.0],
+      "source": "active wheel rigid-body linear velocity; zero when phase has no active leg",
+      "frame": "world_z",
+      "deployability": "runtime_observable"
+    },
+    {
+      "group": "previous_projected_residual",
+      "names": [
+        "previous_projected_residual_front_left_hip", "previous_projected_residual_front_left_knee",
+        "previous_projected_residual_front_right_hip", "previous_projected_residual_front_right_knee",
+        "previous_projected_residual_rear_left_hip", "previous_projected_residual_rear_left_knee",
+        "previous_projected_residual_rear_right_hip", "previous_projected_residual_rear_right_knee",
+        "previous_projected_residual_front_left_ankle", "previous_projected_residual_front_right_ankle",
+        "previous_projected_residual_rear_left_ankle", "previous_projected_residual_rear_right_ankle"
+      ],
+      "units": ["deg", "deg", "deg", "deg", "deg", "deg", "deg", "deg", "rad_s", "rad_s", "rad_s", "rad_s"],
+      "normalization": {"method": "fixed_scale", "scale": [135.0, 210.0, 135.0, 210.0, 135.0, 210.0, 135.0, 210.0, 2.0943951023931953, 2.0943951023931953, 2.0943951023931953, 2.0943951023931953]},
+      "clip": [-1.0, 1.0],
+      "source": "previous SafetyProject output minus the same-tick frozen FSM nominal Full12",
+      "frame": "canonical_full12_command_space",
+      "deployability": "runtime_observable"
+    }
+  ]
+}

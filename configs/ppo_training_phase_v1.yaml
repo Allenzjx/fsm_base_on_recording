@@ -1,0 +1,112 @@
+schema: wlr50_clean.ppo_training.phase_specific_stability.v1
+algorithm: PPO
+library: rsl-rl-lib
+library_version: 5.0.1
+isaac_lab_integration: isaaclab_rl.rsl_rl
+
+timing:
+  physics_hz: 120.0
+  policy_decision_hz: 15.0
+  physics_ticks_per_decision: 8
+  episode_timeout_s: 200.0
+
+environment:
+  initial_num_envs: 8
+  benchmark_env_counts: [8, 16, 32]
+  env_spacing_m: 8.0
+  phase_curriculum_max_decisions: 64
+  phase_curriculum_reset_cycle_samples: 128
+  phase_curriculum_occupancy_tolerance_fraction: 0.02
+  phase_curriculum_baseline_decisions:
+    P01: 200
+    P02: 8
+    P03: 19
+    P04: 73
+    P05: 147
+    P06: 384
+    P07: 26
+    P08: 7
+    P09: 109
+    P10: 4
+    P11: 7
+    P12: 71
+    P13: 563
+  headless_training: true
+  evaluation_num_envs: 1
+  evaluation_from_state: P01
+
+network:
+  actor_hidden_dims: [256, 256]
+  critic_hidden_dims: [256, 256]
+  activation: elu
+  initial_actor_mean: zero
+  initial_normalized_action_std: 0.15
+  phase_conditioning: state_one_hot_plus_phase_progress_plus_lifecycle_one_hot
+
+ppo:
+  discount_gamma: 0.995
+  gae_lambda: 0.95
+  clip_ratio: 0.20
+  learning_rate: 0.0003
+  learning_rate_schedule: adaptive
+  target_kl: 0.01
+  rollout_length_per_env: 128
+  update_epochs: 5
+  num_minibatches: 4
+  value_loss_coefficient: 1.0
+  entropy_coefficient_start: 0.005
+  entropy_coefficient_end: 0.001
+  max_grad_norm: 1.0
+  normalize_advantage: true
+  clip_value_loss: true
+
+budgets_policy_decisions:
+  smoke: 10000
+  phase_curriculum: 100000
+  full_episode: 100000
+  mild_randomization: 0
+  deterministic_validation_interval: 10000
+  early_stop_when_promotion_gate_passes: true
+
+phase_curriculum_sampling:
+  P01: 0.0625
+  P02: 0.10
+  P03: 0.10
+  P04: 0.0625
+  P05: 0.0625
+  P06: 0.0625
+  P07: 0.0625
+  P08: 0.10
+  P09: 0.0625
+  P10: 0.0625
+  P11: 0.0625
+  P12: 0.10
+  P13: 0.10
+
+seeds:
+  train: [1001, 1002, 1003, 1004, 1005, 1006, 1007, 1008,
+          1009, 1010, 1011, 1012, 1013, 1014, 1015, 1016,
+          1017, 1018, 1019, 1020, 1021, 1022, 1023, 1024,
+          1025, 1026, 1027, 1028, 1029, 1030, 1031, 1032]
+  validation: [2001, 2002, 2003, 2004, 2005]
+  locked_test: [3001, 3002, 3003, 3004, 3005]
+  video: 4001
+
+normalization:
+  actor: fixed_schema_scales
+  critic: fixed_schema_scales
+  update_sources: train_only
+  validation_updates: false
+  locked_test_updates: false
+
+checkpoint_selection_priority:
+  - trial_validity
+  - task_success
+  - no_body_collision
+  - no_wheel_only_climb
+  - no_safety_abort
+  - stability_improvement
+  - smoothness_improvement
+  - residual_magnitude
+  - episode_duration
+  - total_reward

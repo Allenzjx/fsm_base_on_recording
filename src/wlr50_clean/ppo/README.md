@@ -1,6 +1,6 @@
-# PPO artifact dependency
+# Phase-specific residual PPO
 
-The PPO runtime modules use only the project's normal Python dependencies.
+The frozen-FSM artifact modules use only the project's normal Python dependencies.
 Writing `ppo_baseline_transitions.parquet` additionally requires `pyarrow`.
 It is imported lazily by `EpisodeLogger.write_parquet`, so Isaac/FSM execution
 does not acquire a training or tabular-runtime dependency.
@@ -10,8 +10,18 @@ dataset. The focused Parquet round-trip test requires `pyarrow` and validates
 fixed-size 85D and 12D columns by reading the generated file back; it does not
 silently skip the serializer contract.
 
-No PPO trainer, optimizer, actor/critic network, rollout process, or checkpoint
-is created by this package.
+The versioned v2 path adds a live Isaac/Isaac Lab residual environment, a true
+batched environment, the supported RSL-RL 5.0.1 PPO runner, phase-entry reset
+curriculum, deterministic physical evaluation, checkpoint promotion, and video
+publication.  It uses one shared actor/critic with a 125D deployable
+observation and a phase-masked, phase-scaled 12D residual.  The legacy 85D
+observation and artifact exporter remain byte-compatible and separate from the
+v2 training path.
+
+All live entry points are exposed through `wlr50_clean.ppo.cli` and the
+fail-fast PowerShell scripts in `scripts/`.  A training checkpoint is evidence
+only until matched validation metrics pass the stability gate and an
+independent locked-test aggregate authorizes the final improved name.
 
 ## Residual safety boundary
 

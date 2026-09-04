@@ -1,0 +1,249 @@
+{
+  "schema": "wlr50_clean.ppo_phase_entry_snapshot.v1",
+  "reset_use": "TRAINING_RESET_STATE_WRITE",
+  "in_episode_root_write": "FORBIDDEN_IN_EPISODE_ROOT_WRITE",
+  "source_trial": "trial_043_20260902_clean_v010",
+  "source_trial_path": "C:\\robotics_sim\\wlr_robot\\fsm_50mm_recording_shaped_clean_v1\\runs\\trial_043_20260902_clean_v010",
+  "source_tick": 6912,
+  "source_time_s": 57.6,
+  "fsm_state": "P09",
+  "fsm_lifecycle": "EXECUTE_MOTION",
+  "phase_history": [
+    "P01",
+    "P02",
+    "P03",
+    "P04",
+    "P05",
+    "P06",
+    "P07",
+    "P08"
+  ],
+  "root_state": {
+    "position_w_m": [
+      0.753206729888916,
+      0.002408742904663086,
+      0.07305853068828583
+    ],
+    "orientation_wxyz": [
+      0.993320107460022,
+      -0.10032524168491364,
+      -0.05675642937421799,
+      0.00537065090611577
+    ],
+    "linear_velocity_w_m_s": [
+      0.08084630221128464,
+      0.004533298313617706,
+      -0.08831004798412323
+    ],
+    "angular_velocity_w_rad_s": [
+      -0.4343891143798828,
+      0.13701018691062927,
+      -0.014518107287585735
+    ]
+  },
+  "joint_state": {
+    "logical_position_deg": [
+      37.318652557477435,
+      -12.772017119410012,
+      -9.767521519141022,
+      28.955137758865398,
+      28.858989732867872,
+      -0.6465126898056808,
+      -0.7501295009801907,
+      0.6408197938335414
+    ],
+    "logical_velocity_deg_s": [
+      3.6999348177370637,
+      -0.07781446424389088,
+      -11.705089841042197,
+      23.17030002333896,
+      23.915535133489882,
+      6.084358125856746,
+      1.563102025048935,
+      -1.5363365414040648
+    ],
+    "order": [
+      "front_left_hip",
+      "front_left_knee",
+      "front_right_hip",
+      "front_right_knee",
+      "rear_left_hip",
+      "rear_left_knee",
+      "rear_right_hip",
+      "rear_right_knee"
+    ]
+  },
+  "wheel_state": {
+    "logical_velocity_rad_s": [
+      0.0012161053018644452,
+      -0.3219011723995209,
+      -0.16918042302131653,
+      -0.0019254431826993823
+    ],
+    "order": [
+      "front_left_ankle",
+      "front_right_ankle",
+      "rear_left_ankle",
+      "rear_right_ankle"
+    ]
+  },
+  "nominal_full12": [
+    38.6,
+    -13.4,
+    0.0,
+    31.1,
+    31.2,
+    0.0,
+    1.6,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+  ],
+  "applied_full12": [
+    38.6,
+    -13.4,
+    0.0,
+    31.1,
+    31.2,
+    0.0,
+    1.6,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+  ],
+  "fsm_history": {
+    "completed_phases": [
+      "P01",
+      "P02",
+      "P03",
+      "P04",
+      "P05",
+      "P06",
+      "P07",
+      "P08"
+    ],
+    "recovery_count": 0
+  },
+  "contact_event_latches": {
+    "FL": {
+      "active_lift": true,
+      "active_lift_tick": 2417,
+      "front_face_crossed": true,
+      "front_face_crossed_tick": 3115,
+      "top_loaded": true,
+      "top_loaded_tick": 3583
+    },
+    "FR": {
+      "active_lift": true,
+      "active_lift_tick": 1624,
+      "front_face_crossed": true,
+      "front_face_crossed_tick": 1665,
+      "top_loaded": true,
+      "top_loaded_tick": 1695
+    },
+    "RL": {
+      "active_lift": false,
+      "active_lift_tick": null,
+      "front_face_crossed": false,
+      "front_face_crossed_tick": null,
+      "top_loaded": false,
+      "top_loaded_tick": null
+    },
+    "RR": {
+      "active_lift": false,
+      "active_lift_tick": null,
+      "front_face_crossed": false,
+      "front_face_crossed_tick": null,
+      "top_loaded": false,
+      "top_loaded_tick": null
+    }
+  },
+  "obstacle_relative_geometry": {
+    "obstacle": {
+      "front_x_m": 0.5213121737735307,
+      "back_x_m": 2.5786877308590377,
+      "left_y_m": 1.0,
+      "right_y_m": -1.0,
+      "bottom_z_m": 0.0,
+      "top_z_m": 0.05
+    },
+    "wheel_centers_w_m": {
+      "front_left_ankle": [
+        1.0416685342788696,
+        0.09571817517280579,
+        0.132707417011261
+      ],
+      "front_right_ankle": [
+        1.0643694400787354,
+        -0.31789758801460266,
+        0.09794759750366211
+      ],
+      "rear_left_ankle": [
+        0.3931543827056885,
+        0.07498395442962646,
+        0.05276696756482124
+      ],
+      "rear_right_ankle": [
+        0.45589229464530945,
+        -0.32874351739883423,
+        0.05660835653543472
+      ]
+    },
+    "wheel_bottoms_w_m": {
+      "front_left_ankle": [
+        1.0416685342788696,
+        0.09571817517280579,
+        0.0827071448880887
+      ],
+      "front_right_ankle": [
+        1.0643694400787354,
+        -0.31789758801460266,
+        0.047952877482908635
+      ],
+      "rear_left_ankle": [
+        0.3931543827056885,
+        0.07498395442962646,
+        0.002767988800239665
+      ],
+      "rear_right_ankle": [
+        0.45589229464530945,
+        -0.32874351739883423,
+        0.006618153716796929
+      ]
+    }
+  },
+  "contact_state": {
+    "front_left_ankle": {
+      "class": "AIR",
+      "ground_active": false,
+      "obstacle_active": false
+    },
+    "front_right_ankle": {
+      "class": "OBSTACLE",
+      "ground_active": false,
+      "obstacle_active": true
+    },
+    "rear_left_ankle": {
+      "class": "GROUND",
+      "ground_active": true,
+      "obstacle_active": false
+    },
+    "rear_right_ankle": {
+      "class": "AIR",
+      "ground_active": false,
+      "obstacle_active": false
+    }
+  },
+  "level_reference_orientation_wxyz": [
+    0.9999808073043823,
+    -1.026025438477518e-05,
+    -0.006009926088154316,
+    0.0015246823895722628
+  ],
+  "snapshot_semantics": "state is written only before the first episode physics tick; live physics and frozen FSM own all subsequent state",
+  "state_sha256": "33df7839c2b2da24ea32d6fda2411c730cf9665cf38612bb89a060828040c3ea"
+}

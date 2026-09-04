@@ -1,0 +1,72 @@
+schema: wlr50_clean.ppo_reward.v2
+training_enabled: true
+aggregation: exactly_one_reward_per_15hz_policy_decision
+physics_ticks_per_decision: 8
+progress_gamma: 0.995
+
+dense_families:
+  phase_task_progress:
+    sign: positive
+    scale: 0.07692307692307693
+    clip: [-1.0, 1.0]
+  body_stability:
+    sign: cost
+    scale: 1.0
+    clip: [0.0, 1.0]
+  contact_motion_quality:
+    sign: cost
+    scale: 1.0
+    clip: [0.0, 1.0]
+  control_smoothness:
+    sign: cost
+    scale: 1.0
+    clip: [0.0, 1.0]
+  residual_regularization:
+    sign: cost
+    scale: 1.0
+    clip: [0.0, 1.0]
+
+body_stability_coefficients:
+  attitude: 0.35
+  angular_rate: 0.40
+  angular_acceleration: 0.25
+control_smoothness_coefficients:
+  residual_first_difference: 0.50
+  residual_second_difference: 0.50
+
+events:
+  phase_completion: 1.0
+  final_success: 10.0
+  task_failure: -10.0
+  safety_abort: -10.0
+
+signal_ownership:
+  phase_task_progress:
+    - physical_phase_potential_delta
+  body_stability:
+    - calibrated_attitude_error
+    - successful_fsm_attitude_envelope_excess
+    - body_angular_rate
+    - body_angular_acceleration
+  contact_motion_quality:
+    - clearance_shortfall
+    - placement_impact
+    - contact_rebound
+    - contact_chatter
+    - wheel_slip
+    - support_loss
+    - wrong_direction_com_motion
+    - orthogonal_com_oscillation
+    - forward_speed_variation
+    - overshoot
+  control_smoothness:
+    - residual_first_difference
+    - residual_second_difference
+  residual_regularization:
+    - residual_magnitude
+
+audits:
+  maximum_single_dense_family_fraction: 0.70
+  maximum_residual_regularization_fraction: 0.20
+  minimum_absolute_dense_return: 1.0e-12
+  standing_still_max_reward: 0.0

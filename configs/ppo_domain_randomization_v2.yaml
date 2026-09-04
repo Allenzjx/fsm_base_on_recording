@@ -1,0 +1,22 @@
+schema: wlr50_clean.ppo_domain_randomization.v2
+training_enabled: true
+enabled: false
+activation_gate: only_after_improved_nominal_checkpoint
+nominal_evaluation_uses_frozen_environment: true
+hooks:
+  initial_joint_offset_deg:
+    enabled: false
+    range: [-0.5, 0.5]
+  obstacle_longitudinal_offset_m:
+    enabled: false
+    range: [-0.002, 0.002]
+  friction_multiplier:
+    enabled: false
+    range: [0.98, 1.02]
+  actuator_tracking_multiplier:
+    enabled: false
+    range: [0.98, 1.02]
+  sensor_noise_fraction:
+    enabled: false
+    range: [0.0, 0.002]
+

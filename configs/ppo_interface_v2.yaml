@@ -1,0 +1,28 @@
+schema: wlr50_clean.ppo_interface.v2
+profile: phase_specific_stability_v1
+training_enabled: true
+residual_enabled: true
+nominal_controller: frozen_successful_fsm
+nominal_action_dimension: 12
+residual_action_dimension: 12
+actor_observation_schema: wlr50_clean.ppo_observation_schema.v2
+critic_observation_schema: wlr50_clean.ppo_observation_schema.v2
+action_projection_schema: wlr50_clean.ppo_phase_action_projection.v2
+reward_schema: wlr50_clean.ppo_reward.v2
+termination_schema: wlr50_clean.ppo_termination.v2
+physics_hz: 120.0
+decision_hz: 15.0
+physics_ticks_per_decision: 8
+state_ids: [P01, P02, P03, P04, P05, P06, P07, P08, P09, P10, P11, P12, P13]
+policy_scope: one_shared_actor_and_critic_for_all_phases
+fsm_owns:
+  - task_sequence
+  - state_transition
+  - phase_completion
+  - recovery
+  - task_success
+  - hard_task_failure
+policy_may_only_modify: phase_masked_bounded_full12_residual
+recording_runtime_access: forbidden
+recording_similarity_role: diagnostic_only
+

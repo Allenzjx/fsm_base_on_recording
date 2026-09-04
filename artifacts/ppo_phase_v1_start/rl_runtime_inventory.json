@@ -1,0 +1,61 @@
+{
+  "schema": "wlr50_clean.rl_runtime_inventory.v1",
+  "inventory_date": "2026-09-03",
+  "selected_ppo_library": {
+    "distribution": "rsl-rl-lib",
+    "import_name": "rsl_rl",
+    "version": "5.0.1",
+    "selection_reason": "first-priority installed library and exact Isaac Lab isaaclab_rl pin",
+    "isaac_lab_required_version": "5.0.1",
+    "installation_required": false,
+    "ppo_import_smoke": true
+  },
+  "python": {
+    "executable": "C:/Users/kskzz/miniconda3/envs/env_isaaclab/python.exe",
+    "version": "3.11.15",
+    "environment": "env_isaaclab"
+  },
+  "isaac_sim": {
+    "distribution_version": "5.1.0.0",
+    "build": "5.1.0-rc.19+release.26219.9c81211b.gl",
+    "root": "C:/Users/kskzz/miniconda3/envs/env_isaaclab/Lib/site-packages/isaacsim",
+    "kit_executable": "C:/Users/kskzz/miniconda3/envs/env_isaaclab/Lib/site-packages/isaacsim/kit/kit.exe"
+  },
+  "isaac_lab": {
+    "checkout": "C:/robotics_sim/IsaacLab",
+    "release_version": "2.3.2",
+    "core_distribution_version": "0.54.3",
+    "isaaclab_rl_version": "0.5.1",
+    "git_head": "090aed18163b2194d5551c7919f7539283677743",
+    "official_rsl_train": "C:/robotics_sim/IsaacLab/scripts/reinforcement_learning/rsl_rl/train.py",
+    "official_rsl_play": "C:/robotics_sim/IsaacLab/scripts/reinforcement_learning/rsl_rl/play.py",
+    "official_rsl_wrapper": "C:/robotics_sim/IsaacLab/source/isaaclab_rl/isaaclab_rl/rsl_rl/vecenv_wrapper.py"
+  },
+  "compute": {
+    "gpu": "NVIDIA GeForce RTX 4080 Laptop GPU",
+    "vram_gib": 12,
+    "compute_capability": "8.9",
+    "driver_version": "581.29",
+    "driver_cuda_capability": "13.0",
+    "pytorch_version": "2.7.0+cu128",
+    "pytorch_cuda_runtime": "12.8",
+    "cudnn_version": "9.7.1",
+    "torch_cuda_available": true,
+    "device": "cuda:0",
+    "nvcc_on_path": false
+  },
+  "installed_rl_libraries": {
+    "rsl-rl-lib": "5.0.1",
+    "skrl": "2.0.0",
+    "rl-games": "1.6.1",
+    "stable-baselines3": "2.8.0",
+    "gymnasium": "1.2.1"
+  },
+  "core_dependency_changes": [],
+  "evidence": {
+    "environment_lock": "configs/environment_lock.json",
+    "isaac_lab_rsl_pin": "C:/robotics_sim/IsaacLab/source/isaaclab_rl/setup.py",
+    "successful_fsm_kit_log": "C:/Users/kskzz/miniconda3/envs/env_isaaclab/Lib/site-packages/isaacsim/kit/logs/Kit/Isaac-Sim/5.1/kit_20260902_192847.log"
+  }
+}
+

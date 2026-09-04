@@ -1,0 +1,180 @@
+schema: wlr50_clean.ppo_phase_objectives.v2
+state_ids: [P01, P02, P03, P04, P05, P06, P07, P08, P09, P10, P11, P12, P13]
+dense_families:
+  - phase_task_progress
+  - body_stability
+  - contact_motion_quality
+  - control_smoothness
+  - residual_regularization
+weight_sum_tolerance: 1.0e-9
+progress_contract:
+  input_domain: normalized_live_physical_measurements
+  allowed_range: [0.0, 1.0]
+  forbidden_sources: [elapsed_time, recording_time_cursor, accepted_steps]
+  global_potential: (phase_index_minus_one + phase_local_potential) / 13
+
+phases:
+  P01:
+    name: INITIAL_LOAD_TRANSFER_FR
+    primary_objective: Form the FR lift-entry geometry through the necessary load transfer.
+    stability_mode: TRANSFER_AWARE
+    active_leg: FR
+    potential_terms:
+      fr_lift_entry_geometry: 0.45
+      target_load_transfer: 0.35
+      support_continuity: 0.20
+    contact_cost_terms: [wrong_direction_com_motion, orthogonal_com_oscillation, support_loss]
+    prompt_weights: &p01_weights
+      phase_task_progress: 0.50
+      body_stability: 0.20
+      contact_motion_quality: 0.15
+      control_smoothness: 0.10
+      residual_regularization: 0.05
+    transfer_schedule:
+      active_end: 0.55
+      capture_end: 0.85
+      weights:
+        active: *p01_weights
+        capture: {phase_task_progress: 0.40, body_stability: 0.30, contact_motion_quality: 0.15, control_smoothness: 0.10, residual_regularization: 0.05}
+        settle: {phase_task_progress: 0.35, body_stability: 0.35, contact_motion_quality: 0.15, control_smoothness: 0.10, residual_regularization: 0.05}
+      level_penalty_fraction: {active: 0.0, capture: 0.5, settle: 1.0}
+
+  P02:
+    name: FR_ACTIVE_LIFT
+    primary_objective: Preserve FR clearance and approach progress while stabilizing the three support legs.
+    stability_mode: LEVEL_AWARE
+    active_leg: FR
+    potential_terms: {fr_lift_clearance: 0.45, approach_progress: 0.35, support_continuity: 0.20}
+    contact_cost_terms: [clearance_shortfall, wheel_slip, support_loss]
+    prompt_weights: {phase_task_progress: 0.35, body_stability: 0.35, contact_motion_quality: 0.15, control_smoothness: 0.10, residual_regularization: 0.05}
+
+  P03:
+    name: FR_CROSS_AND_PLACE
+    primary_objective: Cross the front plane and place FR on the obstacle with low impact and rebound.
+    stability_mode: PLACEMENT
+    active_leg: FR
+    potential_terms: {fr_front_face_progress: 0.35, fr_top_placement: 0.45, contact_capture: 0.20}
+    contact_cost_terms: [placement_impact, contact_rebound, contact_chatter]
+    prompt_weights: {phase_task_progress: 0.30, body_stability: 0.30, contact_motion_quality: 0.25, control_smoothness: 0.10, residual_regularization: 0.05}
+
+  P04:
+    name: FL_UNLOAD_PREP
+    primary_objective: Form the load structure and workspace required to lift FL.
+    stability_mode: TRANSFER_AWARE
+    active_leg: FL
+    potential_terms: {fl_lift_workspace: 0.45, target_load_transfer: 0.35, support_continuity: 0.20}
+    contact_cost_terms: [wrong_direction_com_motion, orthogonal_com_oscillation, support_loss]
+    prompt_weights: &p04_weights {phase_task_progress: 0.50, body_stability: 0.20, contact_motion_quality: 0.15, control_smoothness: 0.10, residual_regularization: 0.05}
+    transfer_schedule:
+      active_end: 0.55
+      capture_end: 0.85
+      weights:
+        active: *p04_weights
+        capture: {phase_task_progress: 0.40, body_stability: 0.30, contact_motion_quality: 0.15, control_smoothness: 0.10, residual_regularization: 0.05}
+        settle: {phase_task_progress: 0.35, body_stability: 0.35, contact_motion_quality: 0.15, control_smoothness: 0.10, residual_regularization: 0.05}
+      level_penalty_fraction: {active: 0.0, capture: 0.5, settle: 1.0}
+
+  P05:
+    name: FL_ACTIVE_LIFT_AND_PLACE
+    primary_objective: Lift FL, cross the front plane, and establish a smooth obstacle-top placement.
+    stability_mode: PLACEMENT
+    active_leg: FL
+    potential_terms: {fl_lift_clearance: 0.35, fl_front_face_progress: 0.30, fl_top_placement: 0.35}
+    contact_cost_terms: [clearance_shortfall, placement_impact, contact_rebound]
+    prompt_weights: {phase_task_progress: 0.35, body_stability: 0.30, contact_motion_quality: 0.20, control_smoothness: 0.10, residual_regularization: 0.05}
+
+  P06:
+    name: FRONT_PAIR_ADVANCE
+    primary_objective: Advance smoothly until the rear pair reaches the required pre-edge geometry.
+    stability_mode: ADVANCE
+    active_leg: FL
+    potential_terms: {forward_progress: 0.45, rear_pair_pre_edge_geometry: 0.40, speed_convergence: 0.15}
+    contact_cost_terms: [wheel_slip, forward_speed_variation, overshoot]
+    prompt_weights: {phase_task_progress: 0.40, body_stability: 0.30, contact_motion_quality: 0.15, control_smoothness: 0.10, residual_regularization: 0.05}
+
+  P07:
+    name: REAR_ENTRY_ALIGNMENT
+    primary_objective: Enter the rear-leg geometry smoothly without deadlock or overshoot.
+    stability_mode: LEVEL_AWARE
+    active_leg: RR
+    potential_terms: {rear_entry_geometry: 0.55, alignment_quality: 0.30, speed_convergence: 0.15}
+    contact_cost_terms: [wheel_slip, support_loss, overshoot]
+    prompt_weights: {phase_task_progress: 0.35, body_stability: 0.35, contact_motion_quality: 0.10, control_smoothness: 0.15, residual_regularization: 0.05}
+
+  P08:
+    name: FIRST_REAR_LOAD_TRANSFER
+    primary_objective: Transfer CoM/load toward FL, capture FL support, and unload RR.
+    stability_mode: TRANSFER_AWARE
+    active_leg: RR
+    potential_terms: {com_target_progress: 0.40, fl_load_capture: 0.35, rr_unload_progress: 0.25}
+    contact_cost_terms: [wrong_direction_com_motion, orthogonal_com_oscillation, support_loss]
+    prompt_weights: &p08_active {phase_task_progress: 0.55, body_stability: 0.15, contact_motion_quality: 0.15, control_smoothness: 0.10, residual_regularization: 0.05}
+    transfer_schedule:
+      active_end: 0.55
+      capture_end: 0.85
+      weights:
+        active: *p08_active
+        capture: {phase_task_progress: 0.30, body_stability: 0.40, contact_motion_quality: 0.15, control_smoothness: 0.10, residual_regularization: 0.05}
+        settle: {phase_task_progress: 0.25, body_stability: 0.45, contact_motion_quality: 0.15, control_smoothness: 0.10, residual_regularization: 0.05}
+      level_penalty_fraction: {active: 0.0, capture: 0.5, settle: 1.0}
+
+  P09:
+    name: RR_ACTIVE_LIFT_AND_PLACE
+    primary_objective: Lift RR, cross the front plane, and place it with low impact.
+    stability_mode: PLACEMENT
+    active_leg: RR
+    potential_terms: {rr_lift_clearance: 0.35, rr_front_face_progress: 0.30, rr_top_placement: 0.35}
+    contact_cost_terms: [clearance_shortfall, placement_impact, contact_rebound]
+    prompt_weights: {phase_task_progress: 0.35, body_stability: 0.30, contact_motion_quality: 0.20, control_smoothness: 0.10, residual_regularization: 0.05}
+
+  P10:
+    name: SECOND_REAR_TRANSFER_PREP
+    primary_objective: Establish the support and workspace for the second rear transfer.
+    stability_mode: TRANSFER_AWARE
+    active_leg: RL
+    potential_terms: {rl_workspace: 0.45, target_load_transfer: 0.30, support_capture: 0.25}
+    contact_cost_terms: [wrong_direction_com_motion, orthogonal_com_oscillation, support_loss]
+    prompt_weights: &p10_weights {phase_task_progress: 0.50, body_stability: 0.20, contact_motion_quality: 0.15, control_smoothness: 0.10, residual_regularization: 0.05}
+    transfer_schedule:
+      active_end: 0.55
+      capture_end: 0.85
+      weights:
+        active: *p10_weights
+        capture: {phase_task_progress: 0.40, body_stability: 0.30, contact_motion_quality: 0.15, control_smoothness: 0.10, residual_regularization: 0.05}
+        settle: {phase_task_progress: 0.35, body_stability: 0.35, contact_motion_quality: 0.15, control_smoothness: 0.10, residual_regularization: 0.05}
+      level_penalty_fraction: {active: 0.0, capture: 0.5, settle: 1.0}
+
+  P11:
+    name: TRANSFER_TOWARD_FR
+    primary_objective: Transfer CoM/load toward FR and unload RL for its lift.
+    stability_mode: TRANSFER_AWARE
+    active_leg: RL
+    potential_terms: {com_target_progress: 0.40, fr_load_capture: 0.35, rl_unload_progress: 0.25}
+    contact_cost_terms: [wrong_direction_com_motion, orthogonal_com_oscillation, support_loss]
+    prompt_weights: &p11_active {phase_task_progress: 0.55, body_stability: 0.15, contact_motion_quality: 0.15, control_smoothness: 0.10, residual_regularization: 0.05}
+    transfer_schedule:
+      active_end: 0.55
+      capture_end: 0.85
+      weights:
+        active: *p11_active
+        capture: {phase_task_progress: 0.30, body_stability: 0.40, contact_motion_quality: 0.15, control_smoothness: 0.10, residual_regularization: 0.05}
+        settle: {phase_task_progress: 0.25, body_stability: 0.45, contact_motion_quality: 0.15, control_smoothness: 0.10, residual_regularization: 0.05}
+      level_penalty_fraction: {active: 0.0, capture: 0.5, settle: 1.0}
+
+  P12:
+    name: RL_ACTIVE_LIFT_AND_PLACE
+    primary_objective: Lift RL, cross the front plane, and settle it on the obstacle top.
+    stability_mode: PLACEMENT
+    active_leg: RL
+    potential_terms: {rl_lift_clearance: 0.35, rl_front_face_progress: 0.30, rl_top_placement: 0.35}
+    contact_cost_terms: [clearance_shortfall, placement_impact, contact_rebound]
+    prompt_weights: {phase_task_progress: 0.30, body_stability: 0.40, contact_motion_quality: 0.15, control_smoothness: 0.10, residual_regularization: 0.05}
+
+  P13:
+    name: FINAL_ADVANCE_AND_RECOVERY
+    primary_objective: Clear the obstacle, converge to home pose, and stop all wheels smoothly.
+    stability_mode: HOME_RECOVERY
+    active_leg: null
+    potential_terms: {final_forward_clearance: 0.30, home_pose_convergence: 0.40, wheel_stop_convergence: 0.30}
+    contact_cost_terms: [wheel_slip, forward_speed_variation]
+    prompt_weights: {phase_task_progress: 0.30, body_stability: 0.40, contact_motion_quality: 0.05, control_smoothness: 0.20, residual_regularization: 0.05}
