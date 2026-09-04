@@ -17,6 +17,7 @@ from wlr50_clean.ppo.soft_reset_equivalence import (
     SOFT_RESET_ACCEPTANCE_FILENAME,
     SOFT_RESET_ACCEPTANCE_SCHEMA,
     SoftResetEquivalenceError,
+    compact_trace_row,
     compare_compact_traces,
     compare_reset_metadata,
     soft_reset_contract_hashes,
@@ -42,6 +43,8 @@ def _trace_rows() -> list[dict[str, object]]:
             "lifecycle": "EXECUTE_MOTION",
             "phase_progress": 1.0,
             "physics_ticks_executed": 8,
+            "actor_observation_v2_dimension": 125,
+            "actor_observation_v2_sha256": f"{index:064x}",
             "nominal_full12": [index / 100.0] * 12,
             "residual_full12": [0.0] * 12,
             "applied_full12": [index / 100.0] * 12,
@@ -56,21 +59,40 @@ def _reset_metadata(*, reused: bool) -> dict[str, object]:
     payload: dict[str, object] = {
         "environment_hash": "environment",
         "robot_asset_hash": "robot",
-        "canonical_reset_state_source": "post_limit_hard_physics_reset_pre_settle",
+        "canonical_reset_state_source": "baseline_order_post_limit_authoring_pre_settle",
         "canonical_reset_state_sha256": "canonical-reset-sha256",
         "canonical_reset_state_instance_count": 1,
         "canonical_reset_restore_applied": False,
         "canonical_reset_applied_sha256": None,
-        "hard_reset_native_state_observed_sha256": "canonical-reset-sha256",
-        "hard_reset_native_state_matches_canonical": True,
+        "pre_limit_native_state_observed_sha256": "pre-limit-native-sha256",
+        "pre_limit_native_state_instance_count": 1,
+        "pre_limit_native_state_matches_canonical": True,
+        "pre_settle_native_state_observed_sha256": "canonical-reset-sha256",
+        "pre_settle_native_state_matches_canonical": True,
         "adapter_standing_pose_deg": [0.0] * 8,
-        "canonical_settled_state_source": "natural_post_hard_reset_settle",
+        "canonical_settled_state_source": "natural_post_baseline_order_settle",
         "canonical_settled_state_sha256": "canonical-settled-sha256",
         "canonical_settled_restore_applied": False,
         "canonical_settled_applied_sha256": None,
         "observed_settled_state_sha256": "canonical-settled-sha256",
-        "physics_lifecycle_reset": "hard_stop_play",
+        "physics_lifecycle_reset": (
+            "session_limits_removed_then_hard_reset"
+            if reused
+            else "scene_factory_reset_before_limit_authoring"
+        ),
         "reset_contact_sensor_count": 13,
+        "reset_initialization_order": (
+            "physics_reset_without_session_limits_then_author_limits_then_settle"
+        ),
+        "pre_physics_session_limit_state_sha256": "empty-session-limits-sha256",
+        "pre_physics_composed_limit_state_sha256": "source-limits-sha256",
+        "pre_physics_composed_limit_state_matches_canonical": True,
+        "session_limit_specs_present_during_physics_reset": 0,
+        "session_limit_specs_removed_before_reset": 16 if reused else 0,
+        "removed_session_limit_state_sha256": "a" * 64 if reused else None,
+        "post_author_session_limit_state_sha256": "a" * 64,
+        "post_author_session_limit_state_matches_canonical": True,
+        "session_limit_specs_after_authoring": 16,
         "environment_initialization": {
             "all_eight_servo_limits_applied": True,
             "physx_limits_verified": True,
@@ -251,6 +273,45 @@ def test_tick_audit_is_streaming_and_bitwise_strict() -> None:
     assert mismatch.finalize()["passed"] is False
 
 
+def test_compact_trace_hashes_the_exact_actor_observation() -> None:
+    frame = SimpleNamespace(
+        physics_tick=8,
+        sim_time_s=1.0 / 15.0,
+        state_id="P01",
+        phase_progress=0.1,
+        nominal_action_full12=ZERO12,
+    )
+    info = {
+        "decision_index": 0,
+        "controller_lifecycle": "EXECUTE_MOTION",
+        "physics_ticks_executed": 8,
+        "projected_residual_full12": ZERO12,
+        "applied_action_full12": ZERO12,
+        "controller_task_result": "RUNNING",
+        "termination_reason": None,
+    }
+    first = compact_trace_row(
+        frame,
+        info,
+        actor_observation_v2=(0.0,) * 125,
+    )
+    second = compact_trace_row(
+        frame,
+        info,
+        actor_observation_v2=(0.0,) * 124 + (1.0,),
+    )
+    assert first["actor_observation_v2_dimension"] == 125
+    assert first["actor_observation_v2_sha256"] != second[
+        "actor_observation_v2_sha256"
+    ]
+    with pytest.raises(SoftResetEquivalenceError, match="finite vector"):
+        compact_trace_row(
+            frame,
+            info,
+            actor_observation_v2=(float("nan"),),
+        )
+
+
 def test_compact_trace_comparison_is_exact_through_p10_and_whole_episode() -> None:
     fresh = _trace_rows()
     reused = json.loads(json.dumps(fresh))
@@ -265,15 +326,15 @@ def test_compact_trace_comparison_is_exact_through_p10_and_whole_episode() -> No
     assert mismatch["through_p10"]["first_mismatch"]["fields"] == ["lifecycle"]
 
 
-def test_reset_metadata_proves_symmetric_hard_lifecycle_resets() -> None:
+def test_reset_metadata_proves_baseline_order_lifecycle_equivalence() -> None:
     fresh = _reset_metadata(reused=False)
     reused = _reset_metadata(reused=True)
     comparison = compare_reset_metadata(fresh, reused)
     assert comparison["backend_instance_count"] == 1
-    assert comparison["checks"]["fresh_used_one_hard_physics_lifecycle_reset"] is True
-    assert comparison["checks"]["reused_used_one_hard_physics_lifecycle_reset"] is True
-    assert comparison["checks"]["fresh_hard_reset_reached_canonical_state"] is True
-    assert comparison["checks"]["reused_hard_reset_reached_canonical_state"] is True
+    assert comparison["checks"]["fresh_used_one_scene_factory_physics_reset"] is True
+    assert comparison["checks"]["reused_used_one_pre_limit_hard_physics_reset"] is True
+    assert comparison["checks"]["fresh_pre_settle_state_reached_canonical"] is True
+    assert comparison["checks"]["reused_pre_settle_state_reached_canonical"] is True
     assert comparison["passed"] is True
 
     reused["reset_global_simulation_resets"] = 0
@@ -421,6 +482,7 @@ def test_soft_reset_command_uses_one_backend_and_writes_compact_acceptance(
                 info={},
             )
             return SimpleNamespace(
+                observation=(float(index),) + (0.0,) * 124,
                 reward=1.0,
                 info={
                     "decision_index": index,

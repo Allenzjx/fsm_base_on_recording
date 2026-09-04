@@ -107,9 +107,9 @@ class CanonicalArticulationResetState:
     The locked USD authors a non-zero standing joint pose while
     ``ArticulationCfg.InitialStateCfg(joint_pos={})`` leaves Isaac Lab's
     ``default_joint_pos`` cache at zero.  Consequently that cache is not a
-    faithful reset source for this asset.  These tensors are cloned directly
-    after the one scene-construction ``SimulationContext.reset()`` and are
-    reused only at later episode reset boundaries.
+    faithful reset source for this asset.  These tensors are cloned after the
+    baseline-order reset and live limit authoring, before the physical settle,
+    and are evidence only: later resets must reproduce them naturally.
     """
 
     root_state: Any
@@ -214,6 +214,7 @@ class BackendDependencies:
     write_phase_snapshot: Callable[..., Mapping[str, Any]] | None = None
     restore_controller_snapshot: Callable[..., Mapping[str, Any]] | None = None
     restore_guard_snapshot: Callable[..., Mapping[str, Any]] | None = None
+    capture_session_limit_state: Callable[[Any], Mapping[str, Any]] | None = None
 
 
 def _load_live_dependencies() -> BackendDependencies:
@@ -252,6 +253,7 @@ def _load_live_dependencies() -> BackendDependencies:
         write_phase_snapshot=_write_phase_snapshot_state,
         restore_controller_snapshot=_restore_controller_from_snapshot,
         restore_guard_snapshot=_restore_guard_tracker_from_snapshot,
+        capture_session_limit_state=_session_servo_limit_state,
     )
 
 
@@ -302,6 +304,10 @@ class IsaacFSMBackend:
         self._joint_limit_seen = False
         self._fall_seen = False
         self._physics_explosion_seen = False
+        self._canonical_pre_limit_native_state_sha256: str | None = None
+        self._canonical_pre_limit_native_state_instance_count: int | None = None
+        self._canonical_pre_physics_composed_limit_state_sha256: str | None = None
+        self._canonical_authored_session_limit_state_sha256: str | None = None
         self._canonical_reset_state: CanonicalArticulationResetState | None = None
         self._canonical_settled_state: CanonicalArticulationResetState | None = None
         self._canonical_level_reference_orientation: (
@@ -384,15 +390,54 @@ class IsaacFSMBackend:
                     sim=sim, robot=robot
                 ),
             )
-            # RobotAdapter owns the frozen environment's authoritative live
-            # servo-limit authoring. Bootstrap those session-layer opinions
-            # before the first episode lifecycle reset so fresh and reused
-            # episodes both instantiate PhysX from the same authored stage.
-            dependencies.adapter_from_scene(self._scene)
 
         reset_writes = dict(
             dependencies.reset_scene(self._scene, self._canonical_reset_state)
         )
+        pre_limit_sha256 = str(
+            reset_writes.get("pre_limit_native_state_observed_sha256", "")
+        )
+        pre_limit_instance_count = int(
+            reset_writes.get("pre_limit_native_state_instance_count", 0)
+        )
+        if not pre_limit_sha256 or pre_limit_instance_count != 1:
+            raise IsaacFSMBackendError(
+                "baseline-order reset did not expose one native pre-limit state"
+            )
+        if self._canonical_pre_limit_native_state_sha256 is None:
+            self._canonical_pre_limit_native_state_sha256 = pre_limit_sha256
+            self._canonical_pre_limit_native_state_instance_count = (
+                pre_limit_instance_count
+            )
+        elif (
+            pre_limit_sha256
+            != self._canonical_pre_limit_native_state_sha256
+            or pre_limit_instance_count
+            != self._canonical_pre_limit_native_state_instance_count
+        ):
+            raise IsaacFSMBackendError(
+                "reset did not reproduce the canonical native pre-limit state"
+            )
+        reset_writes["pre_limit_native_state_matches_canonical"] = True
+        composed_limit_sha256 = str(
+            reset_writes.get("pre_physics_composed_limit_state_sha256", "")
+        )
+        if len(composed_limit_sha256) != 64:
+            raise IsaacFSMBackendError(
+                "pre-limit composed state has no canonical SHA-256"
+            )
+        if self._canonical_pre_physics_composed_limit_state_sha256 is None:
+            self._canonical_pre_physics_composed_limit_state_sha256 = (
+                composed_limit_sha256
+            )
+        elif (
+            composed_limit_sha256
+            != self._canonical_pre_physics_composed_limit_state_sha256
+        ):
+            raise IsaacFSMBackendError(
+                "source-composed servo limits changed between episode resets"
+            )
+        reset_writes["pre_physics_composed_limit_state_matches_canonical"] = True
 
         scene = self._scene
         backends = getattr(scene, "instrumentation", None)
@@ -405,6 +450,53 @@ class IsaacFSMBackend:
             )
 
         adapter = dependencies.adapter_from_scene(scene)
+        capture_session_limits = dependencies.capture_session_limit_state
+        if not callable(capture_session_limits):
+            raise IsaacFSMBackendError(
+                "session-layer limit evidence callback is unavailable"
+            )
+        authored_limit_state = dict(capture_session_limits(scene))
+        if int(authored_limit_state.get("property_count", -1)) != 16:
+            raise IsaacFSMBackendError(
+                "RobotAdapter did not author exactly 16 session limit specs"
+            )
+        authored_limit_sha256 = str(
+            authored_limit_state.get("state_sha256", "")
+        )
+        if len(authored_limit_sha256) != 64:
+            raise IsaacFSMBackendError(
+                "authored session limit state has no canonical SHA-256"
+            )
+        removed_limit_sha256 = reset_writes.get(
+            "removed_session_limit_state_sha256"
+        )
+        if (
+            removed_limit_sha256 is not None
+            and authored_limit_sha256 != removed_limit_sha256
+        ):
+            raise IsaacFSMBackendError(
+                "RobotAdapter did not reproduce the removed session limit state"
+            )
+        if self._canonical_authored_session_limit_state_sha256 is None:
+            self._canonical_authored_session_limit_state_sha256 = (
+                authored_limit_sha256
+            )
+        elif (
+            authored_limit_sha256
+            != self._canonical_authored_session_limit_state_sha256
+        ):
+            raise IsaacFSMBackendError(
+                "authored session limit state differs between episodes"
+            )
+        reset_writes.update(
+            {
+                "post_author_session_limit_state_sha256": (
+                    authored_limit_sha256
+                ),
+                "post_author_session_limit_state_matches_canonical": True,
+                "session_limit_specs_after_authoring": 16,
+            }
+        )
         observed_reset_state = dependencies.capture_reset_state(scene)
         if self._canonical_reset_state is None:
             self._canonical_reset_state = observed_reset_state
@@ -415,14 +507,14 @@ class IsaacFSMBackend:
             != self._canonical_reset_state.state_sha256
         ):
             raise IsaacFSMBackendError(
-                "hard physics reset did not reproduce the canonical pre-settle state"
+                "baseline-order reset did not reproduce the canonical pre-settle state"
             )
         reset_writes.update(
             {
-                "hard_reset_native_state_observed_sha256": (
+                "pre_settle_native_state_observed_sha256": (
                     observed_reset_state.state_sha256
                 ),
-                "hard_reset_native_state_matches_canonical": True,
+                "pre_settle_native_state_matches_canonical": True,
             }
         )
         calibration_reader: Any | None = None
@@ -488,7 +580,7 @@ class IsaacFSMBackend:
                 != self._canonical_settled_state.state_sha256
             ):
                 raise IsaacFSMBackendError(
-                    "hard physics reset did not reproduce the canonical natural-settle state"
+                    "baseline-order reset did not reproduce the canonical natural-settle state"
                 )
             if self._canonical_level_reference_orientation is None:
                 raise IsaacFSMBackendError(
@@ -499,7 +591,7 @@ class IsaacFSMBackend:
                 != self._canonical_level_reference_orientation
             ):
                 raise IsaacFSMBackendError(
-                    "hard physics reset did not reproduce the level calibration"
+                    "baseline-order reset did not reproduce the level calibration"
                 )
 
         self._snapshot_restoration = {
@@ -1370,7 +1462,7 @@ class IsaacFSMBackend:
         return {
             "environment_hash": environment_hash,
             "robot_asset_hash": self._dependencies.robot_asset_hash,
-            "canonical_reset_state_source": "post_limit_hard_physics_reset_pre_settle",
+            "canonical_reset_state_source": "baseline_order_post_limit_authoring_pre_settle",
             "canonical_reset_state_sha256": (
                 None
                 if self._canonical_reset_state is None
@@ -1387,12 +1479,23 @@ class IsaacFSMBackend:
             "canonical_reset_applied_sha256": reset_writes.get(
                 "canonical_reset_applied_sha256"
             ),
-            "hard_reset_native_state_observed_sha256": reset_writes.get(
-                "hard_reset_native_state_observed_sha256"
+            "pre_limit_native_state_observed_sha256": reset_writes.get(
+                "pre_limit_native_state_observed_sha256"
             ),
-            "hard_reset_native_state_matches_canonical": bool(
+            "pre_limit_native_state_instance_count": int(
+                reset_writes.get("pre_limit_native_state_instance_count", 0)
+            ),
+            "pre_limit_native_state_matches_canonical": bool(
                 reset_writes.get(
-                    "hard_reset_native_state_matches_canonical", False
+                    "pre_limit_native_state_matches_canonical", False
+                )
+            ),
+            "pre_settle_native_state_observed_sha256": reset_writes.get(
+                "pre_settle_native_state_observed_sha256"
+            ),
+            "pre_settle_native_state_matches_canonical": bool(
+                reset_writes.get(
+                    "pre_settle_native_state_matches_canonical", False
                 )
             ),
             "canonical_settled_state_sha256": (
@@ -1400,7 +1503,7 @@ class IsaacFSMBackend:
                 if self._canonical_settled_state is None
                 else self._canonical_settled_state.state_sha256
             ),
-            "canonical_settled_state_source": "natural_post_hard_reset_settle",
+            "canonical_settled_state_source": "natural_post_baseline_order_settle",
             "canonical_settled_restore_applied": bool(
                 reset_writes.get("canonical_settled_restore_applied", False)
             ),
@@ -1415,6 +1518,43 @@ class IsaacFSMBackend:
             ),
             "reset_contact_sensor_count": int(
                 reset_writes.get("reset_contact_sensor_count", 0)
+            ),
+            "reset_initialization_order": reset_writes.get(
+                "reset_initialization_order"
+            ),
+            "pre_physics_session_limit_state_sha256": reset_writes.get(
+                "pre_physics_session_limit_state_sha256"
+            ),
+            "pre_physics_composed_limit_state_sha256": reset_writes.get(
+                "pre_physics_composed_limit_state_sha256"
+            ),
+            "pre_physics_composed_limit_state_matches_canonical": bool(
+                reset_writes.get(
+                    "pre_physics_composed_limit_state_matches_canonical",
+                    False,
+                )
+            ),
+            "session_limit_specs_present_during_physics_reset": int(
+                reset_writes.get(
+                    "session_limit_specs_present_during_physics_reset", -1
+                )
+            ),
+            "session_limit_specs_removed_before_reset": int(
+                reset_writes.get("session_limit_specs_removed_before_reset", 0)
+            ),
+            "removed_session_limit_state_sha256": reset_writes.get(
+                "removed_session_limit_state_sha256"
+            ),
+            "post_author_session_limit_state_sha256": reset_writes.get(
+                "post_author_session_limit_state_sha256"
+            ),
+            "post_author_session_limit_state_matches_canonical": bool(
+                reset_writes.get(
+                    "post_author_session_limit_state_matches_canonical", False
+                )
+            ),
+            "session_limit_specs_after_authoring": int(
+                reset_writes.get("session_limit_specs_after_authoring", 0)
             ),
             "adapter_standing_pose_deg": [
                 float(standing_pose[name]) for name in SERVO_ORDER
@@ -2253,48 +2393,312 @@ def _restore_canonical_settled_articulation_state(
     }
 
 
-def _reset_physics_lifecycle(
-    scene: Any, canonical_state: CanonicalArticulationResetState | None
-) -> Mapping[str, Any]:
-    """Rebuild PhysX episode state through the documented hard reset path.
+_SERVO_LIMIT_ATTRIBUTE_NAMES = (
+    "physics:lowerLimit",
+    "physics:upperLimit",
+)
 
-    Indexed articulation writes restore visible q/qd but do not clear GPU
-    PhysX contact manifolds, constraint warm-starts, or actuator target state.
-    The first caller has already bootstrapped the immutable session-layer
-    servo limits, so fresh and reused episodes instantiate identical views and
-    constraints from the same authored stage.
 
-    ``canonical_state`` is accepted only so the dependency seam retains one
-    reset signature. State comes from USD/session state, never indexed writes.
-    """
+def _session_servo_limit_state(scene: Any) -> dict[str, Any]:
+    """Describe only the 16 live limit opinions in the USD session layer."""
 
-    del canonical_state
     try:
-        reset = getattr(scene.sim, "reset", None)
-        if not callable(reset):
-            raise IsaacFSMBackendError(
-                "SimulationContext.reset is required for an episode lifecycle reset"
-            )
-        reset(soft=False)
-        scene.robot.reset()
-        scene.robot.update(0.0)
-        instrumentation = getattr(scene, "instrumentation", None)
-        contact_backend = getattr(instrumentation, "contact_backend", None)
-        if contact_backend is None or not bool(
-            getattr(contact_backend, "initialized", False)
+        from isaaclab.sim import get_current_stage  # type: ignore
+        from pxr import Sdf, Usd, UsdPhysics  # type: ignore
+
+        from wlr50_clean.infrastructure.scene_factory import ROBOT_PRIM_PATH
+
+        stage = get_current_stage()
+        scene_stage = getattr(getattr(scene, "sim", None), "stage", None)
+        if (
+            scene_stage is None
+            or stage != scene_stage
+            or stage.GetRootLayer() != scene_stage.GetRootLayer()
+            or stage.GetSessionLayer() != scene_stage.GetSessionLayer()
         ):
             raise IsaacFSMBackendError(
-                "exact-pair sensor bank did not reinitialize after physics reset"
+                "current USD stage differs from the backend scene stage"
             )
+        token_names = (
+            str(UsdPhysics.Tokens.physicsLowerLimit),
+            str(UsdPhysics.Tokens.physicsUpperLimit),
+        )
+        if token_names != _SERVO_LIMIT_ATTRIBUTE_NAMES:
+            raise IsaacFSMBackendError(
+                "USD Physics servo-limit tokens differ from the locked contract"
+            )
+        root_prim = stage.GetPrimAtPath(ROBOT_PRIM_PATH)
+        if not root_prim.IsValid():
+            raise IsaacFSMBackendError(
+                f"runtime robot prim is missing: {ROBOT_PRIM_PATH}"
+            )
+        session_layer = stage.GetSessionLayer()
+        if session_layer is None:
+            raise IsaacFSMBackendError("live USD stage has no session layer")
+
+        resolved: list[tuple[str, Any]] = []
+        for joint_name in SERVO_ORDER:
+            matches = [
+                prim
+                for prim in Usd.PrimRange(root_prim)
+                if prim.GetName() == joint_name
+                and prim.IsA(UsdPhysics.RevoluteJoint)
+            ]
+            if len(matches) != 1:
+                raise IsaacFSMBackendError(
+                    f"expected one RevoluteJoint prim named {joint_name}; "
+                    f"found {[str(prim.GetPath()) for prim in matches]}"
+                )
+            resolved.append((joint_name, matches[0]))
+
+        properties: list[dict[str, Any]] = []
+        composed_properties: list[dict[str, Any]] = []
+        for joint_name, prim in resolved:
+            for attribute_name in _SERVO_LIMIT_ATTRIBUTE_NAMES:
+                property_path = prim.GetPath().AppendProperty(attribute_name)
+                composed_attribute = stage.GetAttributeAtPath(property_path)
+                composed_value = (
+                    composed_attribute.Get()
+                    if composed_attribute.IsValid()
+                    else None
+                )
+                if composed_value is None:
+                    canonical_composed_value: float | str = "UNAUTHORED"
+                else:
+                    try:
+                        numeric_composed_value = float(composed_value)
+                    except (TypeError, ValueError) as exc:
+                        raise IsaacFSMBackendError(
+                            f"composed limit is not numeric: {property_path}"
+                        ) from exc
+                    if math.isnan(numeric_composed_value):
+                        raise IsaacFSMBackendError(
+                            f"composed limit is NaN: {property_path}"
+                        )
+                    canonical_composed_value = (
+                        numeric_composed_value
+                        if math.isfinite(numeric_composed_value)
+                        else repr(numeric_composed_value)
+                    )
+                composed_properties.append(
+                    {
+                        "property_path": str(property_path),
+                        "composed_default_deg": canonical_composed_value,
+                    }
+                )
+
+                spec = session_layer.GetPropertyAtPath(Sdf.Path(property_path))
+                if spec is None:
+                    continue
+                try:
+                    value = float(spec.default)
+                except (TypeError, ValueError) as exc:
+                    raise IsaacFSMBackendError(
+                        f"session limit opinion has no finite numeric default: {property_path}"
+                    ) from exc
+                if not math.isfinite(value):
+                    raise IsaacFSMBackendError(
+                        f"session limit opinion is non-finite: {property_path}"
+                    )
+                properties.append(
+                    {
+                        "joint_name": joint_name,
+                        "prim_path": str(prim.GetPath()),
+                        "attribute_name": attribute_name,
+                        "property_path": str(property_path),
+                        "default_deg": value,
+                    }
+                )
+        properties.sort(key=lambda row: str(row["property_path"]))
+        composed_properties.sort(key=lambda row: str(row["property_path"]))
+        identifier = str(
+            getattr(session_layer, "identifier", "")
+            or getattr(session_layer, "GetIdentifier", lambda: "")()
+            or "anonymous_session_layer"
+        )
+        return {
+            "schema": "wlr50_clean.session_servo_limit_state.v1",
+            "session_layer_identifier": identifier,
+            "property_count": len(properties),
+            "properties": properties,
+            "composed_property_count": len(composed_properties),
+            "composed_properties": composed_properties,
+            # The anonymous layer identifier is deliberately excluded: it is
+            # provenance, not part of the authored physical values.
+            "state_sha256": _canonical_hash(properties),
+            "composed_state_sha256": _canonical_hash(composed_properties),
+        }
+    except IsaacFSMBackendError:
+        raise
+    except Exception as exc:
+        raise IsaacFSMBackendError(
+            "could not inspect live session-layer servo limits: "
+            f"{type(exc).__name__}: {exc}"
+        ) from exc
+
+
+def _remove_session_servo_limit_specs(
+    scene: Any, before: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Remove, rather than block, the 16 session opinions before PhysX reload."""
+
+    if int(before.get("property_count", -1)) != (
+        len(SERVO_ORDER) * len(_SERVO_LIMIT_ATTRIBUTE_NAMES)
+    ):
+        raise IsaacFSMBackendError(
+            "reused reset requires exactly 16 authored session limit specs"
+        )
+    try:
+        from isaaclab.sim import get_current_stage  # type: ignore
+        from pxr import Sdf, Usd  # type: ignore
+
+        stage = get_current_stage()
+        session_layer = stage.GetSessionLayer()
+        if session_layer is None:
+            raise IsaacFSMBackendError("live USD stage has no session layer")
+        targets: list[tuple[Any, str]] = []
+        for row in before.get("properties", ()):
+            if not isinstance(row, Mapping):
+                raise IsaacFSMBackendError(
+                    "session limit state contains a malformed property"
+                )
+            prim = stage.GetPrimAtPath(str(row.get("prim_path", "")))
+            attribute_name = str(row.get("attribute_name", ""))
+            if not prim.IsValid() or attribute_name not in (
+                _SERVO_LIMIT_ATTRIBUTE_NAMES
+            ):
+                raise IsaacFSMBackendError(
+                    "session limit state contains an invalid target property"
+                )
+            property_path = prim.GetPath().AppendProperty(attribute_name)
+            if session_layer.GetPropertyAtPath(property_path) is None:
+                raise IsaacFSMBackendError(
+                    f"session limit property disappeared before removal: {property_path}"
+                )
+            targets.append((prim, attribute_name))
+        edit_target = Usd.EditTarget(session_layer)
+        with Sdf.ChangeBlock():
+            with Usd.EditContext(stage, edit_target):
+                for prim, attribute_name in targets:
+                    if not prim.RemoveProperty(attribute_name):
+                        raise IsaacFSMBackendError(
+                            "could not remove session limit property: "
+                        f"{prim.GetPath()}.{attribute_name}"
+                    )
+        after = _session_servo_limit_state(scene)
+        if int(after.get("property_count", -1)) != 0:
+            raise IsaacFSMBackendError(
+                "session limit property specs remained after exact removal"
+            )
+        return after
+    except IsaacFSMBackendError:
+        raise
+    except Exception as exc:
+        raise IsaacFSMBackendError(
+            "could not remove live session-layer servo limits: "
+            f"{type(exc).__name__}: {exc}"
+        ) from exc
+
+
+def _contact_reset_evidence(scene: Any, *, reset_history: bool) -> int:
+    instrumentation = getattr(scene, "instrumentation", None)
+    contact_backend = getattr(instrumentation, "contact_backend", None)
+    if contact_backend is None or not bool(
+        getattr(contact_backend, "initialized", False)
+    ):
+        raise IsaacFSMBackendError(
+            "exact-pair sensor bank did not initialize after physics reset"
+        )
+    if reset_history:
         reset_contacts = getattr(contact_backend, "reset", None)
         if not callable(reset_contacts):
             raise IsaacFSMBackendError("exact-pair sensor bank cannot reset")
         reset_contacts()
-        sensor_count = len(getattr(contact_backend, "sensors", {}))
-        if sensor_count != 13:
+    sensor_count = len(getattr(contact_backend, "sensors", {}))
+    if sensor_count != 13:
+        raise IsaacFSMBackendError(
+            f"physics reset expected 13 contact sensors; received {sensor_count}"
+        )
+    return sensor_count
+
+
+def _reset_physics_lifecycle(
+    scene: Any, canonical_state: CanonicalArticulationResetState | None
+) -> Mapping[str, Any]:
+    """Reproduce the successful baseline's reset-before-limit order.
+
+    The frozen successful runtime creates PhysX from the source USD first and
+    only then authors the 16 live session-layer servo limits.  Reloading PhysX
+    while those opinions are already present changes the standing pose by
+    several degrees and deterministically blocks P10.  A reused episode must
+    therefore remove those exact session specs, perform a hard reload, and let
+    the next ``RobotAdapter`` re-author them before the natural settle.
+
+    The fresh scene has already received its one authoritative reset inside
+    ``SceneFactory.create_scene``.  No indexed state write is used here.
+    """
+
+    try:
+        if canonical_state is not None:
+            stop = getattr(scene.sim, "stop", None)
+            if not callable(stop):
+                raise IsaacFSMBackendError(
+                    "SimulationContext.stop is required before session limit removal"
+                )
+            stop()
+            is_stopped = getattr(scene.sim, "is_stopped", None)
+            if not callable(is_stopped) or not bool(is_stopped()):
+                raise IsaacFSMBackendError(
+                    "physics timeline did not stop before session limit removal"
+                )
+        before = _session_servo_limit_state(scene)
+        removed_count = 0
+        removed_sha256: str | None = None
+        if canonical_state is None:
+            if int(before.get("property_count", -1)) != 0:
+                raise IsaacFSMBackendError(
+                    "fresh SceneFactory reset unexpectedly contains session limit specs"
+                )
+            cleared = before
+            lifecycle = "scene_factory_reset_before_limit_authoring"
+            sensor_count = _contact_reset_evidence(scene, reset_history=False)
+        else:
+            removed_count = int(before.get("property_count", -1))
+            removed_sha256 = str(before.get("state_sha256", ""))
+            cleared = _remove_session_servo_limit_specs(scene, before)
+            reset = getattr(scene.sim, "reset", None)
+            if not callable(reset):
+                raise IsaacFSMBackendError(
+                    "SimulationContext.reset is required for an episode lifecycle reset"
+                )
+            reset(soft=False)
+            is_playing = getattr(scene.sim, "is_playing", None)
+            if not callable(is_playing) or not bool(is_playing()):
+                raise IsaacFSMBackendError(
+                    "physics timeline did not play after the no-limit reset"
+                )
+            # Match SceneFactory.create_scene exactly: its authoritative reset
+            # is followed by an update, not an indexed articulation restore.
+            scene.robot.update(0.0)
+            lifecycle = "session_limits_removed_then_hard_reset"
+            sensor_count = _contact_reset_evidence(scene, reset_history=True)
+
+        pre_physics_state = _session_servo_limit_state(scene)
+        if (
+            int(pre_physics_state.get("property_count", -1)) != 0
+            or pre_physics_state.get("state_sha256")
+            != cleared.get("state_sha256")
+            or pre_physics_state.get("composed_state_sha256")
+            != cleared.get("composed_state_sha256")
+            or int(pre_physics_state.get("composed_property_count", -1))
+            != len(SERVO_ORDER) * len(_SERVO_LIMIT_ATTRIBUTE_NAMES)
+        ):
             raise IsaacFSMBackendError(
-                f"hard physics reset expected 13 contact sensors; received {sensor_count}"
+                "session limit state changed during the no-limit physics reset"
             )
+        native_without_limits = capture_canonical_articulation_reset_state(
+            scene.robot
+        )
     except IsaacFSMBackendError:
         raise
     except Exception as exc:
@@ -2307,8 +2711,28 @@ def _reset_physics_lifecycle(
         "joint_state_writes": 0,
         "global_simulation_resets": 1,
         "simulation_forward_syncs": 0,
-        "physics_lifecycle_reset": "hard_stop_play",
+        "physics_lifecycle_reset": lifecycle,
         "reset_contact_sensor_count": sensor_count,
+        "reset_initialization_order": (
+            "physics_reset_without_session_limits_then_author_limits_then_settle"
+        ),
+        "pre_physics_session_limit_state_sha256": pre_physics_state[
+            "state_sha256"
+        ],
+        "pre_physics_composed_limit_state_sha256": pre_physics_state[
+            "composed_state_sha256"
+        ],
+        "session_limit_specs_present_during_physics_reset": int(
+            pre_physics_state["property_count"]
+        ),
+        "session_limit_specs_removed_before_reset": removed_count,
+        "removed_session_limit_state_sha256": removed_sha256,
+        "pre_limit_native_state_observed_sha256": (
+            native_without_limits.state_sha256
+        ),
+        "pre_limit_native_state_instance_count": (
+            native_without_limits.instance_count
+        ),
     }
 
 

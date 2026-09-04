@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
+import wlr50_clean.ppo.isaac_fsm_backend as backend_module
 from wlr50_clean.ppo.isaac_fsm_backend import (
     DEFAULT_FSM_PATH,
     DEFAULT_MOTION_CONTRACT_PATH,
@@ -21,6 +22,7 @@ from wlr50_clean.ppo.isaac_fsm_backend import (
     capture_canonical_articulation_reset_state,
     restore_canonical_articulation_reset_state,
     _load_validated_phase_snapshot,
+    _reset_physics_lifecycle,
     _restore_controller_from_snapshot,
     _restore_guard_tracker_from_snapshot,
 )
@@ -463,14 +465,37 @@ class FakeRuntime:
             assert reset_state is None or reset_state is canonical_reset_state
             self.reset_scene_count += 1
             self.events.append(("reset_scene", reset_state))
+            fresh = reset_state is None
             return {
                 "root_pose_writes": 0,
                 "root_velocity_writes": 0,
                 "joint_state_writes": 0,
                 "global_simulation_resets": 1,
                 "simulation_forward_syncs": 0,
-                "physics_lifecycle_reset": "hard_stop_play",
+                "physics_lifecycle_reset": (
+                    "scene_factory_reset_before_limit_authoring"
+                    if fresh
+                    else "session_limits_removed_then_hard_reset"
+                ),
                 "reset_contact_sensor_count": 13,
+                "reset_initialization_order": (
+                    "physics_reset_without_session_limits_then_author_limits_then_settle"
+                ),
+                "pre_physics_session_limit_state_sha256": "e" * 64,
+                "pre_physics_composed_limit_state_sha256": "c" * 64,
+                "session_limit_specs_present_during_physics_reset": 0,
+                "session_limit_specs_removed_before_reset": 0 if fresh else 16,
+                "removed_session_limit_state_sha256": None if fresh else "a" * 64,
+                "pre_limit_native_state_observed_sha256": "b" * 64,
+                "pre_limit_native_state_instance_count": 1,
+            }
+
+        def capture_session_limit_state(scene):
+            assert scene is self.scene
+            self.events.append(("capture_session_limit_state",))
+            return {
+                "property_count": 16,
+                "state_sha256": "a" * 64,
             }
 
         def restore_settled_state(scene, reset_state):
@@ -547,6 +572,7 @@ class FakeRuntime:
             write_phase_snapshot=write_phase_snapshot,
             restore_controller_snapshot=restore_controller_snapshot,
             restore_guard_snapshot=restore_guard_snapshot,
+            capture_session_limit_state=capture_session_limit_state,
         )
 
 
@@ -681,14 +707,14 @@ def test_authoritative_termination_sources_are_mapped(fault, field) -> None:
         backend.step_physics(ZERO)
 
 
-def test_each_episode_uses_the_same_hard_physics_lifecycle_reset() -> None:
+def test_each_episode_recreates_the_baseline_reset_before_limit_order() -> None:
     runtime = FakeRuntime()
     backend = _backend(runtime)
     first = backend.reset(seed=1, options={})
     second = backend.reset(seed=2, options={})
 
     assert runtime.reset_scene_count == 2
-    assert runtime.adapter_create_count == 3
+    assert runtime.adapter_create_count == 2
     assert runtime.sim.step_count == 2 * SETTLE_TICKS
     assert first.info["reset_global_simulation_resets"] == 1
     assert second.info["reset_global_simulation_resets"] == 1
@@ -699,16 +725,202 @@ def test_each_episode_uses_the_same_hard_physics_lifecycle_reset() -> None:
     assert second.info["reset_simulation_forward_syncs"] == 0
     assert first.info["canonical_reset_restore_applied"] is False
     assert second.info["canonical_reset_restore_applied"] is False
-    assert first.info["hard_reset_native_state_matches_canonical"] is True
-    assert second.info["hard_reset_native_state_matches_canonical"] is True
+    assert first.info["physics_lifecycle_reset"] == (
+        "scene_factory_reset_before_limit_authoring"
+    )
+    assert second.info["physics_lifecycle_reset"] == (
+        "session_limits_removed_then_hard_reset"
+    )
+    assert first.info["session_limit_specs_removed_before_reset"] == 0
+    assert second.info["session_limit_specs_removed_before_reset"] == 16
+    assert first.info["pre_limit_native_state_matches_canonical"] is True
+    assert second.info["pre_limit_native_state_matches_canonical"] is True
+    assert first.info["pre_settle_native_state_matches_canonical"] is True
+    assert second.info["pre_settle_native_state_matches_canonical"] is True
     assert second.info["canonical_settled_restore_applied"] is False
     assert second.info["in_episode_root_pose_writes"] == 0
     assert sum(event[0] == "capture_reset_state" for event in runtime.events) == 4
     assert sum(event[0] == "restore_settled_state" for event in runtime.events) == 0
 
 
+def test_reused_lifecycle_orders_stop_remove_reset_and_native_capture(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[str] = []
+    authored = {
+        "property_count": 16,
+        "state_sha256": "a" * 64,
+        "composed_state_sha256": "runtime-composed",
+    }
+    cleared = {
+        "property_count": 0,
+        "state_sha256": "e" * 64,
+        "composed_property_count": 16,
+        "composed_state_sha256": "source-composed",
+    }
+    inspections = iter((authored, cleared))
+
+    def inspect(scene):
+        events.append("inspect")
+        return next(inspections)
+
+    def remove(scene, before):
+        assert before is authored
+        events.append("remove")
+        return cleared
+
+    monkeypatch.setattr(backend_module, "_session_servo_limit_state", inspect)
+    monkeypatch.setattr(
+        backend_module,
+        "_remove_session_servo_limit_specs",
+        remove,
+    )
+    monkeypatch.setattr(
+        backend_module,
+        "capture_canonical_articulation_reset_state",
+        lambda robot: events.append("capture_native")
+        or SimpleNamespace(instance_count=1, state_sha256="b" * 64),
+    )
+    sim = SimpleNamespace(
+        stop=lambda: events.append("stop"),
+        is_stopped=lambda: events.append("is_stopped") or True,
+        reset=lambda *, soft: events.append(f"reset:{soft}"),
+        is_playing=lambda: events.append("is_playing") or True,
+    )
+    robot = SimpleNamespace(update=lambda dt: events.append(f"robot.update:{dt}"))
+    contacts = SimpleNamespace(
+        initialized=True,
+        sensors={str(index): object() for index in range(13)},
+        reset=lambda: events.append("contact.reset"),
+    )
+    scene = SimpleNamespace(
+        sim=sim,
+        robot=robot,
+        instrumentation=SimpleNamespace(contact_backend=contacts),
+    )
+
+    evidence = _reset_physics_lifecycle(
+        scene,
+        SimpleNamespace(instance_count=1, state_sha256="canonical"),
+    )
+
+    assert events == [
+        "stop",
+        "is_stopped",
+        "inspect",
+        "remove",
+        "reset:False",
+        "is_playing",
+        "robot.update:0.0",
+        "contact.reset",
+        "inspect",
+        "capture_native",
+    ]
+    assert evidence["session_limit_specs_removed_before_reset"] == 16
+    assert evidence["session_limit_specs_present_during_physics_reset"] == 0
+    assert evidence["pre_physics_composed_limit_state_sha256"] == (
+        "source-composed"
+    )
+
+
+def test_reused_pre_limit_native_mismatch_fails_before_adapter_or_settle() -> None:
+    runtime = FakeRuntime()
+    dependencies = runtime.dependencies()
+    reset_scene = dependencies.reset_scene
+    reset_count = 0
+
+    def reset_with_native_mismatch(scene, reset_state):
+        nonlocal reset_count
+        reset_count += 1
+        evidence = dict(reset_scene(scene, reset_state))
+        if reset_count == 2:
+            evidence["pre_limit_native_state_observed_sha256"] = "d" * 64
+        return evidence
+
+    backend = IsaacFSMBackend(
+        dependencies=replace(dependencies, reset_scene=reset_with_native_mismatch)
+    )
+    backend.reset(seed=1, options={})
+    steps_before_reuse = runtime.sim.step_count
+    adapters_before_reuse = runtime.adapter_create_count
+
+    with pytest.raises(
+        IsaacFSMBackendError,
+        match="did not reproduce the canonical native pre-limit state",
+    ):
+        backend.reset(seed=2, options={})
+
+    assert runtime.sim.step_count == steps_before_reuse
+    assert runtime.adapter_create_count == adapters_before_reuse
+
+
+def test_reused_source_limit_mismatch_fails_before_adapter_or_settle() -> None:
+    runtime = FakeRuntime()
+    dependencies = runtime.dependencies()
+    reset_scene = dependencies.reset_scene
+    reset_count = 0
+
+    def reset_with_source_limit_mismatch(scene, reset_state):
+        nonlocal reset_count
+        reset_count += 1
+        evidence = dict(reset_scene(scene, reset_state))
+        if reset_count == 2:
+            evidence["pre_physics_composed_limit_state_sha256"] = "d" * 64
+        return evidence
+
+    backend = IsaacFSMBackend(
+        dependencies=replace(
+            dependencies,
+            reset_scene=reset_with_source_limit_mismatch,
+        )
+    )
+    backend.reset(seed=1, options={})
+    steps_before_reuse = runtime.sim.step_count
+    adapters_before_reuse = runtime.adapter_create_count
+
+    with pytest.raises(
+        IsaacFSMBackendError,
+        match="source-composed servo limits changed",
+    ):
+        backend.reset(seed=2, options={})
+
+    assert runtime.sim.step_count == steps_before_reuse
+    assert runtime.adapter_create_count == adapters_before_reuse
+
+
+def test_reused_limit_reauthor_mismatch_fails_before_settle() -> None:
+    runtime = FakeRuntime()
+    dependencies = runtime.dependencies()
+    capture_count = 0
+
+    def capture_mismatched_reauthor(scene):
+        nonlocal capture_count
+        capture_count += 1
+        return {
+            "property_count": 16,
+            "state_sha256": ("a" if capture_count == 1 else "d") * 64,
+        }
+
+    backend = IsaacFSMBackend(
+        dependencies=replace(
+            dependencies,
+            capture_session_limit_state=capture_mismatched_reauthor,
+        )
+    )
+    backend.reset(seed=1, options={})
+    steps_before_reuse = runtime.sim.step_count
+
+    with pytest.raises(
+        IsaacFSMBackendError,
+        match="did not reproduce the removed session limit state",
+    ):
+        backend.reset(seed=2, options={})
+
+    assert runtime.sim.step_count == steps_before_reuse
+
+
 @pytest.mark.parametrize("mismatch", ["sha256", "instance_count"])
-def test_reused_hard_reset_native_mismatch_fails_before_settle_step(
+def test_reused_post_author_native_mismatch_fails_before_settle_step(
     mismatch: str,
 ) -> None:
     runtime = FakeRuntime()

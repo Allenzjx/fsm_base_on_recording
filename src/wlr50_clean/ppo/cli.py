@@ -709,7 +709,13 @@ def _soft_reset_equivalence(args: argparse.Namespace, simulation_app: Any) -> in
             final_step = env.step((0.0,) * 12)
             reward_total += final_step.reward
             assert env.frame is not None
-            rows.append(compact_trace_row(env.frame, final_step.info))
+            rows.append(
+                compact_trace_row(
+                    env.frame,
+                    final_step.info,
+                    actor_observation_v2=final_step.observation,
+                )
+            )
         if final_step is None or env.frame is None:
             raise CliError("soft-reset equivalence episode ended without a decision")
         audit = tick_audit.finalize()

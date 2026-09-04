@@ -12,7 +12,7 @@ from typing import Any, Mapping, Sequence
 from .action_projection import ZeroResidualEpisodeAuditor, full12_bytes
 
 
-SOFT_RESET_ACCEPTANCE_SCHEMA = "wlr50_clean.soft_reset_equivalence.v2"
+SOFT_RESET_ACCEPTANCE_SCHEMA = "wlr50_clean.soft_reset_equivalence.v3"
 SOFT_RESET_ACCEPTANCE_FILENAME = "soft_reset_equivalence_acceptance.json"
 PHASE_IDS = tuple(f"P{index:02d}" for index in range(1, 14))
 ZERO_FULL12 = (0.0,) * 12
@@ -24,6 +24,8 @@ TRACE_FIELDS = (
     "lifecycle",
     "phase_progress",
     "physics_ticks_executed",
+    "actor_observation_v2_dimension",
+    "actor_observation_v2_sha256",
     "nominal_full12",
     "residual_full12",
     "applied_full12",
@@ -55,8 +57,11 @@ RESET_METADATA_FIELDS = (
     "canonical_reset_state_instance_count",
     "canonical_reset_restore_applied",
     "canonical_reset_applied_sha256",
-    "hard_reset_native_state_observed_sha256",
-    "hard_reset_native_state_matches_canonical",
+    "pre_limit_native_state_observed_sha256",
+    "pre_limit_native_state_instance_count",
+    "pre_limit_native_state_matches_canonical",
+    "pre_settle_native_state_observed_sha256",
+    "pre_settle_native_state_matches_canonical",
     "adapter_standing_pose_deg",
     "canonical_settled_state_source",
     "canonical_settled_state_sha256",
@@ -65,6 +70,16 @@ RESET_METADATA_FIELDS = (
     "observed_settled_state_sha256",
     "physics_lifecycle_reset",
     "reset_contact_sensor_count",
+    "reset_initialization_order",
+    "pre_physics_session_limit_state_sha256",
+    "pre_physics_composed_limit_state_sha256",
+    "pre_physics_composed_limit_state_matches_canonical",
+    "session_limit_specs_present_during_physics_reset",
+    "session_limit_specs_removed_before_reset",
+    "removed_session_limit_state_sha256",
+    "post_author_session_limit_state_sha256",
+    "post_author_session_limit_state_matches_canonical",
+    "session_limit_specs_after_authoring",
     "environment_initialization",
     "controller_hash",
     "motion_contract_hash",
@@ -92,10 +107,12 @@ SOFT_RESET_CONTRACT_RELATIVE_PATHS = (
     "configs/recording_motion_contract.json",
     "configs/ppo_interface_v2.yaml",
     "configs/ppo_phase_action_masks_v2.yaml",
+    "configs/ppo_observation_schema_v2.json",
     "configs/ppo_termination_v2.yaml",
     "src/wlr50_clean/ppo/action_projection.py",
     "src/wlr50_clean/ppo/isaac_fsm_backend.py",
     "src/wlr50_clean/ppo/phase_action_masks_v2.py",
+    "src/wlr50_clean/ppo/observation_schema_v2.py",
     "src/wlr50_clean/ppo/residual_direct_env.py",
     "src/wlr50_clean/ppo/soft_reset_equivalence.py",
 )
@@ -184,9 +201,29 @@ class CompactZeroResidualTickAudit:
         }
 
 
-def compact_trace_row(frame: Any, info: Mapping[str, Any]) -> dict[str, Any]:
+def compact_trace_row(
+    frame: Any,
+    info: Mapping[str, Any],
+    *,
+    actor_observation_v2: Sequence[float],
+) -> dict[str, Any]:
     """Select only deterministic controller/action fields from one decision."""
 
+    try:
+        actor_vector = tuple(float(value) for value in actor_observation_v2)
+    except (TypeError, ValueError) as exc:
+        raise SoftResetEquivalenceError(
+            "actor observation cannot be serialized as a numeric vector"
+        ) from exc
+    if not actor_vector or any(not math.isfinite(value) for value in actor_vector):
+        raise SoftResetEquivalenceError(
+            "actor observation must be a non-empty finite vector"
+        )
+    actor_bytes = json.dumps(
+        actor_vector,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
     row = {
         "decision_index": int(info["decision_index"]),
         "physics_tick": int(frame.physics_tick),
@@ -195,6 +232,8 @@ def compact_trace_row(frame: Any, info: Mapping[str, Any]) -> dict[str, Any]:
         "lifecycle": str(info.get("controller_lifecycle")),
         "phase_progress": float(frame.phase_progress),
         "physics_ticks_executed": int(info["physics_ticks_executed"]),
+        "actor_observation_v2_dimension": len(actor_vector),
+        "actor_observation_v2_sha256": hashlib.sha256(actor_bytes).hexdigest(),
         "nominal_full12": [float(value) for value in frame.nominal_action_full12],
         "residual_full12": [float(value) for value in info["projected_residual_full12"]],
         "applied_full12": [float(value) for value in info["applied_action_full12"]],
@@ -301,14 +340,24 @@ def compare_reset_metadata(
         "canonical_reset_state_source",
         "canonical_reset_state_sha256",
         "canonical_reset_state_instance_count",
-        "hard_reset_native_state_observed_sha256",
-        "hard_reset_native_state_matches_canonical",
+        "pre_limit_native_state_observed_sha256",
+        "pre_limit_native_state_instance_count",
+        "pre_limit_native_state_matches_canonical",
+        "pre_settle_native_state_observed_sha256",
+        "pre_settle_native_state_matches_canonical",
         "adapter_standing_pose_deg",
         "canonical_settled_state_source",
         "canonical_settled_state_sha256",
         "observed_settled_state_sha256",
-        "physics_lifecycle_reset",
         "reset_contact_sensor_count",
+        "reset_initialization_order",
+        "pre_physics_session_limit_state_sha256",
+        "pre_physics_composed_limit_state_sha256",
+        "pre_physics_composed_limit_state_matches_canonical",
+        "session_limit_specs_present_during_physics_reset",
+        "post_author_session_limit_state_sha256",
+        "post_author_session_limit_state_matches_canonical",
+        "session_limit_specs_after_authoring",
         "environment_initialization",
         "controller_hash",
         "motion_contract_hash",
@@ -326,10 +375,12 @@ def compare_reset_metadata(
     checks = {
         "fresh_reset_count_is_one": int(fresh.get("reset_count", -1)) == 1,
         "reused_reset_count_is_two": int(reused.get("reset_count", -1)) == 2,
-        "fresh_used_one_hard_physics_lifecycle_reset": int(
+        "fresh_used_one_scene_factory_physics_reset": int(
             fresh.get("reset_global_simulation_resets", -1)
         )
-        == 1,
+        == 1
+        and fresh.get("physics_lifecycle_reset")
+        == "scene_factory_reset_before_limit_authoring",
         "fresh_used_no_step_free_forward_sync": int(
             fresh.get("reset_simulation_forward_syncs", -1)
         )
@@ -350,11 +401,35 @@ def compare_reset_metadata(
             fresh.get("canonical_reset_restore_applied", True)
         )
         and fresh.get("canonical_reset_applied_sha256") is None,
-        "fresh_hard_reset_reached_canonical_state": bool(
-            fresh.get("hard_reset_native_state_matches_canonical", False)
+        "fresh_physx_started_without_session_limit_specs": int(
+            fresh.get("session_limit_specs_present_during_physics_reset", -1)
         )
-        and fresh.get("hard_reset_native_state_observed_sha256")
+        == 0
+        and int(fresh.get("session_limit_specs_removed_before_reset", -1)) == 0
+        and fresh.get("removed_session_limit_state_sha256") is None
+        and bool(
+            fresh.get(
+                "pre_physics_composed_limit_state_matches_canonical", False
+            )
+        ),
+        "fresh_pre_limit_native_state_is_canonical": bool(
+            fresh.get("pre_limit_native_state_matches_canonical", False)
+        )
+        and int(fresh.get("pre_limit_native_state_instance_count", -1)) == 1,
+        "fresh_pre_settle_state_reached_canonical": bool(
+            fresh.get("pre_settle_native_state_matches_canonical", False)
+        )
+        and fresh.get("pre_settle_native_state_observed_sha256")
         == fresh.get("canonical_reset_state_sha256"),
+        "fresh_authored_exactly_sixteen_session_limit_specs": int(
+            fresh.get("session_limit_specs_after_authoring", -1)
+        )
+        == 16
+        and bool(
+            fresh.get(
+                "post_author_session_limit_state_matches_canonical", False
+            )
+        ),
         "fresh_natural_settle_reached_canonical_state": fresh.get(
             "observed_settled_state_sha256"
         )
@@ -363,10 +438,12 @@ def compare_reset_metadata(
             fresh.get("reset_contact_sensor_count", -1)
         )
         == 13,
-        "reused_used_one_hard_physics_lifecycle_reset": int(
+        "reused_used_one_pre_limit_hard_physics_reset": int(
             reused.get("reset_global_simulation_resets", -1)
         )
-        == 1,
+        == 1
+        and reused.get("physics_lifecycle_reset")
+        == "session_limits_removed_then_hard_reset",
         "reused_used_no_step_free_forward_sync": int(
             reused.get("reset_simulation_forward_syncs", -1)
         )
@@ -387,11 +464,41 @@ def compare_reset_metadata(
             reused.get("canonical_reset_restore_applied", True)
         )
         and reused.get("canonical_reset_applied_sha256") is None,
-        "reused_hard_reset_reached_canonical_state": bool(
-            reused.get("hard_reset_native_state_matches_canonical", False)
+        "reused_removed_exactly_sixteen_session_limit_specs": int(
+            reused.get("session_limit_specs_removed_before_reset", -1)
         )
-        and reused.get("hard_reset_native_state_observed_sha256")
+        == 16
+        and isinstance(reused.get("removed_session_limit_state_sha256"), str)
+        and len(str(reused.get("removed_session_limit_state_sha256"))) == 64,
+        "reused_physx_started_without_session_limit_specs": int(
+            reused.get("session_limit_specs_present_during_physics_reset", -1)
+        )
+        == 0
+        and bool(
+            reused.get(
+                "pre_physics_composed_limit_state_matches_canonical", False
+            )
+        ),
+        "reused_pre_limit_native_state_is_canonical": bool(
+            reused.get("pre_limit_native_state_matches_canonical", False)
+        )
+        and int(reused.get("pre_limit_native_state_instance_count", -1)) == 1,
+        "reused_pre_settle_state_reached_canonical": bool(
+            reused.get("pre_settle_native_state_matches_canonical", False)
+        )
+        and reused.get("pre_settle_native_state_observed_sha256")
         == reused.get("canonical_reset_state_sha256"),
+        "reused_reauthored_removed_session_limit_state_exactly": int(
+            reused.get("session_limit_specs_after_authoring", -1)
+        )
+        == 16
+        and bool(
+            reused.get(
+                "post_author_session_limit_state_matches_canonical", False
+            )
+        )
+        and reused.get("post_author_session_limit_state_sha256")
+        == reused.get("removed_session_limit_state_sha256"),
         "reused_natural_settle_reached_canonical_state": reused.get(
             "observed_settled_state_sha256"
         )
@@ -414,7 +521,7 @@ def compare_reset_metadata(
         },
     }
     return {
-        "schema": "wlr50_clean.soft_reset_metadata_comparison.v2",
+        "schema": "wlr50_clean.soft_reset_metadata_comparison.v3",
         "backend_instance_count": 1,
         "same_backend_instance_reused": True,
         "checks": checks,
