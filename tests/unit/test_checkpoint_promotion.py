@@ -83,6 +83,16 @@ def _promotion_decision(
     )
 
 
+def test_required_promotion_gates_match_complete_evaluation_schema() -> None:
+    assert len(subject.REQUIRED_PROMOTION_GATES) == 18
+    assert subject.REQUIRED_PROMOTION_GATES[-4:] == (
+        "level_calibration_quality_passed",
+        "residual_activity_calibrated",
+        "priority_phases_have_real_residual",
+        "at_least_10_phases_have_real_residual",
+    )
+
+
 def _promote_best(tmp_path: Path, *, name: str = "candidate.pt"):
     checkpoint, manifest = _checkpoint_evidence(tmp_path, name=name)
     decision = _promotion_decision(tmp_path, checkpoint)
@@ -687,11 +697,13 @@ def test_loaded_runner_exports_verified_inference_only_actor(tmp_path: Path) -> 
     assert evidence["contains_critic"] is False
     assert evidence["contains_optimizer"] is False
     assert evidence["contains_stochastic_sampler"] is False
+    assert evidence["torchscript"]["valid"] is True
     assert evidence["torchscript"]["equivalent_to_loaded_runner"] is True
     assert evidence["torchscript"]["maximum_absolute_error"] <= 1.0e-6
     if evidence["onnx"]["supported"]:
         assert artifacts.onnx_actor is not None and artifacts.onnx_actor.is_file()
         assert artifacts.onnx_actor.name == "policy_improved_actor.onnx"
+        assert evidence["onnx"]["valid"] is True
         assert evidence["onnx"]["status"] == "PASS"
         assert evidence["onnx"]["equivalent_to_loaded_runner"] is True
         assert evidence["onnx"]["maximum_absolute_error"] <= 1.0e-6

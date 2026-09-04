@@ -66,6 +66,10 @@ REQUIRED_PROMOTION_GATES = (
     "at_least_4_of_5_priority_phases_improve",
     "no_priority_phase_degrades_over_10pct",
     "one_visual_key_metric_gate",
+    "level_calibration_quality_passed",
+    "residual_activity_calibrated",
+    "priority_phases_have_real_residual",
+    "at_least_10_phases_have_real_residual",
 )
 
 VALIDATION_SEEDS = (2001, 2002, 2003, 2004, 2005)
@@ -1674,6 +1678,7 @@ def export_inference_actor(
             ) from exc
 
         torchscript_evidence: dict[str, Any] = {
+            "valid": True,
             "status": "PASS",
             "supported": True,
             "path": str(torchscript_path),
@@ -1734,6 +1739,7 @@ def export_inference_actor(
                 if not bool(np.allclose(onnx_output, reference_numpy, atol=atol, rtol=rtol)):
                     raise CheckpointPromotionError("ONNX round trip differs from loaded RSL policy")
                 onnx_evidence = {
+                    "valid": True,
                     "status": "PASS",
                     "supported": True,
                     "support_runtime": f"onnx {onnx_support_detail} ReferenceEvaluator",

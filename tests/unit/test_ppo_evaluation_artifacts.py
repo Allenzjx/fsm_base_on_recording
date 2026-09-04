@@ -10,6 +10,7 @@ import numpy as np
 import pytest
 
 from wlr50_clean.infrastructure.command_batch import FULL12_ORDER
+from wlr50_clean.ppo import checkpoint_promotion
 from wlr50_clean.ppo import evaluation_artifacts as subject
 from wlr50_clean.ppo.evaluation import (
     LiveRunCalibration,
@@ -380,6 +381,66 @@ def test_paired_export_is_complete_sorted_and_byte_idempotent(tmp_path: Path) ->
     assert {
         path: (path.read_bytes(), path.stat().st_mtime_ns) for path in before
     } == before
+
+
+def test_exported_promotion_decision_is_accepted_by_checkpoint_promotion(
+    tmp_path: Path,
+) -> None:
+    baseline, candidate = _paired_runs(tmp_path)
+    checkpoint = tmp_path / "candidate.pt"
+    checkpoint.write_bytes(b"synthetic trained RSL checkpoint bytes")
+    checkpoint_manifest = tmp_path / "candidate_manifest.json"
+    checkpoint_manifest.write_text(
+        json.dumps(
+            {
+                "schema": checkpoint_promotion.CHECKPOINT_MANIFEST_SCHEMA,
+                "stage": "full-episode",
+                "training_seed": 1001,
+                "global_policy_decisions": 100_000,
+                "actor_observation_dimension": 125,
+                "critic_observation_dimension": 125,
+                "residual_dimension": 12,
+                "physics_hz": 120.0,
+                "decision_hz": 15.0,
+                "controller_hash": "a" * 64,
+                "environment_hash": "b" * 64,
+                "observation_schema_hash": "c" * 64,
+                "action_schema_hash": "d" * 64,
+                "reward_config_hash": "e" * 64,
+                "checkpoint_path": str(checkpoint.resolve()),
+                "checkpoint_sha256": subject.sha256_file(checkpoint),
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    paths = subject.export_paired_evaluation_artifacts(
+        tmp_path / "metrics",
+        baseline_runs=baseline,
+        candidate_runs=candidate,
+        frozen_hashes_unchanged=True,
+        candidate_checkpoint_name="candidate",
+        candidate_checkpoint_path=checkpoint,
+        residual_calibration_evidence=subject.build_versioned_residual_activity_calibration(),
+    )
+
+    exported = json.loads(paths.promotion_decision.read_text(encoding="utf-8"))
+    exported_gate_order = tuple(
+        row["gate"] for row in exported["checks_in_evaluation_order"]
+    )
+    assert exported_gate_order == checkpoint_promotion.REQUIRED_PROMOTION_GATES
+    assert set(exported["promotion"]["checks"]) == set(
+        checkpoint_promotion.REQUIRED_PROMOTION_GATES
+    )
+
+    promoted = checkpoint_promotion.promote_best_validation_checkpoint(
+        promotion_decision_path=paths.promotion_decision,
+        candidate_checkpoint_path=checkpoint,
+        candidate_manifest_path=checkpoint_manifest,
+        output_root=tmp_path / "publication",
+    )
+    assert promoted.best_checkpoint.read_bytes() == checkpoint.read_bytes()
 
 
 def test_baseline_only_export_evaluates_five_canonical_dirs_and_is_idempotent(
