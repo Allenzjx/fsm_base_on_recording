@@ -8,6 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 from wlr50_clean.ppo import cli
+from wlr50_clean.ppo import phase_effective_entry as effective_entry_subject
 from wlr50_clean.ppo import phase_snapshot_live_probe as probe_subject
 from wlr50_clean.ppo.phase_snapshot_live_probe import (
     ATTEMPTS_PER_PHASE,
@@ -98,6 +99,8 @@ def _replay_window(snapshot: dict[str, object]):
             source_tick=snapshot["source_tick"],
             source_replay_steps=snapshot["source_replay_steps"],
             target_entry_tick=snapshot.get("target_entry_tick"),
+            controller_anchor_tick=snapshot.get("controller_anchor_tick"),
+            controller_anchor_time_s=snapshot.get("controller_anchor_time_s"),
         ),
         phase=str(snapshot["fsm_state"]),
     )
@@ -107,6 +110,17 @@ def _replay_proof(snapshot: dict[str, object]) -> dict[str, object]:
     commands = snapshot["source_commands"]
     steps = snapshot["source_replay_steps"]
     target = snapshot["source_tick"] + steps
+    anchor_contract = effective_entry_subject._expected_replay_anchor_contract(
+        snapshot,
+        str(snapshot["fsm_state"]),
+        replay_steps=steps,
+        target_entry_tick=target,
+        control_ticks=tuple(
+            command["control_physics_tick"] for command in commands
+        ),
+        controller_anchor_tick=snapshot.get("controller_anchor_tick"),
+        controller_anchor_time_s=snapshot.get("controller_anchor_time_s"),
+    )
     matches = [
         {
             "source_control_physics_tick": command["control_physics_tick"],
@@ -160,7 +174,25 @@ def _replay_proof(snapshot: dict[str, object]) -> dict[str, object]:
     ]
     return {
         "source_replay_steps": steps,
+        "physical_anchor_tick": anchor_contract["physical_anchor_tick"],
+        "physical_anchor_time_s": anchor_contract["physical_anchor_time_s"],
+        "controller_anchor_tick": snapshot.get("controller_anchor_tick"),
+        "controller_anchor_time_s": snapshot.get("controller_anchor_time_s"),
         "target_entry_tick": target,
+        "target_entry_time_s": anchor_contract["target_entry_time_s"],
+        "physical_to_controller_replay_steps": anchor_contract[
+            "physical_to_controller_replay_steps"
+        ],
+        "controller_to_target_replay_steps": anchor_contract[
+            "controller_to_target_replay_steps"
+        ],
+        "hybrid_physical_controller_anchor": anchor_contract[
+            "hybrid_physical_controller_anchor"
+        ],
+        "replay_anchor_contract": anchor_contract,
+        "source_replay_fsm_contexts": anchor_contract[
+            "source_replay_fsm_contexts"
+        ],
         "episode_sensor_tick_offset": target,
         "effective_entry_offset_s": steps / 120.0,
         "prime_atomic_full12_writes": steps,
@@ -215,8 +247,12 @@ def test_probe_covers_every_non_p01_phase_twice() -> None:
 def test_replay_window_is_derived_from_snapshot_payload_and_manifest() -> None:
     p10 = _snapshot("P10")
     p10_window = _replay_window(p10)
-    assert p10_window.source_replay_steps == 10
-    assert p10_window.target_entry_tick - p10_window.source_tick == 10
+    assert p10_window.source_tick == 7776
+    assert p10_window.controller_anchor_tick == 7784
+    assert p10_window.controller_anchor_time_s == 7784 / 120
+    assert p10_window.target_entry_tick == 7794
+    assert p10_window.source_replay_steps == 18
+    assert p10_window.target_entry_tick - p10_window.source_tick == 18
     assert p10_window.control_ticks == tuple(
         range(p10_window.source_tick, p10_window.target_entry_tick)
     )
@@ -226,6 +262,8 @@ def test_replay_window_is_derived_from_snapshot_payload_and_manifest() -> None:
 
     p02 = _snapshot("P02")
     p02_window = _replay_window(p02)
+    assert p02_window.controller_anchor_tick is None
+    assert p02_window.controller_anchor_time_s is None
     assert p02_window.source_replay_steps == 1
     assert p02_window.target_entry_tick == p02_window.source_tick + 1
 
@@ -236,9 +274,52 @@ def test_replay_window_is_derived_from_snapshot_payload_and_manifest() -> None:
                 source_tick=p10["source_tick"],
                 source_replay_steps=1,
                 target_entry_tick=p10["target_entry_tick"],
+                controller_anchor_tick=p10["controller_anchor_tick"],
+                controller_anchor_time_s=p10["controller_anchor_time_s"],
             ),
             phase="P10",
         )
+
+    with pytest.raises(PhaseSnapshotLiveProbeError, match="controller-anchor"):
+        probe_subject._validated_replay_window(
+            p10,
+            SimpleNamespace(
+                source_tick=p10["source_tick"],
+                source_replay_steps=p10["source_replay_steps"],
+                target_entry_tick=p10["target_entry_tick"],
+                controller_anchor_tick=p10["controller_anchor_tick"] + 1,
+                controller_anchor_time_s=p10["controller_anchor_time_s"],
+            ),
+            phase="P10",
+        )
+
+    malformed_p10 = copy.deepcopy(p10)
+    malformed_p10["controller_anchor_time_s"] += 1.0 / 120.0
+    with pytest.raises(PhaseSnapshotLiveProbeError, match="controller-anchor"):
+        _replay_window(malformed_p10)
+
+    malformed_context = copy.deepcopy(p10)
+    malformed_context["source_commands"][0]["source_fsm_state"] = "P10"
+    malformed_context["source_command"] = malformed_context["source_commands"][0]
+    with pytest.raises(
+        PhaseSnapshotLiveProbeError, match="controller-anchor replay contexts"
+    ):
+        _replay_window(malformed_context)
+
+    malformed_p02 = copy.deepcopy(p02)
+    malformed_p02["controller_anchor_tick"] = p02["source_tick"]
+    malformed_p02["controller_anchor_time_s"] = p02["source_tick"] / 120.0
+    with pytest.raises(
+        PhaseSnapshotLiveProbeError, match="unexpectedly declares"
+    ):
+        _replay_window(malformed_p02)
+
+    malformed_p02_target = copy.deepcopy(p02)
+    malformed_p02_target["target_entry_tick"] = p02["source_tick"] + 1
+    with pytest.raises(
+        PhaseSnapshotLiveProbeError, match="unexpectedly declares replay anchors"
+    ):
+        _replay_window(malformed_p02_target)
 
 
 def test_observation_diagnostics_accepts_only_exact_contacts_and_state() -> None:
@@ -263,6 +344,7 @@ def test_attempt_gate_fails_closed_on_exception_contact_or_extra_step() -> None:
     snapshot = _snapshot()
     replay_window = _replay_window(snapshot)
     replay_proof = _replay_proof(snapshot)
+    anchor_contract = replay_proof["replay_anchor_contract"]
     commands = snapshot["source_commands"]
     replay_steps = snapshot["source_replay_steps"]
     diagnostic = observation_diagnostics(
@@ -274,6 +356,8 @@ def test_attempt_gate_fails_closed_on_exception_contact_or_extra_step() -> None:
     row = {
         "phase": "P10",
         "source_tick": snapshot["source_tick"],
+        "controller_anchor_tick": replay_window.controller_anchor_tick,
+        "controller_anchor_time_s": replay_window.controller_anchor_time_s,
         "target_entry_tick": replay_window.target_entry_tick,
         "episode_sensor_tick_offset": replay_window.target_entry_tick,
         "source_replay_steps": replay_steps,
@@ -335,8 +419,27 @@ def test_attempt_gate_fails_closed_on_exception_contact_or_extra_step() -> None:
                     "source_snapshot_plus_validated_replay_steps_no_rewind"
                 ),
                 "source_tick": replay_window.source_tick,
+                "physical_anchor_tick": anchor_contract["physical_anchor_tick"],
+                "physical_anchor_time_s": anchor_contract[
+                    "physical_anchor_time_s"
+                ],
+                "controller_anchor_tick": replay_window.controller_anchor_tick,
+                "controller_anchor_time_s": (
+                    replay_window.controller_anchor_time_s
+                ),
                 "target_entry_tick": replay_window.target_entry_tick,
+                "target_entry_time_s": anchor_contract["target_entry_time_s"],
                 "source_replay_steps": replay_steps,
+                "physical_to_controller_replay_steps": anchor_contract[
+                    "physical_to_controller_replay_steps"
+                ],
+                "controller_to_target_replay_steps": anchor_contract[
+                    "controller_to_target_replay_steps"
+                ],
+                "hybrid_physical_controller_anchor": anchor_contract[
+                    "hybrid_physical_controller_anchor"
+                ],
+                "replay_anchor_contract": anchor_contract,
                 "effective_entry_offset_s": replay_steps / 120.0,
                 "verified": True,
                 "failures": [],
@@ -390,8 +493,23 @@ def test_attempt_gate_fails_closed_on_exception_contact_or_extra_step() -> None:
         "calibration_only": True,
         "phase": "P10",
         "source_tick": replay_window.source_tick,
+        "physical_anchor_tick": anchor_contract["physical_anchor_tick"],
+        "physical_anchor_time_s": anchor_contract["physical_anchor_time_s"],
+        "controller_anchor_tick": replay_window.controller_anchor_tick,
+        "controller_anchor_time_s": replay_window.controller_anchor_time_s,
         "target_entry_tick": replay_window.target_entry_tick,
+        "target_entry_time_s": anchor_contract["target_entry_time_s"],
         "source_replay_steps": replay_steps,
+        "physical_to_controller_replay_steps": anchor_contract[
+            "physical_to_controller_replay_steps"
+        ],
+        "controller_to_target_replay_steps": anchor_contract[
+            "controller_to_target_replay_steps"
+        ],
+        "hybrid_physical_controller_anchor": anchor_contract[
+            "hybrid_physical_controller_anchor"
+        ],
+        "replay_anchor_contract": anchor_contract,
         "effective_entry_offset_s": replay_steps / 120.0,
         "source_snapshot_post_prime_diagnostic": comparison,
         "failures": [],
@@ -402,6 +520,25 @@ def test_attempt_gate_fails_closed_on_exception_contact_or_extra_step() -> None:
     assert _attempt_passed(calibration, replay_window=replay_window) is False
     assert _attempt_passed(
         row, replay_window=replay_window, calibration_mode=True
+    ) is False
+    wrong_row_anchor = copy.deepcopy(row)
+    wrong_row_anchor["controller_anchor_tick"] += 1
+    assert _attempt_passed(
+        wrong_row_anchor, replay_window=replay_window
+    ) is False
+    missing_effective_anchor = copy.deepcopy(row)
+    del missing_effective_anchor["snapshot_state_write"][
+        "effective_entry_contract"
+    ]["controller_anchor_tick"]
+    assert _attempt_passed(
+        missing_effective_anchor, replay_window=replay_window
+    ) is False
+    wrong_effective_anchor_time = copy.deepcopy(row)
+    wrong_effective_anchor_time["snapshot_state_write"][
+        "effective_entry_contract"
+    ]["controller_anchor_time_s"] += 1.0 / 120.0
+    assert _attempt_passed(
+        wrong_effective_anchor_time, replay_window=replay_window
     ) is False
     restored_classifier = copy.deepcopy(row)
     restored_classifier["snapshot_state_write"][
@@ -766,6 +903,8 @@ def _patch_probe_snapshot_loader(monkeypatch: pytest.MonkeyPatch, root: Path) ->
             source_tick=payload["source_tick"],
             source_replay_steps=payload["source_replay_steps"],
             target_entry_tick=payload.get("target_entry_tick"),
+            controller_anchor_tick=payload.get("controller_anchor_tick"),
+            controller_anchor_time_s=payload.get("controller_anchor_time_s"),
             snapshot_path=root / phase / "snapshot.json",
             file_sha256="a" * 64,
             state_sha256="b" * 64,
@@ -1082,11 +1221,37 @@ def test_post_write_contact_rejection_remains_returnable_failed_diagnostic(
     assert result["source_replay_policy"] == (
         "derived_only_from_validated_phase_snapshot"
     )
-    assert result["source_replay_steps_by_phase"]["P10"] == 10
+    assert result["source_replay_steps_by_phase"]["P10"] == 18
     assert all(
         steps == 1
         for phase, steps in result["source_replay_steps_by_phase"].items()
         if phase != "P10"
+    )
+    assert result["controller_anchors_by_phase"]["P10"] == {
+        "controller_anchor_tick": 7784,
+        "controller_anchor_time_s": 7784 / 120,
+    }
+    assert all(
+        anchor is None
+        for phase, anchor in result["controller_anchors_by_phase"].items()
+        if phase != "P10"
+    )
+    p10_attempts = [
+        row for row in result["attempts"] if row["phase"] == "P10"
+    ]
+    assert len(p10_attempts) == ATTEMPTS_PER_PHASE
+    assert all(
+        row["source_tick"] == 7776
+        and row["controller_anchor_tick"] == 7784
+        and row["controller_anchor_time_s"] == 7784 / 120
+        and row["target_entry_tick"] == 7794
+        for row in p10_attempts
+    )
+    assert all(
+        row["controller_anchor_tick"] is None
+        and row["controller_anchor_time_s"] is None
+        for row in result["attempts"]
+        if row["phase"] != "P10"
     )
     assert all(
         row["snapshot_state_write"]["post_prime_state_rewrite_performed"]

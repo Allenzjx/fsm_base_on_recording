@@ -151,8 +151,19 @@ def _calibration_attempt(contract, snapshot_bundle, phase: str, lifecycle: str):
     )
     replay_steps = snapshot_payload["source_replay_steps"]
     target_entry_tick = snapshot.source_tick + replay_steps
+    controller_anchor_tick = snapshot_payload.get("controller_anchor_tick")
+    controller_anchor_time_s = snapshot_payload.get("controller_anchor_time_s")
     source_commands = snapshot_payload["source_commands"]
     control_ticks = [row["control_physics_tick"] for row in source_commands]
+    replay_anchor_contract = effective_entry_module._expected_replay_anchor_contract(
+        snapshot_payload,
+        phase,
+        replay_steps=replay_steps,
+        target_entry_tick=target_entry_tick,
+        control_ticks=tuple(control_ticks),
+        controller_anchor_tick=controller_anchor_tick,
+        controller_anchor_time_s=controller_anchor_time_s,
+    )
     comparison = _calibration_comparison(contract.entry(phase))
     proof = {
         "schema": effective_entry_module.CALIBRATION_LIVE_PROOF_SCHEMA,
@@ -161,8 +172,23 @@ def _calibration_attempt(contract, snapshot_bundle, phase: str, lifecycle: str):
         "calibration_only": True,
         "phase": phase,
         "source_tick": snapshot.source_tick,
+        "physical_anchor_tick": replay_anchor_contract["physical_anchor_tick"],
+        "physical_anchor_time_s": replay_anchor_contract["physical_anchor_time_s"],
+        "controller_anchor_tick": controller_anchor_tick,
+        "controller_anchor_time_s": controller_anchor_time_s,
         "target_entry_tick": target_entry_tick,
+        "target_entry_time_s": replay_anchor_contract["target_entry_time_s"],
         "source_replay_steps": replay_steps,
+        "physical_to_controller_replay_steps": replay_anchor_contract[
+            "physical_to_controller_replay_steps"
+        ],
+        "controller_to_target_replay_steps": replay_anchor_contract[
+            "controller_to_target_replay_steps"
+        ],
+        "hybrid_physical_controller_anchor": replay_anchor_contract[
+            "hybrid_physical_controller_anchor"
+        ],
+        "replay_anchor_contract": replay_anchor_contract,
         "effective_entry_offset_s": replay_steps / 120.0,
         "phase_snapshot_bundle_sha256": snapshot_bundle.bundle_sha256,
         "source_snapshot_post_prime_diagnostic": comparison,
@@ -238,7 +264,25 @@ def _calibration_attempt(contract, snapshot_bundle, phase: str, lifecycle: str):
         "joint_state_writes": 1,
         "simulation_forward_syncs": 1,
         "source_replay_steps": replay_steps,
+        "physical_anchor_tick": replay_anchor_contract["physical_anchor_tick"],
+        "physical_anchor_time_s": replay_anchor_contract["physical_anchor_time_s"],
+        "controller_anchor_tick": controller_anchor_tick,
+        "controller_anchor_time_s": controller_anchor_time_s,
         "target_entry_tick": target_entry_tick,
+        "target_entry_time_s": replay_anchor_contract["target_entry_time_s"],
+        "physical_to_controller_replay_steps": replay_anchor_contract[
+            "physical_to_controller_replay_steps"
+        ],
+        "controller_to_target_replay_steps": replay_anchor_contract[
+            "controller_to_target_replay_steps"
+        ],
+        "hybrid_physical_controller_anchor": replay_anchor_contract[
+            "hybrid_physical_controller_anchor"
+        ],
+        "replay_anchor_contract": replay_anchor_contract,
+        "source_replay_fsm_contexts": replay_anchor_contract[
+            "source_replay_fsm_contexts"
+        ],
         "episode_sensor_tick_offset": target_entry_tick,
         "effective_entry_offset_s": replay_steps / 120.0,
         "physics_steps": replay_steps,
@@ -325,6 +369,8 @@ def _calibration_attempt(contract, snapshot_bundle, phase: str, lifecycle: str):
         "scene_lifecycle": lifecycle,
         "scene_existed_before": lifecycle == "reused_scene",
         "source_tick": snapshot.source_tick,
+        "controller_anchor_tick": controller_anchor_tick,
+        "controller_anchor_time_s": controller_anchor_time_s,
         "target_entry_tick": target_entry_tick,
         "episode_sensor_tick_offset": target_entry_tick,
         "source_replay_steps": replay_steps,
@@ -394,6 +440,48 @@ def test_legacy_contract_is_only_a_comparison_fixture(contract) -> None:
     assert contract.contract_bytes.endswith(b"\n")
 
 
+def test_snapshot_replay_contract_binds_p10_physical_and_controller_anchors(
+    snapshot_bundle,
+) -> None:
+    (
+        payload,
+        snapshot,
+        replay_steps,
+        target_entry_tick,
+        control_ticks,
+        controller_anchor_tick,
+        controller_anchor_time_s,
+    ) = effective_entry_module._snapshot_replay_contract(snapshot_bundle, "P10")
+
+    assert snapshot.source_tick == 7776
+    assert controller_anchor_tick == 7784
+    assert controller_anchor_time_s == 7784 / 120.0
+    assert target_entry_tick == 7794
+    assert replay_steps == 18
+    assert control_ticks == tuple(range(7776, 7794))
+    assert [
+        (row["source_fsm_state"], row["source_fsm_lifecycle"])
+        for row in payload["source_commands"]
+    ] == [
+        *(("P09", "VERIFY_RESULT") for _ in range(8)),
+        *(("P10", "WAIT_ENTRY") for _ in range(10)),
+    ]
+
+    (
+        _payload,
+        ordinary_snapshot,
+        ordinary_replay_steps,
+        ordinary_target_tick,
+        _ordinary_control_ticks,
+        ordinary_controller_tick,
+        ordinary_controller_time,
+    ) = effective_entry_module._snapshot_replay_contract(snapshot_bundle, "P02")
+    assert ordinary_replay_steps == 1
+    assert ordinary_target_tick == ordinary_snapshot.source_tick + 1
+    assert ordinary_controller_tick is None
+    assert ordinary_controller_time is None
+
+
 def test_calibration_attempt_uses_passed_controller_entry_and_post_prime_diagnostic(
     contract, snapshot_bundle
 ) -> None:
@@ -415,9 +503,12 @@ def test_calibration_attempt_uses_passed_controller_entry_and_post_prime_diagnos
     assert comparison["maximum_errors"] != attempt["snapshot_state_write"][
         "priming_observation"
     ]["maximum_errors"]
-    assert attempt["source_replay_steps"] == 10
-    assert attempt["target_entry_tick"] - attempt["source_tick"] == 10
-    assert len(attempt["snapshot_state_write"]["prime_atomic_writes"]) == 10
+    assert attempt["source_tick"] == 7776
+    assert attempt["controller_anchor_tick"] == 7784
+    assert attempt["controller_anchor_time_s"] == 7784 / 120.0
+    assert attempt["source_replay_steps"] == 18
+    assert attempt["target_entry_tick"] - attempt["source_tick"] == 18
+    assert len(attempt["snapshot_state_write"]["prime_atomic_writes"]) == 18
     assert attempt["clocks"]["controller_history_length"] == 1
 
 
@@ -428,6 +519,20 @@ def test_calibration_attempt_uses_passed_controller_entry_and_post_prime_diagnos
         "guard",
         "controller_history",
         "calibration_proof",
+        "attempt_controller_anchor",
+        "state_controller_anchor_time",
+        "proof_controller_anchor",
+        "state_physical_anchor",
+        "state_target_time",
+        "state_split_steps",
+        "state_hybrid_flag",
+        "state_replay_anchor",
+        "state_replay_context",
+        "proof_physical_anchor",
+        "proof_target_time",
+        "proof_split_steps",
+        "proof_hybrid_flag",
+        "proof_replay_anchor",
         "replay_count",
         "replay_tick",
         "replay_match",
@@ -458,6 +563,50 @@ def test_calibration_attempt_rejects_failed_or_unproven_evidence(
     elif tamper == "calibration_proof":
         attempt["snapshot_state_write"]["effective_entry_contract"][
             "source_snapshot_post_prime_diagnostic"
+        ] = {"schema": "tampered"}
+    elif tamper == "attempt_controller_anchor":
+        attempt["controller_anchor_tick"] = 1
+    elif tamper == "state_controller_anchor_time":
+        attempt["snapshot_state_write"]["controller_anchor_time_s"] = 0.0
+    elif tamper == "proof_controller_anchor":
+        attempt["snapshot_state_write"]["effective_entry_contract"][
+            "controller_anchor_tick"
+        ] = 1
+    elif tamper == "state_physical_anchor":
+        attempt["snapshot_state_write"]["physical_anchor_tick"] += 1
+    elif tamper == "state_target_time":
+        attempt["snapshot_state_write"]["target_entry_time_s"] += 1.0 / 120.0
+    elif tamper == "state_split_steps":
+        attempt["snapshot_state_write"]["physical_to_controller_replay_steps"] = 0
+    elif tamper == "state_hybrid_flag":
+        attempt["snapshot_state_write"]["hybrid_physical_controller_anchor"] = True
+    elif tamper == "state_replay_anchor":
+        attempt["snapshot_state_write"]["replay_anchor_contract"] = {
+            "schema": "tampered"
+        }
+    elif tamper == "state_replay_context":
+        attempt["snapshot_state_write"]["source_replay_fsm_contexts"][0][
+            "source_control_physics_tick"
+        ] += 1
+    elif tamper == "proof_physical_anchor":
+        attempt["snapshot_state_write"]["effective_entry_contract"][
+            "physical_anchor_tick"
+        ] += 1
+    elif tamper == "proof_target_time":
+        attempt["snapshot_state_write"]["effective_entry_contract"][
+            "target_entry_time_s"
+        ] += 1.0 / 120.0
+    elif tamper == "proof_split_steps":
+        attempt["snapshot_state_write"]["effective_entry_contract"][
+            "controller_to_target_replay_steps"
+        ] = 0
+    elif tamper == "proof_hybrid_flag":
+        attempt["snapshot_state_write"]["effective_entry_contract"][
+            "hybrid_physical_controller_anchor"
+        ] = True
+    elif tamper == "proof_replay_anchor":
+        attempt["snapshot_state_write"]["effective_entry_contract"][
+            "replay_anchor_contract"
         ] = {"schema": "tampered"}
     elif tamper == "replay_count":
         attempt["snapshot_state_write"]["source_replay_steps"] += 1

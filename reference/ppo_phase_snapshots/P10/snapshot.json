@@ -4,8 +4,8 @@
   "in_episode_root_write": "FORBIDDEN_IN_EPISODE_ROOT_WRITE",
   "source_trial": "trial_043_20260902_clean_v010",
   "source_trial_path": "C:\\robotics_sim\\wlr_robot\\fsm_50mm_recording_shaped_clean_v1\\runs\\trial_043_20260902_clean_v010",
-  "source_tick": 7784,
-  "source_time_s": 64.86666666666666,
+  "source_tick": 7776,
+  "source_time_s": 64.8,
   "source_artifacts": {
     "trial_manifest": {
       "name": "trial_manifest.json",
@@ -35,9 +35,9 @@
   },
   "source_command": {
     "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
-    "control_physics_tick": 7784,
-    "source_atomic_physics_tick": 7964,
-    "source_atomic_write_count": 7965,
+    "control_physics_tick": 7776,
+    "source_atomic_physics_tick": 7956,
+    "source_atomic_write_count": 7957,
     "adapter_input": {
       "requested_full12": [
         -18.5,
@@ -89,7 +89,7 @@
     },
     "mapper_pre_state": {
       "schema": "wlr50_clean.ppo_phase_snapshot_mapper_state.v1",
-      "source_control_physics_tick": 7783,
+      "source_control_physics_tick": 7775,
       "requested_servo_deg": [
         -18.5,
         -31.4,
@@ -102,7 +102,7 @@
       ],
       "applied_drive_command_deg": [
         -17.999187130524604,
-        -31.4,
+        -26.4,
         -0.21132007650467077,
         30.528846994747603,
         16.221511668450894,
@@ -122,7 +122,7 @@
       ],
       "tracking_compensation_deg": [
         0.5008128694753964,
-        0.0,
+        5.0,
         -0.21132007650467077,
         -0.5711530052523983,
         0.8215116684508939,
@@ -131,14 +131,14 @@
         10.0
       ],
       "tracking_active": [
-        false,
-        false,
-        false,
-        false,
-        false,
-        false,
-        false,
-        false
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
       ],
       "retiring_stale_bias": [
         false,
@@ -150,10 +150,10 @@
         false,
         false
       ],
-      "feedback_tick": 7964,
+      "feedback_tick": 7956,
       "final_drive_servo_deg": [
         -17.999187130524604,
-        -31.4,
+        -26.4,
         -0.21132007650467077,
         30.528846994747603,
         16.221511668450894,
@@ -164,7 +164,7 @@
     },
     "mapper_post_state": {
       "schema": "wlr50_clean.ppo_phase_snapshot_mapper_state.v1",
-      "source_control_physics_tick": 7784,
+      "source_control_physics_tick": 7776,
       "requested_servo_deg": [
         -18.5,
         -31.4,
@@ -177,7 +177,7 @@
       ],
       "applied_drive_command_deg": [
         -17.999187130524604,
-        -31.4,
+        -27.65,
         -0.21132007650467077,
         30.528846994747603,
         16.221511668450894,
@@ -197,7 +197,7 @@
       ],
       "tracking_compensation_deg": [
         0.5008128694753964,
-        0.0,
+        3.75,
         -0.21132007650467077,
         -0.5711530052523983,
         0.8215116684508939,
@@ -217,7 +217,7 @@
       ],
       "retiring_stale_bias": [
         false,
-        false,
+        true,
         false,
         false,
         false,
@@ -225,10 +225,10 @@
         false,
         false
       ],
-      "feedback_tick": 7965,
+      "feedback_tick": 7957,
       "final_drive_servo_deg": [
         -17.999187130524604,
-        -31.4,
+        -27.65,
         -0.21132007650467077,
         30.528846994747603,
         16.221511668450894,
@@ -285,7 +285,7 @@
       ],
       "drive_target_full12": [
         -17.999187130524604,
-        -31.4,
+        -27.65,
         -0.21132007650467077,
         30.528846994747603,
         16.221511668450894,
@@ -299,7 +299,7 @@
       ],
       "native_drive_target_full12": [
         -17.999187130524604,
-        -31.4,
+        -27.65,
         -0.21132007650467077,
         30.528846994747603,
         16.221511668450894,
@@ -343,7 +343,7 @@
       "command_was_clamped": false,
       "servo_applied_drive_command_deg": [
         -17.999187130524604,
-        -31.4,
+        -27.65,
         -0.21132007650467077,
         30.528846994747603,
         16.221511668450894,
@@ -353,7 +353,7 @@
       ],
       "servo_native_drive_command_deg": [
         -17.999187130524604,
-        -31.4,
+        -27.65,
         -0.21132007650467077,
         30.528846994747603,
         16.221511668450894,
@@ -363,7 +363,7 @@
       ],
       "servo_tracking_compensation_deg": [
         0.5008128694753964,
-        0.0,
+        3.75,
         -0.21132007650467077,
         -0.5711530052523983,
         0.8215116684508939,
@@ -392,7 +392,7 @@
         false
       ],
       "tracking_servo_names": [],
-      "servo_tracking_feedback_sample_tick": 7964,
+      "servo_tracking_feedback_sample_tick": 7956,
       "servo_tracking_feedback_sampled": false,
       "servo_joint_ids": [
         0,
@@ -412,7 +412,7 @@
       ],
       "servo_target_physical_rad": [
         -0.31276013205825964,
-        -0.5475648689277669,
+        -0.4821150219779795,
         -0.003805963351624087,
         0.5350138457798724,
         -0.28625036857136393,
@@ -428,15 +428,3239 @@
       ],
       "motion_start_skew_s": 0.0
     },
-    "source_command_row_canonical_sha256": "78db69191319e1c0423a7b8f9a3b11f12f0ceababbd4caa40de5a425f69a4fc6",
-    "source_observation_row_canonical_sha256": "32a72df5f83fc67f7b18259c47d358884ee6aa83cb1f95cdfa552bb95fbf4bb0",
-    "drive_target_full12_sha256": "b4f85d79386f08e47361ad1956f5fb14f2a90d53f97c47f3a73ca59047fffcdb",
-    "actuation_contract_sha256": "8f1f6fc547e7b0f1ac41dcab09f43bca17c1ca1074170557a11ddade1a1e5734",
-    "source_fsm_state": "P10",
-    "source_fsm_lifecycle": "WAIT_ENTRY",
+    "source_command_row_canonical_sha256": "3ca22611b0aab9b23b01b6d96ff015548e4f6f8bbe0aed4b6ec673336d8d5020",
+    "source_observation_row_canonical_sha256": "73570b39c6a1acb6f83715c5a6580b4dfb89a5d2dc78aba072a0cb41465e5180",
+    "drive_target_full12_sha256": "ca6b00de1b7bc87d65210013a4a403b281f4ca90a2277609a437adaf54695581",
+    "actuation_contract_sha256": "0b35101695ca08e5df0cc821144af3bcf92dc2d6bd849172e96ed63a73c2c777",
+    "source_fsm_state": "P09",
+    "source_fsm_lifecycle": "VERIFY_RESULT",
     "target_entry_tick": 7794
   },
   "source_commands": [
+    {
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "control_physics_tick": 7776,
+      "source_atomic_physics_tick": 7956,
+      "source_atomic_write_count": 7957,
+      "adapter_input": {
+        "requested_full12": [
+          -18.5,
+          -31.4,
+          0.0,
+          31.1,
+          15.4,
+          19.4,
+          -6.9,
+          -37.8,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "tracking_servo_names": [],
+        "drive_feedback_bias_requested_full12": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "mapper_configuration": {
+        "physics_dt_s": 0.008333333333333333,
+        "servo_rate_deg_s": 150.0,
+        "maximum_delta_deg": 1.25,
+        "tracking_gain": 8.0,
+        "tracking_limit_deg": 10.0,
+        "feedback_interval_ticks": 4,
+        "standing_pose_deg": [
+          0.07935156363204786,
+          0.02684400080484552,
+          -0.006745560524854715,
+          0.1251883495021952,
+          -0.1794263347525243,
+          0.16301483092001173,
+          -0.3229814231186408,
+          0.21524399350241663
+        ]
+      },
+      "mapper_pre_state": {
+        "schema": "wlr50_clean.ppo_phase_snapshot_mapper_state.v1",
+        "source_control_physics_tick": 7775,
+        "requested_servo_deg": [
+          -18.5,
+          -31.4,
+          0.0,
+          31.1,
+          15.4,
+          19.4,
+          -6.9,
+          -37.8
+        ],
+        "applied_drive_command_deg": [
+          -17.999187130524604,
+          -26.4,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997
+        ],
+        "nominal_target_reached": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ],
+        "tracking_compensation_deg": [
+          0.5008128694753964,
+          5.0,
+          -0.21132007650467077,
+          -0.5711530052523983,
+          0.8215116684508939,
+          0.693959627688514,
+          1.725092553664446,
+          10.0
+        ],
+        "tracking_active": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ],
+        "retiring_stale_bias": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "feedback_tick": 7956,
+        "final_drive_servo_deg": [
+          -17.999187130524604,
+          -26.4,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997
+        ]
+      },
+      "mapper_post_state": {
+        "schema": "wlr50_clean.ppo_phase_snapshot_mapper_state.v1",
+        "source_control_physics_tick": 7776,
+        "requested_servo_deg": [
+          -18.5,
+          -31.4,
+          0.0,
+          31.1,
+          15.4,
+          19.4,
+          -6.9,
+          -37.8
+        ],
+        "applied_drive_command_deg": [
+          -17.999187130524604,
+          -27.65,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997
+        ],
+        "nominal_target_reached": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ],
+        "tracking_compensation_deg": [
+          0.5008128694753964,
+          3.75,
+          -0.21132007650467077,
+          -0.5711530052523983,
+          0.8215116684508939,
+          0.693959627688514,
+          1.725092553664446,
+          10.0
+        ],
+        "tracking_active": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "retiring_stale_bias": [
+          false,
+          true,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "feedback_tick": 7957,
+        "final_drive_servo_deg": [
+          -17.999187130524604,
+          -27.65,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997
+        ]
+      },
+      "expected_atomic_ack": {
+        "schema": "wlr50_clean.atomic_full12_ack.v1",
+        "physics_dt_s": 0.008333333333333333,
+        "articulation_writes_this_call": 1,
+        "canonical_order": [
+          "front_left_hip",
+          "front_left_knee",
+          "front_right_hip",
+          "front_right_knee",
+          "rear_left_hip",
+          "rear_left_knee",
+          "rear_right_hip",
+          "rear_right_knee",
+          "front_left_ankle",
+          "front_right_ankle",
+          "rear_left_ankle",
+          "rear_right_ankle"
+        ],
+        "requested_full12": [
+          -18.5,
+          -31.4,
+          0.0,
+          31.1,
+          15.4,
+          19.4,
+          -6.9,
+          -37.8,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "applied_full12": [
+          -18.5,
+          -31.4,
+          0.0,
+          31.1,
+          15.4,
+          19.4,
+          -6.9,
+          -37.8,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "drive_target_full12": [
+          -17.999187130524604,
+          -27.65,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "native_drive_target_full12": [
+          -17.999187130524604,
+          -27.65,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "drive_feedback_bias_requested_full12": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "drive_feedback_bias_realized_full12": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "drive_feedback_final_slew_limit_deg_per_tick": 1.25,
+        "command_was_clamped": false,
+        "servo_applied_drive_command_deg": [
+          -17.999187130524604,
+          -27.65,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997
+        ],
+        "servo_native_drive_command_deg": [
+          -17.999187130524604,
+          -27.65,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997
+        ],
+        "servo_tracking_compensation_deg": [
+          0.5008128694753964,
+          3.75,
+          -0.21132007650467077,
+          -0.5711530052523983,
+          0.8215116684508939,
+          0.693959627688514,
+          1.725092553664446,
+          10.0
+        ],
+        "servo_nominal_target_reached": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ],
+        "servo_tracking_active": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "tracking_servo_names": [],
+        "servo_tracking_feedback_sample_tick": 7956,
+        "servo_tracking_feedback_sampled": false,
+        "servo_joint_ids": [
+          0,
+          4,
+          1,
+          5,
+          2,
+          6,
+          3,
+          7
+        ],
+        "wheel_joint_ids": [
+          8,
+          9,
+          10,
+          11
+        ],
+        "servo_target_physical_rad": [
+          -0.31276013205825964,
+          -0.4821150219779795,
+          -0.003805963351624087,
+          0.5350138457798724,
+          -0.28625036857136393,
+          -0.3478606097368424,
+          0.08468208416832998,
+          0.488958248436182
+        ],
+        "wheel_target_physical_rad_s": [
+          -0.0,
+          0.0,
+          -0.0,
+          0.0
+        ],
+        "motion_start_skew_s": 0.0
+      },
+      "source_command_row_canonical_sha256": "3ca22611b0aab9b23b01b6d96ff015548e4f6f8bbe0aed4b6ec673336d8d5020",
+      "source_observation_row_canonical_sha256": "73570b39c6a1acb6f83715c5a6580b4dfb89a5d2dc78aba072a0cb41465e5180",
+      "drive_target_full12_sha256": "ca6b00de1b7bc87d65210013a4a403b281f4ca90a2277609a437adaf54695581",
+      "actuation_contract_sha256": "0b35101695ca08e5df0cc821144af3bcf92dc2d6bd849172e96ed63a73c2c777",
+      "source_fsm_state": "P09",
+      "source_fsm_lifecycle": "VERIFY_RESULT",
+      "target_entry_tick": 7794
+    },
+    {
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "control_physics_tick": 7777,
+      "source_atomic_physics_tick": 7957,
+      "source_atomic_write_count": 7958,
+      "adapter_input": {
+        "requested_full12": [
+          -18.5,
+          -31.4,
+          0.0,
+          31.1,
+          15.4,
+          19.4,
+          -6.9,
+          -37.8,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "tracking_servo_names": [],
+        "drive_feedback_bias_requested_full12": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "mapper_configuration": {
+        "physics_dt_s": 0.008333333333333333,
+        "servo_rate_deg_s": 150.0,
+        "maximum_delta_deg": 1.25,
+        "tracking_gain": 8.0,
+        "tracking_limit_deg": 10.0,
+        "feedback_interval_ticks": 4,
+        "standing_pose_deg": [
+          0.07935156363204786,
+          0.02684400080484552,
+          -0.006745560524854715,
+          0.1251883495021952,
+          -0.1794263347525243,
+          0.16301483092001173,
+          -0.3229814231186408,
+          0.21524399350241663
+        ]
+      },
+      "mapper_pre_state": {
+        "schema": "wlr50_clean.ppo_phase_snapshot_mapper_state.v1",
+        "source_control_physics_tick": 7776,
+        "requested_servo_deg": [
+          -18.5,
+          -31.4,
+          0.0,
+          31.1,
+          15.4,
+          19.4,
+          -6.9,
+          -37.8
+        ],
+        "applied_drive_command_deg": [
+          -17.999187130524604,
+          -27.65,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997
+        ],
+        "nominal_target_reached": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ],
+        "tracking_compensation_deg": [
+          0.5008128694753964,
+          3.75,
+          -0.21132007650467077,
+          -0.5711530052523983,
+          0.8215116684508939,
+          0.693959627688514,
+          1.725092553664446,
+          10.0
+        ],
+        "tracking_active": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "retiring_stale_bias": [
+          false,
+          true,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "feedback_tick": 7957,
+        "final_drive_servo_deg": [
+          -17.999187130524604,
+          -27.65,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997
+        ]
+      },
+      "mapper_post_state": {
+        "schema": "wlr50_clean.ppo_phase_snapshot_mapper_state.v1",
+        "source_control_physics_tick": 7777,
+        "requested_servo_deg": [
+          -18.5,
+          -31.4,
+          0.0,
+          31.1,
+          15.4,
+          19.4,
+          -6.9,
+          -37.8
+        ],
+        "applied_drive_command_deg": [
+          -17.999187130524604,
+          -28.9,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997
+        ],
+        "nominal_target_reached": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ],
+        "tracking_compensation_deg": [
+          0.5008128694753964,
+          2.5,
+          -0.21132007650467077,
+          -0.5711530052523983,
+          0.8215116684508939,
+          0.693959627688514,
+          1.725092553664446,
+          10.0
+        ],
+        "tracking_active": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "retiring_stale_bias": [
+          false,
+          true,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "feedback_tick": 7958,
+        "final_drive_servo_deg": [
+          -17.999187130524604,
+          -28.9,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997
+        ]
+      },
+      "expected_atomic_ack": {
+        "schema": "wlr50_clean.atomic_full12_ack.v1",
+        "physics_dt_s": 0.008333333333333333,
+        "articulation_writes_this_call": 1,
+        "canonical_order": [
+          "front_left_hip",
+          "front_left_knee",
+          "front_right_hip",
+          "front_right_knee",
+          "rear_left_hip",
+          "rear_left_knee",
+          "rear_right_hip",
+          "rear_right_knee",
+          "front_left_ankle",
+          "front_right_ankle",
+          "rear_left_ankle",
+          "rear_right_ankle"
+        ],
+        "requested_full12": [
+          -18.5,
+          -31.4,
+          0.0,
+          31.1,
+          15.4,
+          19.4,
+          -6.9,
+          -37.8,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "applied_full12": [
+          -18.5,
+          -31.4,
+          0.0,
+          31.1,
+          15.4,
+          19.4,
+          -6.9,
+          -37.8,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "drive_target_full12": [
+          -17.999187130524604,
+          -28.9,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "native_drive_target_full12": [
+          -17.999187130524604,
+          -28.9,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "drive_feedback_bias_requested_full12": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "drive_feedback_bias_realized_full12": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "drive_feedback_final_slew_limit_deg_per_tick": 1.25,
+        "command_was_clamped": false,
+        "servo_applied_drive_command_deg": [
+          -17.999187130524604,
+          -28.9,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997
+        ],
+        "servo_native_drive_command_deg": [
+          -17.999187130524604,
+          -28.9,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997
+        ],
+        "servo_tracking_compensation_deg": [
+          0.5008128694753964,
+          2.5,
+          -0.21132007650467077,
+          -0.5711530052523983,
+          0.8215116684508939,
+          0.693959627688514,
+          1.725092553664446,
+          10.0
+        ],
+        "servo_nominal_target_reached": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ],
+        "servo_tracking_active": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "tracking_servo_names": [],
+        "servo_tracking_feedback_sample_tick": 7957,
+        "servo_tracking_feedback_sampled": false,
+        "servo_joint_ids": [
+          0,
+          4,
+          1,
+          5,
+          2,
+          6,
+          3,
+          7
+        ],
+        "wheel_joint_ids": [
+          8,
+          9,
+          10,
+          11
+        ],
+        "servo_target_physical_rad": [
+          -0.31276013205825964,
+          -0.5039316376279086,
+          -0.003805963351624087,
+          0.5350138457798724,
+          -0.28625036857136393,
+          -0.3478606097368424,
+          0.08468208416832998,
+          0.488958248436182
+        ],
+        "wheel_target_physical_rad_s": [
+          -0.0,
+          0.0,
+          -0.0,
+          0.0
+        ],
+        "motion_start_skew_s": 0.0
+      },
+      "source_command_row_canonical_sha256": "6817a3c17c5574b24314727746afe747ac20f1087c041e6ccae2b782c3ae2347",
+      "source_observation_row_canonical_sha256": "57df962f0147d3d6c717abe28c72acb1bcde448015650016abbc6c48b3353821",
+      "drive_target_full12_sha256": "a1fb6755cc29fc77db1d72e95033d4f77c019b6d04a8d4019deaf0caa5443d45",
+      "actuation_contract_sha256": "b073ce3d9a1b1417e737e7d696adcc9b1fc8cf180b5aae00c1f56d4ed2c918c9",
+      "source_fsm_state": "P09",
+      "source_fsm_lifecycle": "VERIFY_RESULT",
+      "target_entry_tick": 7794
+    },
+    {
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "control_physics_tick": 7778,
+      "source_atomic_physics_tick": 7958,
+      "source_atomic_write_count": 7959,
+      "adapter_input": {
+        "requested_full12": [
+          -18.5,
+          -31.4,
+          0.0,
+          31.1,
+          15.4,
+          19.4,
+          -6.9,
+          -37.8,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "tracking_servo_names": [],
+        "drive_feedback_bias_requested_full12": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "mapper_configuration": {
+        "physics_dt_s": 0.008333333333333333,
+        "servo_rate_deg_s": 150.0,
+        "maximum_delta_deg": 1.25,
+        "tracking_gain": 8.0,
+        "tracking_limit_deg": 10.0,
+        "feedback_interval_ticks": 4,
+        "standing_pose_deg": [
+          0.07935156363204786,
+          0.02684400080484552,
+          -0.006745560524854715,
+          0.1251883495021952,
+          -0.1794263347525243,
+          0.16301483092001173,
+          -0.3229814231186408,
+          0.21524399350241663
+        ]
+      },
+      "mapper_pre_state": {
+        "schema": "wlr50_clean.ppo_phase_snapshot_mapper_state.v1",
+        "source_control_physics_tick": 7777,
+        "requested_servo_deg": [
+          -18.5,
+          -31.4,
+          0.0,
+          31.1,
+          15.4,
+          19.4,
+          -6.9,
+          -37.8
+        ],
+        "applied_drive_command_deg": [
+          -17.999187130524604,
+          -28.9,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997
+        ],
+        "nominal_target_reached": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ],
+        "tracking_compensation_deg": [
+          0.5008128694753964,
+          2.5,
+          -0.21132007650467077,
+          -0.5711530052523983,
+          0.8215116684508939,
+          0.693959627688514,
+          1.725092553664446,
+          10.0
+        ],
+        "tracking_active": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "retiring_stale_bias": [
+          false,
+          true,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "feedback_tick": 7958,
+        "final_drive_servo_deg": [
+          -17.999187130524604,
+          -28.9,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997
+        ]
+      },
+      "mapper_post_state": {
+        "schema": "wlr50_clean.ppo_phase_snapshot_mapper_state.v1",
+        "source_control_physics_tick": 7778,
+        "requested_servo_deg": [
+          -18.5,
+          -31.4,
+          0.0,
+          31.1,
+          15.4,
+          19.4,
+          -6.9,
+          -37.8
+        ],
+        "applied_drive_command_deg": [
+          -17.999187130524604,
+          -30.15,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997
+        ],
+        "nominal_target_reached": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ],
+        "tracking_compensation_deg": [
+          0.5008128694753964,
+          1.25,
+          -0.21132007650467077,
+          -0.5711530052523983,
+          0.8215116684508939,
+          0.693959627688514,
+          1.725092553664446,
+          10.0
+        ],
+        "tracking_active": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "retiring_stale_bias": [
+          false,
+          true,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "feedback_tick": 7959,
+        "final_drive_servo_deg": [
+          -17.999187130524604,
+          -30.15,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997
+        ]
+      },
+      "expected_atomic_ack": {
+        "schema": "wlr50_clean.atomic_full12_ack.v1",
+        "physics_dt_s": 0.008333333333333333,
+        "articulation_writes_this_call": 1,
+        "canonical_order": [
+          "front_left_hip",
+          "front_left_knee",
+          "front_right_hip",
+          "front_right_knee",
+          "rear_left_hip",
+          "rear_left_knee",
+          "rear_right_hip",
+          "rear_right_knee",
+          "front_left_ankle",
+          "front_right_ankle",
+          "rear_left_ankle",
+          "rear_right_ankle"
+        ],
+        "requested_full12": [
+          -18.5,
+          -31.4,
+          0.0,
+          31.1,
+          15.4,
+          19.4,
+          -6.9,
+          -37.8,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "applied_full12": [
+          -18.5,
+          -31.4,
+          0.0,
+          31.1,
+          15.4,
+          19.4,
+          -6.9,
+          -37.8,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "drive_target_full12": [
+          -17.999187130524604,
+          -30.15,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "native_drive_target_full12": [
+          -17.999187130524604,
+          -30.15,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "drive_feedback_bias_requested_full12": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "drive_feedback_bias_realized_full12": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "drive_feedback_final_slew_limit_deg_per_tick": 1.25,
+        "command_was_clamped": false,
+        "servo_applied_drive_command_deg": [
+          -17.999187130524604,
+          -30.15,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997
+        ],
+        "servo_native_drive_command_deg": [
+          -17.999187130524604,
+          -30.15,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997
+        ],
+        "servo_tracking_compensation_deg": [
+          0.5008128694753964,
+          1.25,
+          -0.21132007650467077,
+          -0.5711530052523983,
+          0.8215116684508939,
+          0.693959627688514,
+          1.725092553664446,
+          10.0
+        ],
+        "servo_nominal_target_reached": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ],
+        "servo_tracking_active": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "tracking_servo_names": [],
+        "servo_tracking_feedback_sample_tick": 7958,
+        "servo_tracking_feedback_sampled": false,
+        "servo_joint_ids": [
+          0,
+          4,
+          1,
+          5,
+          2,
+          6,
+          3,
+          7
+        ],
+        "wheel_joint_ids": [
+          8,
+          9,
+          10,
+          11
+        ],
+        "servo_target_physical_rad": [
+          -0.31276013205825964,
+          -0.5257482532778378,
+          -0.003805963351624087,
+          0.5350138457798724,
+          -0.28625036857136393,
+          -0.3478606097368424,
+          0.08468208416832998,
+          0.488958248436182
+        ],
+        "wheel_target_physical_rad_s": [
+          -0.0,
+          0.0,
+          -0.0,
+          0.0
+        ],
+        "motion_start_skew_s": 0.0
+      },
+      "source_command_row_canonical_sha256": "88dea46941dce38b53f2f4889961eef5a0e0f61cf63424d83aadef6bac76b776",
+      "source_observation_row_canonical_sha256": "a687e1e472dea8f6d5332e87f972de0738fde205f0733c2315dd44d029e3fc69",
+      "drive_target_full12_sha256": "0eba414915a482d2a09a108a0cf294aad88db0a5d1652b9260d8b1f8cb8787db",
+      "actuation_contract_sha256": "0febef4c0a2affbbc92c61740b78778699ee033e3a9099b943d04931f9b4f572",
+      "source_fsm_state": "P09",
+      "source_fsm_lifecycle": "VERIFY_RESULT",
+      "target_entry_tick": 7794
+    },
+    {
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "control_physics_tick": 7779,
+      "source_atomic_physics_tick": 7959,
+      "source_atomic_write_count": 7960,
+      "adapter_input": {
+        "requested_full12": [
+          -18.5,
+          -31.4,
+          0.0,
+          31.1,
+          15.4,
+          19.4,
+          -6.9,
+          -37.8,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "tracking_servo_names": [],
+        "drive_feedback_bias_requested_full12": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "mapper_configuration": {
+        "physics_dt_s": 0.008333333333333333,
+        "servo_rate_deg_s": 150.0,
+        "maximum_delta_deg": 1.25,
+        "tracking_gain": 8.0,
+        "tracking_limit_deg": 10.0,
+        "feedback_interval_ticks": 4,
+        "standing_pose_deg": [
+          0.07935156363204786,
+          0.02684400080484552,
+          -0.006745560524854715,
+          0.1251883495021952,
+          -0.1794263347525243,
+          0.16301483092001173,
+          -0.3229814231186408,
+          0.21524399350241663
+        ]
+      },
+      "mapper_pre_state": {
+        "schema": "wlr50_clean.ppo_phase_snapshot_mapper_state.v1",
+        "source_control_physics_tick": 7778,
+        "requested_servo_deg": [
+          -18.5,
+          -31.4,
+          0.0,
+          31.1,
+          15.4,
+          19.4,
+          -6.9,
+          -37.8
+        ],
+        "applied_drive_command_deg": [
+          -17.999187130524604,
+          -30.15,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997
+        ],
+        "nominal_target_reached": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ],
+        "tracking_compensation_deg": [
+          0.5008128694753964,
+          1.25,
+          -0.21132007650467077,
+          -0.5711530052523983,
+          0.8215116684508939,
+          0.693959627688514,
+          1.725092553664446,
+          10.0
+        ],
+        "tracking_active": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "retiring_stale_bias": [
+          false,
+          true,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "feedback_tick": 7959,
+        "final_drive_servo_deg": [
+          -17.999187130524604,
+          -30.15,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997
+        ]
+      },
+      "mapper_post_state": {
+        "schema": "wlr50_clean.ppo_phase_snapshot_mapper_state.v1",
+        "source_control_physics_tick": 7779,
+        "requested_servo_deg": [
+          -18.5,
+          -31.4,
+          0.0,
+          31.1,
+          15.4,
+          19.4,
+          -6.9,
+          -37.8
+        ],
+        "applied_drive_command_deg": [
+          -17.999187130524604,
+          -31.4,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997
+        ],
+        "nominal_target_reached": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ],
+        "tracking_compensation_deg": [
+          0.5008128694753964,
+          0.0,
+          -0.21132007650467077,
+          -0.5711530052523983,
+          0.8215116684508939,
+          0.693959627688514,
+          1.725092553664446,
+          10.0
+        ],
+        "tracking_active": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "retiring_stale_bias": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "feedback_tick": 7960,
+        "final_drive_servo_deg": [
+          -17.999187130524604,
+          -31.4,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997
+        ]
+      },
+      "expected_atomic_ack": {
+        "schema": "wlr50_clean.atomic_full12_ack.v1",
+        "physics_dt_s": 0.008333333333333333,
+        "articulation_writes_this_call": 1,
+        "canonical_order": [
+          "front_left_hip",
+          "front_left_knee",
+          "front_right_hip",
+          "front_right_knee",
+          "rear_left_hip",
+          "rear_left_knee",
+          "rear_right_hip",
+          "rear_right_knee",
+          "front_left_ankle",
+          "front_right_ankle",
+          "rear_left_ankle",
+          "rear_right_ankle"
+        ],
+        "requested_full12": [
+          -18.5,
+          -31.4,
+          0.0,
+          31.1,
+          15.4,
+          19.4,
+          -6.9,
+          -37.8,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "applied_full12": [
+          -18.5,
+          -31.4,
+          0.0,
+          31.1,
+          15.4,
+          19.4,
+          -6.9,
+          -37.8,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "drive_target_full12": [
+          -17.999187130524604,
+          -31.4,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "native_drive_target_full12": [
+          -17.999187130524604,
+          -31.4,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "drive_feedback_bias_requested_full12": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "drive_feedback_bias_realized_full12": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "drive_feedback_final_slew_limit_deg_per_tick": 1.25,
+        "command_was_clamped": false,
+        "servo_applied_drive_command_deg": [
+          -17.999187130524604,
+          -31.4,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997
+        ],
+        "servo_native_drive_command_deg": [
+          -17.999187130524604,
+          -31.4,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997
+        ],
+        "servo_tracking_compensation_deg": [
+          0.5008128694753964,
+          0.0,
+          -0.21132007650467077,
+          -0.5711530052523983,
+          0.8215116684508939,
+          0.693959627688514,
+          1.725092553664446,
+          10.0
+        ],
+        "servo_nominal_target_reached": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ],
+        "servo_tracking_active": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "tracking_servo_names": [],
+        "servo_tracking_feedback_sample_tick": 7959,
+        "servo_tracking_feedback_sampled": false,
+        "servo_joint_ids": [
+          0,
+          4,
+          1,
+          5,
+          2,
+          6,
+          3,
+          7
+        ],
+        "wheel_joint_ids": [
+          8,
+          9,
+          10,
+          11
+        ],
+        "servo_target_physical_rad": [
+          -0.31276013205825964,
+          -0.5475648689277669,
+          -0.003805963351624087,
+          0.5350138457798724,
+          -0.28625036857136393,
+          -0.3478606097368424,
+          0.08468208416832998,
+          0.488958248436182
+        ],
+        "wheel_target_physical_rad_s": [
+          -0.0,
+          0.0,
+          -0.0,
+          0.0
+        ],
+        "motion_start_skew_s": 0.0
+      },
+      "source_command_row_canonical_sha256": "7986bc3c36c7d84cd28a6b347738353be181b7a3a64c9e3c9275d522b6188c2a",
+      "source_observation_row_canonical_sha256": "20a5635b3f72c18e4dea111004124bf5325a1202f7e686fd0197b9087ee0a148",
+      "drive_target_full12_sha256": "b4f85d79386f08e47361ad1956f5fb14f2a90d53f97c47f3a73ca59047fffcdb",
+      "actuation_contract_sha256": "98b2bbb878d0adc007ccaf519ceb63b62f06112d13d5c3ccf9cba71d7f24f7aa",
+      "source_fsm_state": "P09",
+      "source_fsm_lifecycle": "VERIFY_RESULT",
+      "target_entry_tick": 7794
+    },
+    {
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "control_physics_tick": 7780,
+      "source_atomic_physics_tick": 7960,
+      "source_atomic_write_count": 7961,
+      "adapter_input": {
+        "requested_full12": [
+          -18.5,
+          -31.4,
+          0.0,
+          31.1,
+          15.4,
+          19.4,
+          -6.9,
+          -37.8,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "tracking_servo_names": [],
+        "drive_feedback_bias_requested_full12": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "mapper_configuration": {
+        "physics_dt_s": 0.008333333333333333,
+        "servo_rate_deg_s": 150.0,
+        "maximum_delta_deg": 1.25,
+        "tracking_gain": 8.0,
+        "tracking_limit_deg": 10.0,
+        "feedback_interval_ticks": 4,
+        "standing_pose_deg": [
+          0.07935156363204786,
+          0.02684400080484552,
+          -0.006745560524854715,
+          0.1251883495021952,
+          -0.1794263347525243,
+          0.16301483092001173,
+          -0.3229814231186408,
+          0.21524399350241663
+        ]
+      },
+      "mapper_pre_state": {
+        "schema": "wlr50_clean.ppo_phase_snapshot_mapper_state.v1",
+        "source_control_physics_tick": 7779,
+        "requested_servo_deg": [
+          -18.5,
+          -31.4,
+          0.0,
+          31.1,
+          15.4,
+          19.4,
+          -6.9,
+          -37.8
+        ],
+        "applied_drive_command_deg": [
+          -17.999187130524604,
+          -31.4,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997
+        ],
+        "nominal_target_reached": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ],
+        "tracking_compensation_deg": [
+          0.5008128694753964,
+          0.0,
+          -0.21132007650467077,
+          -0.5711530052523983,
+          0.8215116684508939,
+          0.693959627688514,
+          1.725092553664446,
+          10.0
+        ],
+        "tracking_active": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "retiring_stale_bias": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "feedback_tick": 7960,
+        "final_drive_servo_deg": [
+          -17.999187130524604,
+          -31.4,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997
+        ]
+      },
+      "mapper_post_state": {
+        "schema": "wlr50_clean.ppo_phase_snapshot_mapper_state.v1",
+        "source_control_physics_tick": 7780,
+        "requested_servo_deg": [
+          -18.5,
+          -31.4,
+          0.0,
+          31.1,
+          15.4,
+          19.4,
+          -6.9,
+          -37.8
+        ],
+        "applied_drive_command_deg": [
+          -17.999187130524604,
+          -31.4,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997
+        ],
+        "nominal_target_reached": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ],
+        "tracking_compensation_deg": [
+          0.5008128694753964,
+          0.0,
+          -0.21132007650467077,
+          -0.5711530052523983,
+          0.8215116684508939,
+          0.693959627688514,
+          1.725092553664446,
+          10.0
+        ],
+        "tracking_active": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "retiring_stale_bias": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "feedback_tick": 7961,
+        "final_drive_servo_deg": [
+          -17.999187130524604,
+          -31.4,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997
+        ]
+      },
+      "expected_atomic_ack": {
+        "schema": "wlr50_clean.atomic_full12_ack.v1",
+        "physics_dt_s": 0.008333333333333333,
+        "articulation_writes_this_call": 1,
+        "canonical_order": [
+          "front_left_hip",
+          "front_left_knee",
+          "front_right_hip",
+          "front_right_knee",
+          "rear_left_hip",
+          "rear_left_knee",
+          "rear_right_hip",
+          "rear_right_knee",
+          "front_left_ankle",
+          "front_right_ankle",
+          "rear_left_ankle",
+          "rear_right_ankle"
+        ],
+        "requested_full12": [
+          -18.5,
+          -31.4,
+          0.0,
+          31.1,
+          15.4,
+          19.4,
+          -6.9,
+          -37.8,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "applied_full12": [
+          -18.5,
+          -31.4,
+          0.0,
+          31.1,
+          15.4,
+          19.4,
+          -6.9,
+          -37.8,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "drive_target_full12": [
+          -17.999187130524604,
+          -31.4,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "native_drive_target_full12": [
+          -17.999187130524604,
+          -31.4,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "drive_feedback_bias_requested_full12": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "drive_feedback_bias_realized_full12": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "drive_feedback_final_slew_limit_deg_per_tick": 1.25,
+        "command_was_clamped": false,
+        "servo_applied_drive_command_deg": [
+          -17.999187130524604,
+          -31.4,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997
+        ],
+        "servo_native_drive_command_deg": [
+          -17.999187130524604,
+          -31.4,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997
+        ],
+        "servo_tracking_compensation_deg": [
+          0.5008128694753964,
+          0.0,
+          -0.21132007650467077,
+          -0.5711530052523983,
+          0.8215116684508939,
+          0.693959627688514,
+          1.725092553664446,
+          10.0
+        ],
+        "servo_nominal_target_reached": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ],
+        "servo_tracking_active": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "tracking_servo_names": [],
+        "servo_tracking_feedback_sample_tick": 7960,
+        "servo_tracking_feedback_sampled": false,
+        "servo_joint_ids": [
+          0,
+          4,
+          1,
+          5,
+          2,
+          6,
+          3,
+          7
+        ],
+        "wheel_joint_ids": [
+          8,
+          9,
+          10,
+          11
+        ],
+        "servo_target_physical_rad": [
+          -0.31276013205825964,
+          -0.5475648689277669,
+          -0.003805963351624087,
+          0.5350138457798724,
+          -0.28625036857136393,
+          -0.3478606097368424,
+          0.08468208416832998,
+          0.488958248436182
+        ],
+        "wheel_target_physical_rad_s": [
+          -0.0,
+          0.0,
+          -0.0,
+          0.0
+        ],
+        "motion_start_skew_s": 0.0
+      },
+      "source_command_row_canonical_sha256": "35baf433d3ce856a597bc2e7933e71ba7d2efeda165b3c41274e803e577191ec",
+      "source_observation_row_canonical_sha256": "fadfdc04d932bd448f7a9c450580f0c8c6668ef461a51070351c9c0f4c99fb5c",
+      "drive_target_full12_sha256": "b4f85d79386f08e47361ad1956f5fb14f2a90d53f97c47f3a73ca59047fffcdb",
+      "actuation_contract_sha256": "2dccf2eca80f62a50b2e422fd1976672dc36c7443cfca3e3838a2790434426b8",
+      "source_fsm_state": "P09",
+      "source_fsm_lifecycle": "VERIFY_RESULT",
+      "target_entry_tick": 7794
+    },
+    {
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "control_physics_tick": 7781,
+      "source_atomic_physics_tick": 7961,
+      "source_atomic_write_count": 7962,
+      "adapter_input": {
+        "requested_full12": [
+          -18.5,
+          -31.4,
+          0.0,
+          31.1,
+          15.4,
+          19.4,
+          -6.9,
+          -37.8,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "tracking_servo_names": [],
+        "drive_feedback_bias_requested_full12": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "mapper_configuration": {
+        "physics_dt_s": 0.008333333333333333,
+        "servo_rate_deg_s": 150.0,
+        "maximum_delta_deg": 1.25,
+        "tracking_gain": 8.0,
+        "tracking_limit_deg": 10.0,
+        "feedback_interval_ticks": 4,
+        "standing_pose_deg": [
+          0.07935156363204786,
+          0.02684400080484552,
+          -0.006745560524854715,
+          0.1251883495021952,
+          -0.1794263347525243,
+          0.16301483092001173,
+          -0.3229814231186408,
+          0.21524399350241663
+        ]
+      },
+      "mapper_pre_state": {
+        "schema": "wlr50_clean.ppo_phase_snapshot_mapper_state.v1",
+        "source_control_physics_tick": 7780,
+        "requested_servo_deg": [
+          -18.5,
+          -31.4,
+          0.0,
+          31.1,
+          15.4,
+          19.4,
+          -6.9,
+          -37.8
+        ],
+        "applied_drive_command_deg": [
+          -17.999187130524604,
+          -31.4,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997
+        ],
+        "nominal_target_reached": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ],
+        "tracking_compensation_deg": [
+          0.5008128694753964,
+          0.0,
+          -0.21132007650467077,
+          -0.5711530052523983,
+          0.8215116684508939,
+          0.693959627688514,
+          1.725092553664446,
+          10.0
+        ],
+        "tracking_active": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "retiring_stale_bias": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "feedback_tick": 7961,
+        "final_drive_servo_deg": [
+          -17.999187130524604,
+          -31.4,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997
+        ]
+      },
+      "mapper_post_state": {
+        "schema": "wlr50_clean.ppo_phase_snapshot_mapper_state.v1",
+        "source_control_physics_tick": 7781,
+        "requested_servo_deg": [
+          -18.5,
+          -31.4,
+          0.0,
+          31.1,
+          15.4,
+          19.4,
+          -6.9,
+          -37.8
+        ],
+        "applied_drive_command_deg": [
+          -17.999187130524604,
+          -31.4,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997
+        ],
+        "nominal_target_reached": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ],
+        "tracking_compensation_deg": [
+          0.5008128694753964,
+          0.0,
+          -0.21132007650467077,
+          -0.5711530052523983,
+          0.8215116684508939,
+          0.693959627688514,
+          1.725092553664446,
+          10.0
+        ],
+        "tracking_active": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "retiring_stale_bias": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "feedback_tick": 7962,
+        "final_drive_servo_deg": [
+          -17.999187130524604,
+          -31.4,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997
+        ]
+      },
+      "expected_atomic_ack": {
+        "schema": "wlr50_clean.atomic_full12_ack.v1",
+        "physics_dt_s": 0.008333333333333333,
+        "articulation_writes_this_call": 1,
+        "canonical_order": [
+          "front_left_hip",
+          "front_left_knee",
+          "front_right_hip",
+          "front_right_knee",
+          "rear_left_hip",
+          "rear_left_knee",
+          "rear_right_hip",
+          "rear_right_knee",
+          "front_left_ankle",
+          "front_right_ankle",
+          "rear_left_ankle",
+          "rear_right_ankle"
+        ],
+        "requested_full12": [
+          -18.5,
+          -31.4,
+          0.0,
+          31.1,
+          15.4,
+          19.4,
+          -6.9,
+          -37.8,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "applied_full12": [
+          -18.5,
+          -31.4,
+          0.0,
+          31.1,
+          15.4,
+          19.4,
+          -6.9,
+          -37.8,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "drive_target_full12": [
+          -17.999187130524604,
+          -31.4,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "native_drive_target_full12": [
+          -17.999187130524604,
+          -31.4,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "drive_feedback_bias_requested_full12": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "drive_feedback_bias_realized_full12": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "drive_feedback_final_slew_limit_deg_per_tick": 1.25,
+        "command_was_clamped": false,
+        "servo_applied_drive_command_deg": [
+          -17.999187130524604,
+          -31.4,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997
+        ],
+        "servo_native_drive_command_deg": [
+          -17.999187130524604,
+          -31.4,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997
+        ],
+        "servo_tracking_compensation_deg": [
+          0.5008128694753964,
+          0.0,
+          -0.21132007650467077,
+          -0.5711530052523983,
+          0.8215116684508939,
+          0.693959627688514,
+          1.725092553664446,
+          10.0
+        ],
+        "servo_nominal_target_reached": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ],
+        "servo_tracking_active": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "tracking_servo_names": [],
+        "servo_tracking_feedback_sample_tick": 7961,
+        "servo_tracking_feedback_sampled": false,
+        "servo_joint_ids": [
+          0,
+          4,
+          1,
+          5,
+          2,
+          6,
+          3,
+          7
+        ],
+        "wheel_joint_ids": [
+          8,
+          9,
+          10,
+          11
+        ],
+        "servo_target_physical_rad": [
+          -0.31276013205825964,
+          -0.5475648689277669,
+          -0.003805963351624087,
+          0.5350138457798724,
+          -0.28625036857136393,
+          -0.3478606097368424,
+          0.08468208416832998,
+          0.488958248436182
+        ],
+        "wheel_target_physical_rad_s": [
+          -0.0,
+          0.0,
+          -0.0,
+          0.0
+        ],
+        "motion_start_skew_s": 0.0
+      },
+      "source_command_row_canonical_sha256": "cf93af3a1cd8711ee2773f7de1f3c37b60df83329df0a8f3e2d8261e02342b70",
+      "source_observation_row_canonical_sha256": "120e6dcd23f16e0e69e958091e166b396f02fb8f1d80e749c70b616103135bb7",
+      "drive_target_full12_sha256": "b4f85d79386f08e47361ad1956f5fb14f2a90d53f97c47f3a73ca59047fffcdb",
+      "actuation_contract_sha256": "dc8d5d6a64700b0c0879c06c2c0ee52d9dd3a2c005b479b1258fcb956a96c615",
+      "source_fsm_state": "P09",
+      "source_fsm_lifecycle": "VERIFY_RESULT",
+      "target_entry_tick": 7794
+    },
+    {
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "control_physics_tick": 7782,
+      "source_atomic_physics_tick": 7962,
+      "source_atomic_write_count": 7963,
+      "adapter_input": {
+        "requested_full12": [
+          -18.5,
+          -31.4,
+          0.0,
+          31.1,
+          15.4,
+          19.4,
+          -6.9,
+          -37.8,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "tracking_servo_names": [],
+        "drive_feedback_bias_requested_full12": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "mapper_configuration": {
+        "physics_dt_s": 0.008333333333333333,
+        "servo_rate_deg_s": 150.0,
+        "maximum_delta_deg": 1.25,
+        "tracking_gain": 8.0,
+        "tracking_limit_deg": 10.0,
+        "feedback_interval_ticks": 4,
+        "standing_pose_deg": [
+          0.07935156363204786,
+          0.02684400080484552,
+          -0.006745560524854715,
+          0.1251883495021952,
+          -0.1794263347525243,
+          0.16301483092001173,
+          -0.3229814231186408,
+          0.21524399350241663
+        ]
+      },
+      "mapper_pre_state": {
+        "schema": "wlr50_clean.ppo_phase_snapshot_mapper_state.v1",
+        "source_control_physics_tick": 7781,
+        "requested_servo_deg": [
+          -18.5,
+          -31.4,
+          0.0,
+          31.1,
+          15.4,
+          19.4,
+          -6.9,
+          -37.8
+        ],
+        "applied_drive_command_deg": [
+          -17.999187130524604,
+          -31.4,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997
+        ],
+        "nominal_target_reached": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ],
+        "tracking_compensation_deg": [
+          0.5008128694753964,
+          0.0,
+          -0.21132007650467077,
+          -0.5711530052523983,
+          0.8215116684508939,
+          0.693959627688514,
+          1.725092553664446,
+          10.0
+        ],
+        "tracking_active": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "retiring_stale_bias": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "feedback_tick": 7962,
+        "final_drive_servo_deg": [
+          -17.999187130524604,
+          -31.4,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997
+        ]
+      },
+      "mapper_post_state": {
+        "schema": "wlr50_clean.ppo_phase_snapshot_mapper_state.v1",
+        "source_control_physics_tick": 7782,
+        "requested_servo_deg": [
+          -18.5,
+          -31.4,
+          0.0,
+          31.1,
+          15.4,
+          19.4,
+          -6.9,
+          -37.8
+        ],
+        "applied_drive_command_deg": [
+          -17.999187130524604,
+          -31.4,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997
+        ],
+        "nominal_target_reached": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ],
+        "tracking_compensation_deg": [
+          0.5008128694753964,
+          0.0,
+          -0.21132007650467077,
+          -0.5711530052523983,
+          0.8215116684508939,
+          0.693959627688514,
+          1.725092553664446,
+          10.0
+        ],
+        "tracking_active": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "retiring_stale_bias": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "feedback_tick": 7963,
+        "final_drive_servo_deg": [
+          -17.999187130524604,
+          -31.4,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997
+        ]
+      },
+      "expected_atomic_ack": {
+        "schema": "wlr50_clean.atomic_full12_ack.v1",
+        "physics_dt_s": 0.008333333333333333,
+        "articulation_writes_this_call": 1,
+        "canonical_order": [
+          "front_left_hip",
+          "front_left_knee",
+          "front_right_hip",
+          "front_right_knee",
+          "rear_left_hip",
+          "rear_left_knee",
+          "rear_right_hip",
+          "rear_right_knee",
+          "front_left_ankle",
+          "front_right_ankle",
+          "rear_left_ankle",
+          "rear_right_ankle"
+        ],
+        "requested_full12": [
+          -18.5,
+          -31.4,
+          0.0,
+          31.1,
+          15.4,
+          19.4,
+          -6.9,
+          -37.8,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "applied_full12": [
+          -18.5,
+          -31.4,
+          0.0,
+          31.1,
+          15.4,
+          19.4,
+          -6.9,
+          -37.8,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "drive_target_full12": [
+          -17.999187130524604,
+          -31.4,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "native_drive_target_full12": [
+          -17.999187130524604,
+          -31.4,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "drive_feedback_bias_requested_full12": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "drive_feedback_bias_realized_full12": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "drive_feedback_final_slew_limit_deg_per_tick": 1.25,
+        "command_was_clamped": false,
+        "servo_applied_drive_command_deg": [
+          -17.999187130524604,
+          -31.4,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997
+        ],
+        "servo_native_drive_command_deg": [
+          -17.999187130524604,
+          -31.4,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997
+        ],
+        "servo_tracking_compensation_deg": [
+          0.5008128694753964,
+          0.0,
+          -0.21132007650467077,
+          -0.5711530052523983,
+          0.8215116684508939,
+          0.693959627688514,
+          1.725092553664446,
+          10.0
+        ],
+        "servo_nominal_target_reached": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ],
+        "servo_tracking_active": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "tracking_servo_names": [],
+        "servo_tracking_feedback_sample_tick": 7962,
+        "servo_tracking_feedback_sampled": false,
+        "servo_joint_ids": [
+          0,
+          4,
+          1,
+          5,
+          2,
+          6,
+          3,
+          7
+        ],
+        "wheel_joint_ids": [
+          8,
+          9,
+          10,
+          11
+        ],
+        "servo_target_physical_rad": [
+          -0.31276013205825964,
+          -0.5475648689277669,
+          -0.003805963351624087,
+          0.5350138457798724,
+          -0.28625036857136393,
+          -0.3478606097368424,
+          0.08468208416832998,
+          0.488958248436182
+        ],
+        "wheel_target_physical_rad_s": [
+          -0.0,
+          0.0,
+          -0.0,
+          0.0
+        ],
+        "motion_start_skew_s": 0.0
+      },
+      "source_command_row_canonical_sha256": "13eddda054a5d7dffa38ec8285d813fc8ff6c626f804e7c139c4d8bc5f328831",
+      "source_observation_row_canonical_sha256": "092f60552d2ad8452e119a0aaba3465f68491852b35ffa6e181c6778d8ede2cf",
+      "drive_target_full12_sha256": "b4f85d79386f08e47361ad1956f5fb14f2a90d53f97c47f3a73ca59047fffcdb",
+      "actuation_contract_sha256": "84976f03690797fd8f15e286dcd5ba323a0b2e33552c92b52bf6ea7f629e588c",
+      "source_fsm_state": "P09",
+      "source_fsm_lifecycle": "VERIFY_RESULT",
+      "target_entry_tick": 7794
+    },
+    {
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "control_physics_tick": 7783,
+      "source_atomic_physics_tick": 7963,
+      "source_atomic_write_count": 7964,
+      "adapter_input": {
+        "requested_full12": [
+          -18.5,
+          -31.4,
+          0.0,
+          31.1,
+          15.4,
+          19.4,
+          -6.9,
+          -37.8,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "tracking_servo_names": [],
+        "drive_feedback_bias_requested_full12": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "mapper_configuration": {
+        "physics_dt_s": 0.008333333333333333,
+        "servo_rate_deg_s": 150.0,
+        "maximum_delta_deg": 1.25,
+        "tracking_gain": 8.0,
+        "tracking_limit_deg": 10.0,
+        "feedback_interval_ticks": 4,
+        "standing_pose_deg": [
+          0.07935156363204786,
+          0.02684400080484552,
+          -0.006745560524854715,
+          0.1251883495021952,
+          -0.1794263347525243,
+          0.16301483092001173,
+          -0.3229814231186408,
+          0.21524399350241663
+        ]
+      },
+      "mapper_pre_state": {
+        "schema": "wlr50_clean.ppo_phase_snapshot_mapper_state.v1",
+        "source_control_physics_tick": 7782,
+        "requested_servo_deg": [
+          -18.5,
+          -31.4,
+          0.0,
+          31.1,
+          15.4,
+          19.4,
+          -6.9,
+          -37.8
+        ],
+        "applied_drive_command_deg": [
+          -17.999187130524604,
+          -31.4,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997
+        ],
+        "nominal_target_reached": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ],
+        "tracking_compensation_deg": [
+          0.5008128694753964,
+          0.0,
+          -0.21132007650467077,
+          -0.5711530052523983,
+          0.8215116684508939,
+          0.693959627688514,
+          1.725092553664446,
+          10.0
+        ],
+        "tracking_active": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "retiring_stale_bias": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "feedback_tick": 7963,
+        "final_drive_servo_deg": [
+          -17.999187130524604,
+          -31.4,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997
+        ]
+      },
+      "mapper_post_state": {
+        "schema": "wlr50_clean.ppo_phase_snapshot_mapper_state.v1",
+        "source_control_physics_tick": 7783,
+        "requested_servo_deg": [
+          -18.5,
+          -31.4,
+          0.0,
+          31.1,
+          15.4,
+          19.4,
+          -6.9,
+          -37.8
+        ],
+        "applied_drive_command_deg": [
+          -17.999187130524604,
+          -31.4,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997
+        ],
+        "nominal_target_reached": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ],
+        "tracking_compensation_deg": [
+          0.5008128694753964,
+          0.0,
+          -0.21132007650467077,
+          -0.5711530052523983,
+          0.8215116684508939,
+          0.693959627688514,
+          1.725092553664446,
+          10.0
+        ],
+        "tracking_active": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "retiring_stale_bias": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "feedback_tick": 7964,
+        "final_drive_servo_deg": [
+          -17.999187130524604,
+          -31.4,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997
+        ]
+      },
+      "expected_atomic_ack": {
+        "schema": "wlr50_clean.atomic_full12_ack.v1",
+        "physics_dt_s": 0.008333333333333333,
+        "articulation_writes_this_call": 1,
+        "canonical_order": [
+          "front_left_hip",
+          "front_left_knee",
+          "front_right_hip",
+          "front_right_knee",
+          "rear_left_hip",
+          "rear_left_knee",
+          "rear_right_hip",
+          "rear_right_knee",
+          "front_left_ankle",
+          "front_right_ankle",
+          "rear_left_ankle",
+          "rear_right_ankle"
+        ],
+        "requested_full12": [
+          -18.5,
+          -31.4,
+          0.0,
+          31.1,
+          15.4,
+          19.4,
+          -6.9,
+          -37.8,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "applied_full12": [
+          -18.5,
+          -31.4,
+          0.0,
+          31.1,
+          15.4,
+          19.4,
+          -6.9,
+          -37.8,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "drive_target_full12": [
+          -17.999187130524604,
+          -31.4,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "native_drive_target_full12": [
+          -17.999187130524604,
+          -31.4,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "drive_feedback_bias_requested_full12": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "drive_feedback_bias_realized_full12": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "drive_feedback_final_slew_limit_deg_per_tick": 1.25,
+        "command_was_clamped": false,
+        "servo_applied_drive_command_deg": [
+          -17.999187130524604,
+          -31.4,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997
+        ],
+        "servo_native_drive_command_deg": [
+          -17.999187130524604,
+          -31.4,
+          -0.21132007650467077,
+          30.528846994747603,
+          16.221511668450894,
+          20.093959627688513,
+          -5.174907446335554,
+          -27.799999999999997
+        ],
+        "servo_tracking_compensation_deg": [
+          0.5008128694753964,
+          0.0,
+          -0.21132007650467077,
+          -0.5711530052523983,
+          0.8215116684508939,
+          0.693959627688514,
+          1.725092553664446,
+          10.0
+        ],
+        "servo_nominal_target_reached": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ],
+        "servo_tracking_active": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "tracking_servo_names": [],
+        "servo_tracking_feedback_sample_tick": 7963,
+        "servo_tracking_feedback_sampled": false,
+        "servo_joint_ids": [
+          0,
+          4,
+          1,
+          5,
+          2,
+          6,
+          3,
+          7
+        ],
+        "wheel_joint_ids": [
+          8,
+          9,
+          10,
+          11
+        ],
+        "servo_target_physical_rad": [
+          -0.31276013205825964,
+          -0.5475648689277669,
+          -0.003805963351624087,
+          0.5350138457798724,
+          -0.28625036857136393,
+          -0.3478606097368424,
+          0.08468208416832998,
+          0.488958248436182
+        ],
+        "wheel_target_physical_rad_s": [
+          -0.0,
+          0.0,
+          -0.0,
+          0.0
+        ],
+        "motion_start_skew_s": 0.0
+      },
+      "source_command_row_canonical_sha256": "e357771826910732399d2c9f166c889e9af565e0bda1a5703eee8d180904a25a",
+      "source_observation_row_canonical_sha256": "c70a42096545baf36e9997d72c1a38b02ef904bbbce7a5a99cd54408a90e926b",
+      "drive_target_full12_sha256": "b4f85d79386f08e47361ad1956f5fb14f2a90d53f97c47f3a73ca59047fffcdb",
+      "actuation_contract_sha256": "18330bef8230b98a467e41da0f4de2cd02af9d8ca1a71221603907e62077b87f",
+      "source_fsm_state": "P09",
+      "source_fsm_lifecycle": "VERIFY_RESULT",
+      "target_entry_tick": 7794
+    },
     {
       "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
       "control_physics_tick": 7784,
@@ -4468,7 +7692,7 @@
       "target_entry_tick": 7794
     }
   ],
-  "source_replay_steps": 10,
+  "source_replay_steps": 18,
   "fsm_state": "P10",
   "fsm_lifecycle": "WAIT_ENTRY",
   "phase_history": [
@@ -4484,47 +7708,47 @@
   ],
   "root_state": {
     "position_w_m": [
-      0.7988661527633667,
-      -0.0276508629322052,
-      0.10720978677272797
+      0.7995582818984985,
+      -0.028706632554531097,
+      0.1095450296998024
     ],
     "orientation_wxyz": [
-      0.9958617091178894,
-      0.005940085742622614,
-      -0.0774749219417572,
-      -0.04713796079158783
+      0.9964843392372131,
+      0.014988701790571213,
+      -0.06708523631095886,
+      -0.04789659380912781
     ],
     "linear_velocity_w_m_s": [
-      0.01912015490233898,
-      0.01928379014134407,
-      -0.026899950578808784
+      -0.04996851831674576,
+      0.009719821624457836,
+      -0.0372665598988533
     ],
     "angular_velocity_w_rad_s": [
-      -0.45745712518692017,
-      -0.33368703722953796,
-      0.013501886278390884
+      0.004879954271018505,
+      -0.29041770100593567,
+      -0.08215130120515823
     ]
   },
   "joint_state": {
     "logical_position_deg": [
-      -18.544872145146364,
-      -31.414954425936347,
-      -0.23096409909649743,
-      30.743923321356718,
-      15.596558704454823,
-      19.828319611849597,
-      -6.493021283905435,
-      -52.83550464852528
+      -18.732056894445147,
+      -31.016884170918836,
+      -0.06885160019886788,
+      30.992074339187035,
+      15.419684125708173,
+      19.526927269439028,
+      -6.951926753199783,
+      -52.6825972035762
     ],
     "logical_velocity_deg_s": [
-      -4.848636886123455,
-      -4.93103116562861,
-      1.7297988748803257,
-      -1.2866237581313409,
-      5.34679886767245,
-      2.842592824530961,
-      7.690483939374414,
-      19.061662907367612
+      -10.223971003487748,
+      6.11263937788883,
+      1.8047833596313703,
+      -0.9954540744741667,
+      13.187780475879395,
+      6.979966253887845,
+      1.2379521502709474,
+      -28.70134281698568
     ],
     "order": [
       "front_left_hip",
@@ -4539,10 +7763,10 @@
   },
   "wheel_state": {
     "logical_velocity_rad_s": [
-      0.16846974194049835,
-      0.0012427009642124176,
-      -0.00038782513001933694,
-      -0.11716585606336594
+      -0.7455692291259766,
+      0.0011675071436911821,
+      -0.00689027039334178,
+      -0.28332850337028503
     ],
     "order": [
       "front_left_ankle",
@@ -4638,46 +7862,46 @@
     },
     "wheel_centers_w_m": {
       "front_left_ankle": [
-        0.9392691850662231,
-        0.039446793496608734,
-        0.09992925822734833
+        0.9400529265403748,
+        0.038563866168260574,
+        0.09984292834997177
       ],
       "front_right_ankle": [
-        1.1077330112457275,
-        -0.37664157152175903,
-        0.11291228234767914
+        1.1093515157699585,
+        -0.37778404355049133,
+        0.10343015193939209
       ],
       "rear_left_ankle": [
-        0.4211356043815613,
-        0.08375531435012817,
-        0.06125732511281967
+        0.4221566319465637,
+        0.08338277786970139,
+        0.07234378904104233
       ],
       "rear_right_ankle": [
-        0.5923033952713013,
-        -0.3310522437095642,
-        0.099001944065094
+        0.5933855772018433,
+        -0.331989049911499,
+        0.09931164979934692
       ]
     },
     "wheel_bottoms_w_m": {
       "front_left_ankle": [
-        0.9392691850662231,
-        0.039446793496608734,
-        0.04992898610417604
+        0.9400529265403748,
+        0.038563866168260574,
+        0.04984265622679948
       ],
       "front_right_ankle": [
-        1.1077330112457275,
-        -0.37664157152175903,
-        0.06291756232692566
+        1.1093515157699585,
+        -0.37778404355049133,
+        0.053435431918638615
       ],
       "rear_left_ankle": [
-        0.4211356043815613,
-        0.08375531435012817,
-        0.011258346348238094
+        0.4221566319465637,
+        0.08338277786970139,
+        0.02234481027646075
       ],
       "rear_right_ankle": [
-        0.5923033952713013,
-        -0.3310522437095642,
-        0.0490117412464562
+        0.5933855772018433,
+        -0.331989049911499,
+        0.04932144698070913
       ]
     }
   },
@@ -4709,7 +7933,9 @@
     -0.006009926088154316,
     0.0015246823895722628
   ],
-  "snapshot_semantics": "causal WAIT_ENTRY anchor state is written before the ordered reset-only source-command PhysX replay; the final post-replay live observation is the target phase-entry decision; live physics and frozen FSM own all subsequent state",
+  "snapshot_semantics": "hybrid causal physical state is written from the predecessor VERIFY_RESULT anchor while controller state and latches come from the later WAIT_ENTRY anchor; every intervening real source command is replayed in order and the final post-replay live observation is the target phase-entry decision; live physics and frozen FSM own all subsequent state",
+  "controller_anchor_tick": 7784,
+  "controller_anchor_time_s": 64.86666666666666,
   "target_entry_tick": 7794,
-  "state_sha256": "7b51f28c7ab9cd87b1bc2a40a0ccfdae3fe63db3b4988ff6e6807b0d3aeb8e95"
+  "state_sha256": "d2d0ef8fdfe32013750475d89102d5a3c5ddac5261f5fc60a1685aac724dde90"
 }

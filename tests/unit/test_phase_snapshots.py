@@ -51,12 +51,13 @@ def _observation(tick: int) -> dict:
     )
     wheels = ("front_left_ankle", "front_right_ankle", "rear_left_ankle", "rear_right_ankle")
     bodies = ("front_left_wheel", "front_right_wheel", "rear_left_wheel", "rear_right_wheel")
+    ground_active = tick % 3 == 0
     return {
         "physics_tick": tick,
-        "base": {"position_w_m": [0, 0, .1], "orientation_wxyz": [1, 0, 0, 0], "linear_velocity_w_m_s": [0, 0, 0], "angular_velocity_w_rad_s": [0, 0, 0]},
+        "base": {"position_w_m": [float(tick), 0, .1], "orientation_wxyz": [1, 0, 0, 0], "linear_velocity_w_m_s": [0, 0, 0], "angular_velocity_w_rad_s": [0, 0, 0]},
         "joints": {name: {"position_deg": 0, "velocity_deg_s": 0} for name in joints},
-        "wheels": {name: {"velocity_rad_s": 0, "body_name": body, "center_w_m": [0, 0, .05], "bottom_w_m": [0, 0, 0]} for name, body in zip(wheels, bodies)},
-        "contacts": {body: {"contact_class": "GROUND", "ground": {"active": True}, "obstacle": {"active": False}} for body in bodies},
+        "wheels": {name: {"velocity_rad_s": float(tick), "body_name": body, "center_w_m": [0, 0, .05], "bottom_w_m": [0, 0, 0]} for name, body in zip(wheels, bodies)},
+        "contacts": {body: {"contact_class": "GROUND" if ground_active else "AIR", "ground": {"active": ground_active}, "obstacle": {"active": False}} for body in bodies},
         "obstacle": {"front_x_m": .5, "back_x_m": 2.5, "left_y_m": 1, "right_y_m": -1, "bottom_z_m": 0, "top_z_m": .05},
     }
 
@@ -125,16 +126,23 @@ def _command(tick: int, *, state_id: str, lifecycle: str) -> dict:
 def _write_source_trial(
     tmp_path,
     *,
+    p09_predecessor_state: str = "P09",
+    p09_predecessor_lifecycle: str = "VERIFY_RESULT",
     p10_predecessor_lifecycle: str = "WAIT_ENTRY",
     signed_positive_rebound_required: bool = True,
 ):
     trial = tmp_path / "trial"
     trial.mkdir()
+    p10_physical_source_tick = PHASE_IDS.index("P10")
+    p10_wait_entry_tick = p10_physical_source_tick + 8
     entry_ticks = {
-        phase: index if index < PHASE_IDS.index("P10") else index + 10
+        phase: (
+            index
+            if index < PHASE_IDS.index("P10")
+            else index + 18
+        )
         for index, phase in enumerate(PHASE_IDS)
     }
-    p10_wait_entry_tick = PHASE_IDS.index("P10")
     transitions = []
     for phase in PHASE_IDS:
         guards = []
@@ -172,6 +180,16 @@ def _write_source_trial(
                 "details": {"guards": guards},
             }
         )
+        if phase == "P09":
+            transitions.append(
+                {
+                    "state_id": phase,
+                    "from_lifecycle": "EXECUTE_MOTION",
+                    "to_lifecycle": "VERIFY_RESULT",
+                    "sim_time_s": p10_physical_source_tick / 120,
+                    "details": {},
+                }
+            )
     _write_jsonl(trial / "state_transitions.jsonl", transitions)
     stream_length = max(entry_ticks.values()) + 1
     _write_jsonl(
@@ -181,7 +199,10 @@ def _write_source_trial(
     phase_by_entry_tick = {tick: phase for phase, tick in entry_ticks.items()}
     commands = []
     for tick in range(stream_length):
-        if p10_wait_entry_tick <= tick < entry_ticks["P10"]:
+        if p10_physical_source_tick <= tick < p10_wait_entry_tick:
+            state_id = p09_predecessor_state
+            lifecycle = p09_predecessor_lifecycle
+        elif p10_wait_entry_tick <= tick < entry_ticks["P10"]:
             state_id = "P10"
             lifecycle = p10_predecessor_lifecycle
         else:
@@ -192,7 +213,16 @@ def _write_source_trial(
         trial / "full12_commands_120hz.jsonl",
         commands,
     )
-    _write_jsonl(trial / "leg_crossing_events.jsonl", [])
+    _write_jsonl(
+        trial / "leg_crossing_events.jsonl",
+        [
+            {
+                "physics_tick": p10_physical_source_tick + 3,
+                "leg": "RR",
+                "event": "ACTIVE_LIFT",
+            }
+        ],
+    )
     artifact_rows = {
         "observation": ("observation_120hz.jsonl"),
         "command": ("full12_commands_120hz.jsonl"),
@@ -263,38 +293,58 @@ def test_build_and_validate_all_phase_snapshots(tmp_path):
         row for row in manifest["snapshots"] if row["phase"] == "P10"
     )
     assert p10["source_tick"] == 9
-    assert p10["target_entry_tick"] == 19
-    assert p10["source_replay_steps"] == 10
-    assert len(p10["source_commands"]) == 10
+    assert p10["controller_anchor_tick"] == 17
+    assert p10["controller_anchor_time_s"] == 17 / 120
+    assert p10["target_entry_tick"] == 27
+    assert p10["source_replay_steps"] == 18
+    assert len(p10["source_commands"]) == 18
     assert [
         row["control_physics_tick"] for row in p10["source_commands"]
-    ] == list(range(9, 19))
+    ] == list(range(9, 27))
     assert p10["source_command"] == p10["source_commands"][0]
+    assert p10["fsm_state"] == "P10"
     assert p10["fsm_lifecycle"] == "WAIT_ENTRY"
-    assert p10["source_command"]["source_fsm_state"] == "P10"
-    assert p10["source_command"]["source_fsm_lifecycle"] == "WAIT_ENTRY"
-    assert p10["source_command"]["target_entry_tick"] == 19
+    assert p10["source_command"]["source_fsm_state"] == "P09"
+    assert p10["source_command"]["source_fsm_lifecycle"] == "VERIFY_RESULT"
+    assert p10["source_command"]["target_entry_tick"] == 27
+    assert all(
+        row["source_fsm_state"] == "P09"
+        and row["source_fsm_lifecycle"] == "VERIFY_RESULT"
+        and row["target_entry_tick"] == 27
+        for row in p10["source_commands"][:8]
+    )
     assert all(
         row["source_fsm_state"] == "P10"
         and row["source_fsm_lifecycle"] == "WAIT_ENTRY"
-        and row["target_entry_tick"] == 19
-        for row in p10["source_commands"]
+        and row["target_entry_tick"] == 27
+        for row in p10["source_commands"][8:]
     )
+    assert p10["root_state"]["position_w_m"][0] == 9.0
+    assert p10["wheel_state"]["logical_velocity_rad_s"] == [9.0] * 4
+    assert all(row["class"] == "GROUND" for row in p10["contact_state"].values())
+    assert p10["contact_event_latches"]["RR"]["active_lift"] is True
+    assert p10["contact_event_latches"]["RR"]["active_lift_tick"] == 12
     assert p10_manifest["source_tick"] == 9
-    assert p10_manifest["source_replay_steps"] == 10
-    assert p10_manifest["target_entry_tick"] == 19
+    assert p10_manifest["controller_anchor_tick"] == 17
+    assert p10_manifest["controller_anchor_time_s"] == 17 / 120
+    assert p10_manifest["source_replay_steps"] == 18
+    assert p10_manifest["target_entry_tick"] == 27
 
     p11 = json.loads((out / "P11" / "snapshot.json").read_text(encoding="utf-8"))
     p11_manifest = next(
         row for row in manifest["snapshots"] if row["phase"] == "P11"
     )
-    assert p11["source_tick"] == 20
+    assert p11["source_tick"] == 28
     assert p11["source_replay_steps"] == 1
     assert p11["source_commands"] == [p11["source_command"]]
     assert p11["fsm_lifecycle"] == "EXECUTE_MOTION"
     assert "target_entry_tick" not in p11
+    assert "controller_anchor_tick" not in p11
+    assert "controller_anchor_time_s" not in p11
     assert "source_fsm_lifecycle" not in p11["source_command"]
     assert "target_entry_tick" not in p11_manifest
+    assert "controller_anchor_tick" not in p11_manifest
+    assert "controller_anchor_time_s" not in p11_manifest
 
 
 def test_signed_positive_entry_detection_is_transition_evidence_driven(tmp_path):
@@ -307,11 +357,123 @@ def test_signed_positive_entry_detection_is_transition_evidence_driven(tmp_path)
     p10 = json.loads((out / "P10" / "snapshot.json").read_text(encoding="utf-8"))
 
     assert manifest["causal_predecessor_phases"] == []
-    assert p10["source_tick"] == 19
+    assert p10["source_tick"] == 27
     assert p10["source_replay_steps"] == 1
     assert p10["source_commands"] == [p10["source_command"]]
     assert p10["fsm_lifecycle"] == "EXECUTE_MOTION"
     assert "target_entry_tick" not in p10
+    assert "controller_anchor_tick" not in p10
+    assert "controller_anchor_time_s" not in p10
+
+
+def test_trial043_hybrid_boundary_is_exactly_7776_7784_7794() -> None:
+    rows = []
+    for index, phase in enumerate(PHASE_IDS[1:], 1):
+        if phase == "P09":
+            rows.append(
+                {
+                    "state_id": phase,
+                    "from_lifecycle": "EXECUTE_MOTION",
+                    "to_lifecycle": "VERIFY_RESULT",
+                    "sim_time_s": 7776 / 120,
+                }
+            )
+        if phase == "P10":
+            rows.append(
+                {
+                    "state_id": phase,
+                    "from_lifecycle": "DONE",
+                    "to_lifecycle": "WAIT_ENTRY",
+                    "sim_time_s": 7784 / 120,
+                }
+            )
+        target_tick = 7794 if phase == "P10" else index
+        rows.append(
+            {
+                "state_id": phase,
+                "from_lifecycle": "WAIT_ENTRY",
+                "to_lifecycle": "EXECUTE_MOTION",
+                "sim_time_s": target_tick / 120,
+                "details": {
+                    "guards": (
+                        [{"signed_positive_rebound_required": True}]
+                        if phase == "P10"
+                        else []
+                    )
+                },
+            }
+        )
+
+    boundary = phase_snapshots_subject._phase_entry_boundaries_from_rows(rows)[
+        "P10"
+    ]
+
+    assert boundary.source_tick == 7776
+    assert boundary.controller_anchor_tick == 7784
+    assert boundary.target_entry_tick == 7794
+    assert boundary.source_replay_steps == 18
+
+
+def test_later_recovery_verify_transition_does_not_ambiguate_p10_predecessor() -> None:
+    rows = []
+    for index, phase in enumerate(PHASE_IDS[1:], 1):
+        if phase == "P09":
+            rows.append(
+                {
+                    "state_id": "P09",
+                    "from_lifecycle": "EXECUTE_MOTION",
+                    "to_lifecycle": "VERIFY_RESULT",
+                    "sim_time_s": 7776 / 120,
+                }
+            )
+        if phase == "P10":
+            rows.append(
+                {
+                    "state_id": "P10",
+                    "from_lifecycle": "DONE",
+                    "to_lifecycle": "WAIT_ENTRY",
+                    "sim_time_s": 7784 / 120,
+                }
+            )
+        rows.append(
+            {
+                "state_id": phase,
+                "from_lifecycle": "WAIT_ENTRY",
+                "to_lifecycle": "EXECUTE_MOTION",
+                "sim_time_s": (7794 if phase == "P10" else index) / 120,
+                "details": {
+                    "guards": (
+                        [{"signed_positive_rebound_required": True}]
+                        if phase == "P10"
+                        else []
+                    )
+                },
+            }
+        )
+    rows.extend(
+        [
+            {
+                "state_id": "P13",
+                "from_lifecycle": "EXECUTE_MOTION",
+                "to_lifecycle": "VERIFY_RESULT",
+                "sim_time_s": 9000 / 120,
+            },
+            {
+                "state_id": "P13",
+                "from_lifecycle": "EXECUTE_MOTION",
+                "to_lifecycle": "VERIFY_RESULT",
+                "sim_time_s": 9010 / 120,
+            },
+        ]
+    )
+
+    boundary = phase_snapshots_subject._phase_entry_boundaries_from_rows(rows)[
+        "P10"
+    ]
+
+    assert boundary.source_tick == 7776
+    assert boundary.controller_anchor_tick == 7784
+    assert boundary.target_entry_tick == 7794
 
 
 def test_causal_predecessor_requires_wait_entry_source_command(tmp_path):
@@ -323,6 +485,22 @@ def test_causal_predecessor_requires_wait_entry_source_command(tmp_path):
     with pytest.raises(PhaseSnapshotError, match="source command state/lifecycle"):
         build_phase_snapshots(trial, out)
     assert not out.exists()
+
+
+@pytest.mark.parametrize(
+    "source_kwargs",
+    (
+        {"p09_predecessor_state": "P10"},
+        {"p09_predecessor_lifecycle": "EXECUTE_MOTION"},
+    ),
+)
+def test_hybrid_causal_source_requires_real_p09_verify_context(
+    tmp_path, source_kwargs
+):
+    trial = _write_source_trial(tmp_path, **source_kwargs)
+
+    with pytest.raises(PhaseSnapshotError, match="source command state/lifecycle"):
+        build_phase_snapshots(trial, tmp_path / "snapshots")
 
 
 def test_signed_positive_entry_requires_semantic_wait_entry_anchor(tmp_path):
@@ -362,7 +540,9 @@ def test_signed_positive_entry_requires_semantic_wait_entry_anchor(tmp_path):
     ("surface", "expected_error"),
     (
         ("payload_target", "causal target-entry tick"),
-        ("manifest_target", "manifest target-entry tick"),
+        ("manifest_target", "hybrid replay boundary"),
+        ("controller_anchor_tick", "controller anchor tick"),
+        ("controller_anchor_time", "controller anchor time"),
         ("source_lifecycle", "causal source-command context"),
         ("snapshot_lifecycle", "FSM lifecycle"),
     ),
@@ -383,6 +563,10 @@ def test_causal_predecessor_audit_fields_fail_closed(
         payload["target_entry_tick"] += 1
     elif surface == "manifest_target":
         manifest_row["target_entry_tick"] += 1
+    elif surface == "controller_anchor_tick":
+        payload["controller_anchor_tick"] = payload["source_tick"]
+    elif surface == "controller_anchor_time":
+        payload["controller_anchor_time_s"] += 1.0 / 120.0
     elif surface == "source_lifecycle":
         payload["source_command"]["source_fsm_lifecycle"] = "EXECUTE_MOTION"
         payload["source_commands"][0]["source_fsm_lifecycle"] = "EXECUTE_MOTION"
@@ -406,6 +590,8 @@ def test_causal_predecessor_audit_fields_fail_closed(
         "missing_row",
         "discontinuous_tick",
         "tail_lifecycle",
+        "controller_row_context",
+        "target_command_included",
         "tail_atomic_tick",
         "tail_mapper_continuity",
         "tail_actuation_hash",
@@ -436,6 +622,13 @@ def test_source_command_replay_sequence_fails_closed(
         changed["source_commands"][4]["control_physics_tick"] += 1
     elif surface == "tail_lifecycle":
         changed["source_commands"][4]["source_fsm_lifecycle"] = "EXECUTE_MOTION"
+    elif surface == "controller_row_context":
+        changed["source_commands"][8]["source_fsm_state"] = "P09"
+        changed["source_commands"][8]["source_fsm_lifecycle"] = "VERIFY_RESULT"
+    elif surface == "target_command_included":
+        changed["source_commands"][-1]["control_physics_tick"] = changed[
+            "target_entry_tick"
+        ]
     elif surface == "tail_atomic_tick":
         changed["source_commands"][4]["source_atomic_physics_tick"] += 1
     elif surface == "tail_mapper_continuity":
@@ -619,6 +812,8 @@ def test_validated_bundle_record_binds_manifest_and_exact_p01_p13_bytes(tmp_path
             "source_tick",
             "source_replay_steps",
             "target_entry_tick",
+            "controller_anchor_tick",
+            "controller_anchor_time_s",
             "snapshot_path",
             "checksum_path",
             "file_sha256",
@@ -630,10 +825,14 @@ def test_validated_bundle_record_binds_manifest_and_exact_p01_p13_bytes(tmp_path
     p08_record = next(row for row in record["snapshots"] if row["phase"] == "P08")
     assert p08_record["source_replay_steps"] == 1
     assert p08_record["target_entry_tick"] is None
+    assert p08_record["controller_anchor_tick"] is None
+    assert p08_record["controller_anchor_time_s"] is None
     p10_record = next(row for row in record["snapshots"] if row["phase"] == "P10")
     assert p10_record["source_tick"] == 9
-    assert p10_record["source_replay_steps"] == 10
-    assert p10_record["target_entry_tick"] == 19
+    assert p10_record["source_replay_steps"] == 18
+    assert p10_record["target_entry_tick"] == 27
+    assert p10_record["controller_anchor_tick"] == 17
+    assert p10_record["controller_anchor_time_s"] == 17 / 120
     assert len(record["bundle_sha256"]) == 64
     assert validated_phase_snapshot_bundle_record(out, canonical_root=out) == record
 
@@ -701,6 +900,22 @@ def test_pinned_loader_parses_and_hashes_only_immutable_captured_bytes(
 
     assert payload["fsm_state"] == "P08"
     assert payload["state_sha256"] == entry.state_sha256
+
+
+def test_pinned_loader_exposes_exact_hybrid_controller_anchor(tmp_path):
+    out = _build_snapshot_set(tmp_path)
+    bundle = capture_validated_phase_snapshot_bundle(out, canonical_root=out)
+
+    payload, entry = load_validated_phase_snapshot_payload(bundle, "P10")
+
+    assert payload["source_tick"] == 9
+    assert entry.source_tick == 9
+    assert payload["controller_anchor_tick"] == 17
+    assert entry.controller_anchor_tick == 17
+    assert payload["controller_anchor_time_s"] == 17 / 120
+    assert entry.controller_anchor_time_s == 17 / 120
+    assert payload["target_entry_tick"] == 27
+    assert entry.target_entry_tick == 27
 
 
 @pytest.mark.parametrize(

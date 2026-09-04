@@ -236,7 +236,15 @@ def _require_git_commit(value: Any, label: str) -> str:
 def _snapshot_replay_contract(
     phase_snapshot_bundle: ValidatedPhaseSnapshotBundle,
     phase: str,
-) -> tuple[Mapping[str, Any], Any, int, int, tuple[int, ...]]:
+) -> tuple[
+    Mapping[str, Any],
+    Any,
+    int,
+    int,
+    tuple[int, ...],
+    int | None,
+    float | None,
+]:
     """Return the replay window proven by the pinned payload and manifest row.
 
     ``load_validated_phase_snapshot_payload`` revalidates the payload against
@@ -266,6 +274,53 @@ def _snapshot_replay_contract(
     target_entry_tick = source_tick + replay_steps
     payload_target = payload.get("target_entry_tick")
     snapshot_target = getattr(snapshot, "target_entry_tick", None)
+    has_controller_anchor_tick = "controller_anchor_tick" in payload
+    has_controller_anchor_time = "controller_anchor_time_s" in payload
+    controller_anchor_tick = payload.get("controller_anchor_tick")
+    controller_anchor_time = payload.get("controller_anchor_time_s")
+    snapshot_controller_anchor_tick = getattr(
+        snapshot, "controller_anchor_tick", None
+    )
+    snapshot_controller_anchor_time = getattr(
+        snapshot, "controller_anchor_time_s", None
+    )
+    if phase == "P10":
+        if (
+            not has_controller_anchor_tick
+            or not has_controller_anchor_time
+            or type(controller_anchor_tick) is not int
+            or not source_tick < controller_anchor_tick < target_entry_tick
+            or isinstance(controller_anchor_time, bool)
+            or not isinstance(controller_anchor_time, (int, float))
+            or not math.isfinite(float(controller_anchor_time))
+            or float(controller_anchor_time)
+            != phase_entry_time_s(controller_anchor_tick)
+            or payload_target != target_entry_tick
+            or snapshot_target != target_entry_tick
+            or snapshot_controller_anchor_tick != controller_anchor_tick
+            or snapshot_controller_anchor_time != controller_anchor_time
+        ):
+            raise EffectivePhaseEntryError(
+                "validated P10 physical/controller replay anchors are invalid"
+            )
+        controller_anchor_time = float(controller_anchor_time)
+    else:
+        if (
+            has_controller_anchor_tick
+            or has_controller_anchor_time
+            or controller_anchor_tick is not None
+            or controller_anchor_time is not None
+            or snapshot_controller_anchor_tick is not None
+            or snapshot_controller_anchor_time is not None
+            or payload_target is not None
+            or snapshot_target is not None
+            or replay_steps != 1
+        ):
+            raise EffectivePhaseEntryError(
+                f"validated non-hybrid phase snapshot declares replay anchors for {phase}"
+            )
+        controller_anchor_tick = None
+        controller_anchor_time = None
     if (
         getattr(snapshot, "source_tick", None) != source_tick
         or getattr(snapshot, "source_replay_steps", None) != replay_steps
@@ -291,7 +346,159 @@ def _snapshot_replay_contract(
         raise EffectivePhaseEntryError(
             f"validated phase snapshot source-command sequence is invalid for {phase}"
         )
-    return payload, snapshot, replay_steps, target_entry_tick, control_ticks
+    if phase == "P10":
+        assert isinstance(controller_anchor_tick, int)
+        expected_contexts = tuple(
+            (
+                "P09",
+                "VERIFY_RESULT",
+            )
+            if tick < controller_anchor_tick
+            else ("P10", "WAIT_ENTRY")
+            for tick in control_ticks
+        )
+        actual_contexts = tuple(
+            (
+                command.get("source_fsm_state"),
+                command.get("source_fsm_lifecycle"),
+            )
+            for command in commands
+        )
+        if (
+            actual_contexts != expected_contexts
+            or payload.get("fsm_state") != "P10"
+            or payload.get("fsm_lifecycle") != "WAIT_ENTRY"
+        ):
+            raise EffectivePhaseEntryError(
+                "validated P10 replay does not bridge P09 VERIFY_RESULT to "
+                "the P10 WAIT_ENTRY controller anchor"
+            )
+    return (
+        payload,
+        snapshot,
+        replay_steps,
+        target_entry_tick,
+        control_ticks,
+        controller_anchor_tick,
+        controller_anchor_time,
+    )
+
+
+def _expected_replay_anchor_contract(
+    snapshot_payload: Mapping[str, Any],
+    phase: str,
+    *,
+    replay_steps: int,
+    target_entry_tick: int,
+    control_ticks: Sequence[int],
+    controller_anchor_tick: int | None,
+    controller_anchor_time_s: float | None,
+) -> dict[str, Any]:
+    """Recompute the backend replay-anchor proof from pinned snapshot bytes."""
+
+    source_tick = int(snapshot_payload["source_tick"])
+    hybrid = phase == "P10"
+    if hybrid:
+        assert controller_anchor_tick is not None
+        predecessor = PHASE_IDS[PHASE_IDS.index(phase) - 1]
+        contexts = [
+            {
+                "source_control_physics_tick": tick,
+                "source_fsm_state": predecessor if tick < controller_anchor_tick else phase,
+                "source_fsm_lifecycle": (
+                    "VERIFY_RESULT" if tick < controller_anchor_tick else "WAIT_ENTRY"
+                ),
+                "anchor_segment": (
+                    "physical_anchor_to_controller_anchor"
+                    if tick < controller_anchor_tick
+                    else "controller_anchor_to_target_entry"
+                ),
+            }
+            for tick in control_ticks
+        ]
+        segments = [
+            {
+                "first_source_tick": source_tick,
+                "last_source_tick": controller_anchor_tick - 1,
+                "source_replay_steps": controller_anchor_tick - source_tick,
+                "source_fsm_state": predecessor,
+                "source_fsm_lifecycle": "VERIFY_RESULT",
+            },
+            {
+                "first_source_tick": controller_anchor_tick,
+                "last_source_tick": target_entry_tick - 1,
+                "source_replay_steps": target_entry_tick - controller_anchor_tick,
+                "source_fsm_state": phase,
+                "source_fsm_lifecycle": "WAIT_ENTRY",
+            },
+        ]
+    else:
+        contexts = [
+            {
+                "source_control_physics_tick": source_tick,
+                "source_fsm_state": None,
+                "source_fsm_lifecycle": None,
+                "anchor_segment": "single_source_command",
+            }
+        ]
+        segments = [
+            {
+                "first_source_tick": source_tick,
+                "last_source_tick": source_tick,
+                "source_replay_steps": 1,
+                "source_fsm_state": None,
+                "source_fsm_lifecycle": None,
+            }
+        ]
+    physical_to_controller_steps = (
+        None
+        if controller_anchor_tick is None
+        else controller_anchor_tick - source_tick
+    )
+    controller_to_target_steps = (
+        None
+        if controller_anchor_tick is None
+        else target_entry_tick - controller_anchor_tick
+    )
+    return {
+        "schema": "wlr50_clean.phase_snapshot_replay_anchor_contract.v1",
+        "verified": True,
+        "phase": phase,
+        "mode": (
+            "hybrid_physical_and_controller_anchors"
+            if hybrid
+            else "single_physical_anchor"
+        ),
+        "physical_anchor_tick": source_tick,
+        "physical_anchor_time_s": phase_entry_time_s(source_tick),
+        "physical_state_anchor_tick": source_tick,
+        "physical_state_anchor_role": "physical_anchor",
+        "controller_anchor_tick": controller_anchor_tick,
+        "controller_anchor_time_s": controller_anchor_time_s,
+        "controller_state_anchor_tick": controller_anchor_tick,
+        "controller_state_anchor_role": "controller_anchor" if hybrid else None,
+        "latch_snapshot_anchor_tick": (
+            controller_anchor_tick
+            if controller_anchor_tick is not None
+            else source_tick
+        ),
+        "latch_snapshot_anchor_role": (
+            "controller_anchor" if hybrid else "physical_anchor"
+        ),
+        "target_entry_tick": target_entry_tick,
+        "target_entry_time_s": phase_entry_time_s(target_entry_tick),
+        "target_entry_tick_authored": hybrid,
+        "source_replay_steps": replay_steps,
+        "physical_to_controller_replay_steps": physical_to_controller_steps,
+        "controller_to_target_replay_steps": controller_to_target_steps,
+        "hybrid_physical_controller_anchor": hybrid,
+        "source_replay_first_tick": source_tick,
+        "source_replay_last_tick": target_entry_tick - 1,
+        "source_replay_context_transition_tick": controller_anchor_tick,
+        "source_replay_fsm_contexts": contexts,
+        "source_replay_context_segments": segments,
+        "all_source_replay_contexts_verified": True,
+    }
 
 
 def _binary64_hex(value: float) -> str:
@@ -928,6 +1135,8 @@ def _replay_evidence_failures(
     replay_steps: int,
     target_entry_tick: int,
     control_ticks: Sequence[int],
+    controller_anchor_tick: int | None,
+    controller_anchor_time_s: float | None,
 ) -> tuple[str, ...]:
     """Validate every replay write/read against the pinned command sequence."""
 
@@ -954,6 +1163,15 @@ def _replay_evidence_failures(
     assert isinstance(mapper_states, list)
     assert isinstance(atomic_writes, list)
     assert isinstance(safety_checks, list)
+    expected_anchor_contract = _expected_replay_anchor_contract(
+        snapshot_payload,
+        str(snapshot_payload["fsm_state"]),
+        replay_steps=replay_steps,
+        target_entry_tick=target_entry_tick,
+        control_ticks=control_ticks,
+        controller_anchor_tick=controller_anchor_tick,
+        controller_anchor_time_s=controller_anchor_time_s,
+    )
     for index, (command, expected_tick) in enumerate(
         zip(commands, control_ticks, strict=True)
     ):
@@ -1065,6 +1283,29 @@ def _replay_evidence_failures(
         failures.append("final source_mapper_post_state alias")
     if state.get("source_replay_steps") != replay_steps:
         failures.append("source_replay_steps")
+    anchor_bindings = {
+        "physical_anchor_tick": expected_anchor_contract["physical_anchor_tick"],
+        "physical_anchor_time_s": expected_anchor_contract["physical_anchor_time_s"],
+        "controller_anchor_tick": controller_anchor_tick,
+        "controller_anchor_time_s": controller_anchor_time_s,
+        "target_entry_time_s": expected_anchor_contract["target_entry_time_s"],
+        "physical_to_controller_replay_steps": expected_anchor_contract[
+            "physical_to_controller_replay_steps"
+        ],
+        "controller_to_target_replay_steps": expected_anchor_contract[
+            "controller_to_target_replay_steps"
+        ],
+        "hybrid_physical_controller_anchor": expected_anchor_contract[
+            "hybrid_physical_controller_anchor"
+        ],
+        "replay_anchor_contract": expected_anchor_contract,
+        "source_replay_fsm_contexts": expected_anchor_contract[
+            "source_replay_fsm_contexts"
+        ],
+    }
+    for name, expected in anchor_bindings.items():
+        if name not in state or state.get(name) != expected:
+            failures.append(name)
     if state.get("target_entry_tick") != target_entry_tick:
         failures.append("target_entry_tick")
     if state.get("episode_sensor_tick_offset") != target_entry_tick:
@@ -1109,6 +1350,8 @@ def _validated_probe_attempt(
         replay_steps,
         target_entry_tick,
         control_ticks,
+        controller_anchor_tick,
+        controller_anchor_time_s,
     ) = _snapshot_replay_contract(phase_snapshot_bundle, phase)
     replay_failures = _replay_evidence_failures(
         state,
@@ -1116,8 +1359,19 @@ def _validated_probe_attempt(
         replay_steps=replay_steps,
         target_entry_tick=target_entry_tick,
         control_ticks=control_ticks,
+        controller_anchor_tick=controller_anchor_tick,
+        controller_anchor_time_s=controller_anchor_time_s,
     )
     source_commands = snapshot_payload["source_commands"]
+    expected_anchor_contract = _expected_replay_anchor_contract(
+        snapshot_payload,
+        phase,
+        replay_steps=replay_steps,
+        target_entry_tick=target_entry_tick,
+        control_ticks=control_ticks,
+        controller_anchor_tick=controller_anchor_tick,
+        controller_anchor_time_s=controller_anchor_time_s,
+    )
     expected_scalars = {
         "state_write_count": 1,
         "root_pose_writes": 1,
@@ -1125,6 +1379,8 @@ def _validated_probe_attempt(
         "joint_state_writes": 1,
         "simulation_forward_syncs": 1,
         "source_replay_steps": replay_steps,
+        "controller_anchor_tick": controller_anchor_tick,
+        "controller_anchor_time_s": controller_anchor_time_s,
         "target_entry_tick": target_entry_tick,
         "episode_sensor_tick_offset": target_entry_tick,
         "effective_entry_offset_s": phase_entry_time_s(replay_steps),
@@ -1182,6 +1438,10 @@ def _validated_probe_attempt(
         and Path(str(attempt.get("snapshot_path", ""))).resolve()
         == snapshot.snapshot_path
         and attempt.get("source_replay_steps") == replay_steps
+        and "controller_anchor_tick" in attempt
+        and attempt.get("controller_anchor_tick") == controller_anchor_tick
+        and "controller_anchor_time_s" in attempt
+        and attempt.get("controller_anchor_time_s") == controller_anchor_time_s
         and attempt.get("target_entry_tick") == target_entry_tick
         and attempt.get("episode_sensor_tick_offset") == target_entry_tick
         and attempt.get("effective_entry_offset_s")
@@ -1255,8 +1515,17 @@ def _validated_probe_attempt(
             "calibration_only",
             "phase",
             "source_tick",
+            "physical_anchor_tick",
+            "physical_anchor_time_s",
+            "controller_anchor_tick",
+            "controller_anchor_time_s",
             "target_entry_tick",
+            "target_entry_time_s",
             "source_replay_steps",
+            "physical_to_controller_replay_steps",
+            "controller_to_target_replay_steps",
+            "hybrid_physical_controller_anchor",
+            "replay_anchor_contract",
             "effective_entry_offset_s",
             "phase_snapshot_bundle_sha256",
             "source_snapshot_post_prime_diagnostic",
@@ -1268,8 +1537,26 @@ def _validated_probe_attempt(
         and effective_proof.get("calibration_only") is True
         and effective_proof.get("phase") == phase
         and effective_proof.get("source_tick") == snapshot.source_tick
+        and effective_proof.get("physical_anchor_tick")
+        == expected_anchor_contract["physical_anchor_tick"]
+        and effective_proof.get("physical_anchor_time_s")
+        == expected_anchor_contract["physical_anchor_time_s"]
+        and effective_proof.get("controller_anchor_tick")
+        == controller_anchor_tick
+        and effective_proof.get("controller_anchor_time_s")
+        == controller_anchor_time_s
         and effective_proof.get("target_entry_tick") == target_entry_tick
+        and effective_proof.get("target_entry_time_s")
+        == expected_anchor_contract["target_entry_time_s"]
         and effective_proof.get("source_replay_steps") == replay_steps
+        and effective_proof.get("physical_to_controller_replay_steps")
+        == expected_anchor_contract["physical_to_controller_replay_steps"]
+        and effective_proof.get("controller_to_target_replay_steps")
+        == expected_anchor_contract["controller_to_target_replay_steps"]
+        and effective_proof.get("hybrid_physical_controller_anchor")
+        == expected_anchor_contract["hybrid_physical_controller_anchor"]
+        and effective_proof.get("replay_anchor_contract")
+        == expected_anchor_contract
         and effective_proof.get("effective_entry_offset_s")
         == phase_entry_time_s(replay_steps)
         and effective_proof.get("phase_snapshot_bundle_sha256")
@@ -1345,6 +1632,8 @@ def _assert_replay_attempts_bit_identical(
 
     attempt_fields = (
         "source_tick",
+        "controller_anchor_tick",
+        "controller_anchor_time_s",
         "source_replay_steps",
         "target_entry_tick",
         "effective_entry_offset_s",
@@ -1360,7 +1649,17 @@ def _assert_replay_attempts_bit_identical(
     )
     state_fields = (
         "source_replay_steps",
+        "physical_anchor_tick",
+        "physical_anchor_time_s",
+        "controller_anchor_tick",
+        "controller_anchor_time_s",
         "target_entry_tick",
+        "target_entry_time_s",
+        "physical_to_controller_replay_steps",
+        "controller_to_target_replay_steps",
+        "hybrid_physical_controller_anchor",
+        "replay_anchor_contract",
+        "source_replay_fsm_contexts",
         "episode_sensor_tick_offset",
         "effective_entry_offset_s",
         "physics_steps",
@@ -1502,11 +1801,15 @@ def _capture_calibration_run(
             expected_replay_steps,
             expected_target_entry_tick,
             _expected_control_ticks,
+            expected_controller_anchor_tick,
+            expected_controller_anchor_time_s,
         ) = _snapshot_replay_contract(phase_snapshot_bundle, str(phase))
     else:
         expected_replay_steps = None
         expected_target_entry_tick = None
         _expected_control_ticks = ()
+        expected_controller_anchor_tick = None
+        expected_controller_anchor_time_s = None
     if (
         probe.get("schema") != PROBE_SCHEMA
         or probe.get("artifact_role") != CALIBRATION_ARTIFACT_ROLE
@@ -1535,6 +1838,17 @@ def _capture_calibration_run(
         != "derived_only_from_validated_phase_snapshot"
         or probe.get("source_replay_steps_by_phase")
         != {phase: expected_replay_steps}
+        or probe.get("controller_anchors_by_phase")
+        != {
+            phase: (
+                {
+                    "controller_anchor_tick": expected_controller_anchor_tick,
+                    "controller_anchor_time_s": expected_controller_anchor_time_s,
+                }
+                if expected_controller_anchor_tick is not None
+                else None
+            )
+        }
         or not isinstance(attempts, list)
         or len(attempts) != 2
     ):
@@ -1596,6 +1910,8 @@ def _capture_calibration_run(
         "schema": ENTRY_SCHEMA,
         "phase": phase,
         "source_tick": int(fresh.get("source_tick")),
+        "controller_anchor_tick": expected_controller_anchor_tick,
+        "controller_anchor_time_s": expected_controller_anchor_time_s,
         "target_entry_tick": expected_target_entry_tick,
         "source_replay_steps": expected_replay_steps,
         "effective_entry_offset_s": phase_entry_time_s(expected_replay_steps),
@@ -1991,6 +2307,8 @@ def _validate_contract_payload(
             "schema",
             "phase",
             "source_tick",
+            "controller_anchor_tick",
+            "controller_anchor_time_s",
             "target_entry_tick",
             "source_replay_steps",
             "effective_entry_offset_s",
@@ -2013,12 +2331,18 @@ def _validate_contract_payload(
             expected_replay_steps,
             expected_target_entry_tick,
             _control_ticks,
+            expected_controller_anchor_tick,
+            expected_controller_anchor_time_s,
         ) = _snapshot_replay_contract(expected_snapshot_bundle, phase)
         if (
             row.get("schema") != ENTRY_SCHEMA
             or row.get("phase") != phase
             or type(row.get("source_tick")) is not int
             or row.get("source_tick") != snapshot_file.source_tick
+            or row.get("controller_anchor_tick")
+            != expected_controller_anchor_tick
+            or row.get("controller_anchor_time_s")
+            != expected_controller_anchor_time_s
             or row.get("target_entry_tick") != expected_target_entry_tick
             or row.get("source_replay_steps") != expected_replay_steps
             or row.get("effective_entry_offset_s")
@@ -2331,6 +2655,8 @@ def validate_effective_phase_entry_comparison(
             "source_snapshot_plus_validated_replay_steps_no_rewind"
         ),
         "source_tick": entry.get("source_tick"),
+        "controller_anchor_tick": entry.get("controller_anchor_tick"),
+        "controller_anchor_time_s": entry.get("controller_anchor_time_s"),
         "target_entry_tick": entry.get("target_entry_tick"),
         "source_replay_steps": entry.get("source_replay_steps"),
         "effective_entry_offset_s": entry.get("effective_entry_offset_s"),

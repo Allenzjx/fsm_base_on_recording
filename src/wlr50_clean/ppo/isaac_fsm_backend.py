@@ -478,6 +478,7 @@ class IsaacFSMBackend:
         snapshot_phase = _snapshot_phase_option(reset_options)
         loaded_snapshot: LoadedPhaseSnapshot | None = None
         effective_entry: Mapping[str, Any] | None = None
+        replay_anchor_contract: dict[str, Any] | None = None
         if snapshot_phase is not None:
             if self._phase_snapshot_integrity_failed:
                 raise IsaacFSMBackendError(
@@ -507,6 +508,11 @@ class IsaacFSMBackend:
                     "phase snapshot loader returned a different FSM state"
                 )
             _validate_phase_snapshot_payload(loaded_snapshot.payload, snapshot_phase)
+            replay_anchor_contract = dict(
+                _phase_snapshot_replay_anchor_contract(
+                    loaded_snapshot.payload, snapshot_phase
+                )
+            )
             if snapshot_phase != "P01":
                 if (
                     self._expected_effective_entry_contract is None
@@ -775,17 +781,42 @@ class IsaacFSMBackend:
         contact_force_off_n = math.nan
         episode_sensor_tick_offset = 0
         if loaded_snapshot is not None:
+            assert replay_anchor_contract is not None
             self._snapshot_restoration.update(
                 {
                     "state_sha256": loaded_snapshot.state_sha256,
                     "file_sha256": loaded_snapshot.file_sha256,
                     "snapshot_path": str(loaded_snapshot.snapshot_path),
                     "source_tick": int(loaded_snapshot.payload["source_tick"]),
+                    "physical_anchor_tick": replay_anchor_contract[
+                        "physical_anchor_tick"
+                    ],
+                    "physical_anchor_time_s": replay_anchor_contract[
+                        "physical_anchor_time_s"
+                    ],
+                    "controller_anchor_tick": replay_anchor_contract[
+                        "controller_anchor_tick"
+                    ],
+                    "controller_anchor_time_s": replay_anchor_contract[
+                        "controller_anchor_time_s"
+                    ],
+                    "target_entry_tick": replay_anchor_contract[
+                        "target_entry_tick"
+                    ],
+                    "target_entry_time_s": replay_anchor_contract[
+                        "target_entry_time_s"
+                    ],
+                    "source_replay_steps": replay_anchor_contract[
+                        "source_replay_steps"
+                    ],
+                    "replay_anchor_contract": replay_anchor_contract,
                 }
             )
             source_snapshot_semantics = (
-                "source_recording_preroll_anchor_tick"
-                if int(loaded_snapshot.payload.get("source_replay_steps", 1)) > 1
+                "source_recording_hybrid_physical_anchor_tick"
+                if replay_anchor_contract["hybrid_physical_controller_anchor"]
+                else "source_recording_preroll_anchor_tick"
+                if replay_anchor_contract["source_replay_steps"] > 1
                 else "source_recording_causal_predecessor_tick"
                 if "target_entry_tick" in loaded_snapshot.payload
                 else "source_recording_entry_tick"
@@ -817,6 +848,7 @@ class IsaacFSMBackend:
                     }
                 )
         if loaded_snapshot is not None and snapshot_phase != "P01":
+            assert replay_anchor_contract is not None
             assert dependencies.write_phase_snapshot is not None
             initial_state_write = dict(
                 dependencies.write_phase_snapshot(
@@ -856,6 +888,15 @@ class IsaacFSMBackend:
                 )
             source_tick = int(loaded_snapshot.payload["source_tick"])
             target_entry_tick = source_tick + source_replay_steps
+            if (
+                source_tick != replay_anchor_contract["physical_anchor_tick"]
+                or source_replay_steps
+                != replay_anchor_contract["source_replay_steps"]
+                or target_entry_tick != replay_anchor_contract["target_entry_tick"]
+            ):
+                raise IsaacFSMBackendError(
+                    "phase snapshot replay diverged from its validated anchor contract"
+                )
             authored_target = loaded_snapshot.payload.get("target_entry_tick")
             if (
                 authored_target is not None
@@ -869,6 +910,28 @@ class IsaacFSMBackend:
             assert dependencies.restore_guard_snapshot is not None
             guard_proof = dict(
                 dependencies.restore_guard_snapshot(reader, loaded_snapshot.payload)
+            )
+            guard_proof.update(
+                {
+                    "physical_anchor_tick": replay_anchor_contract[
+                        "physical_anchor_tick"
+                    ],
+                    "controller_anchor_tick": replay_anchor_contract[
+                        "controller_anchor_tick"
+                    ],
+                    "controller_anchor_time_s": replay_anchor_contract[
+                        "controller_anchor_time_s"
+                    ],
+                    "latch_snapshot_anchor_tick": replay_anchor_contract[
+                        "latch_snapshot_anchor_tick"
+                    ],
+                    "latch_snapshot_anchor_role": replay_anchor_contract[
+                        "latch_snapshot_anchor_role"
+                    ],
+                    "hybrid_physical_controller_anchor": replay_anchor_contract[
+                        "hybrid_physical_controller_anchor"
+                    ],
+                }
             )
             classifier = getattr(reader, "contact_classifier", None)
             contact_force_on_n = float(getattr(classifier, "force_on_n", math.nan))
@@ -892,6 +955,7 @@ class IsaacFSMBackend:
             source_mapper_post_states: list[dict[str, Any]] = []
             source_replay_observation_ticks: list[int] = []
             source_replay_safety_checks: list[dict[str, Any]] = []
+            source_replay_fsm_contexts: list[dict[str, Any]] = []
             prime_ack: dict[str, Any] | None = None
             prime_drive_target = ZERO_FULL12
             for replay_index, source_command_value in enumerate(source_commands):
@@ -959,6 +1023,16 @@ class IsaacFSMBackend:
                         "error": str(exc),
                         "source_control_physics_tick": expected_source_tick,
                         "observation_physics_tick": replay_tick,
+                        "physical_anchor_tick": replay_anchor_contract[
+                            "physical_anchor_tick"
+                        ],
+                        "controller_anchor_tick": replay_anchor_contract[
+                            "controller_anchor_tick"
+                        ],
+                        "target_entry_tick": replay_anchor_contract[
+                            "target_entry_tick"
+                        ],
+                        "replay_anchor_contract": replay_anchor_contract,
                     }
                     self._snapshot_restoration.update(
                         {
@@ -978,6 +1052,16 @@ class IsaacFSMBackend:
                         "error": str(exc),
                         "source_control_physics_tick": expected_source_tick,
                         "observation_physics_tick": replay_tick,
+                        "physical_anchor_tick": replay_anchor_contract[
+                            "physical_anchor_tick"
+                        ],
+                        "controller_anchor_tick": replay_anchor_contract[
+                            "controller_anchor_tick"
+                        ],
+                        "target_entry_tick": replay_anchor_contract[
+                            "target_entry_tick"
+                        ],
+                        "replay_anchor_contract": replay_anchor_contract,
                     }
                     self._snapshot_restoration.update(
                         {
@@ -994,6 +1078,25 @@ class IsaacFSMBackend:
                 )
                 source_replay_observation_ticks.append(replay_tick)
                 source_replay_safety_checks.append(replay_safety)
+                replay_segment = (
+                    "physical_anchor_to_controller_anchor"
+                    if replay_anchor_contract["controller_anchor_tick"] is not None
+                    and expected_source_tick
+                    < replay_anchor_contract["controller_anchor_tick"]
+                    else "controller_anchor_to_target_entry"
+                    if replay_anchor_contract["controller_anchor_tick"] is not None
+                    else "single_source_command"
+                )
+                source_replay_fsm_contexts.append(
+                    {
+                        "source_control_physics_tick": expected_source_tick,
+                        "source_fsm_state": source_command.get("source_fsm_state"),
+                        "source_fsm_lifecycle": source_command.get(
+                            "source_fsm_lifecycle"
+                        ),
+                        "anchor_segment": replay_segment,
+                    }
+                )
                 source_actuation_matches.append(source_actuation_match)
                 source_mapper_post_states.append(source_mapper_post_state)
                 prime_acks.append({
@@ -1059,6 +1162,32 @@ class IsaacFSMBackend:
                     "source_mapper_post_states": source_mapper_post_states,
                     "source_replay_steps": source_replay_steps,
                     "target_entry_tick": target_entry_tick,
+                    "target_entry_time_s": replay_anchor_contract[
+                        "target_entry_time_s"
+                    ],
+                    "physical_anchor_tick": replay_anchor_contract[
+                        "physical_anchor_tick"
+                    ],
+                    "physical_anchor_time_s": replay_anchor_contract[
+                        "physical_anchor_time_s"
+                    ],
+                    "controller_anchor_tick": replay_anchor_contract[
+                        "controller_anchor_tick"
+                    ],
+                    "controller_anchor_time_s": replay_anchor_contract[
+                        "controller_anchor_time_s"
+                    ],
+                    "physical_to_controller_replay_steps": replay_anchor_contract[
+                        "physical_to_controller_replay_steps"
+                    ],
+                    "controller_to_target_replay_steps": replay_anchor_contract[
+                        "controller_to_target_replay_steps"
+                    ],
+                    "hybrid_physical_controller_anchor": replay_anchor_contract[
+                        "hybrid_physical_controller_anchor"
+                    ],
+                    "replay_anchor_contract": replay_anchor_contract,
+                    "source_replay_fsm_contexts": source_replay_fsm_contexts,
                     "source_replay_observation_ticks": (
                         source_replay_observation_ticks
                     ),
@@ -1120,6 +1249,28 @@ class IsaacFSMBackend:
                     controller, loaded_snapshot.payload
                 )
             )
+            controller_proof.update(
+                {
+                    "physical_anchor_tick": replay_anchor_contract[
+                        "physical_anchor_tick"
+                    ],
+                    "controller_anchor_tick": replay_anchor_contract[
+                        "controller_anchor_tick"
+                    ],
+                    "controller_anchor_time_s": replay_anchor_contract[
+                        "controller_anchor_time_s"
+                    ],
+                    "controller_state_anchor_tick": replay_anchor_contract[
+                        "controller_state_anchor_tick"
+                    ],
+                    "controller_state_anchor_role": replay_anchor_contract[
+                        "controller_state_anchor_role"
+                    ],
+                    "hybrid_physical_controller_anchor": replay_anchor_contract[
+                        "hybrid_physical_controller_anchor"
+                    ],
+                }
+            )
             observation = replay_observation
             try:
                 _validate_sensor_contract(
@@ -1129,7 +1280,20 @@ class IsaacFSMBackend:
                 )
             except SensorContractFailure as exc:
                 self._phase_snapshot_integrity_failed = True
-                failed_sensor = {"verified": False, "error": str(exc)}
+                failed_sensor = {
+                    "verified": False,
+                    "error": str(exc),
+                    "physical_anchor_tick": replay_anchor_contract[
+                        "physical_anchor_tick"
+                    ],
+                    "controller_anchor_tick": replay_anchor_contract[
+                        "controller_anchor_tick"
+                    ],
+                    "target_entry_tick": replay_anchor_contract[
+                        "target_entry_tick"
+                    ],
+                    "replay_anchor_contract": replay_anchor_contract,
+                }
                 physical_proof["entry_sensor_contract"] = failed_sensor
                 self._snapshot_restoration.update(
                     {
@@ -1179,8 +1343,33 @@ class IsaacFSMBackend:
                     "calibration_only": True,
                     "phase": snapshot_phase,
                     "source_tick": int(loaded_snapshot.payload["source_tick"]),
+                    "physical_anchor_tick": replay_anchor_contract[
+                        "physical_anchor_tick"
+                    ],
+                    "physical_anchor_time_s": replay_anchor_contract[
+                        "physical_anchor_time_s"
+                    ],
+                    "controller_anchor_tick": replay_anchor_contract[
+                        "controller_anchor_tick"
+                    ],
+                    "controller_anchor_time_s": replay_anchor_contract[
+                        "controller_anchor_time_s"
+                    ],
                     "target_entry_tick": target_entry_tick,
+                    "target_entry_time_s": replay_anchor_contract[
+                        "target_entry_time_s"
+                    ],
                     "source_replay_steps": source_replay_steps,
+                    "physical_to_controller_replay_steps": replay_anchor_contract[
+                        "physical_to_controller_replay_steps"
+                    ],
+                    "controller_to_target_replay_steps": replay_anchor_contract[
+                        "controller_to_target_replay_steps"
+                    ],
+                    "hybrid_physical_controller_anchor": replay_anchor_contract[
+                        "hybrid_physical_controller_anchor"
+                    ],
+                    "replay_anchor_contract": replay_anchor_contract,
                     "effective_entry_offset_s": phase_entry_time_s(
                         source_replay_steps
                     ),
@@ -1211,6 +1400,19 @@ class IsaacFSMBackend:
                             self._expected_effective_entry_contract.contract_sha256
                         ),
                         "entry_sha256": effective_entry["entry_sha256"],
+                        "physical_anchor_tick": replay_anchor_contract[
+                            "physical_anchor_tick"
+                        ],
+                        "controller_anchor_tick": replay_anchor_contract[
+                            "controller_anchor_tick"
+                        ],
+                        "controller_anchor_time_s": replay_anchor_contract[
+                            "controller_anchor_time_s"
+                        ],
+                        "target_entry_tick": replay_anchor_contract[
+                            "target_entry_tick"
+                        ],
+                        "replay_anchor_contract": replay_anchor_contract,
                         "error": str(exc),
                     }
                     self._snapshot_restoration.update(
@@ -1226,12 +1428,60 @@ class IsaacFSMBackend:
                     raise SensorContractFailure(
                         "phase effective-entry contract failed: " + str(exc)
                     ) from exc
+                effective_proof.update(
+                    {
+                        "physical_anchor_tick": replay_anchor_contract[
+                            "physical_anchor_tick"
+                        ],
+                        "physical_anchor_time_s": replay_anchor_contract[
+                            "physical_anchor_time_s"
+                        ],
+                        "controller_anchor_tick": replay_anchor_contract[
+                            "controller_anchor_tick"
+                        ],
+                        "controller_anchor_time_s": replay_anchor_contract[
+                            "controller_anchor_time_s"
+                        ],
+                        "target_entry_tick": replay_anchor_contract[
+                            "target_entry_tick"
+                        ],
+                        "target_entry_time_s": replay_anchor_contract[
+                            "target_entry_time_s"
+                        ],
+                        "source_replay_steps": replay_anchor_contract[
+                            "source_replay_steps"
+                        ],
+                        "physical_to_controller_replay_steps": replay_anchor_contract[
+                            "physical_to_controller_replay_steps"
+                        ],
+                        "controller_to_target_replay_steps": replay_anchor_contract[
+                            "controller_to_target_replay_steps"
+                        ],
+                        "hybrid_physical_controller_anchor": replay_anchor_contract[
+                            "hybrid_physical_controller_anchor"
+                        ],
+                        "replay_anchor_contract": replay_anchor_contract,
+                    }
+                )
             _require_running(scene, "effective phase-entry verification")
             try:
                 safety_proof = _verify_effective_entry_safety(observation)
             except SensorContractFailure as exc:
                 self._phase_snapshot_integrity_failed = True
-                failed_safety = {"verified": False, "error": str(exc)}
+                failed_safety = {
+                    "verified": False,
+                    "error": str(exc),
+                    "physical_anchor_tick": replay_anchor_contract[
+                        "physical_anchor_tick"
+                    ],
+                    "controller_anchor_tick": replay_anchor_contract[
+                        "controller_anchor_tick"
+                    ],
+                    "target_entry_tick": replay_anchor_contract[
+                        "target_entry_tick"
+                    ],
+                    "replay_anchor_contract": replay_anchor_contract,
+                }
                 physical_proof["entry_safety_contract"] = failed_safety
                 self._snapshot_restoration.update(
                     {
@@ -1307,6 +1557,16 @@ class IsaacFSMBackend:
                     "verified": False,
                     "error": str(exc),
                     "pending_entry_blocker": pending_record,
+                    "physical_anchor_tick": replay_anchor_contract[
+                        "physical_anchor_tick"
+                    ],
+                    "controller_anchor_tick": replay_anchor_contract[
+                        "controller_anchor_tick"
+                    ],
+                    "target_entry_tick": replay_anchor_contract[
+                        "target_entry_tick"
+                    ],
+                    "replay_anchor_contract": replay_anchor_contract,
                 }
                 physical_proof["entry_guard_contract"] = failed_entry
                 self._snapshot_restoration["entry_guards"] = failed_entry
@@ -2395,6 +2655,214 @@ def _load_validated_phase_snapshot(
     )
 
 
+def _phase_snapshot_replay_anchor_contract(
+    payload: Mapping[str, Any], phase_id: str
+) -> Mapping[str, Any]:
+    """Return a fail-closed audit record for physical/controller replay anchors.
+
+    Most phase snapshots use one physical source row and do not claim an
+    independently sourced controller anchor.  P10 is the deliberate hybrid:
+    generalized/contact state comes from the predecessor P09 VERIFY_RESULT
+    row, while controller history and cumulative latches come from the later
+    P10 WAIT_ENTRY row.  Every command between those anchors and the target
+    entry must retain its authored FSM context.
+    """
+
+    def fail(reason: str) -> None:
+        raise IsaacFSMBackendError(
+            f"phase snapshot {phase_id} replay-anchor contract is invalid: {reason}"
+        )
+
+    source_tick = payload.get("source_tick")
+    source_time = payload.get("source_time_s")
+    source_replay_steps = payload.get("source_replay_steps")
+    source_commands = payload.get("source_commands")
+    if type(source_tick) is not int or source_tick < 0:
+        fail("physical anchor tick is not a non-negative integer")
+    if (
+        isinstance(source_time, bool)
+        or not isinstance(source_time, (int, float))
+        or not math.isfinite(float(source_time))
+        or not math.isclose(
+            float(source_time),
+            phase_entry_time_s(source_tick),
+            rel_tol=0.0,
+            abs_tol=1.0e-12,
+        )
+    ):
+        fail("physical anchor time does not equal its 120 Hz source tick")
+    if type(source_replay_steps) is not int or source_replay_steps <= 0:
+        fail("source replay step count is not a positive integer")
+    if (
+        not isinstance(source_commands, list)
+        or len(source_commands) != source_replay_steps
+        or any(not isinstance(row, Mapping) for row in source_commands)
+    ):
+        fail("source replay rows do not exactly cover the declared step count")
+
+    target_is_authored = "target_entry_tick" in payload
+    target_entry_tick = source_tick + source_replay_steps
+    if target_is_authored and payload.get("target_entry_tick") != target_entry_tick:
+        fail("authored target tick is not physical anchor plus replay length")
+    has_controller_tick = "controller_anchor_tick" in payload
+    has_controller_time = "controller_anchor_time_s" in payload
+    if has_controller_tick != has_controller_time:
+        fail("controller anchor tick/time fields are not an atomic pair")
+
+    controller_anchor_tick: int | None = None
+    controller_anchor_time_s: float | None = None
+    hybrid = target_is_authored
+    replay_contexts: list[dict[str, Any]] = []
+    context_segments: list[dict[str, Any]] = []
+    if hybrid:
+        controller_tick_value = payload.get("controller_anchor_tick")
+        controller_time_value = payload.get("controller_anchor_time_s")
+        if phase_id != "P10":
+            fail("only P10 may declare split physical/controller anchors")
+        if (
+            not has_controller_tick
+            or type(controller_tick_value) is not int
+            or not source_tick < controller_tick_value < target_entry_tick
+        ):
+            fail("controller anchor tick is not strictly inside the replay window")
+        if (
+            isinstance(controller_time_value, bool)
+            or not isinstance(controller_time_value, (int, float))
+            or not math.isfinite(float(controller_time_value))
+            or float(controller_time_value)
+            != phase_entry_time_s(controller_tick_value)
+        ):
+            fail("controller anchor time does not equal its 120 Hz tick")
+        controller_anchor_tick = controller_tick_value
+        controller_anchor_time_s = float(controller_time_value)
+        predecessor = PHASE_IDS[PHASE_IDS.index(phase_id) - 1]
+        for offset, row in enumerate(source_commands):
+            tick = source_tick + offset
+            if row.get("control_physics_tick") != tick:
+                fail("source replay ticks are not contiguous from the physical anchor")
+            before_controller_anchor = tick < controller_anchor_tick
+            expected_state = predecessor if before_controller_anchor else phase_id
+            expected_lifecycle = (
+                "VERIFY_RESULT" if before_controller_anchor else "WAIT_ENTRY"
+            )
+            if (
+                row.get("source_fsm_state") != expected_state
+                or row.get("source_fsm_lifecycle") != expected_lifecycle
+                or row.get("target_entry_tick") != target_entry_tick
+            ):
+                fail(
+                    f"source replay FSM context is incorrect at tick {tick}"
+                )
+            replay_contexts.append(
+                {
+                    "source_control_physics_tick": tick,
+                    "source_fsm_state": expected_state,
+                    "source_fsm_lifecycle": expected_lifecycle,
+                    "anchor_segment": (
+                        "physical_anchor_to_controller_anchor"
+                        if before_controller_anchor
+                        else "controller_anchor_to_target_entry"
+                    ),
+                }
+            )
+        context_segments = [
+            {
+                "first_source_tick": source_tick,
+                "last_source_tick": controller_anchor_tick - 1,
+                "source_replay_steps": controller_anchor_tick - source_tick,
+                "source_fsm_state": predecessor,
+                "source_fsm_lifecycle": "VERIFY_RESULT",
+            },
+            {
+                "first_source_tick": controller_anchor_tick,
+                "last_source_tick": target_entry_tick - 1,
+                "source_replay_steps": target_entry_tick
+                - controller_anchor_tick,
+                "source_fsm_state": phase_id,
+                "source_fsm_lifecycle": "WAIT_ENTRY",
+            },
+        ]
+        if (
+            payload.get("fsm_state") != phase_id
+            or payload.get("fsm_lifecycle") != "WAIT_ENTRY"
+        ):
+            fail("restored controller state is not P10 WAIT_ENTRY")
+    else:
+        if has_controller_tick or has_controller_time:
+            fail("a single-anchor replay unexpectedly declares a controller anchor")
+        if source_replay_steps != 1:
+            fail("a replay without an authored target must contain one source row")
+        only_row = source_commands[0]
+        if only_row.get("control_physics_tick") != source_tick:
+            fail("single source command does not start at the physical anchor")
+        replay_contexts.append(
+            {
+                "source_control_physics_tick": source_tick,
+                "source_fsm_state": None,
+                "source_fsm_lifecycle": None,
+                "anchor_segment": "single_source_command",
+            }
+        )
+        context_segments = [
+            {
+                "first_source_tick": source_tick,
+                "last_source_tick": source_tick,
+                "source_replay_steps": 1,
+                "source_fsm_state": None,
+                "source_fsm_lifecycle": None,
+            }
+        ]
+
+    latch_anchor_tick = (
+        controller_anchor_tick if controller_anchor_tick is not None else source_tick
+    )
+    return {
+        "schema": "wlr50_clean.phase_snapshot_replay_anchor_contract.v1",
+        "verified": True,
+        "phase": phase_id,
+        "mode": (
+            "hybrid_physical_and_controller_anchors"
+            if hybrid
+            else "single_physical_anchor"
+        ),
+        "physical_anchor_tick": source_tick,
+        "physical_anchor_time_s": float(source_time),
+        "physical_state_anchor_tick": source_tick,
+        "physical_state_anchor_role": "physical_anchor",
+        "controller_anchor_tick": controller_anchor_tick,
+        "controller_anchor_time_s": controller_anchor_time_s,
+        "controller_state_anchor_tick": controller_anchor_tick,
+        "controller_state_anchor_role": (
+            "controller_anchor" if hybrid else None
+        ),
+        "latch_snapshot_anchor_tick": latch_anchor_tick,
+        "latch_snapshot_anchor_role": (
+            "controller_anchor" if hybrid else "physical_anchor"
+        ),
+        "target_entry_tick": target_entry_tick,
+        "target_entry_time_s": phase_entry_time_s(target_entry_tick),
+        "target_entry_tick_authored": target_is_authored,
+        "source_replay_steps": source_replay_steps,
+        "physical_to_controller_replay_steps": (
+            None
+            if controller_anchor_tick is None
+            else controller_anchor_tick - source_tick
+        ),
+        "controller_to_target_replay_steps": (
+            None
+            if controller_anchor_tick is None
+            else target_entry_tick - controller_anchor_tick
+        ),
+        "hybrid_physical_controller_anchor": hybrid,
+        "source_replay_first_tick": source_tick,
+        "source_replay_last_tick": target_entry_tick - 1,
+        "source_replay_context_transition_tick": controller_anchor_tick,
+        "source_replay_fsm_contexts": replay_contexts,
+        "source_replay_context_segments": context_segments,
+        "all_source_replay_contexts_verified": True,
+    }
+
+
 def _validate_phase_snapshot_payload(
     payload: Mapping[str, Any], phase_id: str
 ) -> None:
@@ -2402,6 +2870,10 @@ def _validate_phase_snapshot_payload(
     try:
         validate_phase_snapshot_payload_contract(payload, phase_id)
     except PhaseSnapshotError as exc:
+        failures.append(str(exc))
+    try:
+        _phase_snapshot_replay_anchor_contract(payload, phase_id)
+    except IsaacFSMBackendError as exc:
         failures.append(str(exc))
     expected_history = list(PHASE_IDS[: PHASE_IDS.index(phase_id)])
     if payload.get("schema") != SNAPSHOT_SCHEMA:
@@ -2458,6 +2930,12 @@ def _validate_phase_snapshot_payload(
         failures.append("selected successful snapshot is not zero-residual")
 
     latches = payload.get("contact_event_latches", {})
+    controller_anchor_tick = payload.get("controller_anchor_tick")
+    latch_anchor_tick = (
+        controller_anchor_tick
+        if type(controller_anchor_tick) is int
+        else payload.get("source_tick")
+    )
     if not isinstance(latches, Mapping) or set(latches) != set(_LEG_TO_WHEEL):
         failures.append("contact-event latches do not cover exactly four legs")
     else:
@@ -2473,7 +2951,12 @@ def _validate_phase_snapshot_payload(
                 active = row.get(flag)
                 tick = row.get(tick_name)
                 if not isinstance(active, bool) or (
-                    active and (not isinstance(tick, int) or tick > int(payload["source_tick"]))
+                    active
+                    and (
+                        not isinstance(tick, int)
+                        or type(latch_anchor_tick) is not int
+                        or tick > latch_anchor_tick
+                    )
                 ) or (not active and tick is not None):
                     failures.append(f"{leg}.{flag} latch/tick proof is inconsistent")
     contact_state = payload.get("contact_state", {})
@@ -2882,6 +3365,12 @@ def _write_phase_snapshot_state(
 ) -> Mapping[str, Any]:
     """Write one validated phase state before its reset-only contact prime."""
 
+    replay_anchor_contract = dict(
+        _phase_snapshot_replay_anchor_contract(
+            snapshot, str(snapshot.get("fsm_state", ""))
+        )
+    )
+
     from wlr50_clean.infrastructure.command_batch import (
         SERVO_COMMAND_SIGN,
         WHEEL_FORWARD_SIGN,
@@ -3003,6 +3492,23 @@ def _write_phase_snapshot_state(
         "pre_prime_root_link_readback": pre_prime_root_link_readback,
         "pre_prime_joint_state_verified": True,
         "pre_prime_state_verified": True,
+        "physical_anchor_tick": replay_anchor_contract["physical_anchor_tick"],
+        "physical_anchor_time_s": replay_anchor_contract[
+            "physical_anchor_time_s"
+        ],
+        "controller_anchor_tick": replay_anchor_contract[
+            "controller_anchor_tick"
+        ],
+        "controller_anchor_time_s": replay_anchor_contract[
+            "controller_anchor_time_s"
+        ],
+        "physical_state_anchor_role": replay_anchor_contract[
+            "physical_state_anchor_role"
+        ],
+        "hybrid_physical_controller_anchor": replay_anchor_contract[
+            "hybrid_physical_controller_anchor"
+        ],
+        "replay_anchor_contract": replay_anchor_contract,
     }
 
 
@@ -3014,6 +3520,9 @@ def _restore_controller_from_snapshot(
     from wlr50_clean.fsm.state_spec import Lifecycle
 
     phase_id = str(snapshot["fsm_state"])
+    replay_anchor_contract = dict(
+        _phase_snapshot_replay_anchor_contract(snapshot, phase_id)
+    )
     if (
         int(getattr(controller, "physics_tick", -1)) != 0
         or getattr(controller, "termination", None) is not None
@@ -3062,6 +3571,22 @@ def _restore_controller_from_snapshot(
         "termination": None,
         "history_is_independent": controller.history == [],
         "entry_guards_pending_effective_tick_zero": True,
+        "physical_anchor_tick": replay_anchor_contract["physical_anchor_tick"],
+        "controller_anchor_tick": replay_anchor_contract[
+            "controller_anchor_tick"
+        ],
+        "controller_anchor_time_s": replay_anchor_contract[
+            "controller_anchor_time_s"
+        ],
+        "controller_state_anchor_tick": replay_anchor_contract[
+            "controller_state_anchor_tick"
+        ],
+        "controller_state_anchor_role": replay_anchor_contract[
+            "controller_state_anchor_role"
+        ],
+        "hybrid_physical_controller_anchor": replay_anchor_contract[
+            "hybrid_physical_controller_anchor"
+        ],
     }
 
 
@@ -3077,6 +3602,11 @@ def _restore_guard_tracker_from_snapshot(
     ABI.
     """
 
+    replay_anchor_contract = dict(
+        _phase_snapshot_replay_anchor_contract(
+            snapshot, str(snapshot.get("fsm_state", ""))
+        )
+    )
     tracker = getattr(reader, "guard_tracker", None)
     classifier = getattr(reader, "contact_classifier", None)
     required_tracker = (
@@ -3171,6 +3701,22 @@ def _restore_guard_tracker_from_snapshot(
         "classifier_state_before_effective_tick_zero": {},
         "classifier_history_before_effective_tick_zero": {},
         "history_is_independent": True,
+        "physical_anchor_tick": replay_anchor_contract["physical_anchor_tick"],
+        "controller_anchor_tick": replay_anchor_contract[
+            "controller_anchor_tick"
+        ],
+        "controller_anchor_time_s": replay_anchor_contract[
+            "controller_anchor_time_s"
+        ],
+        "latch_snapshot_anchor_tick": replay_anchor_contract[
+            "latch_snapshot_anchor_tick"
+        ],
+        "latch_snapshot_anchor_role": replay_anchor_contract[
+            "latch_snapshot_anchor_role"
+        ],
+        "hybrid_physical_controller_anchor": replay_anchor_contract[
+            "hybrid_physical_controller_anchor"
+        ],
     }
 
 
