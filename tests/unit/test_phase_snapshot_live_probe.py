@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -154,7 +155,14 @@ def test_attempt_gate_fails_closed_on_exception_contact_or_extra_step() -> None:
                 "source_drive_target_full12_sha256": source_target_sha256,
             },
             "contact_sensor_reads_after_prime": 1,
-            "classifier_current_force_hysteresis_contract_verified": True,
+            "classifier_cold_started_before_only_episode_read": True,
+            "classifier_restored_before_only_episode_read": False,
+            "classifier_source_history_restored": False,
+            "classifier_source_state_restored": False,
+            "classifier_history_equivalence_claimed": False,
+            "raw_sensor_history_rewarmed_from_prime": True,
+            "contact_backend_reset": True,
+            "contact_backend_reset_after_prime": False,
             "fsm_clock_steps_during_priming": 0,
             "episode_clock_steps_during_priming": 0,
             "effective_entry_contract": {
@@ -197,6 +205,11 @@ def test_attempt_gate_fails_closed_on_exception_contact_or_extra_step() -> None:
         },
     }
     assert _attempt_passed(row) is True
+    restored_classifier = copy.deepcopy(row)
+    restored_classifier["snapshot_state_write"][
+        "classifier_restored_before_only_episode_read"
+    ] = True
+    assert _attempt_passed(restored_classifier) is False
 
     assert _attempt_passed({**row, "reset_completed": False}) is False
     assert _attempt_passed({**row, "physics_steps_during_reset": 182}) is False

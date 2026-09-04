@@ -518,10 +518,24 @@ def _attempt_passed(row: Mapping[str, Any]) -> bool:
         == "current_final_solver_force_only"
         and snapshot_write.get("sensor_history_samples_after_reset") == 1
         and snapshot_write.get("contact_sensor_reads_after_prime") == 1
+        # Phase snapshots intentionally restore only physical/controller
+        # latches.  The contact classifier is cold-started from the one real
+        # post-write solver sample and is then checked by the calibrated
+        # effective-entry proof below.  Requiring the old source-snapshot
+        # hysteresis result here both referenced a field no longer emitted by
+        # the backend and contradicted that cold-start contract.
         and snapshot_write.get(
-            "classifier_current_force_hysteresis_contract_verified"
+            "classifier_cold_started_before_only_episode_read"
         )
         is True
+        and snapshot_write.get("classifier_restored_before_only_episode_read")
+        is False
+        and snapshot_write.get("classifier_source_history_restored") is False
+        and snapshot_write.get("classifier_source_state_restored") is False
+        and snapshot_write.get("classifier_history_equivalence_claimed") is False
+        and snapshot_write.get("raw_sensor_history_rewarmed_from_prime") is True
+        and snapshot_write.get("contact_backend_reset") is True
+        and snapshot_write.get("contact_backend_reset_after_prime") is False
         and effective_entry.get("schema")
         == "wlr50_clean.ppo_phase_effective_entry_live_proof.v1"
         and effective_entry.get("verified") is True
