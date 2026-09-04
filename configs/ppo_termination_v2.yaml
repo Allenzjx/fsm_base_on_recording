@@ -21,4 +21,3 @@ safety_aborts:
   - HARD_JOINT_LIMIT
   - PHYSICS_EXPLOSION
 sensor_contract_failure: infrastructure_abort
-

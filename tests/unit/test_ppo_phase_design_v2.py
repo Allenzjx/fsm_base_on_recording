@@ -278,4 +278,3 @@ def test_reward_audits_reject_idle_positive_reward_and_residual_dominance() -> N
     assert not audit.passed
     assert audit.dominant_family == "residual_regularization"
     assert "residual_regularization" in audit.violations
-
