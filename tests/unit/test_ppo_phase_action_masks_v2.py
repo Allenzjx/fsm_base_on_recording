@@ -74,6 +74,24 @@ def test_smoke_pattern_arms_late_and_exercises_only_disabled_mask_channels() -> 
     assert _smoke_action(env, 2) == armed
 
 
+def test_smoke_pattern_emits_p13_once_then_preserves_terminal_settle() -> None:
+    env = SimpleNamespace(
+        frame=SimpleNamespace(
+            state_id="P13",
+            phase_progress=0.0,
+            nominal_action_full12=(-18.0, -31.0, 4.0, 32.0) + ZERO12[4:],
+        ),
+        phase_actions=load_phase_action_masks_v2(),
+    )
+
+    first = _smoke_action(env, 0)
+    assert first[3] == 1.0e-12
+    assert sum(value != 0.0 for value in first) == 1
+    assert _smoke_action(env, 1) == ZERO12
+    env.frame.phase_progress = 1.0
+    assert _smoke_action(env, 2) == ZERO12
+
+
 def _direct_project(
     projector: ActionProjector,
     raw=ZERO12,

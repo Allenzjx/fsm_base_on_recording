@@ -344,6 +344,21 @@ def _smoke_action(env: Any, decision_index: int) -> tuple[float, ...]:
     if len(mask) != 12 or len(nominal) != 12:
         raise CliError("bounded smoke action requires Full12 mask and nominal action")
 
+    # P13's terminal pose and wheel-decay guards intentionally use a long
+    # settle/retry window.  Exercise its explicit policy input once at entry,
+    # then return to zero so a diagnostic pattern cannot persist through the
+    # recovery pass.  The incoming P12 residual still exercises the real
+    # P12->P13 bridge on the first physics tick.
+    if phase_id == "P13":
+        if bool(getattr(env, "_bounded_smoke_p13_emitted", False)):
+            return (0.0,) * 12
+        setattr(env, "_bounded_smoke_p13_emitted", True)
+        action = [0.0] * 12
+        active_servos = tuple(index for index in range(8) if mask[index])
+        selected = max(active_servos, key=lambda index: abs(nominal[index]))
+        action[selected] = 1.0e-12
+        return tuple(action)
+
     # Gate B verifies the real projection path without turning its diagnostic
     # pattern into a second controller.  Arm only in the final quarter of each
     # phase, then keep one active servo residual through the phase edge so the
