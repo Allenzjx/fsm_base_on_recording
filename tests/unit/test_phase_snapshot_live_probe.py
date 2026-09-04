@@ -43,7 +43,9 @@ def _pair(active: bool) -> SimpleNamespace:
     )
 
 
-def _matching_observation(snapshot: dict[str, object]) -> SimpleNamespace:
+def _matching_observation(
+    snapshot: dict[str, object], *, physics_tick: int = 0
+) -> SimpleNamespace:
     from wlr50_clean.infrastructure.command_batch import SERVO_ORDER, WHEEL_ORDER
 
     root = snapshot["root_state"]
@@ -75,8 +77,8 @@ def _matching_observation(snapshot: dict[str, object]) -> SimpleNamespace:
             obstacle=_pair(bool(expected["obstacle_active"])),
         )
     return SimpleNamespace(
-        physics_tick=0,
-        simulation_time_s=0.0,
+        physics_tick=physics_tick,
+        simulation_time_s=physics_tick / 120.0,
         base=SimpleNamespace(
             position_w_m=root["position_w_m"],
             orientation_wxyz=root["orientation_wxyz"],
@@ -89,9 +91,154 @@ def _matching_observation(snapshot: dict[str, object]) -> SimpleNamespace:
     )
 
 
+def _replay_window(snapshot: dict[str, object]):
+    return probe_subject._validated_replay_window(
+        snapshot,
+        SimpleNamespace(
+            source_tick=snapshot["source_tick"],
+            source_replay_steps=snapshot["source_replay_steps"],
+            target_entry_tick=snapshot.get("target_entry_tick"),
+        ),
+        phase=str(snapshot["fsm_state"]),
+    )
+
+
+def _replay_proof(snapshot: dict[str, object]) -> dict[str, object]:
+    commands = snapshot["source_commands"]
+    steps = snapshot["source_replay_steps"]
+    target = snapshot["source_tick"] + steps
+    matches = [
+        {
+            "source_control_physics_tick": command["control_physics_tick"],
+            "all_fields_match": True,
+            "field_matches": {
+                name: True for name in command["expected_atomic_ack"]
+            },
+            "source_target_hash_matches": True,
+            "logical_target_fallback_used": False,
+            "source_command_file_sha256": snapshot["source_artifacts"]["command"][
+                "sha256"
+            ],
+            "source_observation_file_sha256": snapshot["source_artifacts"][
+                "observation"
+            ]["sha256"],
+            "source_command_row_canonical_sha256": command[
+                "source_command_row_canonical_sha256"
+            ],
+            "source_observation_row_canonical_sha256": command[
+                "source_observation_row_canonical_sha256"
+            ],
+            "source_drive_target_full12_sha256": command[
+                "drive_target_full12_sha256"
+            ],
+            "replayed_drive_target_full12_sha256": command[
+                "drive_target_full12_sha256"
+            ],
+            "source_actuation_contract_sha256": command[
+                "actuation_contract_sha256"
+            ],
+            "replayed_actuation_contract_sha256": command[
+                "actuation_contract_sha256"
+            ],
+            "source_atomic_physics_tick": command["source_atomic_physics_tick"],
+            "reset_prime_physics_tick": 180 + index,
+            "source_atomic_write_count": command["source_atomic_write_count"],
+            "reset_prime_write_count": 181 + index,
+            "clock_and_write_count_fields_intentionally_remapped": True,
+        }
+        for index, command in enumerate(commands)
+    ]
+    mapper_states = [
+        {
+            "source_control_physics_tick": command["control_physics_tick"],
+            "all_fields_match": True,
+            "field_matches": {name: True for name in command["mapper_post_state"]},
+            "reached_naturally_by_single_atomic_apply": True,
+            "restored_after_prime": False,
+        }
+        for command in commands
+    ]
+    return {
+        "source_replay_steps": steps,
+        "target_entry_tick": target,
+        "episode_sensor_tick_offset": target,
+        "effective_entry_offset_s": steps / 120.0,
+        "prime_atomic_full12_writes": steps,
+        "prime_atomic_writes": [
+            {
+                "physics_tick": 180 + index,
+                "write_count": 181 + index,
+                "source_control_physics_tick": command["control_physics_tick"],
+                "observation_physics_tick": command["control_physics_tick"] + 1,
+                "articulation_writes_this_call": 1,
+                "source_actuation_match": matches[index],
+                "source_mapper_post_state": mapper_states[index],
+            }
+            for index, command in enumerate(commands)
+        ],
+        "source_actuation_matches": matches,
+        "source_actuation_match": matches[-1],
+        "source_mapper_post_states": mapper_states,
+        "source_mapper_post_state": mapper_states[-1],
+        "source_replay_observation_ticks": list(
+            range(snapshot["source_tick"] + 1, target + 1)
+        ),
+        "source_replay_guard_updates_applied": steps,
+        "source_replay_safety_checks": [
+            {
+                "schema": "wlr50_clean.phase_effective_entry_safety.v1",
+                "verified": True,
+                "all_failure_flags_false": True,
+                "flags": {
+                    "body_collision": False,
+                    "combined_physics_abort_guard": False,
+                    "fall": False,
+                    "hard_joint_limit": False,
+                    "nan_inf": False,
+                    "physics_explosion": False,
+                    "wheel_only_climb": False,
+                },
+                "source_control_physics_tick": command["control_physics_tick"],
+                "observation_physics_tick": command["control_physics_tick"] + 1,
+            }
+            for command in commands
+        ],
+        "all_source_replay_steps_safe": True,
+    }
+
+
 def test_probe_covers_every_non_p01_phase_twice() -> None:
     assert PROBE_PHASES == tuple(f"P{index:02d}" for index in range(2, 14))
     assert ATTEMPTS_PER_PHASE == 2
+
+
+def test_replay_window_is_derived_from_snapshot_payload_and_manifest() -> None:
+    p10 = _snapshot("P10")
+    p10_window = _replay_window(p10)
+    assert p10_window.source_replay_steps == 10
+    assert p10_window.target_entry_tick - p10_window.source_tick == 10
+    assert p10_window.control_ticks == tuple(
+        range(p10_window.source_tick, p10_window.target_entry_tick)
+    )
+    assert _replay_proof(p10)["source_replay_observation_ticks"] == list(
+        range(p10_window.source_tick + 1, p10_window.target_entry_tick + 1)
+    )
+
+    p02 = _snapshot("P02")
+    p02_window = _replay_window(p02)
+    assert p02_window.source_replay_steps == 1
+    assert p02_window.target_entry_tick == p02_window.source_tick + 1
+
+    with pytest.raises(PhaseSnapshotLiveProbeError, match="manifest replay binding"):
+        probe_subject._validated_replay_window(
+            p10,
+            SimpleNamespace(
+                source_tick=p10["source_tick"],
+                source_replay_steps=1,
+                target_entry_tick=p10["target_entry_tick"],
+            ),
+            phase="P10",
+        )
 
 
 def test_observation_diagnostics_accepts_only_exact_contacts_and_state() -> None:
@@ -114,18 +261,43 @@ def test_observation_diagnostics_accepts_only_exact_contacts_and_state() -> None
 
 def test_attempt_gate_fails_closed_on_exception_contact_or_extra_step() -> None:
     snapshot = _snapshot()
-    diagnostic = observation_diagnostics(_matching_observation(snapshot), snapshot)
-    source_target_sha256 = snapshot["source_command"][
-        "drive_target_full12_sha256"
-    ]
+    replay_window = _replay_window(snapshot)
+    replay_proof = _replay_proof(snapshot)
+    commands = snapshot["source_commands"]
+    replay_steps = snapshot["source_replay_steps"]
+    diagnostic = observation_diagnostics(
+        _matching_observation(
+            snapshot, physics_tick=replay_window.target_entry_tick
+        ),
+        snapshot,
+    )
     row = {
         "phase": "P10",
-        "source_drive_target_full12_sha256": source_target_sha256,
+        "source_tick": snapshot["source_tick"],
+        "target_entry_tick": replay_window.target_entry_tick,
+        "episode_sensor_tick_offset": replay_window.target_entry_tick,
+        "source_replay_steps": replay_steps,
+        "effective_entry_offset_s": replay_steps / 120.0,
+        "source_control_physics_ticks": list(replay_window.control_ticks),
+        "source_command_row_canonical_sha256s": [
+            command["source_command_row_canonical_sha256"] for command in commands
+        ],
+        "source_observation_row_canonical_sha256s": [
+            command["source_observation_row_canonical_sha256"]
+            for command in commands
+        ],
+        "source_drive_target_full12_sha256s": [
+            command["drive_target_full12_sha256"] for command in commands
+        ],
+        "source_actuation_contract_sha256s": [
+            command["actuation_contract_sha256"] for command in commands
+        ],
         "reset_completed": True,
-        "physics_steps_during_reset": 181,
-        "extra_physics_priming_steps": 1,
-        "post_prime_contact_sensor_read_count": 1,
+        "physics_steps_during_reset": 180 + replay_steps,
+        "extra_physics_priming_steps": replay_steps,
+        "post_prime_contact_sensor_read_count": replay_steps,
         "snapshot_state_write": {
+            **replay_proof,
             "root_pose_writes": 1,
             "root_velocity_writes": 1,
             "joint_state_writes": 1,
@@ -139,24 +311,16 @@ def test_attempt_gate_fails_closed_on_exception_contact_or_extra_step() -> None:
                 "physics_steps_before_readback": 0,
                 "contact_sensor_reads_before_readback": 0,
             },
-            "physics_steps": 1,
+            "physics_steps": replay_steps,
             "state_write_count": 1,
             "post_prime_state_rewrite_performed": False,
             "contact_and_state_share_solver_tick": True,
-            "prime_physics_steps": 1,
-            "prime_atomic_full12_writes": 1,
+            "prime_physics_steps": replay_steps,
             "logical_target_fallback_used": False,
             "current_contact_force_provenance": "current_final_solver_force_only",
-            "sensor_history_samples_after_reset": 1,
-            "source_actuation_match": {
-                "all_fields_match": True,
-                "source_target_hash_matches": True,
-                "logical_target_fallback_used": False,
-                "source_drive_target_full12_sha256": source_target_sha256,
-            },
-            "contact_sensor_reads_after_prime": 1,
-            "classifier_cold_started_before_only_episode_read": True,
-            "classifier_restored_before_only_episode_read": False,
+            "sensor_history_samples_after_reset": replay_steps,
+            "contact_sensor_reads_after_prime": replay_steps,
+            "classifier_cold_started_before_source_replay": True,
             "classifier_source_history_restored": False,
             "classifier_source_state_restored": False,
             "classifier_history_equivalence_claimed": False,
@@ -167,6 +331,13 @@ def test_attempt_gate_fails_closed_on_exception_contact_or_extra_step() -> None:
             "episode_clock_steps_during_priming": 0,
             "effective_entry_contract": {
                 "schema": "wlr50_clean.ppo_phase_effective_entry_live_proof.v1",
+                "effective_entry_semantics": (
+                    "source_snapshot_plus_validated_replay_steps_no_rewind"
+                ),
+                "source_tick": replay_window.source_tick,
+                "target_entry_tick": replay_window.target_entry_tick,
+                "source_replay_steps": replay_steps,
+                "effective_entry_offset_s": replay_steps / 120.0,
                 "verified": True,
                 "failures": [],
             },
@@ -204,7 +375,7 @@ def test_attempt_gate_fails_closed_on_exception_contact_or_extra_step() -> None:
             "controller_frame_physics_tick": 0,
         },
     }
-    assert _attempt_passed(row) is True
+    assert _attempt_passed(row, replay_window=replay_window) is True
     calibration = copy.deepcopy(row)
     comparison = {
         "schema": "wlr50_clean.phase_snapshot_live_comparison.v1",
@@ -218,20 +389,35 @@ def test_attempt_gate_fails_closed_on_exception_contact_or_extra_step() -> None:
         "verified": True,
         "calibration_only": True,
         "phase": "P10",
+        "source_tick": replay_window.source_tick,
+        "target_entry_tick": replay_window.target_entry_tick,
+        "source_replay_steps": replay_steps,
+        "effective_entry_offset_s": replay_steps / 120.0,
         "source_snapshot_post_prime_diagnostic": comparison,
         "failures": [],
     }
-    assert _attempt_passed(calibration, calibration_mode=True) is True
-    assert _attempt_passed(calibration) is False
-    assert _attempt_passed(row, calibration_mode=True) is False
+    assert _attempt_passed(
+        calibration, replay_window=replay_window, calibration_mode=True
+    ) is True
+    assert _attempt_passed(calibration, replay_window=replay_window) is False
+    assert _attempt_passed(
+        row, replay_window=replay_window, calibration_mode=True
+    ) is False
     restored_classifier = copy.deepcopy(row)
     restored_classifier["snapshot_state_write"][
-        "classifier_restored_before_only_episode_read"
-    ] = True
-    assert _attempt_passed(restored_classifier) is False
+        "classifier_cold_started_before_source_replay"
+    ] = False
+    assert _attempt_passed(
+        restored_classifier, replay_window=replay_window
+    ) is False
 
-    assert _attempt_passed({**row, "reset_completed": False}) is False
-    assert _attempt_passed({**row, "physics_steps_during_reset": 182}) is False
+    assert _attempt_passed(
+        {**row, "reset_completed": False}, replay_window=replay_window
+    ) is False
+    assert _attempt_passed(
+        {**row, "physics_steps_during_reset": 181},
+        replay_window=replay_window,
+    ) is False
     assert _attempt_passed(
         {
             **row,
@@ -239,7 +425,8 @@ def test_attempt_gate_fails_closed_on_exception_contact_or_extra_step() -> None:
                 **row["snapshot_state_write"],
                 "pre_prime_state_verified": False,
             },
-        }
+        },
+        replay_window=replay_window,
     ) is False
     assert _attempt_passed(
         {
@@ -248,24 +435,44 @@ def test_attempt_gate_fails_closed_on_exception_contact_or_extra_step() -> None:
                 **diagnostic,
                 "exact_contacts_match": False,
             },
-        }
+        },
+        replay_window=replay_window,
     ) is True
-    # Source-t replay equality remains recorded for diagnosis, but the
-    # calibrated production entry/safety/guard proofs are authoritative.
+    # Every source command is an acceptance surface; a mismatch at any replay
+    # step fails even when the final effective-entry proof otherwise passes.
+    mismatched_replay = copy.deepcopy(row)
+    mismatched_replay["snapshot_state_write"]["source_actuation_matches"][3][
+        "all_fields_match"
+    ] = False
     assert _attempt_passed(
-        {
-            **row,
-            "snapshot_state_write": {
-                **row["snapshot_state_write"],
-                "source_actuation_match": {
-                    "all_fields_match": False,
-                    "source_target_hash_matches": False,
-                    "logical_target_fallback_used": True,
-                    "source_drive_target_full12_sha256": "0" * 64,
-                },
-            },
-        }
-    ) is True
+        mismatched_replay, replay_window=replay_window
+    ) is False
+    wrong_reset_physics_tick = copy.deepcopy(row)
+    wrong_reset_physics_tick["snapshot_state_write"]["prime_atomic_writes"][3][
+        "physics_tick"
+    ] += 1
+    assert _attempt_passed(
+        wrong_reset_physics_tick, replay_window=replay_window
+    ) is False
+    wrong_reset_write_count = copy.deepcopy(row)
+    wrong_reset_write_count["snapshot_state_write"]["prime_atomic_writes"][3][
+        "write_count"
+    ] += 1
+    assert _attempt_passed(
+        wrong_reset_write_count, replay_window=replay_window
+    ) is False
+    wrong_remap_claim = copy.deepcopy(row)
+    wrong_remap_claim["snapshot_state_write"]["source_actuation_matches"][3][
+        "clock_and_write_count_fields_intentionally_remapped"
+    ] = False
+    assert _attempt_passed(
+        wrong_remap_claim, replay_window=replay_window
+    ) is False
+    unsafe_replay = copy.deepcopy(row)
+    unsafe_replay["snapshot_state_write"]["source_replay_safety_checks"][4][
+        "flags"
+    ]["body_collision"] = True
+    assert _attempt_passed(unsafe_replay, replay_window=replay_window) is False
 
 
 def test_cli_and_wrapper_bind_probe_to_one_live_environment() -> None:
@@ -382,7 +589,7 @@ def test_cli_and_wrapper_bind_probe_to_one_live_environment() -> None:
 def test_live_probe_rejects_non_one_prime_count_before_runtime_mutation(
     tmp_path: Path,
 ) -> None:
-    with pytest.raises(PhaseSnapshotLiveProbeError, match="exactly one"):
+    with pytest.raises(PhaseSnapshotLiveProbeError, match="fixed legacy ABI"):
         probe_subject.run_phase_snapshot_live_probe(
             object(),
             run_dir=tmp_path,
@@ -505,6 +712,7 @@ class _ContactRejectingBackend:
         self._book = dependencies
         self._scene = None
         self._episode_tick = 0
+        self._episode_sensor_tick_offset = 424242
         self._phase_snapshot_integrity_failed = False
 
     def reset(self, **kwargs: object) -> object:
@@ -556,6 +764,8 @@ def _patch_probe_snapshot_loader(monkeypatch: pytest.MonkeyPatch, root: Path) ->
         payload = _snapshot(phase)
         entry = SimpleNamespace(
             source_tick=payload["source_tick"],
+            source_replay_steps=payload["source_replay_steps"],
+            target_entry_tick=payload.get("target_entry_tick"),
             snapshot_path=root / phase / "snapshot.json",
             file_sha256="a" * 64,
             state_sha256="b" * 64,
@@ -573,6 +783,7 @@ def test_probe_infrastructure_initialization_failure_is_fatal_but_sealed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _write_managed_prechecks(tmp_path)
+    _patch_probe_snapshot_loader(monkeypatch, tmp_path)
     bundle = _FakeBundle(tmp_path)
 
     def fail_dependencies(book: object) -> object:
@@ -868,7 +1079,15 @@ def test_post_write_contact_rejection_remains_returnable_failed_diagnostic(
         for row in result["attempts"]
     )
     assert result["production_reset_modified"] is True
-    assert result["extra_physics_priming_steps"] == 1
+    assert result["source_replay_policy"] == (
+        "derived_only_from_validated_phase_snapshot"
+    )
+    assert result["source_replay_steps_by_phase"]["P10"] == 10
+    assert all(
+        steps == 1
+        for phase, steps in result["source_replay_steps_by_phase"].items()
+        if phase != "P10"
+    )
     assert all(
         row["snapshot_state_write"]["post_prime_state_rewrite_performed"]
         is False
@@ -935,3 +1154,11 @@ def test_single_phase_selector_runs_fresh_then_reused_attempt(
         "fresh_scene",
         "reused_scene",
     ]
+    assert [row["episode_sensor_tick_offset"] for row in result["attempts"]] == [
+        424242,
+        424242,
+    ]
+    assert all(
+        row["episode_sensor_tick_offset"] != row["target_entry_tick"]
+        for row in result["attempts"]
+    )

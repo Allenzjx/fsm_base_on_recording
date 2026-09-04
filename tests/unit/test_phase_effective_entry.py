@@ -23,6 +23,7 @@ from wlr50_clean.ppo.phase_effective_entry import (
 from wlr50_clean.ppo.phase_snapshots import (
     DEFAULT_PHASE_SNAPSHOT_ROOT,
     capture_validated_phase_snapshot_bundle,
+    load_validated_phase_snapshot_payload,
 )
 
 
@@ -145,7 +146,13 @@ def _entry_guard(phase: str):
 
 
 def _calibration_attempt(contract, snapshot_bundle, phase: str, lifecycle: str):
-    snapshot = snapshot_bundle.snapshot(phase)
+    snapshot_payload, snapshot = load_validated_phase_snapshot_payload(
+        snapshot_bundle, phase
+    )
+    replay_steps = snapshot_payload["source_replay_steps"]
+    target_entry_tick = snapshot.source_tick + replay_steps
+    source_commands = snapshot_payload["source_commands"]
+    control_ticks = [row["control_physics_tick"] for row in source_commands]
     comparison = _calibration_comparison(contract.entry(phase))
     proof = {
         "schema": effective_entry_module.CALIBRATION_LIVE_PROOF_SCHEMA,
@@ -154,25 +161,95 @@ def _calibration_attempt(contract, snapshot_bundle, phase: str, lifecycle: str):
         "calibration_only": True,
         "phase": phase,
         "source_tick": snapshot.source_tick,
-        "target_entry_tick": snapshot.source_tick + 1,
-        "effective_entry_offset_s": 1.0 / 120.0,
+        "target_entry_tick": target_entry_tick,
+        "source_replay_steps": replay_steps,
+        "effective_entry_offset_s": replay_steps / 120.0,
         "phase_snapshot_bundle_sha256": snapshot_bundle.bundle_sha256,
         "source_snapshot_post_prime_diagnostic": comparison,
         "failures": [],
     }
+    source_actuation_matches = [
+        {
+            "source_control_physics_tick": command["control_physics_tick"],
+            "all_fields_match": True,
+            "field_matches": {
+                name: True for name in command["expected_atomic_ack"]
+            },
+            "source_target_hash_matches": True,
+            "logical_target_fallback_used": False,
+            "source_command_file_sha256": snapshot_payload["source_artifacts"][
+                "command"
+            ]["sha256"],
+            "source_observation_file_sha256": snapshot_payload["source_artifacts"][
+                "observation"
+            ]["sha256"],
+            "source_command_row_canonical_sha256": command[
+                "source_command_row_canonical_sha256"
+            ],
+            "source_observation_row_canonical_sha256": command[
+                "source_observation_row_canonical_sha256"
+            ],
+            "source_drive_target_full12_sha256": command[
+                "drive_target_full12_sha256"
+            ],
+            "replayed_drive_target_full12_sha256": command[
+                "drive_target_full12_sha256"
+            ],
+            "source_actuation_contract_sha256": command[
+                "actuation_contract_sha256"
+            ],
+            "replayed_actuation_contract_sha256": command[
+                "actuation_contract_sha256"
+            ],
+            "source_atomic_physics_tick": command["source_atomic_physics_tick"],
+            "reset_prime_physics_tick": 180 + index,
+            "source_atomic_write_count": command["source_atomic_write_count"],
+            "reset_prime_write_count": 181 + index,
+            "clock_and_write_count_fields_intentionally_remapped": True,
+        }
+        for index, command in enumerate(source_commands)
+    ]
+    source_mapper_post_states = [
+        {
+            "source_control_physics_tick": command["control_physics_tick"],
+            "all_fields_match": True,
+            "field_matches": {name: True for name in command["mapper_post_state"]},
+            "reached_naturally_by_single_atomic_apply": True,
+            "restored_after_prime": False,
+        }
+        for command in source_commands
+    ]
+    prime_atomic_writes = [
+        {
+            "physics_tick": 180 + index,
+            "write_count": 181 + index,
+            "source_control_physics_tick": command["control_physics_tick"],
+            "observation_physics_tick": command["control_physics_tick"] + 1,
+            "articulation_writes_this_call": 1,
+            "source_actuation_match": source_actuation_matches[index],
+            "source_mapper_post_state": source_mapper_post_states[index],
+        }
+        for index, command in enumerate(source_commands)
+    ]
     state = {
         "state_write_count": 1,
         "root_pose_writes": 1,
         "root_velocity_writes": 1,
         "joint_state_writes": 1,
         "simulation_forward_syncs": 1,
-        "physics_steps": 1,
-        "prime_physics_steps": 1,
-        "prime_atomic_full12_writes": 1,
-        "contact_sensor_reads_after_prime": 1,
+        "source_replay_steps": replay_steps,
+        "target_entry_tick": target_entry_tick,
+        "episode_sensor_tick_offset": target_entry_tick,
+        "effective_entry_offset_s": replay_steps / 120.0,
+        "physics_steps": replay_steps,
+        "prime_physics_steps": replay_steps,
+        "prime_atomic_full12_writes": replay_steps,
+        "prime_atomic_writes": prime_atomic_writes,
+        "contact_sensor_reads_after_prime": replay_steps,
         "fsm_clock_steps_during_priming": 0,
         "episode_clock_steps_during_priming": 0,
-        "sensor_history_samples_after_reset": 1,
+        "sensor_history_samples_after_reset": replay_steps,
+        "source_replay_guard_updates_applied": replay_steps,
         "pre_prime_state_verified": True,
         "pre_prime_joint_state_verified": True,
         "post_prime_state_rewrite_performed": False,
@@ -187,25 +264,35 @@ def _calibration_attempt(contract, snapshot_bundle, phase: str, lifecycle: str):
             "physics_steps_before_readback": 0,
             "contact_sensor_reads_before_readback": 0,
         },
-        "source_actuation_match": {
-            "all_fields_match": True,
-            "field_matches": {"drive_target_full12": True},
-            "source_target_hash_matches": True,
-            "logical_target_fallback_used": False,
-            "source_drive_target_full12_sha256": "1" * 64,
-            "replayed_drive_target_full12_sha256": "1" * 64,
-            "source_actuation_contract_sha256": "2" * 64,
-            "replayed_actuation_contract_sha256": "2" * 64,
-        },
-        "source_mapper_post_state": {
-            "all_fields_match": True,
-            "field_matches": {"feedback_tick": True},
-            "reached_naturally_by_single_atomic_apply": True,
-            "restored_after_prime": False,
-        },
+        "source_actuation_matches": source_actuation_matches,
+        "source_actuation_match": source_actuation_matches[-1],
+        "source_mapper_post_states": source_mapper_post_states,
+        "source_mapper_post_state": source_mapper_post_states[-1],
+        "source_replay_observation_ticks": list(
+            range(snapshot.source_tick + 1, target_entry_tick + 1)
+        ),
+        "source_replay_safety_checks": [
+            {
+                "schema": "wlr50_clean.phase_effective_entry_safety.v1",
+                "verified": True,
+                "all_failure_flags_false": True,
+                "flags": {
+                    "body_collision": False,
+                    "combined_physics_abort_guard": False,
+                    "fall": False,
+                    "hard_joint_limit": False,
+                    "nan_inf": False,
+                    "physics_explosion": False,
+                    "wheel_only_climb": False,
+                },
+                "source_control_physics_tick": command["control_physics_tick"],
+                "observation_physics_tick": command["control_physics_tick"] + 1,
+            }
+            for command in source_commands
+        ],
+        "all_source_replay_steps_safe": True,
         "current_contact_force_provenance": "current_final_solver_force_only",
-        "classifier_cold_started_before_only_episode_read": True,
-        "classifier_restored_before_only_episode_read": False,
+        "classifier_cold_started_before_source_replay": True,
         "classifier_source_history_restored": False,
         "classifier_source_state_restored": False,
         "classifier_history_equivalence_claimed": False,
@@ -238,12 +325,29 @@ def _calibration_attempt(contract, snapshot_bundle, phase: str, lifecycle: str):
         "scene_lifecycle": lifecycle,
         "scene_existed_before": lifecycle == "reused_scene",
         "source_tick": snapshot.source_tick,
+        "target_entry_tick": target_entry_tick,
+        "episode_sensor_tick_offset": target_entry_tick,
+        "source_replay_steps": replay_steps,
+        "effective_entry_offset_s": replay_steps / 120.0,
+        "source_control_physics_ticks": control_ticks,
+        "source_command_row_canonical_sha256s": [
+            row["source_command_row_canonical_sha256"] for row in source_commands
+        ],
+        "source_observation_row_canonical_sha256s": [
+            row["source_observation_row_canonical_sha256"] for row in source_commands
+        ],
+        "source_drive_target_full12_sha256s": [
+            row["drive_target_full12_sha256"] for row in source_commands
+        ],
+        "source_actuation_contract_sha256s": [
+            row["actuation_contract_sha256"] for row in source_commands
+        ],
         "snapshot_path": str(snapshot.snapshot_path),
         "snapshot_file_sha256": snapshot.file_sha256,
         "snapshot_state_sha256": snapshot.state_sha256,
-        "physics_steps_during_reset": 181,
-        "post_prime_contact_sensor_read_count": 1,
-        "extra_physics_priming_steps": 1,
+        "physics_steps_during_reset": 180 + replay_steps,
+        "post_prime_contact_sensor_read_count": replay_steps,
+        "extra_physics_priming_steps": replay_steps,
         "fsm_or_episode_advanced_for_probe": False,
         "reset_completed": True,
         "passed": True,
@@ -251,8 +355,8 @@ def _calibration_attempt(contract, snapshot_bundle, phase: str, lifecycle: str):
         "exception": None,
         "observation_diagnostics": {
             "observation_available": True,
-            "observation_physics_tick": 0,
-            "observation_simulation_time_s": 0.0,
+            "observation_physics_tick": target_entry_tick,
+            "observation_simulation_time_s": target_entry_tick / 120.0,
         },
         "clocks": {
             "authoritative_frame_committed": True,
@@ -311,11 +415,28 @@ def test_calibration_attempt_uses_passed_controller_entry_and_post_prime_diagnos
     assert comparison["maximum_errors"] != attempt["snapshot_state_write"][
         "priming_observation"
     ]["maximum_errors"]
+    assert attempt["source_replay_steps"] == 10
+    assert attempt["target_entry_tick"] - attempt["source_tick"] == 10
+    assert len(attempt["snapshot_state_write"]["prime_atomic_writes"]) == 10
+    assert attempt["clocks"]["controller_history_length"] == 1
 
 
 @pytest.mark.parametrize(
     "tamper",
-    ("failed_attempt", "guard", "controller_history", "calibration_proof"),
+    (
+        "failed_attempt",
+        "guard",
+        "controller_history",
+        "calibration_proof",
+        "replay_count",
+        "replay_tick",
+        "replay_match",
+        "contact_reads",
+        "intermediate_safety",
+        "reset_local_physics_tick",
+        "reset_local_write_count",
+        "reset_local_remap_flag",
+    ),
 )
 def test_calibration_attempt_rejects_failed_or_unproven_evidence(
     contract, snapshot_bundle, tamper: str
@@ -334,10 +455,38 @@ def test_calibration_attempt_rejects_failed_or_unproven_evidence(
         attempt["snapshot_state_write"]["entry_guard_contract"]["verified"] = False
     elif tamper == "controller_history":
         attempt["clocks"]["controller_history_length"] = 0
-    else:
+    elif tamper == "calibration_proof":
         attempt["snapshot_state_write"]["effective_entry_contract"][
             "source_snapshot_post_prime_diagnostic"
         ] = {"schema": "tampered"}
+    elif tamper == "replay_count":
+        attempt["snapshot_state_write"]["source_replay_steps"] += 1
+    elif tamper == "replay_tick":
+        attempt["snapshot_state_write"]["source_actuation_matches"][0][
+            "source_control_physics_tick"
+        ] += 1
+    elif tamper == "replay_match":
+        attempt["snapshot_state_write"]["source_actuation_matches"][0][
+            "all_fields_match"
+        ] = False
+    elif tamper == "contact_reads":
+        attempt["snapshot_state_write"]["contact_sensor_reads_after_prime"] += 1
+    elif tamper == "intermediate_safety":
+        attempt["snapshot_state_write"]["source_replay_safety_checks"][0][
+            "flags"
+        ]["body_collision"] = True
+    elif tamper == "reset_local_physics_tick":
+        attempt["snapshot_state_write"]["prime_atomic_writes"][0][
+            "physics_tick"
+        ] += 1
+    elif tamper == "reset_local_write_count":
+        attempt["snapshot_state_write"]["prime_atomic_writes"][0][
+            "write_count"
+        ] += 1
+    else:
+        attempt["snapshot_state_write"]["source_actuation_matches"][0][
+            "clock_and_write_count_fields_intentionally_remapped"
+        ] = False
 
     with pytest.raises(EffectivePhaseEntryError):
         effective_entry_module._validated_probe_attempt(
@@ -346,6 +495,20 @@ def test_calibration_attempt_rejects_failed_or_unproven_evidence(
             lifecycle="fresh_scene",
             phase_snapshot_bundle=snapshot_bundle,
         )
+
+
+def test_fresh_reused_replay_proofs_must_be_identical(
+    contract, snapshot_bundle
+) -> None:
+    fresh = _calibration_attempt(contract, snapshot_bundle, "P10", "fresh_scene")
+    reused = _calibration_attempt(contract, snapshot_bundle, "P10", "reused_scene")
+    effective_entry_module._assert_replay_attempts_bit_identical(fresh, reused)
+
+    reused["snapshot_state_write"]["source_mapper_post_states"][3][
+        "field_matches"
+    ]["feedback_tick"] = False
+    with pytest.raises(EffectivePhaseEntryError, match="replay proof differs"):
+        effective_entry_module._assert_replay_attempts_bit_identical(fresh, reused)
 
 
 def test_builder_accepts_explicit_ordered_runs_and_binds_dynamic_commit(

@@ -31,6 +31,7 @@ from .phase_effective_entry import (
     CONTACT_FORCE_ON_N,
     EffectivePhaseEntryError,
     ValidatedEffectivePhaseEntryContract,
+    phase_entry_time_s,
     validate_effective_phase_entry_comparison,
 )
 from .observation_schema import NonFiniteObservationError, PPOObservationFrame
@@ -368,6 +369,7 @@ class IsaacFSMBackend:
         self._previous_action_full12 = ZERO_FULL12
         self._reset_prime_tick_count = 0
         self._episode_tick = 0
+        self._episode_sensor_tick_offset = 0
         self._first_episode_physical_command_tick_actual: int | None = None
         self._video_pre_action_tick_count = 0
         self._video_post_terminal_tick_count = 0
@@ -433,6 +435,7 @@ class IsaacFSMBackend:
         self._previous_action_full12 = ZERO_FULL12
         self._reset_prime_tick_count = 0
         self._episode_tick = 0
+        self._episode_sensor_tick_offset = 0
         self._first_episode_physical_command_tick_actual = None
         self._video_pre_action_tick_count = 0
         self._video_post_terminal_tick_count = 0
@@ -765,6 +768,12 @@ class IsaacFSMBackend:
             "snapshot_validated": loaded_snapshot is not None,
         }
         initial_command = ZERO_FULL12
+        reader: Any | None = None
+        guard_proof: dict[str, Any] | None = None
+        replay_observation: Any | None = None
+        contact_force_on_n = math.nan
+        contact_force_off_n = math.nan
+        episode_sensor_tick_offset = 0
         if loaded_snapshot is not None:
             self._snapshot_restoration.update(
                 {
@@ -775,7 +784,9 @@ class IsaacFSMBackend:
                 }
             )
             source_snapshot_semantics = (
-                "source_recording_causal_predecessor_tick"
+                "source_recording_preroll_anchor_tick"
+                if int(loaded_snapshot.payload.get("source_replay_steps", 1)) > 1
+                else "source_recording_causal_predecessor_tick"
                 if "target_entry_tick" in loaded_snapshot.payload
                 else "source_recording_entry_tick"
             )
@@ -784,7 +795,8 @@ class IsaacFSMBackend:
                     {
                         "source_snapshot_semantics": source_snapshot_semantics,
                         "effective_entry_semantics": (
-                            "calibration_source_snapshot_plus_one_real_physx_tick_no_rewind"
+                            "calibration_source_snapshot_plus_source_bound_"
+                            "real_physx_replay_no_rewind"
                         ),
                         "effective_entry_calibration_mode": True,
                     }
@@ -795,7 +807,8 @@ class IsaacFSMBackend:
                     {
                         "source_snapshot_semantics": source_snapshot_semantics,
                         "effective_entry_semantics": (
-                            "source_snapshot_plus_one_real_physx_tick_no_rewind"
+                            "source_snapshot_plus_source_bound_real_physx_"
+                            "replay_no_rewind"
                         ),
                         "effective_entry_contract": (
                             self._expected_effective_entry_contract.as_record()
@@ -805,10 +818,6 @@ class IsaacFSMBackend:
                 )
         if loaded_snapshot is not None and snapshot_phase != "P01":
             assert dependencies.write_phase_snapshot is not None
-            initial_command = _full12(
-                loaded_snapshot.payload["applied_full12"],
-                "phase snapshot applied_full12",
-            )
             initial_state_write = dict(
                 dependencies.write_phase_snapshot(
                     scene,
@@ -818,36 +827,176 @@ class IsaacFSMBackend:
                     state_write_index=1,
                 )
             )
-            source_command = loaded_snapshot.payload["source_command"]
-            adapter_input = source_command["adapter_input"]
-            _require_running(scene, "phase snapshot reset contact priming")
-            physical_tick = SETTLE_TICKS + self._reset_prime_tick_count
-            prime_ack = dict(
-                self._atomic_apply(
-                    adapter,
-                    adapter_input["requested_full12"],
-                    physics_tick=physical_tick,
-                    tracking_servo_names=adapter_input["tracking_servo_names"],
-                    drive_feedback_bias_full12=adapter_input[
-                        "drive_feedback_bias_requested_full12"
-                    ],
+            source_commands_value = loaded_snapshot.payload.get("source_commands")
+            source_replay_steps_value = loaded_snapshot.payload.get(
+                "source_replay_steps"
+            )
+            if (
+                not isinstance(source_commands_value, list)
+                or type(source_replay_steps_value) is not int
+            ):
+                raise IsaacFSMBackendError(
+                    "phase snapshot lacks its validated source replay contract"
                 )
+            source_commands = tuple(source_commands_value)
+            source_replay_steps = source_replay_steps_value
+            if (
+                source_replay_steps <= 0
+                or len(source_commands) != source_replay_steps
+                or not source_commands
+                or loaded_snapshot.payload.get("source_command")
+                != source_commands[0]
+            ):
+                raise IsaacFSMBackendError(
+                    "phase snapshot source replay sequence is incomplete"
+                )
+            if any(not isinstance(row, Mapping) for row in source_commands):
+                raise IsaacFSMBackendError(
+                    "phase snapshot source replay command is malformed"
+                )
+            source_tick = int(loaded_snapshot.payload["source_tick"])
+            target_entry_tick = source_tick + source_replay_steps
+            authored_target = loaded_snapshot.payload.get("target_entry_tick")
+            if (
+                authored_target is not None
+                and authored_target != target_entry_tick
+            ) or (authored_target is None and source_replay_steps != 1):
+                raise IsaacFSMBackendError(
+                    "phase snapshot source replay does not end at its target entry tick"
+                )
+
+            reader = dependencies.reader_from_scene(scene, adapter, backends)
+            assert dependencies.restore_guard_snapshot is not None
+            guard_proof = dict(
+                dependencies.restore_guard_snapshot(reader, loaded_snapshot.payload)
             )
-            source_actuation_match = dict(
-                _verify_source_prime_ack(loaded_snapshot.payload, prime_ack)
-            )
-            source_mapper_post_state = dict(
-                _verify_source_mapper_post_state(adapter, loaded_snapshot.payload)
-            )
-            scene.sim.step(render=False)
-            adapter.update_readback()
-            self._reset_prime_tick_count += 1
-            prime_drive_target = _full12(
-                prime_ack["drive_target_full12"],
-                "phase snapshot prime drive_target_full12",
-            )
-            prime_acks: list[dict[str, Any]] = [
-                {
+            classifier = getattr(reader, "contact_classifier", None)
+            contact_force_on_n = float(getattr(classifier, "force_on_n", math.nan))
+            contact_force_off_n = float(getattr(classifier, "force_off_n", math.nan))
+            if (
+                not math.isfinite(contact_force_on_n)
+                or not math.isfinite(contact_force_off_n)
+                or contact_force_on_n <= 0.0
+                or contact_force_off_n < 0.0
+                or contact_force_off_n >= contact_force_on_n
+                or contact_force_on_n != CONTACT_FORCE_ON_N
+                or contact_force_off_n != CONTACT_FORCE_OFF_N
+            ):
+                raise SensorContractFailure(
+                    "phase snapshot live restoration could not be proven: "
+                    "classifier raw-force hysteresis thresholds are unavailable"
+                )
+
+            prime_acks: list[dict[str, Any]] = []
+            source_actuation_matches: list[dict[str, Any]] = []
+            source_mapper_post_states: list[dict[str, Any]] = []
+            source_replay_observation_ticks: list[int] = []
+            source_replay_safety_checks: list[dict[str, Any]] = []
+            prime_ack: dict[str, Any] | None = None
+            prime_drive_target = ZERO_FULL12
+            for replay_index, source_command_value in enumerate(source_commands):
+                source_command = dict(source_command_value)
+                expected_source_tick = source_tick + replay_index
+                if source_command.get("control_physics_tick") != expected_source_tick:
+                    raise IsaacFSMBackendError(
+                        "phase snapshot source replay ticks are not contiguous"
+                    )
+                adapter_input = source_command["adapter_input"]
+                _require_running(scene, "phase snapshot source-bound contact replay")
+                physical_tick = SETTLE_TICKS + self._reset_prime_tick_count
+                prime_ack = dict(
+                    self._atomic_apply(
+                        adapter,
+                        adapter_input["requested_full12"],
+                        physics_tick=physical_tick,
+                        tracking_servo_names=adapter_input["tracking_servo_names"],
+                        drive_feedback_bias_full12=adapter_input[
+                            "drive_feedback_bias_requested_full12"
+                        ],
+                    )
+                )
+                source_actuation_match = dict(
+                    _verify_source_replay_ack(
+                        source_command,
+                        source_artifacts=loaded_snapshot.payload["source_artifacts"],
+                        ack=prime_ack,
+                    )
+                )
+                source_mapper_post_state = dict(
+                    _verify_source_mapper_post_state(adapter, source_command)
+                )
+                scene.sim.step(render=False)
+                adapter.update_readback()
+                self._reset_prime_tick_count += 1
+                prime_drive_target = _full12(
+                    prime_ack["drive_target_full12"],
+                    "phase snapshot replay drive_target_full12",
+                )
+                initial_command = _full12(
+                    prime_ack["applied_full12"],
+                    "phase snapshot replay applied_full12",
+                )
+                # Preserve the source observation clock exactly.  Command row
+                # t is followed by the real PhysX sample t+1, so the final
+                # replay sample lands on target_entry_tick without inventing
+                # negative reset-local ticks or rewriting SensorReader state.
+                replay_tick = expected_source_tick + 1
+                replay_observation = reader.read(
+                    physics_tick=replay_tick,
+                    simulation_time_s=phase_entry_time_s(replay_tick),
+                    commanded_full12=prime_drive_target,
+                )
+                try:
+                    _validate_sensor_contract(
+                        replay_observation,
+                        dependencies.expected_contact_bodies,
+                        require_finite=True,
+                    )
+                except SensorContractFailure as exc:
+                    self._phase_snapshot_integrity_failed = True
+                    failed_sensor = {
+                        "verified": False,
+                        "error": str(exc),
+                        "source_control_physics_tick": expected_source_tick,
+                        "observation_physics_tick": replay_tick,
+                    }
+                    self._snapshot_restoration.update(
+                        {
+                            "entry_sensor": failed_sensor,
+                            "source_replay_sensor": failed_sensor,
+                        }
+                    )
+                    raise
+                try:
+                    replay_safety = dict(
+                        _verify_effective_entry_safety(replay_observation)
+                    )
+                except SensorContractFailure as exc:
+                    self._phase_snapshot_integrity_failed = True
+                    failed_safety = {
+                        "verified": False,
+                        "error": str(exc),
+                        "source_control_physics_tick": expected_source_tick,
+                        "observation_physics_tick": replay_tick,
+                    }
+                    self._snapshot_restoration.update(
+                        {
+                            "entry_safety": failed_safety,
+                            "source_replay_safety": failed_safety,
+                        }
+                    )
+                    raise
+                replay_safety.update(
+                    {
+                        "source_control_physics_tick": expected_source_tick,
+                        "observation_physics_tick": replay_tick,
+                    }
+                )
+                source_replay_observation_ticks.append(replay_tick)
+                source_replay_safety_checks.append(replay_safety)
+                source_actuation_matches.append(source_actuation_match)
+                source_mapper_post_states.append(source_mapper_post_state)
+                prime_acks.append({
                     "physics_tick": int(prime_ack["physics_tick"]),
                     "write_count": int(prime_ack["write_count"]),
                     "articulation_writes_this_call": int(
@@ -867,8 +1016,16 @@ class IsaacFSMBackend:
                     ),
                     "drive_target_full12": list(prime_drive_target),
                     "source_actuation_match": source_actuation_match,
-                }
-            ]
+                    "source_mapper_post_state": source_mapper_post_state,
+                    "source_control_physics_tick": expected_source_tick,
+                    "observation_physics_tick": replay_tick,
+                })
+            assert prime_ack is not None and replay_observation is not None
+            if source_replay_observation_ticks[-1] != target_entry_tick:
+                raise IsaacFSMBackendError(
+                    "phase snapshot replay did not produce the target-entry observation"
+                )
+            episode_sensor_tick_offset = source_replay_observation_ticks[-1]
             latest_settle_ack = prime_ack
 
             mapper = getattr(adapter, "servo_target_mapper", None)
@@ -898,6 +1055,16 @@ class IsaacFSMBackend:
                     "prime_drive_target_full12": list(prime_drive_target),
                     "source_actuation_match": source_actuation_match,
                     "source_mapper_post_state": source_mapper_post_state,
+                    "source_actuation_matches": source_actuation_matches,
+                    "source_mapper_post_states": source_mapper_post_states,
+                    "source_replay_steps": source_replay_steps,
+                    "target_entry_tick": target_entry_tick,
+                    "source_replay_observation_ticks": (
+                        source_replay_observation_ticks
+                    ),
+                    "source_replay_safety_checks": source_replay_safety_checks,
+                    "all_source_replay_steps_safe": True,
+                    "episode_sensor_tick_offset": episode_sensor_tick_offset,
                     "source_target_sha256": source_command[
                         "drive_target_full12_sha256"
                     ],
@@ -910,14 +1077,17 @@ class IsaacFSMBackend:
                     },
                     "physics_steps": self._reset_prime_tick_count,
                     "articulation_update_dt_s_per_prime_step": PHYSICS_DT_S,
-                    "effective_entry_state": "snapshot_plus_one_physics_tick",
-                    "effective_entry_offset_s": PHYSICS_DT_S,
+                    "effective_entry_state": "snapshot_plus_source_bound_replay",
+                    "effective_entry_offset_s": phase_entry_time_s(
+                        source_replay_steps
+                    ),
                     "fsm_clock_steps_during_priming": 0,
                     "episode_clock_steps_during_priming": 0,
                     "current_contact_force_provenance": (
                         "current_final_solver_force_only"
                     ),
-                    "sensor_history_samples_after_reset": 1,
+                    "sensor_history_samples_after_reset": source_replay_steps,
+                    "classifier_cold_started_before_source_replay": True,
                     "root_state_writes_confined_before_first_episode_tick": True,
                 }
             )
@@ -937,45 +1107,20 @@ class IsaacFSMBackend:
         )
         _validate_rate_contract(adapter, controller)
         if loaded_snapshot is not None and snapshot_phase != "P01":
-            # This is the sole ContactSensor read after the real prime.  The
-            # reader receives only the source cumulative guard-latch prefix.
-            # Contact classifier state/history remain cold, so this read both
-            # updates the latches with effective tick zero and classifies from
-            # the current raw PhysX force.  The source-t comparison is retained
-            # as a diagnostic; only the pinned effective-entry contract gates
-            # reset success.
-            reader = dependencies.reader_from_scene(scene, adapter, backends)
-            assert dependencies.restore_guard_snapshot is not None
+            # The reader began cold at the one authored source state write and
+            # consumed every real PhysX sample in the source-bound replay.  The
+            # final sample is rebased to effective tick zero; the controller has
+            # not advanced and evaluates its authored entry guards exactly once.
+            assert reader is not None
+            assert guard_proof is not None
+            assert replay_observation is not None
             assert dependencies.restore_controller_snapshot is not None
-            guard_proof = dict(
-                dependencies.restore_guard_snapshot(reader, loaded_snapshot.payload)
-            )
             controller_proof = dict(
                 dependencies.restore_controller_snapshot(
                     controller, loaded_snapshot.payload
                 )
             )
-            classifier = getattr(reader, "contact_classifier", None)
-            contact_force_on_n = float(getattr(classifier, "force_on_n", math.nan))
-            contact_force_off_n = float(getattr(classifier, "force_off_n", math.nan))
-            if (
-                not math.isfinite(contact_force_on_n)
-                or not math.isfinite(contact_force_off_n)
-                or contact_force_on_n <= 0.0
-                or contact_force_off_n < 0.0
-                or contact_force_off_n >= contact_force_on_n
-                or contact_force_on_n != CONTACT_FORCE_ON_N
-                or contact_force_off_n != CONTACT_FORCE_OFF_N
-            ):
-                raise SensorContractFailure(
-                    "phase snapshot live restoration could not be proven: "
-                    "classifier raw-force hysteresis thresholds are unavailable"
-                )
-            observation = reader.read(
-                physics_tick=0,
-                simulation_time_s=0.0,
-                commanded_full12=prime_acks[-1]["drive_target_full12"],
-            )
+            observation = replay_observation
             try:
                 _validate_sensor_contract(
                     observation,
@@ -1004,16 +1149,20 @@ class IsaacFSMBackend:
             physical_proof.update(
                 {
                     "source_snapshot_post_prime_diagnostic": priming_comparison,
-                    "contact_sensor_reads_after_prime": 1,
+                    "contact_sensor_reads_after_prime": source_replay_steps,
                     "classifier_restored_before_only_episode_read": False,
                     "classifier_source_state_restored": False,
                     "classifier_source_history_restored": False,
-                    "classifier_cold_started_before_only_episode_read": True,
+                    "classifier_cold_started_before_only_episode_read": (
+                        source_replay_steps == 1
+                    ),
+                    "classifier_cold_started_before_source_replay": True,
                     "classifier_history_equivalence_claimed": False,
                     "raw_sensor_history_rewarmed_from_prime": True,
                     "restored_classifier_state_used": "none",
                     "restored_guard_state_used": "source_cumulative_latch_prefix",
                     "effective_tick_zero_guard_update_applied": True,
+                    "source_replay_guard_updates_applied": source_replay_steps,
                     "contact_backend_reset_after_prime": False,
                 }
             )
@@ -1030,13 +1179,11 @@ class IsaacFSMBackend:
                     "calibration_only": True,
                     "phase": snapshot_phase,
                     "source_tick": int(loaded_snapshot.payload["source_tick"]),
-                    "target_entry_tick": int(
-                        loaded_snapshot.payload.get(
-                            "target_entry_tick",
-                            int(loaded_snapshot.payload["source_tick"]) + 1,
-                        )
+                    "target_entry_tick": target_entry_tick,
+                    "source_replay_steps": source_replay_steps,
+                    "effective_entry_offset_s": phase_entry_time_s(
+                        source_replay_steps
                     ),
-                    "effective_entry_offset_s": PHYSICS_DT_S,
                     "phase_snapshot_bundle_sha256": (
                         None
                         if self._expected_phase_snapshot_bundle is None
@@ -1174,6 +1321,7 @@ class IsaacFSMBackend:
         self._controller_frame = controller_frame
         self._previous_action_full12 = initial_command
         self._episode_tick = 0
+        self._episode_sensor_tick_offset = episode_sensor_tick_offset
         self._video_pre_action_tick_count = 0
         self._video_post_terminal_tick_count = 0
         self._done = False
@@ -1303,9 +1451,10 @@ class IsaacFSMBackend:
         next_tick = self._episode_tick + 1
         next_time = next_tick * PHYSICS_DT_S
         try:
+            sensor_tick = self._episode_sensor_tick_offset + next_tick
             observation = self._reader.read(
-                physics_tick=next_tick,
-                simulation_time_s=next_time,
+                physics_tick=sensor_tick,
+                simulation_time_s=sensor_tick * PHYSICS_DT_S,
                 # Preserve both frozen drive-feedback paths in sensor error
                 # calculations; this is deliberately not the logical action.
                 commanded_full12=ack["drive_target_full12"],
@@ -1365,6 +1514,10 @@ class IsaacFSMBackend:
             raise IsaacFSMBackendError(
                 "video pre-roll is allowed only before the first episode tick"
             )
+        if self._snapshot_restoration.get("mode") == "phase_entry_snapshot":
+            raise IsaacFSMBackendError(
+                "video pre-roll requires a natural P01 reset, not a phase snapshot"
+            )
         _require_running(self._scene, "viewport pre-action hold")
         physical_tick = (
             SETTLE_TICKS
@@ -1382,7 +1535,9 @@ class IsaacFSMBackend:
         self._adapter.update_readback()
         self._video_pre_action_tick_count += 1
         self._last_atomic_ack = ack
-        evidence_tick = self._video_pre_action_tick_count
+        evidence_tick = (
+            self._episode_sensor_tick_offset + self._video_pre_action_tick_count
+        )
         observation = self._reader.read(
             physics_tick=evidence_tick,
             simulation_time_s=evidence_tick * PHYSICS_DT_S,
@@ -1449,6 +1604,13 @@ class IsaacFSMBackend:
             raise IsaacFSMBackendError(
                 "video pre-roll refresh requires a live unstepped P01 episode"
             )
+        if (
+            self._snapshot_restoration.get("mode") == "phase_entry_snapshot"
+            or str(getattr(self._controller_frame, "state_id", "")) != "P01"
+        ):
+            raise IsaacFSMBackendError(
+                "video pre-roll refresh requires a natural P01 reset"
+            )
         backends = getattr(self._scene, "instrumentation", None)
         contact_backend = getattr(backends, "contact_backend", None)
         if backends is None or contact_backend is None or not bool(
@@ -1475,6 +1637,7 @@ class IsaacFSMBackend:
             require_finite=True,
         )
         self._reader = refreshed_reader
+        self._episode_sensor_tick_offset = 0
         self._raw_observation = observation
         refreshed = self._build_authoritative_frame(
             observation,
@@ -1561,7 +1724,11 @@ class IsaacFSMBackend:
         self._scene.sim.step(render=False)
         self._adapter.update_readback()
         self._video_post_terminal_tick_count += 1
-        evidence_tick = self._episode_tick + self._video_post_terminal_tick_count
+        evidence_tick = (
+            self._episode_sensor_tick_offset
+            + self._episode_tick
+            + self._video_post_terminal_tick_count
+        )
         observation = self._reader.read(
             physics_tick=evidence_tick,
             simulation_time_s=evidence_tick * PHYSICS_DT_S,
@@ -1994,11 +2161,15 @@ class IsaacFSMBackend:
         limit_evidence = self._adapter.joint_limit_initialization_evidence()
         restoration_mode = self._snapshot_restoration.get("mode")
         if self._reset_prime_tick_count > 0:
-            if self._reset_prime_tick_count != PHASE_SNAPSHOT_PRIME_PHYSICS_STEPS:
+            physical_state = self._snapshot_restoration.get("physical_state", {})
+            expected_replay_steps = _member(
+                physical_state, "source_replay_steps", PHASE_SNAPSHOT_PRIME_PHYSICS_STEPS
+            )
+            if self._reset_prime_tick_count != expected_replay_steps:
                 raise IsaacFSMBackendError(
-                    "phase snapshot reset prime tick count is not exactly one"
+                    "phase snapshot reset replay tick count differs from its source contract"
                 )
-            effective_entry_semantics = "snapshot_plus_one_physics_tick"
+            effective_entry_semantics = "snapshot_plus_source_bound_physics_replay"
         elif (
             restoration_mode == "normal_p01_reset"
             and self._snapshot_restoration.get("snapshot_validated") is True
@@ -2133,6 +2304,12 @@ class IsaacFSMBackend:
             ),
             "effective_phase_entry_semantics": effective_entry_semantics,
             "fsm_and_episode_clock_at_effective_entry": 0,
+            "sensor_tick_at_effective_entry": self._episode_sensor_tick_offset,
+            "sensor_clock_semantics": (
+                "absolute_source_tick_continues_independently_of_episode_clock"
+                if self._episode_sensor_tick_offset > 0
+                else "episode_relative_tick"
+            ),
             "level_calibration_window_s": LEVEL_CALIBRATION_SECONDS,
             "level_calibration_sample_count": LEVEL_CALIBRATION_TICKS,
             "level_reference_orientation_wxyz": list(
@@ -2456,13 +2633,17 @@ def _install_source_mapper_pre_state(
 
 def _verify_source_mapper_post_state(
     adapter: Any,
-    snapshot: Mapping[str, Any],
+    snapshot_or_command: Mapping[str, Any],
 ) -> Mapping[str, Any]:
-    source = snapshot["source_command"]
+    source = (
+        snapshot_or_command["source_command"]
+        if "source_command" in snapshot_or_command
+        else snapshot_or_command
+    )
     expected = source["mapper_post_state"]
     observed = _live_source_mapper_state(
         adapter,
-        source_control_physics_tick=int(snapshot["source_tick"]),
+        source_control_physics_tick=int(source["control_physics_tick"]),
     )
     matches = {
         field: _source_replay_values_match(expected[field], observed[field])
@@ -2480,6 +2661,7 @@ def _verify_source_mapper_post_state(
     return {
         "schema": "wlr50_clean.phase_snapshot_source_mapper_post_state.v1",
         "source_transition": "source_tick_t_minus_1_to_t",
+        "source_control_physics_tick": source["control_physics_tick"],
         "field_matches": matches,
         "field_maximum_numeric_error": errors,
         "all_fields_match": True,
@@ -2494,6 +2676,21 @@ def _verify_source_prime_ack(
     ack: Mapping[str, Any],
 ) -> Mapping[str, Any]:
     source = snapshot["source_command"]
+    return _verify_source_replay_ack(
+        source,
+        source_artifacts=snapshot["source_artifacts"],
+        ack=ack,
+    )
+
+
+def _verify_source_replay_ack(
+    source: Mapping[str, Any],
+    *,
+    source_artifacts: Mapping[str, Any],
+    ack: Mapping[str, Any],
+) -> Mapping[str, Any]:
+    """Prove one reset-only replay write equals its authored Trial row."""
+
     expected = source["expected_atomic_ack"]
     missing = [field for field in SOURCE_ACK_MATCH_FIELDS if field not in ack]
     if missing:
@@ -2527,12 +2724,12 @@ def _verify_source_prime_ack(
         raise IsaacFSMBackendError(
             "phase snapshot prime hashes differ from authoritative source actuation"
         )
-    artifacts = snapshot["source_artifacts"]
     return {
         "schema": "wlr50_clean.phase_snapshot_source_actuation_match.v1",
         "source_transition": "source_tick_t_minus_1_to_t",
-        "source_command_file_sha256": artifacts["command"]["sha256"],
-        "source_observation_file_sha256": artifacts["observation"]["sha256"],
+        "source_command_file_sha256": source_artifacts["command"]["sha256"],
+        "source_observation_file_sha256": source_artifacts["observation"]["sha256"],
+        "source_control_physics_tick": source["control_physics_tick"],
         "source_command_row_canonical_sha256": source[
             "source_command_row_canonical_sha256"
         ],
@@ -2873,9 +3070,11 @@ def _restore_guard_tracker_from_snapshot(
 ) -> Mapping[str, Any]:
     """Restore only source cumulative latches into one fresh reader instance.
 
-    Contact hysteresis and history are deliberately cold.  The sole tick-zero
-    read below must classify the effective entry from its current raw PhysX
-    force; source-t classifier bits are not part of the effective-entry ABI.
+    Contact hysteresis and history are deliberately cold.  The source-bound
+    replay rebuilds them from consecutive real PhysX samples.  Trial event
+    ticks remain absolute because replay sensing also retains the authoritative
+    source clock; source classifier bits are not part of the effective-entry
+    ABI.
     """
 
     tracker = getattr(reader, "guard_tracker", None)
@@ -2907,7 +3106,6 @@ def _restore_guard_tracker_from_snapshot(
             "phase curriculum requires a cold contact classifier before tick zero"
         )
 
-    source_tick = int(snapshot["source_tick"])
     latch_rows = snapshot["contact_event_latches"]
     tracker._previous_joint_deg = dict(
         zip(
@@ -2935,21 +3133,21 @@ def _restore_guard_tracker_from_snapshot(
         leg: bool(latch_rows[leg]["top_loaded"]) for leg in _LEG_TO_WHEEL
     }
 
-    def relative_ticks(field: str) -> dict[str, int]:
+    def absolute_source_ticks(field: str) -> dict[str, int]:
         return {
-            leg: int(latch_rows[leg][field]) - source_tick
+            leg: int(latch_rows[leg][field])
             for leg in _LEG_TO_WHEEL
             if latch_rows[leg][field] is not None
         }
 
-    tracker._active_lift_tick = relative_ticks("active_lift_tick")
-    tracker._front_crossed_tick = relative_ticks("front_face_crossed_tick")
-    tracker._top_loaded_tick = relative_ticks("top_loaded_tick")
+    tracker._active_lift_tick = absolute_source_ticks("active_lift_tick")
+    tracker._front_crossed_tick = absolute_source_ticks("front_face_crossed_tick")
+    tracker._top_loaded_tick = absolute_source_ticks("top_loaded_tick")
 
     # Instantaneous source-t contact and geometry are not restored.  These
-    # rolling buffers are populated only by the sole effective tick-zero
-    # observation.  A cumulative active-lift latch proves only that AIR has
-    # occurred previously; no source classifier bit seeds the new reader.
+    # rolling buffers are populated only by the real source-bound replay.  A
+    # cumulative active-lift latch proves only that AIR has occurred
+    # previously; no source classifier bit seeds the new reader.
     tracker._air_seen = {
         leg: bool(tracker._active_lift[leg]) for leg in _LEG_TO_WHEEL
     }
@@ -2960,9 +3158,13 @@ def _restore_guard_tracker_from_snapshot(
         "front_face_crossed": dict(tracker._front_crossed),
         "top_loaded": dict(tracker._top_loaded),
         "air_seen": dict(tracker._air_seen),
-        "source_ticks_shifted_to_episode_relative": True,
+        "source_event_ticks_preserved_absolute": True,
+        "source_ticks_shifted_to_episode_relative": False,
         "source_latch_prefix_restored": True,
-        "effective_tick_zero_observation_update_pending": True,
+        "source_replay_observation_updates_pending": int(
+            snapshot.get("source_replay_steps", 1)
+        ),
+        "effective_tick_zero_observation_update_pending": False,
         "classifier_wheel_pairs_restored": 0,
         "classifier_source_state_restored": False,
         "classifier_source_history_restored": False,

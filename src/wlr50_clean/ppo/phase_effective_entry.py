@@ -1,9 +1,10 @@
 """Pinned effective phase-entry contract derived from independent live probes.
 
-The phase snapshot describes the source recording at tick ``t``.  Production
-reset writes that state, replays the source command, and advances PhysX once.
-This module owns the separate, calibrated contract for the resulting
-``snapshot + 1/120 s`` state.  P01 is intentionally outside this contract.
+Each phase snapshot declares an immutable source-command replay window.
+Production reset writes the source state once, replays every declared command
+with one real PhysX step apiece, and never rewinds.  This module owns the
+separate calibrated contract for the resulting target-entry state.  P01 is
+intentionally outside this contract.
 """
 
 from __future__ import annotations
@@ -20,7 +21,10 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Mapping, Sequence
 
-from .phase_snapshots import ValidatedPhaseSnapshotBundle
+from .phase_snapshots import (
+    ValidatedPhaseSnapshotBundle,
+    load_validated_phase_snapshot_payload,
+)
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -71,6 +75,7 @@ FINGERPRINT_MAX_ULP_DISTANCE = 1
 CONTACT_FORCE_ON_N = 0.25
 CONTACT_FORCE_OFF_N = 0.12
 CONTACT_SOURCE = "isaaclab.ContactSensor.force_matrix_w"
+PHYSICS_HZ = 120.0
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _GIT_COMMIT = re.compile(r"^[0-9a-f]{40}$")
 _AUTHORED_ENTRY_GUARDS = (
@@ -80,10 +85,26 @@ _AUTHORED_ENTRY_GUARDS = (
     "reference_entry_compatible",
     "critical_actuators_available",
 )
+_RESET_SETTLE_TICKS = 180
 
 
 class EffectivePhaseEntryError(ValueError):
     """The effective-entry calibration or live evidence is not trustworthy."""
+
+
+def phase_entry_time_s(physics_ticks: int) -> float:
+    """Map an integer 120 Hz phase-entry tick to its canonical binary64 time.
+
+    Division is intentional.  Multiplying a large tick by the rounded binary64
+    reciprocal can differ by one ULP (for example, tick 1817), so every producer
+    and verifier of phase-entry evidence must call this function.
+    """
+
+    if type(physics_ticks) is not int or physics_ticks < 0:
+        raise EffectivePhaseEntryError(
+            "phase-entry physics tick must be a non-negative integer"
+        )
+    return physics_ticks / PHYSICS_HZ
 
 
 def _freeze_json_value(value: Any) -> Any:
@@ -210,6 +231,67 @@ def _require_git_commit(value: Any, label: str) -> str:
     if not isinstance(value, str) or _GIT_COMMIT.fullmatch(value) is None:
         raise EffectivePhaseEntryError(f"{label} must be a lowercase 40-hex commit")
     return value
+
+
+def _snapshot_replay_contract(
+    phase_snapshot_bundle: ValidatedPhaseSnapshotBundle,
+    phase: str,
+) -> tuple[Mapping[str, Any], Any, int, int, tuple[int, ...]]:
+    """Return the replay window proven by the pinned payload and manifest row.
+
+    ``load_validated_phase_snapshot_payload`` revalidates the payload against
+    the manifest captured in ``phase_snapshot_bundle``.  The checks below are
+    deliberately repeated at this consumer boundary: calibration evidence may
+    never choose its own replay count or target tick.
+    """
+
+    payload, snapshot = load_validated_phase_snapshot_payload(
+        phase_snapshot_bundle, phase
+    )
+    source_tick = payload.get("source_tick")
+    replay_steps = payload.get("source_replay_steps")
+    commands = payload.get("source_commands")
+    if (
+        type(source_tick) is not int
+        or source_tick < 0
+        or type(replay_steps) is not int
+        or replay_steps <= 0
+        or not isinstance(commands, list)
+        or len(commands) != replay_steps
+        or any(not isinstance(command, Mapping) for command in commands)
+    ):
+        raise EffectivePhaseEntryError(
+            f"validated phase snapshot replay window is invalid for {phase}"
+        )
+    target_entry_tick = source_tick + replay_steps
+    payload_target = payload.get("target_entry_tick")
+    snapshot_target = getattr(snapshot, "target_entry_tick", None)
+    if (
+        getattr(snapshot, "source_tick", None) != source_tick
+        or getattr(snapshot, "source_replay_steps", None) != replay_steps
+        or (
+            payload_target is not None
+            and (
+                type(payload_target) is not int
+                or payload_target != target_entry_tick
+                or snapshot_target != target_entry_tick
+            )
+        )
+        or (payload_target is None and snapshot_target is not None)
+    ):
+        raise EffectivePhaseEntryError(
+            f"validated phase snapshot manifest replay binding differs for {phase}"
+        )
+    control_ticks = tuple(source_tick + index for index in range(replay_steps))
+    if (
+        tuple(command.get("control_physics_tick") for command in commands)
+        != control_ticks
+        or payload.get("source_command") != commands[0]
+    ):
+        raise EffectivePhaseEntryError(
+            f"validated phase snapshot source-command sequence is invalid for {phase}"
+        )
+    return payload, snapshot, replay_steps, target_entry_tick, control_ticks
 
 
 def _binary64_hex(value: float) -> str:
@@ -839,6 +921,166 @@ def _validate_controller_entry_guard(value: Any, *, phase: str) -> None:
         raise EffectivePhaseEntryError("P10 signed positive velocity guard did not pass")
 
 
+def _replay_evidence_failures(
+    state: Mapping[str, Any],
+    snapshot_payload: Mapping[str, Any],
+    *,
+    replay_steps: int,
+    target_entry_tick: int,
+    control_ticks: Sequence[int],
+) -> tuple[str, ...]:
+    """Validate every replay write/read against the pinned command sequence."""
+
+    failures: list[str] = []
+    commands = snapshot_payload.get("source_commands")
+    if not isinstance(commands, list) or len(commands) != replay_steps:
+        return ("pinned source-command sequence length",)
+    actuation_matches = state.get("source_actuation_matches")
+    mapper_states = state.get("source_mapper_post_states")
+    atomic_writes = state.get("prime_atomic_writes")
+    safety_checks = state.get("source_replay_safety_checks")
+    if not isinstance(actuation_matches, list) or len(actuation_matches) != replay_steps:
+        failures.append("source_actuation_matches length")
+    if not isinstance(mapper_states, list) or len(mapper_states) != replay_steps:
+        failures.append("source_mapper_post_states length")
+    if not isinstance(atomic_writes, list) or len(atomic_writes) != replay_steps:
+        failures.append("prime_atomic_writes length")
+    if not isinstance(safety_checks, list) or len(safety_checks) != replay_steps:
+        failures.append("source_replay_safety_checks length")
+    if failures:
+        return tuple(failures)
+
+    assert isinstance(actuation_matches, list)
+    assert isinstance(mapper_states, list)
+    assert isinstance(atomic_writes, list)
+    assert isinstance(safety_checks, list)
+    for index, (command, expected_tick) in enumerate(
+        zip(commands, control_ticks, strict=True)
+    ):
+        reset_physics_tick = _RESET_SETTLE_TICKS + index
+        reset_write_count = reset_physics_tick + 1
+        actuation = actuation_matches[index]
+        mapper = mapper_states[index]
+        atomic = atomic_writes[index]
+        safety = safety_checks[index]
+        if not isinstance(actuation, Mapping):
+            failures.append(f"source_actuation_matches[{index}]")
+            continue
+        field_matches = actuation.get("field_matches")
+        if (
+            actuation.get("source_control_physics_tick") != expected_tick
+            or actuation.get("all_fields_match") is not True
+            or not isinstance(field_matches, Mapping)
+            or set(field_matches) != set(command.get("expected_atomic_ack", {}))
+            or any(value is not True for value in field_matches.values())
+            or actuation.get("source_target_hash_matches") is not True
+            or actuation.get("logical_target_fallback_used") is not False
+            or actuation.get("source_command_file_sha256")
+            != snapshot_payload.get("source_artifacts", {}).get("command", {}).get(
+                "sha256"
+            )
+            or actuation.get("source_observation_file_sha256")
+            != snapshot_payload.get("source_artifacts", {}).get(
+                "observation", {}
+            ).get("sha256")
+            or actuation.get("source_command_row_canonical_sha256")
+            != command.get("source_command_row_canonical_sha256")
+            or actuation.get("source_observation_row_canonical_sha256")
+            != command.get("source_observation_row_canonical_sha256")
+            or actuation.get("source_drive_target_full12_sha256")
+            != command.get("drive_target_full12_sha256")
+            or actuation.get("replayed_drive_target_full12_sha256")
+            != command.get("drive_target_full12_sha256")
+            or actuation.get("source_actuation_contract_sha256")
+            != command.get("actuation_contract_sha256")
+            or actuation.get("replayed_actuation_contract_sha256")
+            != command.get("actuation_contract_sha256")
+            or actuation.get("source_atomic_physics_tick")
+            != command.get("source_atomic_physics_tick")
+            or actuation.get("source_atomic_write_count")
+            != command.get("source_atomic_write_count")
+            or actuation.get("reset_prime_physics_tick") != reset_physics_tick
+            or actuation.get("reset_prime_write_count") != reset_write_count
+            or actuation.get(
+                "clock_and_write_count_fields_intentionally_remapped"
+            )
+            is not True
+        ):
+            failures.append(f"source_actuation_matches[{index}] contract")
+        if not isinstance(mapper, Mapping):
+            failures.append(f"source_mapper_post_states[{index}]")
+        else:
+            mapper_matches = mapper.get("field_matches")
+            if (
+                mapper.get("source_control_physics_tick") != expected_tick
+                or mapper.get("all_fields_match") is not True
+                or not isinstance(mapper_matches, Mapping)
+                or set(mapper_matches) != set(command.get("mapper_post_state", {}))
+                or any(value is not True for value in mapper_matches.values())
+                or mapper.get("reached_naturally_by_single_atomic_apply") is not True
+                or mapper.get("restored_after_prime") is not False
+            ):
+                failures.append(f"source_mapper_post_states[{index}] contract")
+        if not isinstance(atomic, Mapping):
+            failures.append(f"prime_atomic_writes[{index}]")
+        elif (
+            atomic.get("source_control_physics_tick") != expected_tick
+            or atomic.get("observation_physics_tick") != expected_tick + 1
+            or atomic.get("physics_tick") != reset_physics_tick
+            or atomic.get("write_count") != reset_write_count
+            or atomic.get("articulation_writes_this_call") != 1
+            or atomic.get("source_actuation_match") != actuation
+            or atomic.get("source_mapper_post_state") != mapper
+        ):
+            failures.append(f"prime_atomic_writes[{index}] contract")
+        safety_flags = safety.get("flags") if isinstance(safety, Mapping) else None
+        if (
+            not isinstance(safety, Mapping)
+            or safety.get("schema") != "wlr50_clean.phase_effective_entry_safety.v1"
+            or safety.get("verified") is not True
+            or safety.get("all_failure_flags_false") is not True
+            or safety.get("source_control_physics_tick") != expected_tick
+            or safety.get("observation_physics_tick") != expected_tick + 1
+            or not isinstance(safety_flags, Mapping)
+            or set(safety_flags)
+            != {
+                "body_collision",
+                "combined_physics_abort_guard",
+                "fall",
+                "hard_joint_limit",
+                "nan_inf",
+                "physics_explosion",
+                "wheel_only_climb",
+            }
+            or any(
+                type(value) is not bool or value is not False
+                for value in safety_flags.values()
+            )
+        ):
+            failures.append(f"source_replay_safety_checks[{index}] contract")
+
+    if state.get("source_actuation_match") != actuation_matches[-1]:
+        failures.append("final source_actuation_match alias")
+    if state.get("source_mapper_post_state") != mapper_states[-1]:
+        failures.append("final source_mapper_post_state alias")
+    if state.get("source_replay_steps") != replay_steps:
+        failures.append("source_replay_steps")
+    if state.get("target_entry_tick") != target_entry_tick:
+        failures.append("target_entry_tick")
+    if state.get("episode_sensor_tick_offset") != target_entry_tick:
+        failures.append("episode_sensor_tick_offset")
+    if state.get("all_source_replay_steps_safe") is not True:
+        failures.append("all_source_replay_steps_safe")
+    if state.get("source_replay_observation_ticks") != list(
+        range(
+            int(snapshot_payload["source_tick"]) + 1,
+            target_entry_tick + 1,
+        )
+    ):
+        failures.append("source_replay_observation_ticks")
+    return tuple(failures)
+
+
 def _validated_probe_attempt(
     attempt: Any,
     *,
@@ -861,20 +1103,39 @@ def _validated_probe_attempt(
     sensor = state.get("entry_sensor_contract")
     effective_proof = state.get("effective_entry_contract")
     comparison = state.get("source_snapshot_post_prime_diagnostic")
-    snapshot = phase_snapshot_bundle.snapshot(phase)
+    (
+        snapshot_payload,
+        snapshot,
+        replay_steps,
+        target_entry_tick,
+        control_ticks,
+    ) = _snapshot_replay_contract(phase_snapshot_bundle, phase)
+    replay_failures = _replay_evidence_failures(
+        state,
+        snapshot_payload,
+        replay_steps=replay_steps,
+        target_entry_tick=target_entry_tick,
+        control_ticks=control_ticks,
+    )
+    source_commands = snapshot_payload["source_commands"]
     expected_scalars = {
         "state_write_count": 1,
         "root_pose_writes": 1,
         "root_velocity_writes": 1,
         "joint_state_writes": 1,
         "simulation_forward_syncs": 1,
-        "physics_steps": 1,
-        "prime_physics_steps": 1,
-        "prime_atomic_full12_writes": 1,
-        "contact_sensor_reads_after_prime": 1,
+        "source_replay_steps": replay_steps,
+        "target_entry_tick": target_entry_tick,
+        "episode_sensor_tick_offset": target_entry_tick,
+        "effective_entry_offset_s": phase_entry_time_s(replay_steps),
+        "physics_steps": replay_steps,
+        "prime_physics_steps": replay_steps,
+        "prime_atomic_full12_writes": replay_steps,
+        "contact_sensor_reads_after_prime": replay_steps,
         "fsm_clock_steps_during_priming": 0,
         "episode_clock_steps_during_priming": 0,
-        "sensor_history_samples_after_reset": 1,
+        "sensor_history_samples_after_reset": replay_steps,
+        "source_replay_guard_updates_applied": replay_steps,
     }
     scalar_failures = [
         name for name, expected in expected_scalars.items() if state.get(name) != expected
@@ -920,9 +1181,23 @@ def _validated_probe_attempt(
         and attempt.get("snapshot_state_sha256") == snapshot.state_sha256
         and Path(str(attempt.get("snapshot_path", ""))).resolve()
         == snapshot.snapshot_path
-        and attempt.get("physics_steps_during_reset") == 181
-        and attempt.get("post_prime_contact_sensor_read_count") == 1
-        and attempt.get("extra_physics_priming_steps") == 1
+        and attempt.get("source_replay_steps") == replay_steps
+        and attempt.get("target_entry_tick") == target_entry_tick
+        and attempt.get("episode_sensor_tick_offset") == target_entry_tick
+        and attempt.get("effective_entry_offset_s")
+        == phase_entry_time_s(replay_steps)
+        and attempt.get("source_control_physics_ticks") == list(control_ticks)
+        and attempt.get("source_command_row_canonical_sha256s")
+        == [row["source_command_row_canonical_sha256"] for row in source_commands]
+        and attempt.get("source_observation_row_canonical_sha256s")
+        == [row["source_observation_row_canonical_sha256"] for row in source_commands]
+        and attempt.get("source_drive_target_full12_sha256s")
+        == [row["drive_target_full12_sha256"] for row in source_commands]
+        and attempt.get("source_actuation_contract_sha256s")
+        == [row["actuation_contract_sha256"] for row in source_commands]
+        and attempt.get("physics_steps_during_reset") == 180 + replay_steps
+        and attempt.get("post_prime_contact_sensor_read_count") == replay_steps
+        and attempt.get("extra_physics_priming_steps") == replay_steps
         and attempt.get("fsm_or_episode_advanced_for_probe") is False
         and attempt.get("reset_completed") is True
         and attempt.get("passed") is True
@@ -930,8 +1205,9 @@ def _validated_probe_attempt(
         and attempt.get("exception") is None
         and isinstance(observation, Mapping)
         and observation.get("observation_available") is True
-        and observation.get("observation_physics_tick") == 0
-        and observation.get("observation_simulation_time_s") == 0.0
+        and observation.get("observation_physics_tick") == target_entry_tick
+        and observation.get("observation_simulation_time_s")
+        == phase_entry_time_s(target_entry_tick)
         and isinstance(clocks, Mapping)
         and clocks.get("authoritative_frame_committed") is True
         and clocks.get("backend_episode_tick") == 0
@@ -945,8 +1221,7 @@ def _validated_probe_attempt(
         and clocks.get("controller_state_id") == phase
         and state.get("current_contact_force_provenance")
         == "current_final_solver_force_only"
-        and state.get("classifier_cold_started_before_only_episode_read") is True
-        and state.get("classifier_restored_before_only_episode_read") is False
+        and state.get("classifier_cold_started_before_source_replay") is True
         and state.get("classifier_source_history_restored") is False
         and state.get("classifier_source_state_restored") is False
         and state.get("classifier_history_equivalence_claimed") is False
@@ -981,6 +1256,7 @@ def _validated_probe_attempt(
             "phase",
             "source_tick",
             "target_entry_tick",
+            "source_replay_steps",
             "effective_entry_offset_s",
             "phase_snapshot_bundle_sha256",
             "source_snapshot_post_prime_diagnostic",
@@ -992,16 +1268,19 @@ def _validated_probe_attempt(
         and effective_proof.get("calibration_only") is True
         and effective_proof.get("phase") == phase
         and effective_proof.get("source_tick") == snapshot.source_tick
-        and effective_proof.get("target_entry_tick") == snapshot.source_tick + 1
-        and effective_proof.get("effective_entry_offset_s") == 1.0 / 120.0
+        and effective_proof.get("target_entry_tick") == target_entry_tick
+        and effective_proof.get("source_replay_steps") == replay_steps
+        and effective_proof.get("effective_entry_offset_s")
+        == phase_entry_time_s(replay_steps)
         and effective_proof.get("phase_snapshot_bundle_sha256")
         == phase_snapshot_bundle.bundle_sha256
         and effective_proof.get("source_snapshot_post_prime_diagnostic") == comparison
         and effective_proof.get("failures") == []
     )
-    if scalar_failures or not boolean_contract:
+    if scalar_failures or replay_failures or not boolean_contract:
         raise EffectivePhaseEntryError(
-            "calibration reset recipe is invalid: " + ", ".join(scalar_failures)
+            "calibration reset recipe is invalid: "
+            + ", ".join((*scalar_failures, *replay_failures))
         )
     if (
         not isinstance(comparison, Mapping)
@@ -1057,6 +1336,58 @@ def _assert_attempts_bit_identical(
         }
     if classifications(fresh) != classifications(reused):
         raise EffectivePhaseEntryError("fresh/reused classifier result differs")
+
+
+def _assert_replay_attempts_bit_identical(
+    fresh: Mapping[str, Any], reused: Mapping[str, Any]
+) -> None:
+    """Require the fresh/reused reset to execute the same replay recipe."""
+
+    attempt_fields = (
+        "source_tick",
+        "source_replay_steps",
+        "target_entry_tick",
+        "effective_entry_offset_s",
+        "episode_sensor_tick_offset",
+        "source_control_physics_ticks",
+        "source_command_row_canonical_sha256s",
+        "source_observation_row_canonical_sha256s",
+        "source_drive_target_full12_sha256s",
+        "source_actuation_contract_sha256s",
+        "physics_steps_during_reset",
+        "post_prime_contact_sensor_read_count",
+        "extra_physics_priming_steps",
+    )
+    state_fields = (
+        "source_replay_steps",
+        "target_entry_tick",
+        "episode_sensor_tick_offset",
+        "effective_entry_offset_s",
+        "physics_steps",
+        "prime_physics_steps",
+        "prime_atomic_full12_writes",
+        "prime_atomic_writes",
+        "source_actuation_matches",
+        "source_mapper_post_states",
+        "source_actuation_match",
+        "source_mapper_post_state",
+        "source_replay_observation_ticks",
+        "contact_sensor_reads_after_prime",
+        "sensor_history_samples_after_reset",
+        "source_replay_guard_updates_applied",
+        "source_replay_safety_checks",
+        "all_source_replay_steps_safe",
+    )
+    if any(fresh.get(name) != reused.get(name) for name in attempt_fields):
+        raise EffectivePhaseEntryError(
+            "fresh/reused source-replay attempt metadata differs"
+        )
+    fresh_state = fresh.get("snapshot_state_write")
+    reused_state = reused.get("snapshot_state_write")
+    if not isinstance(fresh_state, Mapping) or not isinstance(reused_state, Mapping):
+        raise EffectivePhaseEntryError("fresh/reused replay proof is missing")
+    if any(fresh_state.get(name) != reused_state.get(name) for name in state_fields):
+        raise EffectivePhaseEntryError("fresh/reused source-replay proof differs")
 
 
 def _capture_calibration_run(
@@ -1164,6 +1495,18 @@ def _capture_calibration_run(
     phases = probe.get("phases")
     phase = phases[0] if isinstance(phases, list) and len(phases) == 1 else None
     attempts = probe.get("attempts")
+    if phase in PHASE_IDS:
+        (
+            _snapshot_payload,
+            _snapshot_file,
+            expected_replay_steps,
+            expected_target_entry_tick,
+            _expected_control_ticks,
+        ) = _snapshot_replay_contract(phase_snapshot_bundle, str(phase))
+    else:
+        expected_replay_steps = None
+        expected_target_entry_tick = None
+        _expected_control_ticks = ()
     if (
         probe.get("schema") != PROBE_SCHEMA
         or probe.get("artifact_role") != CALIBRATION_ARTIFACT_ROLE
@@ -1187,8 +1530,11 @@ def _capture_calibration_run(
         or probe.get("phase_effective_entry_contract") is not None
         or probe.get("production_reset_modified") is not True
         or probe.get("production_reset_mode")
-        != "one_source_command_atomic_write_then_physx_prime_without_rewind"
-        or probe.get("extra_physics_priming_steps") != 1
+        != "validated_source_command_sequence_replay_without_rewind"
+        or probe.get("source_replay_policy")
+        != "derived_only_from_validated_phase_snapshot"
+        or probe.get("source_replay_steps_by_phase")
+        != {phase: expected_replay_steps}
         or not isinstance(attempts, list)
         or len(attempts) != 2
     ):
@@ -1243,13 +1589,16 @@ def _capture_calibration_run(
         phase_snapshot_bundle=phase_snapshot_bundle,
     )
     _assert_attempts_bit_identical(comparison, reused_comparison)
+    _assert_replay_attempts_bit_identical(fresh, reused)
     fingerprint, fingerprint_binary = _fingerprint(comparison.get("maximum_errors"))
     contacts = _calibrated_contacts(comparison)
     entry_payload: dict[str, Any] = {
         "schema": ENTRY_SCHEMA,
         "phase": phase,
         "source_tick": int(fresh.get("source_tick")),
-        "effective_entry_offset_s": 1.0 / 120.0,
+        "target_entry_tick": expected_target_entry_tick,
+        "source_replay_steps": expected_replay_steps,
+        "effective_entry_offset_s": phase_entry_time_s(expected_replay_steps),
         "calibration_probe_file_sha256": _sha256_bytes(captured["probe"]),
         "post_prime_fingerprint": fingerprint,
         "post_prime_fingerprint_binary64_hex": fingerprint_binary,
@@ -1361,8 +1710,10 @@ def build_effective_phase_entry_contract(
         "derivation": derivation,
         "portability_scope": "same_locked_host_runtime_only",
         "calibration_status": "provisional_pending_independent_fresh_holdout",
-        "effective_entry_semantics": "source_snapshot_plus_one_real_physx_tick_no_rewind",
-        "physics_dt_s": 1.0 / 120.0,
+        "effective_entry_semantics": (
+            "source_snapshot_plus_validated_replay_steps_no_rewind"
+        ),
+        "physics_dt_s": phase_entry_time_s(1),
         "fingerprint_fields": list(FINGERPRINT_FIELDS),
         "fingerprint_max_ulp_distance": FINGERPRINT_MAX_ULP_DISTANCE,
         "contact_contract": {
@@ -1458,8 +1809,8 @@ def _validate_contract_payload(
         or payload.get("calibration_status")
         != "provisional_pending_independent_fresh_holdout"
         or payload.get("effective_entry_semantics")
-        != "source_snapshot_plus_one_real_physx_tick_no_rewind"
-        or payload.get("physics_dt_s") != 1.0 / 120.0
+        != "source_snapshot_plus_validated_replay_steps_no_rewind"
+        or payload.get("physics_dt_s") != phase_entry_time_s(1)
         or payload.get("fingerprint_fields") != list(FINGERPRINT_FIELDS)
         or payload.get("fingerprint_max_ulp_distance") != 1
         or payload.get("phase_count") != len(PHASE_IDS)
@@ -1640,6 +1991,8 @@ def _validate_contract_payload(
             "schema",
             "phase",
             "source_tick",
+            "target_entry_tick",
+            "source_replay_steps",
             "effective_entry_offset_s",
             "calibration_probe_file_sha256",
             "post_prime_fingerprint",
@@ -1654,12 +2007,22 @@ def _validate_contract_payload(
         entry_hash = _require_sha256(unhashed.pop("entry_sha256", None), f"{phase}.entry_sha256")
         if _sha256_bytes(_canonical_bytes(unhashed)) != entry_hash:
             raise EffectivePhaseEntryError(f"effective entry hash mismatch for {phase}")
+        (
+            _snapshot_payload,
+            snapshot_file,
+            expected_replay_steps,
+            expected_target_entry_tick,
+            _control_ticks,
+        ) = _snapshot_replay_contract(expected_snapshot_bundle, phase)
         if (
             row.get("schema") != ENTRY_SCHEMA
             or row.get("phase") != phase
             or type(row.get("source_tick")) is not int
-            or row["source_tick"] < 0
-            or row.get("effective_entry_offset_s") != 1.0 / 120.0
+            or row.get("source_tick") != snapshot_file.source_tick
+            or row.get("target_entry_tick") != expected_target_entry_tick
+            or row.get("source_replay_steps") != expected_replay_steps
+            or row.get("effective_entry_offset_s")
+            != phase_entry_time_s(expected_replay_steps)
             or row.get("calibration_probe_file_sha256")
             != calibration_probe_hashes[phase]
         ):
@@ -1964,7 +2327,13 @@ def validate_effective_phase_entry_comparison(
     proof = {
         "schema": "wlr50_clean.ppo_phase_effective_entry_live_proof.v1",
         "phase": phase,
-        "effective_entry_semantics": "source_snapshot_plus_one_real_physx_tick_no_rewind",
+        "effective_entry_semantics": (
+            "source_snapshot_plus_validated_replay_steps_no_rewind"
+        ),
+        "source_tick": entry.get("source_tick"),
+        "target_entry_tick": entry.get("target_entry_tick"),
+        "source_replay_steps": entry.get("source_replay_steps"),
+        "effective_entry_offset_s": entry.get("effective_entry_offset_s"),
         "contract_sha256": contract.contract_sha256,
         "entry_sha256": entry["entry_sha256"],
         "fingerprint_max_ulp_distance": FINGERPRINT_MAX_ULP_DISTANCE,
@@ -1997,5 +2366,6 @@ __all__ = [
     "binary64_ulp_distance",
     "build_effective_phase_entry_contract",
     "capture_validated_effective_phase_entry_contract",
+    "phase_entry_time_s",
     "validate_effective_phase_entry_comparison",
 ]

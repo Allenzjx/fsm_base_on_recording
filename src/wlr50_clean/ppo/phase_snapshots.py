@@ -81,6 +81,7 @@ class _PhaseEntryBoundary:
 
     source_tick: int
     target_entry_tick: int
+    source_replay_steps: int
     uses_causal_predecessor: bool
 
 
@@ -90,6 +91,8 @@ class PhaseSnapshotFileBuffer:
 
     phase: str
     source_tick: int
+    source_replay_steps: int
+    target_entry_tick: int | None
     snapshot_path: Path
     checksum_path: Path
     snapshot_bytes: bytes
@@ -101,6 +104,9 @@ class PhaseSnapshotFileBuffer:
     def as_record(self) -> dict[str, Any]:
         return {
             "phase": self.phase,
+            "source_tick": self.source_tick,
+            "source_replay_steps": self.source_replay_steps,
+            "target_entry_tick": self.target_entry_tick,
             "snapshot_path": str(self.snapshot_path),
             "checksum_path": str(self.checksum_path),
             "file_sha256": self.file_sha256,
@@ -914,11 +920,29 @@ def _phase_entry_boundaries_from_rows(
         "P01": _PhaseEntryBoundary(
             source_tick=0,
             target_entry_tick=0,
+            source_replay_steps=1,
             uses_causal_predecessor=False,
         )
     }
+    wait_entry_ticks: dict[str, int] = {}
     for row in rows:
         phase = str(row.get("state_id"))
+        if (
+            phase in PHASE_IDS
+            and row.get("to_lifecycle") == "WAIT_ENTRY"
+            and row.get("from_lifecycle") != "WAIT_ENTRY"
+        ):
+            time_s = float(row["sim_time_s"])
+            tick = int(round(time_s * PHYSICS_HZ))
+            if not math.isclose(time_s, tick / PHYSICS_HZ, abs_tol=2.0e-6):
+                raise PhaseSnapshotError(
+                    f"{phase} WAIT_ENTRY start is not on the 120 Hz lattice"
+                )
+            if phase in wait_entry_ticks:
+                raise PhaseSnapshotError(
+                    f"trial contains multiple WAIT_ENTRY starts for {phase}"
+                )
+            wait_entry_ticks[phase] = tick
         if (
             phase in PHASE_IDS
             and row.get("from_lifecycle") == "WAIT_ENTRY"
@@ -934,13 +958,20 @@ def _phase_entry_boundaries_from_rows(
             uses_causal_predecessor = (
                 _contains_signed_positive_rebound_requirement(guards)
             )
-            if uses_causal_predecessor and tick <= 0:
-                raise PhaseSnapshotError(
-                    f"{phase} signed-positive entry lacks a causal predecessor tick"
-                )
+            if uses_causal_predecessor:
+                source_tick = wait_entry_ticks.get(phase)
+                if source_tick is None or source_tick < 0 or source_tick >= tick:
+                    raise PhaseSnapshotError(
+                        f"{phase} signed-positive entry lacks a prior WAIT_ENTRY start"
+                    )
+                source_replay_steps = tick - source_tick
+            else:
+                source_tick = tick
+                source_replay_steps = 1
             result[phase] = _PhaseEntryBoundary(
-                source_tick=tick - 1 if uses_causal_predecessor else tick,
+                source_tick=source_tick,
                 target_entry_tick=tick,
+                source_replay_steps=source_replay_steps,
                 uses_causal_predecessor=uses_causal_predecessor,
             )
     if tuple(result) != PHASE_IDS:
@@ -1025,7 +1056,7 @@ def _snapshot_payload(
     observation: Mapping[str, Any],
     command: Mapping[str, Any],
     source_artifacts: Mapping[str, Any],
-    source_command: Mapping[str, Any],
+    source_commands: Iterable[Mapping[str, Any]],
     contact_event_latches: Mapping[str, Any],
     level_reference_orientation_wxyz: list[float],
 ) -> dict[str, Any]:
@@ -1042,10 +1073,19 @@ def _snapshot_payload(
     completed = list(PHASE_IDS[: PHASE_IDS.index(phase)])
     if type(target_entry_tick) is not int or target_entry_tick < tick:
         raise PhaseSnapshotError(f"invalid target entry tick for {phase}")
-    uses_causal_predecessor = target_entry_tick == tick + 1
-    if target_entry_tick not in {tick, tick + 1}:
+    replay_rows = tuple(dict(item) for item in source_commands)
+    if not replay_rows:
+        raise PhaseSnapshotError(f"{phase} source-command replay is empty")
+    uses_causal_predecessor = target_entry_tick > tick
+    source_replay_steps = len(replay_rows)
+    if uses_causal_predecessor:
+        if target_entry_tick - tick != source_replay_steps:
+            raise PhaseSnapshotError(
+                f"{phase} source-command replay does not span its target tick"
+            )
+    elif target_entry_tick != tick or source_replay_steps != 1:
         raise PhaseSnapshotError(
-            f"{phase} reset source must be the target tick or its causal predecessor"
+            f"{phase} non-causal reset must retain one source command"
         )
     source_state = command.get("state_id")
     source_lifecycle = command.get("lifecycle")
@@ -1054,15 +1094,18 @@ def _snapshot_payload(
         raise PhaseSnapshotError(
             f"{phase} source command state/lifecycle does not match its reset boundary"
         )
-    serialized_source_command = dict(source_command)
+    serialized_source_commands = replay_rows
     if uses_causal_predecessor:
-        serialized_source_command.update(
+        serialized_source_commands = tuple(
             {
-                "source_fsm_state": source_state,
-                "source_fsm_lifecycle": source_lifecycle,
+                **source,
+                "source_fsm_state": phase,
+                "source_fsm_lifecycle": "WAIT_ENTRY",
                 "target_entry_tick": target_entry_tick,
             }
+            for source in replay_rows
         )
+    serialized_source_command = dict(serialized_source_commands[0])
     payload = {
         "schema": SNAPSHOT_SCHEMA,
         "reset_use": "TRAINING_RESET_STATE_WRITE",
@@ -1073,6 +1116,8 @@ def _snapshot_payload(
         "source_time_s": tick / PHYSICS_HZ,
         "source_artifacts": dict(source_artifacts),
         "source_command": serialized_source_command,
+        "source_commands": [dict(source) for source in serialized_source_commands],
+        "source_replay_steps": source_replay_steps,
         "fsm_state": phase,
         "fsm_lifecycle": source_lifecycle,
         "phase_history": completed,
@@ -1121,9 +1166,10 @@ def _snapshot_payload(
     if uses_causal_predecessor:
         payload["target_entry_tick"] = target_entry_tick
         payload["snapshot_semantics"] = (
-            "causal predecessor state is written before one reset-only source-command "
-            "PhysX prime; the post-prime live observation is the target phase-entry "
-            "decision; live physics and frozen FSM own all subsequent state"
+            "causal WAIT_ENTRY anchor state is written before the ordered reset-only "
+            "source-command PhysX replay; the final post-replay live observation is "
+            "the target phase-entry decision; live physics and frozen FSM own all "
+            "subsequent state"
         )
     return payload
 
@@ -1173,7 +1219,14 @@ def build_phase_snapshots(
         leg_crossing_bytes, source_paths["leg_crossing"]
     )
     boundaries_by_phase = _phase_entry_boundaries_from_rows(transition_rows)
-    ticks = {boundary.source_tick for boundary in boundaries_by_phase.values()}
+    ticks = {
+        tick
+        for boundary in boundaries_by_phase.values()
+        for tick in range(
+            boundary.source_tick,
+            boundary.source_tick + boundary.source_replay_steps,
+        )
+    }
     with _SingleReadJsonlCapture(
         source_paths["command"],
         label="source command stream",
@@ -1240,19 +1293,24 @@ def build_phase_snapshots(
     observations = {tick: row["observation"] for tick, row in replay_rows.items()}
     commands = {tick: row["command"] for tick, row in replay_rows.items()}
     for phase, boundary in boundaries_by_phase.items():
-        source_command_row = commands[boundary.source_tick]
         expected_lifecycle = (
             "WAIT_ENTRY"
             if boundary.uses_causal_predecessor
             else "EXECUTE_MOTION"
         )
-        if (
-            source_command_row.get("state_id") != phase
-            or source_command_row.get("lifecycle") != expected_lifecycle
-        ):
-            raise PhaseSnapshotError(
-                f"{phase} source command state/lifecycle does not match its reset boundary"
-            )
+        replay_ticks = range(
+            boundary.source_tick,
+            boundary.source_tick + boundary.source_replay_steps,
+        )
+        for replay_tick in replay_ticks:
+            source_command_row = commands[replay_tick]
+            if (
+                source_command_row.get("state_id") != phase
+                or source_command_row.get("lifecycle") != expected_lifecycle
+            ):
+                raise PhaseSnapshotError(
+                    f"{phase} source command state/lifecycle does not match its reset boundary"
+                )
     level_reference_orientation = list(observations[0]["base"]["orientation_wxyz"])
     output.mkdir(parents=True, exist_ok=False)
     rows = []
@@ -1272,7 +1330,13 @@ def build_phase_snapshots(
             observation=observations[tick],
             command=commands[tick],
             source_artifacts=source_artifacts,
-            source_command=replay_rows[tick]["source_command"],
+            source_commands=(
+                replay_rows[replay_tick]["source_command"]
+                for replay_tick in range(
+                    boundary.source_tick,
+                    boundary.source_tick + boundary.source_replay_steps,
+                )
+            ),
             contact_event_latches=_event_latches(leg_crossing_rows, tick),
             level_reference_orientation_wxyz=level_reference_orientation,
         )
@@ -1289,6 +1353,7 @@ def build_phase_snapshots(
         row = {
             "phase": phase,
             "source_tick": tick,
+            "source_replay_steps": boundary.source_replay_steps,
             "state_sha256": state_hash,
             "file_sha256": file_hash,
             "path": str(snapshot_path),
@@ -1391,6 +1456,214 @@ def _validate_mapper_state(
     return value
 
 
+def _validate_additional_source_replay_row(
+    source: Mapping[str, Any],
+    *,
+    phase: str,
+    source_tick: int,
+    target_entry_tick: int,
+    first_source: Mapping[str, Any],
+    previous_source: Mapping[str, Any],
+) -> None:
+    """Validate one post-anchor row in a causal source-command replay."""
+
+    if set(source) != set(first_source):
+        raise PhaseSnapshotError(
+            f"snapshot source-command replay fields are inconsistent for {phase}"
+        )
+    if (
+        source.get("schema") != SOURCE_COMMAND_SCHEMA
+        or source.get("control_physics_tick") != source_tick
+        or source.get("source_atomic_physics_tick")
+        != SOURCE_SETTLE_TICKS + source_tick
+        or source.get("source_atomic_write_count")
+        != SOURCE_SETTLE_TICKS + source_tick + 1
+        or source.get("source_fsm_state") != phase
+        or source.get("source_fsm_lifecycle") != "WAIT_ENTRY"
+        or source.get("target_entry_tick") != target_entry_tick
+    ):
+        raise PhaseSnapshotError(
+            f"snapshot causal source-command replay context mismatch for {phase}"
+        )
+    for name in (
+        "source_command_row_canonical_sha256",
+        "source_observation_row_canonical_sha256",
+        "drive_target_full12_sha256",
+        "actuation_contract_sha256",
+    ):
+        _require_sha256(
+            source.get(name), label=f"snapshot {phase} replay tick {source_tick}.{name}"
+        )
+    if source.get("mapper_configuration") != first_source.get(
+        "mapper_configuration"
+    ):
+        raise PhaseSnapshotError(
+            f"snapshot mapper configuration changed during replay for {phase}"
+        )
+    pre_state = _validate_mapper_state(
+        source.get("mapper_pre_state"),
+        label=f"snapshot {phase} replay tick {source_tick}.mapper_pre_state",
+        expected_source_tick=source_tick - 1,
+    )
+    post_state = _validate_mapper_state(
+        source.get("mapper_post_state"),
+        label=f"snapshot {phase} replay tick {source_tick}.mapper_post_state",
+        expected_source_tick=source_tick,
+    )
+    if pre_state != previous_source.get("mapper_post_state"):
+        raise PhaseSnapshotError(
+            f"snapshot mapper replay is not contiguous at tick {source_tick} for {phase}"
+        )
+    if pre_state.get("feedback_tick") != SOURCE_SETTLE_TICKS + source_tick:
+        raise PhaseSnapshotError(
+            f"snapshot mapper replay pre-state clock mismatch for {phase}"
+        )
+    if post_state.get("feedback_tick") != SOURCE_SETTLE_TICKS + source_tick + 1:
+        raise PhaseSnapshotError(
+            f"snapshot mapper replay post-state clock mismatch for {phase}"
+        )
+
+    expected_ack = source.get("expected_atomic_ack")
+    if not isinstance(expected_ack, Mapping) or set(expected_ack) != set(
+        SOURCE_ACK_MATCH_FIELDS
+    ):
+        raise PhaseSnapshotError(
+            f"snapshot replay atomic ack is incomplete for {phase}"
+        )
+    if (
+        expected_ack.get("schema") != "wlr50_clean.atomic_full12_ack.v1"
+        or not _equivalent(expected_ack.get("physics_dt_s"), PHYSICS_DT_S)
+        or expected_ack.get("articulation_writes_this_call") != 1
+        or expected_ack.get("canonical_order") != list(FULL12_ORDER)
+        or expected_ack.get("servo_tracking_feedback_sample_tick")
+        != SOURCE_SETTLE_TICKS + source_tick
+    ):
+        raise PhaseSnapshotError(
+            f"snapshot replay atomic ack metadata is invalid for {phase}"
+        )
+    for field in (
+        "requested_full12",
+        "applied_full12",
+        "drive_target_full12",
+        "native_drive_target_full12",
+        "drive_feedback_bias_requested_full12",
+        "drive_feedback_bias_realized_full12",
+    ):
+        _finite_values(
+            expected_ack.get(field, ()),
+            len(FULL12_ORDER),
+            f"{phase} replay tick {source_tick}.{field}",
+        )
+    for field in (
+        "servo_applied_drive_command_deg",
+        "servo_native_drive_command_deg",
+        "servo_tracking_compensation_deg",
+        "servo_target_physical_rad",
+    ):
+        _finite_values(
+            expected_ack.get(field, ()),
+            len(SERVO_ORDER),
+            f"{phase} replay tick {source_tick}.{field}",
+        )
+    _finite_values(
+        expected_ack.get("wheel_target_physical_rad_s", ()),
+        len(WHEEL_ORDER),
+        f"{phase} replay tick {source_tick}.wheel_target_physical_rad_s",
+    )
+    for field in ("servo_nominal_target_reached", "servo_tracking_active"):
+        _bool_values(
+            expected_ack.get(field, ()),
+            len(SERVO_ORDER),
+            f"{phase} replay tick {source_tick}.{field}",
+        )
+    for field in ("command_was_clamped", "servo_tracking_feedback_sampled"):
+        if type(expected_ack.get(field)) is not bool:
+            raise PhaseSnapshotError(
+                f"{phase} replay tick {source_tick}.{field} must be boolean"
+            )
+    for field in (
+        "drive_feedback_final_slew_limit_deg_per_tick",
+        "motion_start_skew_s",
+    ):
+        _finite_values(
+            (expected_ack.get(field),),
+            1,
+            f"{phase} replay tick {source_tick}.{field}",
+        )
+    if not _equivalent(expected_ack.get("motion_start_skew_s"), 0.0):
+        raise PhaseSnapshotError(
+            f"snapshot replay motion skew is nonzero for {phase}"
+        )
+    tracking_names = expected_ack.get("tracking_servo_names")
+    if (
+        not isinstance(tracking_names, list)
+        or len(set(tracking_names)) != len(tracking_names)
+        or any(name not in SERVO_ORDER for name in tracking_names)
+    ):
+        raise PhaseSnapshotError(
+            f"snapshot replay tracking names are invalid for {phase}"
+        )
+    servo_ids = expected_ack.get("servo_joint_ids")
+    wheel_ids = expected_ack.get("wheel_joint_ids")
+    if (
+        not isinstance(servo_ids, list)
+        or not isinstance(wheel_ids, list)
+        or len(servo_ids) != len(SERVO_ORDER)
+        or len(wheel_ids) != len(WHEEL_ORDER)
+        or any(type(value) is not int or value < 0 for value in servo_ids + wheel_ids)
+        or len(set(servo_ids + wheel_ids)) != len(FULL12_ORDER)
+    ):
+        raise PhaseSnapshotError(
+            f"snapshot replay joint ids are invalid for {phase}"
+        )
+
+    adapter_input = source.get("adapter_input")
+    if not isinstance(adapter_input, Mapping) or set(adapter_input) != {
+        "requested_full12",
+        "tracking_servo_names",
+        "drive_feedback_bias_requested_full12",
+    }:
+        raise PhaseSnapshotError(
+            f"snapshot replay adapter input is incomplete for {phase}"
+        )
+    for field in adapter_input:
+        if not _equivalent(adapter_input[field], expected_ack[field]):
+            raise PhaseSnapshotError(
+                f"snapshot replay adapter input differs from source ack: {field}"
+            )
+    post_field_bindings = {
+        "requested_servo_deg": expected_ack["applied_full12"][: len(SERVO_ORDER)],
+        "applied_drive_command_deg": expected_ack["native_drive_target_full12"][: len(SERVO_ORDER)],
+        "nominal_target_reached": expected_ack["servo_nominal_target_reached"],
+        "tracking_compensation_deg": expected_ack["servo_tracking_compensation_deg"],
+        "tracking_active": expected_ack["servo_tracking_active"],
+        "final_drive_servo_deg": expected_ack["drive_target_full12"][: len(SERVO_ORDER)],
+    }
+    for field, expected in post_field_bindings.items():
+        if not _equivalent(post_state[field], expected):
+            raise PhaseSnapshotError(
+                f"snapshot replay mapper post-state differs from source ack: {field}"
+            )
+    if not _equivalent(
+        expected_ack.get("requested_full12"), expected_ack.get("applied_full12")
+    ):
+        raise PhaseSnapshotError(
+            f"snapshot replay source request was clamped for {phase}"
+        )
+    target_hash = phase_snapshot_drive_target_sha256(
+        expected_ack["drive_target_full12"]
+    )
+    if source.get("drive_target_full12_sha256") != target_hash:
+        raise PhaseSnapshotError(
+            f"snapshot replay drive-target hash mismatch for {phase}"
+        )
+    actuation_hash = phase_snapshot_actuation_contract_sha256(expected_ack)
+    if source.get("actuation_contract_sha256") != actuation_hash:
+        raise PhaseSnapshotError(
+            f"snapshot replay actuation-contract hash mismatch for {phase}"
+        )
+
+
 def validate_phase_snapshot_payload_contract(
     payload: Mapping[str, Any],
     phase: str,
@@ -1406,13 +1679,25 @@ def validate_phase_snapshot_payload_contract(
     source_tick = payload.get("source_tick")
     if type(source_tick) is not int or source_tick < 0:
         raise PhaseSnapshotError(f"snapshot source tick is invalid for {phase}")
+    source_replay_steps = payload.get("source_replay_steps")
+    if type(source_replay_steps) is not int or source_replay_steps <= 0:
+        raise PhaseSnapshotError(
+            f"snapshot source replay step count is invalid for {phase}"
+        )
     has_target_entry_tick = "target_entry_tick" in payload
     target_entry_tick = payload.get("target_entry_tick")
     if has_target_entry_tick:
-        if type(target_entry_tick) is not int or target_entry_tick != source_tick + 1:
+        if (
+            type(target_entry_tick) is not int
+            or target_entry_tick != source_tick + source_replay_steps
+        ):
             raise PhaseSnapshotError(
                 f"snapshot causal target-entry tick is invalid for {phase}"
             )
+    elif source_replay_steps != 1:
+        raise PhaseSnapshotError(
+            f"snapshot non-causal source replay must contain exactly one step for {phase}"
+        )
     if causal_predecessor_required is True and not has_target_entry_tick:
         raise PhaseSnapshotError(
             f"snapshot {phase} lacks its required causal predecessor target tick"
@@ -1444,6 +1729,19 @@ def validate_phase_snapshot_payload_contract(
             f"snapshot source-file binding differs from manifest for {phase}"
         )
     source = payload.get("source_command")
+    source_commands = payload.get("source_commands")
+    if (
+        not isinstance(source_commands, list)
+        or len(source_commands) != source_replay_steps
+        or any(not isinstance(item, Mapping) for item in source_commands)
+    ):
+        raise PhaseSnapshotError(
+            f"snapshot source-command replay sequence is invalid for {phase}"
+        )
+    if not source_commands or source != source_commands[0]:
+        raise PhaseSnapshotError(
+            f"snapshot source_command must equal the first replay row for {phase}"
+        )
     expected_source_keys = {
         "schema",
         "control_physics_tick",
@@ -1672,9 +1970,26 @@ def validate_phase_snapshot_payload_contract(
     if source.get("actuation_contract_sha256") != actuation_hash:
         raise PhaseSnapshotError(f"snapshot actuation-contract hash mismatch for {phase}")
 
+    previous_source = source
+    for replay_offset, replay_source in enumerate(source_commands[1:], 1):
+        assert isinstance(replay_source, Mapping)
+        _validate_additional_source_replay_row(
+            replay_source,
+            phase=phase,
+            source_tick=source_tick + replay_offset,
+            target_entry_tick=int(target_entry_tick),
+            first_source=source,
+            previous_source=previous_source,
+        )
+        previous_source = replay_source
+
     if manifest_row is not None:
         if manifest_row.get("source_tick") != source_tick:
             raise PhaseSnapshotError(f"manifest source tick mismatch for {phase}")
+        if manifest_row.get("source_replay_steps") != source_replay_steps:
+            raise PhaseSnapshotError(
+                f"manifest source replay step count mismatch for {phase}"
+            )
         if has_target_entry_tick:
             if manifest_row.get("target_entry_tick") != target_entry_tick:
                 raise PhaseSnapshotError(
@@ -1790,6 +2105,7 @@ def capture_validated_phase_snapshot_bundle(
     expected_row_fields = {
         "phase",
         "source_tick",
+        "source_replay_steps",
         "state_sha256",
         "file_sha256",
         "path",
@@ -1849,12 +2165,25 @@ def capture_validated_phase_snapshot_bundle(
         source_tick = row.get("source_tick")
         if isinstance(source_tick, bool) or not isinstance(source_tick, int) or source_tick < 0:
             raise PhaseSnapshotError(f"manifest source tick is invalid for {phase}")
+        source_replay_steps = row.get("source_replay_steps")
+        if type(source_replay_steps) is not int or source_replay_steps <= 0:
+            raise PhaseSnapshotError(
+                f"manifest source replay step count is invalid for {phase}"
+            )
+        target_entry_tick: int | None = None
         if phase in causal_predecessor_phase_set:
             target_entry_tick = row.get("target_entry_tick")
-            if type(target_entry_tick) is not int or target_entry_tick != source_tick + 1:
+            if (
+                type(target_entry_tick) is not int
+                or target_entry_tick != source_tick + source_replay_steps
+            ):
                 raise PhaseSnapshotError(
                     f"manifest causal target-entry tick is invalid for {phase}"
                 )
+        elif source_replay_steps != 1:
+            raise PhaseSnapshotError(
+                f"manifest non-causal source replay must contain one step for {phase}"
+            )
 
         snapshot_identity = _path_identity(
             snapshot_path, label=f"snapshot {phase}", directory=False
@@ -1921,6 +2250,8 @@ def capture_validated_phase_snapshot_bundle(
             PhaseSnapshotFileBuffer(
                 phase=phase,
                 source_tick=source_tick,
+                source_replay_steps=source_replay_steps,
+                target_entry_tick=target_entry_tick,
                 snapshot_path=snapshot_path,
                 checksum_path=checksum_path,
                 snapshot_bytes=snapshot_bytes,
@@ -2011,6 +2342,10 @@ def load_validated_phase_snapshot_payload(
         raise PhaseSnapshotError(f"invalid pinned snapshot {phase}")
     if payload.get("source_tick") != entry.source_tick:
         raise PhaseSnapshotError(f"pinned source tick mismatch for {phase}")
+    if payload.get("source_replay_steps") != entry.source_replay_steps:
+        raise PhaseSnapshotError(f"pinned source replay step mismatch for {phase}")
+    if payload.get("target_entry_tick") != entry.target_entry_tick:
+        raise PhaseSnapshotError(f"pinned target-entry tick mismatch for {phase}")
     manifest = bundle.manifest_payload()
     rows = manifest.get("snapshots")
     manifest_row = next(
@@ -2057,6 +2392,21 @@ def phase_snapshot_bundle_file_hashes(
         raise PhaseSnapshotError("phase snapshot bundle record entries must be objects")
     if tuple(entry.get("phase") for entry in snapshots) != PHASE_IDS:
         raise PhaseSnapshotError("phase snapshot bundle record must be ordered P01-P13")
+    expected_record_fields = {
+        "phase",
+        "source_tick",
+        "source_replay_steps",
+        "target_entry_tick",
+        "snapshot_path",
+        "checksum_path",
+        "file_sha256",
+        "state_sha256",
+        "checksum_file_sha256",
+    }
+    if any(set(entry) != expected_record_fields for entry in snapshots):
+        raise PhaseSnapshotError(
+            "phase snapshot bundle record entry fields are incomplete or unexpected"
+        )
     snapshot_root_value = bundle_record.get("snapshot_root")
     manifest_path_value = bundle_record.get("manifest_path")
     if not isinstance(snapshot_root_value, str) or not isinstance(manifest_path_value, str):
@@ -2073,6 +2423,27 @@ def phase_snapshot_bundle_file_hashes(
     canonical_entries = []
     for entry in snapshots:
         phase = str(entry["phase"])
+        source_tick = entry.get("source_tick")
+        source_replay_steps = entry.get("source_replay_steps")
+        target_entry_tick = entry.get("target_entry_tick")
+        if type(source_tick) is not int or source_tick < 0:
+            raise PhaseSnapshotError(f"bundle source tick is invalid for {phase}")
+        if type(source_replay_steps) is not int or source_replay_steps <= 0:
+            raise PhaseSnapshotError(
+                f"bundle source replay step count is invalid for {phase}"
+            )
+        if target_entry_tick is None:
+            if source_replay_steps != 1:
+                raise PhaseSnapshotError(
+                    f"bundle non-causal replay step count is invalid for {phase}"
+                )
+        elif (
+            type(target_entry_tick) is not int
+            or target_entry_tick != source_tick + source_replay_steps
+        ):
+            raise PhaseSnapshotError(
+                f"bundle target-entry tick is invalid for {phase}"
+            )
         expected_phase_root = snapshot_root / phase
         snapshot_path = str(Path(str(entry.get("snapshot_path", ""))).resolve())
         checksum_path = str(Path(str(entry.get("checksum_path", ""))).resolve())

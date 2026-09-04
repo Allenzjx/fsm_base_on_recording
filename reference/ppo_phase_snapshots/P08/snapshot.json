@@ -437,6 +437,413 @@
     "drive_target_full12_sha256": "392ebf91e61a90aef8bfd92079730f003660a946cb450ca8bccac9c00a0955ee",
     "actuation_contract_sha256": "c4c3431af02035c844df83a6674473def1efe23fddca2af868aa4a051f7fcf1a"
   },
+  "source_commands": [
+    {
+      "schema": "wlr50_clean.ppo_phase_snapshot_source_command.v1",
+      "control_physics_tick": 6856,
+      "source_atomic_physics_tick": 7036,
+      "source_atomic_write_count": 7037,
+      "adapter_input": {
+        "requested_full12": [
+          38.6,
+          -13.4,
+          0.0,
+          31.1,
+          14.3,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "tracking_servo_names": [
+          "rear_left_hip"
+        ],
+        "drive_feedback_bias_requested_full12": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "mapper_configuration": {
+        "physics_dt_s": 0.008333333333333333,
+        "servo_rate_deg_s": 150.0,
+        "maximum_delta_deg": 1.25,
+        "tracking_gain": 8.0,
+        "tracking_limit_deg": 10.0,
+        "feedback_interval_ticks": 4,
+        "standing_pose_deg": [
+          0.07935156363204786,
+          0.02684400080484552,
+          -0.006745560524854715,
+          0.1251883495021952,
+          -0.1794263347525243,
+          0.16301483092001173,
+          -0.3229814231186408,
+          0.21524399350241663
+        ]
+      },
+      "mapper_pre_state": {
+        "schema": "wlr50_clean.ppo_phase_snapshot_mapper_state.v1",
+        "source_control_physics_tick": 6855,
+        "requested_servo_deg": [
+          38.6,
+          -13.4,
+          0.0,
+          31.1,
+          6.9,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "applied_drive_command_deg": [
+          37.35,
+          -12.76138350578004,
+          -10.0,
+          29.8999297563552,
+          5.005484283808274,
+          0.7148606549450247,
+          -0.41774376114808875,
+          0.4775017265267647
+        ],
+        "nominal_target_reached": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ],
+        "tracking_compensation_deg": [
+          -1.25,
+          0.6386164942199599,
+          -10.0,
+          -1.2000702436448023,
+          -1.8945157161917265,
+          0.7148606549450247,
+          -0.41774376114808875,
+          0.4775017265267647
+        ],
+        "tracking_active": [
+          true,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "retiring_stale_bias": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "feedback_tick": 7036,
+        "final_drive_servo_deg": [
+          37.35,
+          -12.76138350578004,
+          -10.0,
+          29.8999297563552,
+          5.005484283808274,
+          0.7148606549450247,
+          -0.41774376114808875,
+          0.4775017265267647
+        ]
+      },
+      "mapper_post_state": {
+        "schema": "wlr50_clean.ppo_phase_snapshot_mapper_state.v1",
+        "source_control_physics_tick": 6856,
+        "requested_servo_deg": [
+          38.6,
+          -13.4,
+          0.0,
+          31.1,
+          14.3,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "applied_drive_command_deg": [
+          37.35,
+          -12.76138350578004,
+          -10.0,
+          29.8999297563552,
+          6.255484283808274,
+          0.7148606549450247,
+          -0.41774376114808875,
+          0.4775017265267647
+        ],
+        "nominal_target_reached": [
+          true,
+          true,
+          true,
+          true,
+          false,
+          true,
+          true,
+          true
+        ],
+        "tracking_compensation_deg": [
+          -1.25,
+          0.6386164942199599,
+          -10.0,
+          -1.2000702436448023,
+          0.0,
+          0.7148606549450247,
+          -0.41774376114808875,
+          0.4775017265267647
+        ],
+        "tracking_active": [
+          false,
+          false,
+          false,
+          false,
+          true,
+          false,
+          false,
+          false
+        ],
+        "retiring_stale_bias": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "feedback_tick": 7037,
+        "final_drive_servo_deg": [
+          37.35,
+          -12.76138350578004,
+          -10.0,
+          29.8999297563552,
+          6.255484283808274,
+          0.7148606549450247,
+          -0.41774376114808875,
+          0.4775017265267647
+        ]
+      },
+      "expected_atomic_ack": {
+        "schema": "wlr50_clean.atomic_full12_ack.v1",
+        "physics_dt_s": 0.008333333333333333,
+        "articulation_writes_this_call": 1,
+        "canonical_order": [
+          "front_left_hip",
+          "front_left_knee",
+          "front_right_hip",
+          "front_right_knee",
+          "rear_left_hip",
+          "rear_left_knee",
+          "rear_right_hip",
+          "rear_right_knee",
+          "front_left_ankle",
+          "front_right_ankle",
+          "rear_left_ankle",
+          "rear_right_ankle"
+        ],
+        "requested_full12": [
+          38.6,
+          -13.4,
+          0.0,
+          31.1,
+          14.3,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "applied_full12": [
+          38.6,
+          -13.4,
+          0.0,
+          31.1,
+          14.3,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "drive_target_full12": [
+          37.35,
+          -12.76138350578004,
+          -10.0,
+          29.8999297563552,
+          6.255484283808274,
+          0.7148606549450247,
+          -0.41774376114808875,
+          0.4775017265267647,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "native_drive_target_full12": [
+          37.35,
+          -12.76138350578004,
+          -10.0,
+          29.8999297563552,
+          6.255484283808274,
+          0.7148606549450247,
+          -0.41774376114808875,
+          0.4775017265267647,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "drive_feedback_bias_requested_full12": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "drive_feedback_bias_realized_full12": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "drive_feedback_final_slew_limit_deg_per_tick": 1.25,
+        "command_was_clamped": false,
+        "servo_applied_drive_command_deg": [
+          37.35,
+          -12.76138350578004,
+          -10.0,
+          29.8999297563552,
+          6.255484283808274,
+          0.7148606549450247,
+          -0.41774376114808875,
+          0.4775017265267647
+        ],
+        "servo_native_drive_command_deg": [
+          37.35,
+          -12.76138350578004,
+          -10.0,
+          29.8999297563552,
+          6.255484283808274,
+          0.7148606549450247,
+          -0.41774376114808875,
+          0.4775017265267647
+        ],
+        "servo_tracking_compensation_deg": [
+          -1.25,
+          0.6386164942199599,
+          -10.0,
+          -1.2000702436448023,
+          0.0,
+          0.7148606549450247,
+          -0.41774376114808875,
+          0.4775017265267647
+        ],
+        "servo_nominal_target_reached": [
+          true,
+          true,
+          true,
+          true,
+          false,
+          true,
+          true,
+          true
+        ],
+        "servo_tracking_active": [
+          false,
+          false,
+          false,
+          false,
+          true,
+          false,
+          false,
+          false
+        ],
+        "tracking_servo_names": [
+          "rear_left_hip"
+        ],
+        "servo_tracking_feedback_sample_tick": 7036,
+        "servo_tracking_feedback_sampled": false,
+        "servo_joint_ids": [
+          0,
+          4,
+          1,
+          5,
+          2,
+          6,
+          3,
+          7
+        ],
+        "wheel_joint_ids": [
+          8,
+          9,
+          10,
+          11
+        ],
+        "servo_target_physical_rad": [
+          0.6532654216718671,
+          -0.22225964308710597,
+          -0.17465065744048425,
+          0.5240371692473749,
+          -0.11231037736543087,
+          -0.009631526592617705,
+          0.0016539148055017018,
+          -0.00457726093009114
+        ],
+        "wheel_target_physical_rad_s": [
+          -0.0,
+          0.0,
+          -0.0,
+          0.0
+        ],
+        "motion_start_skew_s": 0.0
+      },
+      "source_command_row_canonical_sha256": "ecc202c05754f8c53c3178d743f4b20e1870baf7833f0987c92cf0af638fe1b2",
+      "source_observation_row_canonical_sha256": "6fd1e6f7d7ffaf880d62a3bd1349f7723831b895591284d8854c9343a6a5152a",
+      "drive_target_full12_sha256": "392ebf91e61a90aef8bfd92079730f003660a946cb450ca8bccac9c00a0955ee",
+      "actuation_contract_sha256": "c4c3431af02035c844df83a6674473def1efe23fddca2af868aa4a051f7fcf1a"
+    }
+  ],
+  "source_replay_steps": 1,
   "fsm_state": "P08",
   "fsm_lifecycle": "EXECUTE_MOTION",
   "phase_history": [
@@ -674,5 +1081,5 @@
     0.0015246823895722628
   ],
   "snapshot_semantics": "state is written only before the first episode physics tick; live physics and frozen FSM own all subsequent state",
-  "state_sha256": "6c2f97c05524e7714ab00ef5fcef31637c582d80df1ea63a68fc4ba73223e61d"
+  "state_sha256": "985d3c03918f18dcdacc17ff218c9dc842e04dd566193c8363150b0d6be56a08"
 }
