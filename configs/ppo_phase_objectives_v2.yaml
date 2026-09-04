@@ -25,7 +25,7 @@ successful_fsm_attitude_envelope:
     command_stream_name: full12_commands_120hz.jsonl
     command_stream_sha256: 9c333ee79712ade21784d05be81aeb08506901c2ed3c907fc066e95e711d633a
     snapshot_manifest_path: reference/ppo_phase_snapshots/manifest.json
-    snapshot_manifest_sha256: f323539c67a523ad2920fcdeede8c9b0464631d991045792ceda87230a36acbb
+    snapshot_manifest_sha256: 036bde1e47e000ffd23af81c1078feb7657fe792d21cc888b73e780c7d2552e8
     level_reference_snapshot_path: reference/ppo_phase_snapshots/P01/snapshot.json
     level_reference_snapshot_sha256: 4e5d0ef67984de1f4ee3cef533fb6a19f3f11723789f582f9e8273c8f53c6395
   derivation:
@@ -42,7 +42,7 @@ successful_fsm_attitude_envelope:
     P08: {sample_count: 56, max_attitude_error_rad: 0.22242370433007352}
     P10: {sample_count: 26, max_attitude_error_rad: 0.16588650991003867}
     P11: {sample_count: 62, max_attitude_error_rad: 0.17444540287005458}
-  derivation_sha256: 7e2b972edfffff28ccc0ff5749cb5f2c97d629a027b2b2fd71a131041f4d5e7e
+  derivation_sha256: 77157b41d30b18596dced35326c496457a0e67bc1c5a66b4d759f2f7d52300cb
 
 phases:
   P01:

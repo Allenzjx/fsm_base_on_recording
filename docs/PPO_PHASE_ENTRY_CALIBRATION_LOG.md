@@ -23,3 +23,26 @@ maximum servo speed 11.4129 deg/s.  It supplies eight real solver ticks before
 the tracked-servo waveform starts at tick 7560 and 27 ticks before the contact
 latch.  The adjustment changes no guard, tolerance, frozen FSM byte, target
 state, or in-episode behavior; it only extends reset-only causal physics replay.
+
+### Result
+
+Calibration run
+`20260904T221856728216Z_g8b9ed0e197d6_c49f730ab0bcf_s1002_n1_phase-effective-entry-calibration`
+remained fail-closed.  Position error improved from 7.144453 deg to
+3.937853 deg, but rear-right-knee velocity was still -12.611137 deg/s instead
+of the required positive rebound.  This proves that the local 25-tick pre-roll
+does not reconstruct enough predecessor contact/solver history.
+
+## P10 complete causal predecessor replay
+
+- Changed factor: P10 reset-only physical replay anchor
+- Old value: Trial043 wheel-stop tick 7552; 242 replay steps
+- New value: Trial043 P09 phase-entry tick 6912; 882 replay steps
+- Unchanged anchors: predecessor `P09/VERIFY_RESULT` tick 7776, controller
+  `P10/WAIT_ENTRY` tick 7784, target entry tick 7794
+
+The anchor is now derived from the frozen state-transition ledger rather than
+from a calibrated numeric offset.  Reset reconstructs the complete P09 causal
+trajectory, including its RR lift, crossing, top-load impact, verification,
+and P10 wait window.  This remains reset-only state initialization; no guard,
+tolerance, frozen controller byte, or in-episode behavior changes.

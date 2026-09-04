@@ -38,15 +38,6 @@ PHASE_IDS = tuple(f"P{i:02d}" for i in range(1, 14))
 PHYSICS_HZ = 120.0
 SOURCE_SETTLE_TICKS = 180
 SOURCE_CONTACT_HISTORY_SAMPLES = 3
-# P10 is the only phase whose signed entry velocity depends on replaying a
-# predecessor contact transient.  The minimum three-sample contact window
-# begins at Trial043 tick 7577, but that row is already inside the impact
-# impulse (1.07 rad/s root angular speed and 114.6 deg/s joint speed).  The
-# frozen source command ledger has an authored all-wheel stop at tick 7552,
-# followed by eight quiet solver ticks before the tracked-servo waveform at
-# tick 7560.  Retain that 25-tick pre-roll so reset replay reconstructs the
-# causal PhysX/contact dynamics instead of injecting the impulse onset.
-P10_CONTACT_DYNAMICS_PREROLL_TICKS = 25
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_PHASE_SNAPSHOT_ROOT = PROJECT_ROOT / "reference" / "ppo_phase_snapshots"
 _SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
@@ -1008,10 +999,10 @@ def _contains_signed_positive_rebound_requirement(value: Any) -> bool:
     return False
 
 
-def _p10_contact_history_anchor_tick(
+def _p10_top_loaded_latch_tick(
     rows: Iterable[Mapping[str, Any]],
 ) -> int:
-    """Return the stable physical pre-roll behind P09's RR top-load latch."""
+    """Return the unique successful P09 RR top-load latch tick."""
 
     matches: list[int] = []
     for row in rows:
@@ -1026,10 +1017,7 @@ def _p10_contact_history_anchor_tick(
         value = evidence.get("value") if isinstance(evidence, Mapping) else None
         if (
             type(tick) is not int
-            or tick
-            < SOURCE_CONTACT_HISTORY_SAMPLES
-            - 1
-            + P10_CONTACT_DYNAMICS_PREROLL_TICKS
+            or tick < SOURCE_CONTACT_HISTORY_SAMPLES - 1
             or not isinstance(evidence, Mapping)
             or evidence.get("passed") is not True
             or not isinstance(value, Mapping)
@@ -1044,11 +1032,7 @@ def _p10_contact_history_anchor_tick(
         raise PhaseSnapshotError(
             "trial must contain exactly one successful P09 RR TOP_LOADED event"
         )
-    return matches[0] - (
-        SOURCE_CONTACT_HISTORY_SAMPLES
-        - 1
-        + P10_CONTACT_DYNAMICS_PREROLL_TICKS
-    )
+    return matches[0]
 
 
 def _phase_entry_boundaries_from_rows(
@@ -1123,7 +1107,7 @@ def _phase_entry_boundaries_from_rows(
                         f"{phase} signed-positive entry lacks its contact-history "
                         "anchor evidence"
                     )
-                p10_contact_history_anchor_tick = _p10_contact_history_anchor_tick(
+                p10_top_loaded_latch_tick = _p10_top_loaded_latch_tick(
                     leg_crossing_rows
                 )
                 controller_anchor_tick = wait_entry_ticks.get(phase)
@@ -1137,6 +1121,12 @@ def _phase_entry_boundaries_from_rows(
                     )
                 phase_index = PHASE_IDS.index(phase)
                 predecessor = PHASE_IDS[phase_index - 1]
+                predecessor_boundary = result.get(predecessor)
+                if predecessor_boundary is None:
+                    raise PhaseSnapshotError(
+                        f"{phase} signed-positive entry lacks the prior "
+                        f"{predecessor} phase-entry boundary"
+                    )
                 predecessor_verify_tick = verify_result_ticks.get(predecessor)
                 if (
                     predecessor_verify_tick is None
@@ -1147,11 +1137,20 @@ def _phase_entry_boundaries_from_rows(
                         f"{phase} signed-positive entry lacks a prior "
                         f"{predecessor} VERIFY_RESULT start"
                     )
-                source_tick = p10_contact_history_anchor_tick
-                if not 0 <= source_tick < predecessor_verify_tick:
+                # A generalized-coordinate write cannot restore hidden PhysX
+                # contact/solver history.  Replay the complete causal
+                # predecessor phase, not merely the final contact samples or
+                # an already-active impulse row.
+                source_tick = predecessor_boundary.target_entry_tick
+                if not (
+                    0
+                    <= source_tick
+                    < p10_top_loaded_latch_tick
+                    < predecessor_verify_tick
+                ):
                     raise PhaseSnapshotError(
-                        f"{phase} contact-history anchor does not precede "
-                        f"{predecessor} VERIFY_RESULT"
+                        f"{phase} predecessor entry, top-load latch, and "
+                        f"{predecessor} VERIFY_RESULT are not causally ordered"
                     )
                 source_replay_steps = tick - source_tick
             else:

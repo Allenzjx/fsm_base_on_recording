@@ -2828,28 +2828,28 @@ def test_all_checked_non_p01_snapshots_replay_with_live_feedback_adaptation() ->
     assert p03["expected_atomic_ack"]["servo_tracking_feedback_sampled"] is True
     p10_payload = _load_validated_phase_snapshot("P10").payload
     p10 = p10_payload["source_command"]
-    assert p10_payload["source_tick"] == 7552
-    assert p10_payload["source_time_s"] == 7552 / 120.0
+    assert p10_payload["source_tick"] == 6912
+    assert p10_payload["source_time_s"] == 6912 / 120.0
     assert p10_payload["predecessor_verify_tick"] == 7776
     assert p10_payload["predecessor_verify_time_s"] == 7776 / 120.0
     assert p10_payload["controller_anchor_tick"] == 7784
     assert p10_payload["controller_anchor_time_s"] == 7784 / 120.0
-    assert p10_payload["source_replay_steps"] == 242
+    assert p10_payload["source_replay_steps"] == 882
     assert p10_payload["target_entry_tick"] == 7794
     assert [
         row["control_physics_tick"] for row in p10_payload["source_commands"]
-    ] == list(range(7552, 7794))
+    ] == list(range(6912, 7794))
     assert {
         (row["source_fsm_state"], row["source_fsm_lifecycle"])
-        for row in p10_payload["source_commands"][:224]
+        for row in p10_payload["source_commands"][:864]
     } == {("P09", "EXECUTE_MOTION")}
     assert {
         (row["source_fsm_state"], row["source_fsm_lifecycle"])
-        for row in p10_payload["source_commands"][224:232]
+        for row in p10_payload["source_commands"][864:872]
     } == {("P09", "VERIFY_RESULT")}
     assert {
         (row["source_fsm_state"], row["source_fsm_lifecycle"])
-        for row in p10_payload["source_commands"][232:]
+        for row in p10_payload["source_commands"][872:]
     } == {("P10", "WAIT_ENTRY")}
     assert p10["source_fsm_state"] == "P09"
     assert p10["source_fsm_lifecycle"] == "EXECUTE_MOTION"
@@ -2991,7 +2991,7 @@ def test_real_frozen_p10_controller_and_latches_restore_from_later_anchor() -> N
     controller_proof = _restore_controller_from_snapshot(controller, loaded.payload)
     assert controller_proof["state_id"] == "P10"
     assert controller_proof["lifecycle"] == "WAIT_ENTRY"
-    assert controller_proof["physical_anchor_tick"] == 7552
+    assert controller_proof["physical_anchor_tick"] == 6912
     assert controller_proof["predecessor_verify_tick"] == 7776
     assert controller_proof["predecessor_verify_time_s"] == 7776 / 120.0
     assert controller_proof["controller_anchor_tick"] == 7784
@@ -3005,7 +3005,7 @@ def test_real_frozen_p10_controller_and_latches_restore_from_later_anchor() -> N
         contact_classifier=ContactClassifier(),
     )
     guard_proof = _restore_guard_tracker_from_snapshot(reader, loaded.payload)
-    assert guard_proof["physical_anchor_tick"] == 7552
+    assert guard_proof["physical_anchor_tick"] == 6912
     assert guard_proof["predecessor_verify_tick"] == 7776
     assert guard_proof["predecessor_verify_time_s"] == 7776 / 120.0
     assert guard_proof["controller_anchor_tick"] == 7784

@@ -665,19 +665,19 @@ def test_snapshot_replay_contract_binds_p10_physical_predecessor_and_controller_
         controller_anchor_time_s,
     ) = effective_entry_module._snapshot_replay_contract(snapshot_bundle, "P10")
 
-    assert snapshot.source_tick == 7552
+    assert snapshot.source_tick == 6912
     assert predecessor_verify_tick == 7776
     assert predecessor_verify_time_s == 7776 / 120.0
     assert controller_anchor_tick == 7784
     assert controller_anchor_time_s == 7784 / 120.0
     assert target_entry_tick == 7794
-    assert replay_steps == 242
-    assert control_ticks == tuple(range(7552, 7794))
+    assert replay_steps == 882
+    assert control_ticks == tuple(range(6912, 7794))
     assert [
         (row["source_fsm_state"], row["source_fsm_lifecycle"])
         for row in payload["source_commands"]
     ] == [
-        *(("P09", "EXECUTE_MOTION") for _ in range(224)),
+        *(("P09", "EXECUTE_MOTION") for _ in range(864)),
         *(("P09", "VERIFY_RESULT") for _ in range(8)),
         *(("P10", "WAIT_ENTRY") for _ in range(10)),
     ]
@@ -698,7 +698,7 @@ def test_snapshot_replay_contract_binds_p10_physical_predecessor_and_controller_
         (row["anchor_segment"], row["source_replay_steps"])
         for row in anchor_contract["source_replay_context_segments"]
     ] == [
-        ("physical_anchor_to_predecessor_verify", 224),
+        ("physical_anchor_to_predecessor_verify", 864),
         ("predecessor_verify_to_controller_anchor", 8),
         ("controller_anchor_to_target_entry", 10),
     ]
@@ -795,14 +795,14 @@ def test_calibration_attempt_uses_passed_controller_entry_and_post_prime_diagnos
     assert comparison["maximum_errors"] != attempt["snapshot_state_write"][
         "priming_observation"
     ]["maximum_errors"]
-    assert attempt["source_tick"] == 7552
+    assert attempt["source_tick"] == 6912
     assert attempt["predecessor_verify_tick"] == 7776
     assert attempt["predecessor_verify_time_s"] == 7776 / 120.0
     assert attempt["controller_anchor_tick"] == 7784
     assert attempt["controller_anchor_time_s"] == 7784 / 120.0
-    assert attempt["source_replay_steps"] == 242
-    assert attempt["target_entry_tick"] - attempt["source_tick"] == 242
-    assert len(attempt["snapshot_state_write"]["prime_atomic_writes"]) == 242
+    assert attempt["source_replay_steps"] == 882
+    assert attempt["target_entry_tick"] - attempt["source_tick"] == 882
+    assert len(attempt["snapshot_state_write"]["prime_atomic_writes"]) == 882
     assert attempt["clocks"]["controller_history_length"] == 1
 
 
