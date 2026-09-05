@@ -341,3 +341,46 @@ controller bias plus projected residual; the controller's bias was zero in all
 observed smoke ticks, and the P09 feedback trigger was false in both runs.
 These checks found no dropped nominal correction or command-timing bug. The
 lower-amplitude follow-up passed 188 focused tests before live execution.
+
+### Sub-percent smoke failure and instrumented zero-control experiment
+
+The physical run on `9c08d5dade169430e436f1958ca1104dbde0e883`,
+`20260905T024837669344Z_g9c08d5dade16_c5dc85cd3cb31_s1001_n1_nonzero-residual-smoke`,
+failed the same P10 WAIT_ENTRY guard at 65.36666666666666 seconds (981 policy
+decisions, 7844 physics ticks). The largest bounded policy fraction was 0.0001
+of the unchanged phase scale. All 7844 native target audits were valid, and
+7765 ticks had qualifying own-phase physical target changes across P01--P10.
+P11--P13 were not reached and only nine transition handoffs occurred, so Gate B
+is failed. Body collision, wheel-only climb, safety abort, in-episode root
+writes, and Recording access were all zero. The frozen RR-knee position error
+was 6.8114403007410615 degrees against a 2-degree limit; signed velocity error
+was -17.904280522319784 degrees/second against a 3.53779995797403 limit.
+
+An important qualification to the earlier stream analysis: zero controller
+drive-feedback bias does not imply that the mature mapper's tracking feedback
+is disabled. The 1%-peak smoke showed an RR-knee nominal request of -37.8 degrees
+and a native mapper target of -27.8 degrees, reflecting the existing +10-degree
+tracking-compensation limit. RR-knee itself had zero PPO residual in the P09
+window; the pulse acted on FR hip. The two feedback paths must not be confused.
+The baseline stream did not contain native target audits, so equality of
+nominal Full12 alone cannot establish native actuator equivalence between runs.
+
+The next diagnostic therefore extends the existing read-only native-target
+audit to zero-mode single-environment live rollouts as well as bounded smoke.
+Both modes will record the same per-tick PhysX target buffers and per-decision
+policy-request metadata. This does not add a target write, mapper advance,
+physics tick, force, or change to frozen FSM, projection, scales, or thresholds.
+A fresh instrumented zero-residual episode must establish whether the audit
+itself preserves baseline success before attributing the failures solely to
+physical sensitivity. No real Isaac PPO optimizer has run, and these failed
+pre-training gates are not training-completion or improvement evidence.
+
+The audit wiring and real projector/adapter/audit/writer seam passed 60 focused
+unit tests before physical execution (JUnit:
+`C:\robotics_sim\wlr_robot\ppo_zero_native_audit_tests_20260905.xml`). The zero
+test requires exact zero raw/projected residual, equal actual/counterfactual
+float32 targets, no qualifying nonzero effect, and no second articulation
+write. A separate same-readback 1040-tick, 13-phase diagnostic found exact ACK
+and float32-buffer equality between zero fast-path and a masked nonzero raw
+request; real small residuals did not change mapper internal state under the
+same supplied readback. This is not a closed-loop physics equivalence proof.

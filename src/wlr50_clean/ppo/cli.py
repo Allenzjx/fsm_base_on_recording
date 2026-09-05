@@ -916,7 +916,9 @@ def _run_live_episodes(
         simulation_app,
         expected_phase_snapshot_bundle=pinned_snapshot_bundle,
         expected_effective_entry_contract=pinned_effective_entry_contract,
-        audit_actuator_target_effect=args.residual_mode == "bounded-smoke",
+        # Both acceptance branches capture the same read-only native target
+        # evidence; enabling observation must not change their policy action.
+        audit_actuator_target_effect=True,
     )
     env = ResidualEpisodeEnv(backend, collect_trace=True)
     episodes = []
@@ -935,7 +937,7 @@ def _run_live_episodes(
         writer = LiveStreamWriter(
             episode_dir,
             seed=seed,
-            require_actuator_target_effect_audit=args.residual_mode == "bounded-smoke",
+            require_actuator_target_effect_audit=True,
         )
         assert env.frame is not None
         writer.start(env.frame)
@@ -944,13 +946,12 @@ def _run_live_episodes(
         try:
             while not env.done:
                 raw_policy_action = tuple(action_factory(env, env.decision_count))
-                if args.residual_mode == "bounded-smoke":
-                    assert env.frame is not None
-                    backend.set_actuator_target_audit_request(
-                        phase_id=str(env.frame.state_id),
-                        raw_policy_action_full12=raw_policy_action,
-                        phase_mask_full12=env.phase_actions.mask_for(env.frame.state_id),
-                    )
+                assert env.frame is not None
+                backend.set_actuator_target_audit_request(
+                    phase_id=str(env.frame.state_id),
+                    raw_policy_action_full12=raw_policy_action,
+                    phase_mask_full12=env.phase_actions.mask_for(env.frame.state_id),
+                )
                 step = env.step(raw_policy_action)
                 reward_total += step.reward
                 writer.write_decision(step.info)
