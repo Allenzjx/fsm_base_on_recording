@@ -326,11 +326,16 @@ class IsaacFSMBackend:
         ) = None,
         allow_effective_entry_calibration: bool = False,
         phase_snapshot_prime_physics_steps: int = PHASE_SNAPSHOT_PRIME_PHYSICS_STEPS,
+        audit_actuator_target_effect: bool = False,
     ) -> None:
         self.simulation_app = simulation_app
         self.fsm_path = Path(fsm_path).resolve()
         self.motion_contract_path = Path(motion_contract_path).resolve()
         self._dependencies = dependencies
+        if type(audit_actuator_target_effect) is not bool:
+            raise IsaacFSMBackendError("actuator target audit mode must be an explicit boolean")
+        self._audit_actuator_target_effect = audit_actuator_target_effect
+        self._actuator_target_audit_request: Mapping[str, Any] | None = None
         if (
             expected_phase_snapshot_bundle is not None
             and expected_phase_snapshot_bundle.snapshot_root
@@ -437,6 +442,22 @@ class IsaacFSMBackend:
     def last_atomic_ack(self) -> Mapping[str, Any] | None:
         return None if self._last_atomic_ack is None else dict(self._last_atomic_ack)
 
+    def set_actuator_target_audit_request(
+        self,
+        phase_id: str,
+        raw_policy_action_full12: Sequence[float],
+        phase_mask_full12: Sequence[int],
+    ) -> None:
+        """Save decision metadata only; never write actuator or mapper state."""
+
+        if not self._audit_actuator_target_effect:
+            raise IsaacFSMBackendError("actuator target audit was not enabled")
+        from .actuator_target_effect import actuator_target_audit_request
+
+        self._actuator_target_audit_request = actuator_target_audit_request(
+            phase_id, raw_policy_action_full12, phase_mask_full12
+        )
+
     def _poison_episode_state_for_reset(self, *, clear_evidence: bool) -> None:
         """Make every prior episode unusable before a reset can mutate physics."""
 
@@ -449,6 +470,7 @@ class IsaacFSMBackend:
         self._authoritative_frame = None
         self._last_valid_actor_observation = None
         self._last_atomic_ack = None
+        self._actuator_target_audit_request = None
         self._level_reference_orientation = None
         self._level_calibration = {}
         self._reset_metadata = {}
@@ -1907,6 +1929,11 @@ class IsaacFSMBackend:
             + self._video_pre_action_tick_count
             + self._episode_tick
         )
+        if self._audit_actuator_target_effect:
+            audit_previous_final_drive = _live_source_mapper_state(
+                self._adapter,
+                source_control_physics_tick=int(getattr(source_frame, "physics_tick")),
+            )["final_drive_servo_deg"]
         raw_ack = self._atomic_apply(
             self._adapter,
             actuation.frozen_nominal_full12,
@@ -1932,6 +1959,20 @@ class IsaacFSMBackend:
                 "RobotAdapter silently changed the frozen nominal mapper input"
             )
         ack = actuation.annotate_ack(raw_ack)
+        if self._audit_actuator_target_effect:
+            from .actuator_target_effect import build_actuator_target_effect_audit
+
+            # RobotAdapter already completed its single write_data_to_sim.
+            # Read its staged and dispatched tensors before the physics step;
+            # the audit performs no second mapper advance or articulation write.
+            ack["actuator_target_effect_audit"] = build_actuator_target_effect_audit(
+                adapter=self._adapter,
+                actuation=actuation,
+                raw_ack=raw_ack,
+                previous_final_drive_servo_deg=audit_previous_final_drive,
+                source_phase_id=self._authoritative_frame.state_id,
+                policy_request=self._actuator_target_audit_request,
+            )
 
         # This is the only physics advance in the episode tick.  In particular,
         # no render, root-state write, force, impulse, or gravity mutation is
@@ -2486,6 +2527,8 @@ class IsaacFSMBackend:
             "in_episode_gravity_writes": 0,
             "recording_accesses": 0,
         }
+        if self._audit_actuator_target_effect and ack is not None and "actuator_target_effect_audit" in ack:
+            info["actuator_target_effect_audit"] = ack["actuator_target_effect_audit"]
         return AuthoritativeFrame(
             physics_tick=int(getattr(controller_frame, "physics_tick")),
             sim_time_s=float(getattr(controller_frame, "sim_time_s")),

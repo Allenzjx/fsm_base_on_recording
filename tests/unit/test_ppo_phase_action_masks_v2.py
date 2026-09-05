@@ -19,7 +19,7 @@ ONE12 = (1,) * 12
 PRIORITY_PHASES = ("P02", "P03", "P08", "P12", "P13")
 
 
-def test_deterministic_small_smoke_pattern_is_nonzero_and_negligible() -> None:
+def test_deterministic_small_smoke_pattern_is_resolvable_and_bounded() -> None:
     env = SimpleNamespace(
         frame=SimpleNamespace(
             state_id="P03",
@@ -30,10 +30,14 @@ def test_deterministic_small_smoke_pattern_is_nonzero_and_negligible() -> None:
     )
     positive = _smoke_action(env, 0)
     repeated = _smoke_action(env, 1)
-    assert positive[3] == 1.0e-9
+    assert positive[0] == math.atanh(0.01)
     assert sum(value != 0.0 for value in positive) == 1
-    assert repeated == positive
+    assert 0.005 <= math.tanh(repeated[0]) <= 0.01
+    assert repeated != positive
     assert max(abs(value) for value in positive + repeated) < 0.05
+    repeated_env = SimpleNamespace(frame=env.frame, phase_actions=env.phase_actions)
+    assert _smoke_action(repeated_env, 0) == positive
+    assert _smoke_action(repeated_env, 1) == repeated
 
 
 def test_deterministic_rate_limit_probe_uses_production_projector_off_robot() -> None:
@@ -45,7 +49,7 @@ def test_deterministic_rate_limit_probe_uses_production_projector_off_robot() ->
     assert "residual_rate_limit" in probe["second_clipping_stages"]
 
 
-def test_smoke_pattern_arms_late_and_exercises_only_disabled_mask_channels() -> None:
+def test_smoke_pattern_exercises_active_servo_and_disabled_mask_channels() -> None:
     config = load_phase_action_masks_v2()
     env = SimpleNamespace(
         frame=SimpleNamespace(
@@ -56,25 +60,22 @@ def test_smoke_pattern_arms_late_and_exercises_only_disabled_mask_channels() -> 
         ),
         phase_actions=config,
     )
-    assert _smoke_action(env, 0) == ZERO12
-
-    env.frame.phase_progress = 0.75
-    armed = _smoke_action(env, 1)
-    assert armed[7] == 1.0e-9
+    armed = _smoke_action(env, 0)
+    assert armed[0] == math.atanh(0.01)
     mask = config.mask_for("P08")
-    assert all(armed[index] == -1.0e-9 for index, value in enumerate(mask) if not value)
+    assert all(armed[index] == math.atanh(-0.01) for index, value in enumerate(mask) if not value)
     assert all(
         armed[index] == 0.0
         for index, value in enumerate(mask)
-        if value and index != 7
+        if value and index != 0
     )
 
-    # Once armed, the phase remains non-zero through its transition boundary.
+    # The selected channel remains genuinely excited through phase boundaries.
     env.frame.phase_progress = 0.0
-    assert _smoke_action(env, 2) == armed
+    assert 0.005 <= math.tanh(_smoke_action(env, 1)[0]) <= 0.01
 
 
-def test_smoke_pattern_emits_p13_once_then_preserves_terminal_settle() -> None:
+def test_smoke_pattern_emits_real_p13_bipolar_pulse_then_preserves_terminal_settle() -> None:
     env = SimpleNamespace(
         frame=SimpleNamespace(
             state_id="P13",
@@ -84,12 +85,30 @@ def test_smoke_pattern_emits_p13_once_then_preserves_terminal_settle() -> None:
         phase_actions=load_phase_action_masks_v2(),
     )
 
-    first = _smoke_action(env, 0)
-    assert first[3] == 1.0e-12
-    assert sum(value != 0.0 for value in first) == 1
-    assert _smoke_action(env, 1) == ZERO12
+    pulse = [_smoke_action(env, index) for index in range(6)]
+    assert [math.tanh(row[4]) for row in pulse] == pytest.approx(
+        [0.005, 0.01, 0.005, -0.005, -0.01, -0.005]
+    )
+    assert all(sum(value != 0.0 for value in row) == 1 for row in pulse)
+    assert _smoke_action(env, 6) == ZERO12
     env.frame.phase_progress = 1.0
-    assert _smoke_action(env, 2) == ZERO12
+    assert _smoke_action(env, 7) == ZERO12
+
+
+@pytest.mark.parametrize("phase_id", tuple(f"P{index:02d}" for index in range(1, 14)))
+def test_smoke_every_phase_has_own_one_percent_or_smaller_physical_scale_request(phase_id):
+    env = SimpleNamespace(
+        frame=SimpleNamespace(
+            state_id=phase_id, phase_progress=0.0, nominal_action_full12=ZERO12
+        ),
+        phase_actions=load_phase_action_masks_v2(),
+    )
+    action = _smoke_action(env, 0)
+    projection = _direct_project(
+        build_action_projector_v2(), raw=action, state_id=phase_id
+    )
+    assert max(abs(math.tanh(value)) for value in action) <= 0.01
+    assert any(abs(value) >= 0.003 for value in projection.safe_projected_residual_full12[:8])
 
 
 def _direct_project(

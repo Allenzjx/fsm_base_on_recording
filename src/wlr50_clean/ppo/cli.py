@@ -799,46 +799,39 @@ def _smoke_action(env: Any, decision_index: int) -> tuple[float, ...]:
     if len(mask) != 12 or len(nominal) != 12:
         raise CliError("bounded smoke action requires Full12 mask and nominal action")
 
-    # P13's terminal pose and wheel-decay guards intentionally use a long
-    # settle/retry window.  Exercise its explicit policy input once at entry,
-    # then return to zero so a diagnostic pattern cannot persist through the
-    # recovery pass.  The incoming P12 residual still exercises the real
-    # P12->P13 bridge on the first physics tick.
-    if phase_id == "P13":
-        if bool(getattr(env, "_bounded_smoke_p13_emitted", False)):
-            return (0.0,) * 12
-        setattr(env, "_bounded_smoke_p13_emitted", True)
-        action = [0.0] * 12
-        active_servos = tuple(index for index in range(8) if mask[index])
-        selected = max(active_servos, key=lambda index: abs(nominal[index]))
-        action[selected] = 1.0e-12
-        return tuple(action)
-
-    # Gate B verifies the real projection path without turning its diagnostic
-    # pattern into a second controller.  Arm only in the final quarter of each
-    # phase, then keep one active servo residual through the phase edge so the
-    # transition bridge is exercised.  The servo with the largest non-zero FSM
-    # nominal is selected because its 1e-9 normalized delta remains below the
-    # float target quantization of the mature actuator path.  Raw values are
-    # also sent only to disabled channels; their exact removal proves the mask
-    # without physically perturbing those channels.  Rate limiting is tested by
-    # ``_smoke_rate_limit_probe`` with this same production projector off-robot.
-    armed = set(getattr(env, "_bounded_smoke_armed_phases", ()))
-    if progress >= 0.75:
-        armed.add(phase_id)
-        setattr(env, "_bounded_smoke_armed_phases", tuple(sorted(armed)))
-    if phase_id not in armed:
-        return (0.0,) * 12
-
-    action = [0.0] * 12
     active_servos = tuple(index for index in range(8) if mask[index])
     if not active_servos:
         raise CliError(f"bounded smoke phase {phase_id} has no active servo channel")
-    selected = max(active_servos, key=lambda index: abs(nominal[index]))
-    action[selected] = 1.0e-9
+    counts = dict(getattr(env, "_bounded_smoke_phase_decisions", {}))
+    local_index = int(counts.get(phase_id, 0))
+    counts[phase_id] = local_index + 1
+    setattr(env, "_bounded_smoke_phase_decisions", counts)
+    selected_by_phase = dict(getattr(env, "_bounded_smoke_phase_channels", {}))
+    if phase_id not in selected_by_phase:
+        # Prefer a near-standing support channel over the largest moving joint;
+        # the latter may be saturated by the mature target slew limiter.
+        selected_by_phase[phase_id] = min(
+            active_servos, key=lambda index: abs(nominal[index])
+        )
+        setattr(env, "_bounded_smoke_phase_channels", selected_by_phase)
+    selected = selected_by_phase[phase_id]
+    if phase_id == "P13":
+        # A real 0.4 s bipolar pulse, then exact zero for final settling.  The
+        # incoming P12 handoff does not count as P13's own actuator excitation.
+        pulse = (0.005, 0.01, 0.005, -0.005, -0.01, -0.005)
+        if local_index >= len(pulse):
+            return (0.0,) * 12
+        bounded = pulse[local_index]
+    else:
+        # Smoke-only smooth excitation stays between 0.5% and 1% of the phase
+        # cap and remains nonzero at transitions to exercise the real bridge.
+        # This deterministic pattern is never added to a trained actor's output.
+        bounded = 0.0075 + 0.0025 * math.cos(2.0 * math.pi * local_index / 30.0)
+    action = [0.0] * 12
+    action[selected] = math.atanh(bounded)
     for index, enabled in enumerate(mask):
         if not enabled:
-            action[index] = -1.0e-9
+            action[index] = math.atanh(-0.01)
     return tuple(action)
 
 
@@ -918,6 +911,7 @@ def _run_live_episodes(
         simulation_app,
         expected_phase_snapshot_bundle=pinned_snapshot_bundle,
         expected_effective_entry_contract=pinned_effective_entry_contract,
+        audit_actuator_target_effect=args.residual_mode == "bounded-smoke",
     )
     env = ResidualEpisodeEnv(backend, collect_trace=True)
     episodes = []
@@ -928,15 +922,31 @@ def _run_live_episodes(
         # invocation seed, not silently substitute the first seed in a split.
         seed = int(args.seed)
         env.reset(seed=seed)
+        # Reset smoke-only counters with the episode; P13 must receive its own
+        # finite pulse even if a caller later permits a reused environment.
+        env._bounded_smoke_phase_decisions = {}
+        env._bounded_smoke_phase_channels = {}
         episode_dir = args.run_dir / f"episode_{episode_index:03d}_seed_{seed}"
-        writer = LiveStreamWriter(episode_dir, seed=seed)
+        writer = LiveStreamWriter(
+            episode_dir,
+            seed=seed,
+            require_actuator_target_effect_audit=args.residual_mode == "bounded-smoke",
+        )
         assert env.frame is not None
         writer.start(env.frame)
         env.tick_callback = writer.write_tick
         reward_total = 0.0
         try:
             while not env.done:
-                step = env.step(action_factory(env, env.decision_count))
+                raw_policy_action = tuple(action_factory(env, env.decision_count))
+                if args.residual_mode == "bounded-smoke":
+                    assert env.frame is not None
+                    backend.set_actuator_target_audit_request(
+                        phase_id=str(env.frame.state_id),
+                        raw_policy_action_full12=raw_policy_action,
+                        phase_mask_full12=env.phase_actions.mask_for(env.frame.state_id),
+                    )
+                step = env.step(raw_policy_action)
                 reward_total += step.reward
                 writer.write_decision(step.info)
             assert env.frame is not None
@@ -1039,6 +1049,10 @@ def _baseline_or_gate(args: argparse.Namespace, simulation_app: Any) -> int:
                 bool(audit.get("within_five_percent_smoke_amplitude", False))
                 for audit in audits
             ),
+            "bounded_smoke_within_one_percent_phase_scale": all(
+                audit.get("within_one_percent_smoke_amplitude") is True
+                for audit in audits
+            ),
             "phase_masks_exercised_and_honored": all(
                 bool(audit.get("mask_honored_when_exercised", False))
                 for audit in audits
@@ -1065,6 +1079,16 @@ def _baseline_or_gate(args: argparse.Namespace, simulation_app: Any) -> int:
             ),
             "nonzero_residual_covers_p01_p13": all(
                 tuple(audit.get("nonzero_residual_phases", ()))
+                == tuple(f"P{index:02d}" for index in range(1, 14))
+                for audit in audits
+            ),
+            "actuator_target_effect_audit_complete": all(
+                audit.get("actuator_target_effect_audit_required") is True
+                and audit.get("actuator_target_effect_audit_complete") is True
+                for audit in audits
+            ),
+            "own_policy_actuator_target_effect_covers_p01_p13": all(
+                tuple(audit.get("own_policy_actuator_target_effect_phases", ()))
                 == tuple(f"P{index:02d}" for index in range(1, 14))
                 for audit in audits
             ),

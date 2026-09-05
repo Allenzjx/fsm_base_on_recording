@@ -151,7 +151,13 @@ def _force_baseline(observation: Any) -> list[float]:
 class LiveStreamWriter:
     """Write complete JSONL streams without buffering an episode in memory."""
 
-    def __init__(self, episode_dir: Path | str, *, seed: int) -> None:
+    def __init__(
+        self,
+        episode_dir: Path | str,
+        *,
+        seed: int,
+        require_actuator_target_effect_audit: bool = False,
+    ) -> None:
         self.episode_dir = Path(episode_dir).resolve()
         self.episode_dir.mkdir(parents=True, exist_ok=False)
         self.seed = int(seed)
@@ -178,7 +184,22 @@ class LiveStreamWriter:
         self.zero_fast_path_tick_count = 0
         self.nonzero_residual_tick_count = 0
         self.nonzero_residual_phases: set[str] = set()
+        self.require_actuator_target_effect_audit = bool(require_actuator_target_effect_audit)
+        self.actuator_target_effect_audited_tick_count = 0
+        self.actuator_target_effect_missing_or_invalid_tick_count = 0
+        self.own_policy_actuator_target_effect_tick_count = 0
+        self.own_policy_actuator_target_effect_phases: set[str] = set()
+        self.own_policy_actuator_target_effect_by_phase = {
+            phase: {
+                "changed_target_tick_count": 0,
+                "maximum_servo_position_delta_rad": 0.0,
+                "maximum_wheel_velocity_delta_rad_s": 0.0,
+            }
+            for phase in STATE_IDS
+        }
+        self._last_command_source_phase: str | None = None
         self.maximum_absolute_normalized_policy_action = 0.0
+        self.maximum_absolute_bounded_policy_fraction = 0.0
         self.maximum_absolute_internal_bridge_raw_action = 0.0
         self.policy_action_decision_count = 0
         self.mask_exercised_tick_count = 0
@@ -247,6 +268,19 @@ class LiveStreamWriter:
         observation = current.info.get("raw_observation")
         if observation is None:
             raise LiveStreamWriterError("current frame lacks raw observation")
+        incoming_handoff_tick = bool(
+            self._last_command_source_phase is not None
+            and self._last_command_source_phase != source.state_id
+        )
+        self._last_command_source_phase = str(source.state_id)
+        actuator_audit = current.info.get("actuator_target_effect_audit")
+        effect = self._record_actuator_target_effect(
+            actuator_audit,
+            source=source,
+            current=current,
+            projection=projection,
+            incoming_handoff_tick=incoming_handoff_tick,
+        )
         _line(
             self._streams["observation"],
             _compact_evaluation_observation(observation),
@@ -265,6 +299,14 @@ class LiveStreamWriter:
                 "effective_action_mask_full12": list(projection.effective_action_mask_full12),
                 "zero_residual_fast_path": bool(projection.zero_residual_fast_path),
                 "clipping_stages": list(projection.clipping_stages),
+                **(
+                    {
+                        "actuator_target_effect_audit": _jsonable(actuator_audit),
+                        "own_policy_actuator_target_effect": effect,
+                    }
+                    if self.require_actuator_target_effect_audit or actuator_audit is not None
+                    else {}
+                ),
             },
         )
         raw = tuple(float(value) for value in projection.raw_residual_full12)
@@ -319,6 +361,150 @@ class LiveStreamWriter:
             for stream in self._streams.values():
                 stream.flush()
 
+    def _record_actuator_target_effect(
+        self,
+        audit: Any,
+        *,
+        source: AuthoritativeFrame,
+        current: AuthoritativeFrame,
+        projection: Any,
+        incoming_handoff_tick: bool,
+    ) -> Mapping[str, Any]:
+        """Count only representable same-phase, own-request actuator effects.
+
+        A projected Python float can be nonzero while the real target buffer
+        remains bit-identical.  The backend proof owns native mapping and
+        dtype conversion; this consumer independently binds its values to the
+        command tick, source phase, request mask, and actual projected residual.
+        The first source tick of a new phase is conservatively excluded because
+        its projector may retain an incoming handoff instead of the new request.
+        """
+
+        result = {
+            "audit_valid": False,
+            "incoming_handoff_tick_excluded": incoming_handoff_tick,
+            "own_phase_policy_request": False,
+            "qualifying_changed_channels_full12": [False] * 12,
+            "counted": False,
+        }
+        if audit is None and not self.require_actuator_target_effect_audit:
+            return result
+
+        def vector(value: Any, *, size: int) -> tuple[float, ...] | None:
+            if not isinstance(value, (list, tuple)) or len(value) != size:
+                return None
+            if any(
+                isinstance(item, bool)
+                or not isinstance(item, (int, float))
+                or not math.isfinite(float(item))
+                for item in value
+            ):
+                return None
+            return tuple(float(item) for item in value)
+
+        def targets(value: Any) -> tuple[float, ...] | None:
+            if not isinstance(value, Mapping):
+                return None
+            servos = vector(value.get("servo_position_rad"), size=8)
+            wheels = vector(value.get("wheel_velocity_rad_s"), size=4)
+            return None if servos is None or wheels is None else servos + wheels
+
+        valid = isinstance(audit, Mapping)
+        actual = targets(audit.get("actual_native_targets")) if valid else None
+        counterfactual = targets(audit.get("counterfactual_native_targets")) if valid else None
+        raw = vector(audit.get("raw_policy_action_full12"), size=12) if valid else None
+        projected = vector(audit.get("projected_residual_full12"), size=12) if valid else None
+        mask = audit.get("phase_mask_full12") if valid else None
+        changed = audit.get("changed_channels_full12") if valid else None
+        ack = current.info.get("atomic_ack")
+        # Bind the backend's logical delta to the actual same-tick command.
+        # Adding a small residual to a nonzero nominal and subtracting it again
+        # can round in double precision; the pre-add residual is not the proof.
+        command_delta = tuple(
+            float(applied) - float(nominal)
+            for applied, nominal in zip(
+                projection.applied_action_full12,
+                source.nominal_action_full12,
+                strict=True,
+            )
+        )
+        valid = bool(
+            valid
+            and audit.get("schema") == "wlr50_clean.actuator_target_effect_audit.v1"
+            and audit.get("verified") is True
+            and audit.get("same_tick_counterfactual") is True
+            and audit.get("setter_dispatch_targets_equal") is True
+            and audit.get("actual_mapping_matches_dispatch") is True
+            and audit.get("target_dtype") == "torch.float32"
+            and audit.get("source_phase_id") == source.state_id
+            and audit.get("policy_request_phase") in STATE_IDS
+            and isinstance(ack, Mapping)
+            and type(audit.get("physics_tick")) is int
+            and audit["physics_tick"] >= 0
+            and type(ack.get("physics_tick")) is int
+            and audit["physics_tick"] == ack["physics_tick"]
+            and actual is not None
+            and counterfactual is not None
+            and raw is not None
+            and projected == command_delta
+            and isinstance(mask, (list, tuple))
+            and len(mask) == 12
+            and all(type(item) is int and item in (0, 1) for item in mask)
+            and isinstance(changed, (list, tuple))
+            and len(changed) == 12
+            and all(type(item) is bool for item in changed)
+        )
+        if valid:
+            actual_changes = tuple(a != b for a, b in zip(actual, counterfactual, strict=True))
+            valid = bool(
+                tuple(changed) == actual_changes
+                and type(audit.get("changed_target_channel_count")) is int
+                and audit["changed_target_channel_count"] == sum(actual_changes)
+            )
+        if not valid:
+            self.actuator_target_effect_missing_or_invalid_tick_count += 1
+            return result
+        self.actuator_target_effect_audited_tick_count += 1
+        result["audit_valid"] = True
+        own_phase = bool(
+            audit["policy_request_phase"] == source.state_id
+            and tuple(mask) == tuple(projection.effective_action_mask_full12)
+        )
+        result["own_phase_policy_request"] = own_phase
+        eligible = tuple(
+            bool(
+                own_phase
+                and not incoming_handoff_tick
+                and mask[index]
+                and raw[index] != 0.0
+                and projected[index] != 0.0
+                and changed[index]
+            )
+            for index in range(12)
+        )
+        result["qualifying_changed_channels_full12"] = list(eligible)
+        if any(eligible):
+            self.own_policy_actuator_target_effect_tick_count += 1
+            self.own_policy_actuator_target_effect_phases.add(str(source.state_id))
+            phase = self.own_policy_actuator_target_effect_by_phase[str(source.state_id)]
+            phase["changed_target_tick_count"] += 1
+            phase["maximum_servo_position_delta_rad"] = max(
+                phase["maximum_servo_position_delta_rad"],
+                max(
+                    abs(actual[index] - counterfactual[index]) if eligible[index] else 0.0
+                    for index in range(8)
+                ),
+            )
+            phase["maximum_wheel_velocity_delta_rad_s"] = max(
+                phase["maximum_wheel_velocity_delta_rad_s"],
+                max(
+                    abs(actual[index] - counterfactual[index]) if eligible[index] else 0.0
+                    for index in range(8, 12)
+                ),
+            )
+            result["counted"] = True
+        return result
+
     def _write_controller_events(self, frame: AuthoritativeFrame) -> None:
         controller_frame = frame.info.get("raw_controller_frame")
         for event in tuple(getattr(controller_frame, "events", ())):
@@ -359,6 +545,10 @@ class LiveStreamWriter:
         self.maximum_absolute_normalized_policy_action = max(
             self.maximum_absolute_normalized_policy_action,
             max(abs(value) for value in normalized_policy_action),
+        )
+        self.maximum_absolute_bounded_policy_fraction = max(
+            self.maximum_absolute_bounded_policy_fraction,
+            max(abs(math.tanh(value)) for value in normalized_policy_action),
         )
         self.policy_action_decision_count += 1
         _line(
@@ -471,6 +661,23 @@ class LiveStreamWriter:
                 "zero_residual_fast_path_tick_count": self.zero_fast_path_tick_count,
                 "nonzero_residual_tick_count": self.nonzero_residual_tick_count,
                 "nonzero_residual_phases": sorted(self.nonzero_residual_phases),
+                "actuator_target_effect_audit_required": self.require_actuator_target_effect_audit,
+                "actuator_target_effect_audited_tick_count": self.actuator_target_effect_audited_tick_count,
+                "actuator_target_effect_missing_or_invalid_tick_count": self.actuator_target_effect_missing_or_invalid_tick_count,
+                "actuator_target_effect_audit_complete": bool(
+                    self.require_actuator_target_effect_audit
+                    and self.tick_count > 0
+                    and self.actuator_target_effect_audited_tick_count == self.tick_count
+                    and self.actuator_target_effect_missing_or_invalid_tick_count == 0
+                ),
+                "own_policy_actuator_target_effect_tick_count": self.own_policy_actuator_target_effect_tick_count,
+                "own_policy_actuator_target_effect_phases": sorted(self.own_policy_actuator_target_effect_phases),
+                "own_policy_actuator_target_effect_by_phase": self.own_policy_actuator_target_effect_by_phase,
+                "maximum_absolute_bounded_policy_fraction": self.maximum_absolute_bounded_policy_fraction,
+                "within_one_percent_smoke_amplitude": bool(
+                    self.policy_action_decision_count == int(decision_count)
+                    and self.maximum_absolute_bounded_policy_fraction <= 0.01
+                ),
                 "maximum_absolute_normalized_policy_action": (
                     self.maximum_absolute_normalized_policy_action
                 ),

@@ -169,3 +169,38 @@ stopped before this repair. That unfinished baseline is not gate evidence.
 All existing files were retained, including the completed holdout and phase-zero
 evidence; the repaired committed runtime must obtain fresh acceptance before
 training. No PPO optimizer execution or improved checkpoint is claimed yet.
+
+### Float32 actuator-effect gate repair
+
+The seed-1003 holdout was repeated successfully on `e203c78ba556c99b6a3bc1279e7f7ee3167fd932`:
+`20260905T002256476224Z_ge203c78ba556_c5dc85cd3cb31_s1003_n1_effective-entry-holdout-aggregation`.
+Before starting the long prerequisite sequence, a further audit found that the
+old single-environment bounded-smoke pattern used normalized magnitudes of
+`1e-9` (and `1e-12` in P13). A nonzero Python projected residual was therefore
+not evidence of a representable change in the float32 actuator targets. Such
+coverage is not accepted as a physical nonzero gate.
+
+The smoke-only diagnostic now uses 0.5--1% of a configured phase scale on one
+per-phase active servo. P13 receives a six-decision bipolar pulse and then zero
+for final settling. This excitation is never added to a trained policy. Frozen
+FSM commands, safety projection, completion guards, and limits are unchanged.
+
+An opt-in, read-only audit inspects the real float32 target buffers after the
+existing atomic articulation dispatch. It reconstructs the same-tick
+counterfactual without the current PPO residual using the frozen mapping,
+standing offsets, controller bias, and previous final drive targets. It neither
+advances the stateful mapper again nor performs another target write. Default
+training and evaluation do not pay for these extra GPU buffer reads.
+
+Gate B now requires actual representable target changes attributable to each
+phase's own active policy request across P01--P13. Incoming transition-bridge
+ticks, quantization-zero requests, safety-zero projections, and slew-swallowed
+requests do not count. Audit records bind the actual applied-minus-nominal
+logical delta, dispatch tick, source phase, request mask, and changed targets.
+Unit regressions cover the real projector, mapper, adapter, and evidence writer
+with float32 buffers; these tests do not substitute for a new live smoke run.
+
+This is a PPO-only prerequisite correction before any optimizer execution.
+The newly committed runtime must again pass holdout, zero, nonzero, reset, and
+vector gates before training. All old evidence and interrupted runs remain
+preserved; no physical or training success is inferred from this code repair.

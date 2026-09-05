@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from wlr50_clean.infrastructure.command_batch import SERVO_ORDER, WHEEL_ORDER
 from wlr50_clean.ppo.evaluation import ResidualActivityCalibration, evaluate_live_run
 from wlr50_clean.ppo.live_stream_writer import LiveStreamWriter
@@ -164,6 +166,144 @@ def test_live_writer_does_not_misclassify_internal_bridge_hold_as_policy_amplitu
     assert audit["maximum_absolute_normalized_policy_action"] == 0.049
     assert audit["maximum_absolute_internal_bridge_raw_action"] == 0.13
     assert audit["within_five_percent_smoke_amplitude"] is True
+
+
+def _actuator_audit(source, current, projection, *, changed: bool = True):
+    actual_servo = [1.0] * 8
+    if changed:
+        actual_servo[0] = 1.000100016593933
+    native_tick = 180 + current.physics_tick
+    current.info["atomic_ack"] = {"physics_tick": native_tick}
+    return {
+        "schema": "wlr50_clean.actuator_target_effect_audit.v1",
+        "verified": True,
+        "source_phase_id": source.state_id,
+        "policy_request_phase": source.state_id,
+        "raw_policy_action_full12": list(projection.raw_residual_full12),
+        "phase_mask_full12": list(projection.effective_action_mask_full12),
+        "projected_residual_full12": list(projection.safe_projected_residual_full12),
+        "changed_channels_full12": [changed] + [False] * 11,
+        "changed_target_channel_count": int(changed),
+        "actual_native_targets": {
+            "servo_position_rad": actual_servo,
+            "wheel_velocity_rad_s": [0.0] * 4,
+        },
+        "counterfactual_native_targets": {
+            "servo_position_rad": [1.0] * 8,
+            "wheel_velocity_rad_s": [0.0] * 4,
+        },
+        "target_dtype": "torch.float32",
+        "setter_dispatch_targets_equal": True,
+        "actual_mapping_matches_dispatch": True,
+        "same_tick_counterfactual": True,
+        "physics_tick": native_tick,
+    }
+
+
+def _final_actuator_summary(writer, tick=1):
+    path = writer.finalize(_frame(tick, terminal=True), reward_total=0.0, decision_count=0)
+    return json.loads(path.read_text())["action_projection_audit"]
+
+
+def test_quantization_noise_is_logged_nonzero_but_not_physical_actuator_effect(tmp_path):
+    writer = LiveStreamWriter(
+        tmp_path / "quantization", seed=1001, require_actuator_target_effect_audit=True
+    )
+    source, current = _frame(0), _frame(1)
+    projection = _projection(nonzero=True)
+    projection.raw_residual_full12 = (1.0e-9,) + (0.0,) * 11
+    projection.safe_projected_residual_full12 = (1.0e-9,) + (0.0,) * 11
+    projection.applied_action_full12 = projection.safe_projected_residual_full12
+    current.info["actuator_target_effect_audit"] = _actuator_audit(
+        source, current, projection, changed=False
+    )
+    writer.start(source)
+    writer.write_tick(source, current, projection)
+    audit = _final_actuator_summary(writer)
+    assert audit["nonzero_residual_phases"] == ["P01"]
+    assert audit["nonzero_residual_tick_count"] == 1
+    assert audit["actuator_target_effect_audit_complete"] is True
+    assert audit["own_policy_actuator_target_effect_phases"] == []
+    assert audit["own_policy_actuator_target_effect_tick_count"] == 0
+
+
+@pytest.mark.parametrize("tamper", (
+    "missing", "unverified", "different_physical_tick", "dispatch_mismatch",
+    "fake_changed_flag", "different_projected_residual", "different_source_phase",
+))
+def test_physical_target_audit_fails_closed_on_missing_or_inconsistent_proof(tmp_path, tamper):
+    writer = LiveStreamWriter(
+        tmp_path / tamper, seed=1001, require_actuator_target_effect_audit=True
+    )
+    source, current = _frame(0), _frame(1)
+    projection = _projection(nonzero=True)
+    proof = _actuator_audit(source, current, projection)
+    if tamper == "unverified":
+        proof["verified"] = False
+    elif tamper == "different_physical_tick":
+        proof["physics_tick"] += 1
+    elif tamper == "dispatch_mismatch":
+        proof["setter_dispatch_targets_equal"] = False
+    elif tamper == "fake_changed_flag":
+        proof["actual_native_targets"]["servo_position_rad"][0] = 1.0
+    elif tamper == "different_projected_residual":
+        proof["projected_residual_full12"][0] += 0.1
+    elif tamper == "different_source_phase":
+        proof["source_phase_id"] = "P02"
+    if tamper != "missing":
+        current.info["actuator_target_effect_audit"] = proof
+    writer.start(source)
+    writer.write_tick(source, current, projection)
+    audit = _final_actuator_summary(writer)
+    assert audit["actuator_target_effect_audit_complete"] is False
+    assert audit["actuator_target_effect_missing_or_invalid_tick_count"] == 1
+    assert audit["own_policy_actuator_target_effect_phases"] == []
+
+
+@pytest.mark.parametrize("not_own_request", ("previous_phase", "zero_raw", "masked_channel"))
+def test_actuator_change_without_current_phase_masked_request_does_not_count(tmp_path, not_own_request):
+    writer = LiveStreamWriter(
+        tmp_path / not_own_request, seed=1001, require_actuator_target_effect_audit=True
+    )
+    source, current = _frame(0), _frame(1)
+    projection = _projection(nonzero=True)
+    if not_own_request == "masked_channel":
+        projection.effective_action_mask_full12 = (0,) + projection.effective_action_mask_full12[1:]
+    proof = _actuator_audit(source, current, projection)
+    if not_own_request == "previous_phase":
+        proof["policy_request_phase"] = "P12"
+    elif not_own_request == "zero_raw":
+        proof["raw_policy_action_full12"] = [0.0] * 12
+    current.info["actuator_target_effect_audit"] = proof
+    writer.start(source)
+    writer.write_tick(source, current, projection)
+    audit = _final_actuator_summary(writer)
+    assert audit["actuator_target_effect_audit_complete"] is True
+    assert audit["own_policy_actuator_target_effect_phases"] == []
+
+
+def test_same_phase_new_request_cannot_claim_the_incoming_handoff_tick(tmp_path):
+    writer = LiveStreamWriter(
+        tmp_path / "handoff", seed=1001, require_actuator_target_effect_audit=True
+    )
+    writer.start(_frame(0))
+    projection = _projection(nonzero=True)
+    for tick, phase in ((1, "P12"), (2, "P13"), (3, "P13")):
+        source, current = _frame(tick - 1), _frame(tick)
+        source.state_id = phase
+        current.state_id = phase
+        current.info["actuator_target_effect_audit"] = _actuator_audit(source, current, projection)
+        writer.write_tick(source, current, projection)
+        if tick == 2:
+            assert "P13" not in writer.own_policy_actuator_target_effect_phases
+    audit = _final_actuator_summary(writer, tick=3)
+    assert audit["actuator_target_effect_audit_complete"] is True
+    assert audit["own_policy_actuator_target_effect_phases"] == ["P12", "P13"]
+    assert audit["own_policy_actuator_target_effect_by_phase"]["P13"]["changed_target_tick_count"] == 1
+    commands = [json.loads(line) for line in (writer.episode_dir / "full12_commands_120hz.jsonl").read_text().splitlines()]
+    assert commands[1]["own_policy_actuator_target_effect"]["incoming_handoff_tick_excluded"] is True
+    assert commands[1]["own_policy_actuator_target_effect"]["counted"] is False
+    assert commands[2]["own_policy_actuator_target_effect"]["counted"] is True
 
 
 def _complete_observation(tick: int, *, wheel_velocity: float = 0.0):
