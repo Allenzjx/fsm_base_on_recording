@@ -456,8 +456,18 @@ def test_acceptance_validator_recomputes_cross_episode_full_rate_audit(
         validate_soft_reset_acceptance(acceptance_path, project_root=PROJECT_ROOT)
 
 
+@pytest.fixture
+def isolated_curriculum_proofs(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Phase curriculum is the configured single-environment training stage.
+    # Its separate snapshot prerequisites are tested elsewhere; keep the actual
+    # soft-reset validator and the real profile-derived cadence in this test.
+    monkeypatch.setattr(cli, "_require_training_phase_effective_entry_holdout", lambda args: None)
+    monkeypatch.setattr(cli, "_require_training_phase_zero_residual_rollout", lambda args: None)
+
+
 def test_single_env_training_gate_fails_before_live_dispatch(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str],
+    isolated_curriculum_proofs: None,
 ) -> None:
     run_dir = tmp_path / "train"
     run_dir.mkdir()
@@ -475,6 +485,10 @@ def test_single_env_training_gate_fails_before_live_dispatch(
             "1001",
             "--num-envs",
             "1",
+            "--stage",
+            "phase-curriculum",
+            "--checkpoint",
+            str(tmp_path / "not_loaded_before_dispatch.pt"),
         ]
     )
     assert code == 2
@@ -482,7 +496,7 @@ def test_single_env_training_gate_fails_before_live_dispatch(
 
 
 def test_single_env_training_gate_accepts_explicit_finalized_artifact(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, isolated_curriculum_proofs: None
 ) -> None:
     run_dir = tmp_path / "train"
     run_dir.mkdir()
@@ -504,6 +518,10 @@ def test_single_env_training_gate_accepts_explicit_finalized_artifact(
                 "1001",
                 "--num-envs",
                 "1",
+                "--stage",
+                "phase-curriculum",
+                "--checkpoint",
+                str(tmp_path / "not_loaded_before_dispatch.pt"),
                 "--soft-reset-acceptance",
                 str(acceptance),
             ]

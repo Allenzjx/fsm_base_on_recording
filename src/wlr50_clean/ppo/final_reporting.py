@@ -2056,15 +2056,16 @@ def _training_orchestration_section(manifest: Mapping[str, Any]) -> str:
         ("Status", manifest.get("status")),
         ("Valid", manifest.get("valid")),
         ("Training seed", manifest.get("training_seed")),
-        ("Parallel environments", manifest.get("num_envs")),
+        ("Selected vector environments", manifest.get("selected_vector_num_envs")),
         ("Ordered chunk count", manifest.get("chunk_count")),
         ("Terminal stage", terminal.get("stage")),
         ("Terminal global policy decisions", terminal.get("global_policy_decisions")),
         ("Terminal checkpoint SHA-256", checkpoint.get("sha256")),
         (
-            "Deterministic validation interval",
-            manifest.get("deterministic_validation_interval"),
+            "Base validation interval (requested policy decisions)",
+            manifest.get("base_validation_interval_policy_decisions"),
         ),
+        ("Base validation interval scope", manifest.get("base_validation_interval_scope")),
     )
     lines = [
         "These facts come from the independently validated prefinal training-orchestration manifest; the final training_manifest.json is not read by reporting.",
@@ -2073,6 +2074,25 @@ def _training_orchestration_section(manifest: Mapping[str, Any]) -> str:
         "|---|---|",
     ]
     lines.extend(f"| {label} | {_fmt(value)} |" for label, value in fields)
+    cadence = manifest.get("training_cadence")
+    stage_plans = cadence.get("stage_plans", ()) if isinstance(cadence, Mapping) else ()
+    if stage_plans:
+        lines.extend([
+            "",
+            "The following is the configured maximum plan, not a claim that every chunk ran. "
+            "Only an accepted deterministic promotion can stop the plan early. "
+            "A per-environment window is available rollout capacity; physical termination "
+            "or synchronous peer reset can shorten the observed trajectory.",
+            "",
+            "| Stage | Envs | Maximum chunks | PPO iterations/chunk | Requested decisions/chunk | Actual decisions/chunk | Decisions/env/chunk |",
+            "|---|---:|---:|---:|---:|---:|---:|",
+        ])
+        for plan in stage_plans:
+            lines.append("| " + " | ".join(_fmt(plan.get(key)) for key in (
+                "stage", "num_envs", "maximum_chunk_count", "ppo_iterations_per_chunk",
+                "requested_policy_decisions_per_chunk", "actual_policy_decisions_per_chunk",
+                "policy_decisions_per_env_per_chunk",
+            )) + " |")
     return "\n".join(lines)
 
 

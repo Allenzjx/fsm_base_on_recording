@@ -91,8 +91,12 @@ def test_train_validates_loaded_resume_provenance_before_learning(
     )
     env = SimpleNamespace(num_envs=1)
     profile = SimpleNamespace(
-        budgets={"smoke": 16},
+        budgets={"smoke": 16, "phase_curriculum": 16, "full_episode": 3200},
         rollout_length=8,
+        benchmark_env_counts=(1,),
+        decision_hz=15.0,
+        timeout_s=200.0,
+        deterministic_validation_interval=16,
     )
 
     monkeypatch.setattr(cli, "OUTPUT_ROOT", output_root)

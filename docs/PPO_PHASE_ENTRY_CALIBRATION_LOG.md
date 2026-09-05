@@ -224,3 +224,86 @@ Regressions exercise the real reward path and make remaining light-weight test
 substitutes enforce the keyword-only production interface. This repair precedes
 the first live PPO optimizer execution; a new committed-runtime prerequisite
 sequence is required before training.
+
+### Fresh physical evidence on 36a0d57 and failed genuine nonzero smoke
+
+Commit `36a0d57eb96a03cb8b285f04a16602fafb15d464` passed all twelve seed-1003
+holdout workers (twenty-four fresh/reused attempts), then the seed-1004
+phase-zero rollout (13 resets, 518 decisions, 4143 physics ticks). The holdout
+acceptance is in run
+`20260905T010051886319Z_g36a0d57eb96a_c5dc85cd3cb31_s1003_n1_effective-entry-holdout-aggregation`.
+
+Five independently initialized full FSM validation episodes, seeds 2001--2005,
+all completed P01--P13 in 107.86666666666666 simulated seconds. Each recorded
+12944 physics ticks and 1618 policy decisions; all 64720 dispatched zero-input
+ticks were bitwise equivalent to frozen nominal commands. Body collision,
+wheel-only climb, safety abort, in-episode root writes, and Recording runtime
+access were zero. Their managed baseline metrics export run is
+`20260905T015041564002Z_g36a0d57eb96a_c5dc85cd3cb31_s2001_n1_baseline-fsm-evaluation-export`.
+The three original exported files under `outputs/ppo_phase_v1/metrics` remain
+immutable evidence of this runtime, not evidence of future source revisions.
+
+Genuine bounded-smoke run
+`20260905T015053495405Z_g36a0d57eb96a_c5dc85cd3cb31_s1001_n1_nonzero-residual-smoke`
+failed closed at P10 WAIT_ENTRY after 65.36666666666666 simulated seconds,
+981 decisions and 7844 physics ticks. All ticks had valid actuator target-effect
+audits and phases P01--P10 each changed real float32 targets through their own
+policy requests. No safety violation occurred, but P11--P13 were not reached.
+The frozen P10 right-rear-knee entry guard rejected a 9.765684946973757 degree
+position error and a -29.648617057219695 degree/second velocity error. This is
+an actual physical failure, not a successful gate or PPO training result.
+
+The first smoke-only follow-up changes one design factor: P01--P12 now repeat
+the same six-decision zero-mean bipolar waveform already used for P13, replacing
+the previous long-lived positive offset. Its amplitude remains 0.5--1% of the
+unchanged phase scale; channel selection, 15 Hz cadence, P13 terminal settling,
+all safety logic, full-success requirement, all thirteen own-phase physical
+effects, and all twelve nonzero transition handoffs remain required. This
+diagnostic pattern is never added to a trained actor. A new live run is needed
+to assess it; unit tests cannot establish physical success.
+
+### Pre-training cadence and failed-training checkpoint retention
+
+Before any real Isaac PPO optimizer execution, the launcher audit identified
+that generic `CliArgs --policy-decisions` was rejected by the intentional
+semantic argument lock. The training wrapper now has a validated, named
+`-PolicyDecisions` option owned by its base arguments; the generic lock remains.
+
+An independent horizon audit found that restarting full-episode training every
+10000 global decisions gave only 85.33/42.67/25.60 seconds per environment at
+N=8/16/32, shorter than the actual successful baseline. The revised cadence is
+derived from the unchanged profile: full training uses respectively 4x25000,
+2x50000, or 1x100000 requested decisions, each 25 PPO iterations and 3200
+decisions per environment (213.33 seconds of available continuous horizon).
+Full requested budget stays 100000 and actual rounded budget is 102400. Smoke
+and single-environment phase curriculum retain 10000-decision validation chunks.
+Synchronous peer resets can still shorten actual trajectories; a long enough
+configured window is not itself success evidence.
+
+Random exploration outcomes (missing full-episode phase visits or no stochastic
+SUCCESS) become explicit checkpoint diagnostics, so real failed candidates can
+be saved and deterministically evaluated. Structural telemetry validity, reward
+audits, checkpoint round-trip, independent deterministic evaluation, promotion,
+locked-test, and final delivery conditions are not relaxed. Initial/last or
+unverified candidates must never be called improved.
+
+Managed consumers bind every baseline to the complete current runtime, not
+only frozen FSM bytes. Consequently the corrected runtime needs fresh baseline
+workers. Explicit optional metrics-directory parameters preserve the previous
+three canonical baseline exports unchanged and allow subsequent formal exports
+and delivery under a separate directory within `outputs/ppo_phase_v1`. No old
+run is relocated, rewritten, or relabeled as a new-runtime acceptance.
+
+Pre-freeze verification: the unified unit rerun passed 1340 tests with nine
+skips (JUnit: `C:\robotics_sim\wlr_robot\ppo_cadence_bipolar_final_full_unit_20260905.xml`).
+The preceding run had two outdated single-environment smoke fixtures, now
+updated to exercise the configured single-environment phase-curriculum reset
+gate without disabling its actual cadence or soft-reset checks. The final
+checkpoint telemetry wiring follow-up passed 128 tests with two skips
+(`C:\robotics_sim\wlr_robot\ppo_final_training_telemetry_checkpoint_tests_20260905.xml`):
+raw telemetry, derived outcomes and cadence are all stored in checkpoint infos
+and its sidecar, verified after reload, and checked against training_result by
+the orchestration consumer. A real PowerShell AST-driven regression also checks
+the matching/missing/extra promotion gate-name branches under StrictMode;
+matching empty differences must be wrapped as an array before reading Count.
+None of these unit tests is counted as live Isaac PPO training evidence.

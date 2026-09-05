@@ -1273,8 +1273,36 @@ def test_final_lifecycle_export_has_exact_five_roles_and_improved_only_detail(
         subject, "_validate_checkpoint_role_contract", lambda **_kwargs: ()
     )
     _trust_synthetic_runtime_identity(monkeypatch)
+    # Production order: an earlier formal baseline export occupies the same
+    # explicit runtime metrics directory later used by strict final delivery.
+    metrics_directory = tmp_path / "metrics_runtime_v2"
+    prior_canonical = tmp_path / "metrics"
+    prior_canonical.mkdir()
+    old_files = {
+        prior_canonical / name: b"preserved prior runtime baseline\n"
+        for name in (
+            subject.BASELINE_EPISODE_FILENAME,
+            subject.BASELINE_PHASE_FILENAME,
+            subject.BASELINE_EVALUATION_MANIFEST_FILENAME,
+        )
+    }
+    for path, content in old_files.items():
+        path.write_bytes(content)
+    pure_evidence_before = subject.validate_final_lifecycle_aggregate_evidence(
+        aggregates["pure_fsm"], role="pure_fsm"
+    )
+    initial_baseline = subject.export_baseline_evaluation_artifacts(
+        metrics_directory,
+        episode_directories=pure_evidence_before.canonical_episode_dirs,
+        seeds=pure_evidence_before.seeds,
+        baseline_name="pure_fsm",
+    )
+    baseline_before = {
+        Path(path): (Path(path).read_bytes(), Path(path).stat().st_mtime_ns)
+        for path in initial_baseline.as_dict().values()
+    }
     paths = subject.export_final_lifecycle_evaluation_artifacts(
-        tmp_path / "metrics",
+        metrics_directory,
         pure_fsm_aggregate=aggregates["pure_fsm"],
         checkpoint_initial_aggregate=aggregates["checkpoint_initial"],
         checkpoint_smoke_aggregate=aggregates["checkpoint_smoke"],
@@ -1343,6 +1371,11 @@ def test_final_lifecycle_export_has_exact_five_roles_and_improved_only_detail(
         baseline_name="pure_fsm",
     )
     assert baseline_bundle.manifest.is_file()
+    assert {
+        path: (path.read_bytes(), path.stat().st_mtime_ns)
+        for path in baseline_before
+    } == baseline_before
+    assert {path: path.read_bytes() for path in old_files} == old_files
 
     orchestration_path = tmp_path / "training_orchestration_manifest.json"
     orchestration_path.write_text("{}\n", encoding="utf-8")

@@ -3,6 +3,8 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$OutputRoot,
 
+    [string]$MetricsOutputDir,
+
     [Parameter(Mandatory = $true)]
     [string]$TrainingOrchestrationManifest,
 
@@ -82,6 +84,12 @@ $Arguments = @(
     "--reward-migration-config", $RewardMigrationConfig,
     "--reward-stream-filename", $RewardStreamFilename
 )
+if ($PSBoundParameters.ContainsKey('MetricsOutputDir')) {
+    if ([string]::IsNullOrWhiteSpace($MetricsOutputDir)) {
+        throw 'MetricsOutputDir cannot be empty when explicitly supplied'
+    }
+    $Arguments += @('--metrics-output-dir', $MetricsOutputDir)
+}
 foreach ($Manifest in $CheckpointManifest) {
     $Arguments += @("--checkpoint-manifest", $Manifest)
 }

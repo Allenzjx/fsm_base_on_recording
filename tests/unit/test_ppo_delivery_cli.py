@@ -1,11 +1,13 @@
 import argparse
+import os
+import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 from wlr50_clean.ppo import delivery_cli as subject
-from wlr50_clean.ppo.evaluation_artifacts import FINAL_LIFECYCLE_ROLES
+from wlr50_clean.ppo.evaluation_artifacts import EvaluationArtifactError, FINAL_LIFECYCLE_ROLES
 from wlr50_clean.ppo.final_reporting import PLOT_FILENAMES, REPORT_FILENAMES
 
 
@@ -51,16 +53,20 @@ def test_delivery_parser_has_no_legacy_two_role_shortcut() -> None:
     assert "--validation-promotion-decision" in option_strings
     assert "--training-orchestration-manifest" in option_strings
     assert "--inference-actor-export-run-dir" in option_strings
+    assert "--metrics-output-dir" in option_strings
     assert "--baseline-aggregate" not in option_strings
     assert "--candidate-aggregate" not in option_strings
     with pytest.raises(SystemExit):
         parser.parse_args(["deliver", "--output-root", "out"])
 
 
+@pytest.mark.parametrize("alternate_metrics", [False, True])
 def test_delivery_chains_exact_five_roles_into_finalization(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, alternate_metrics: bool
 ) -> None:
     arguments = _arguments(tmp_path)
+    if alternate_metrics:
+        arguments.metrics_output_dir = arguments.output_root / "metrics_runtime_v2"
     calls: list[str] = []
     captured: dict = {}
     metric_names = (
@@ -75,7 +81,7 @@ def test_delivery_chains_exact_five_roles_into_finalization(
         "termination_summary.csv",
         "promotion_decision.json",
     )
-    metrics_dir = arguments.output_root / "metrics"
+    metrics_dir = getattr(arguments, "metrics_output_dir", arguments.output_root / "metrics")
     metrics_map = {f"metric_{index}": metrics_dir / name for index, name in enumerate(metric_names)}
     metrics = SimpleNamespace(
         promotion_decision=metrics_dir / "promotion_decision.json",
@@ -108,17 +114,20 @@ def test_delivery_chains_exact_five_roles_into_finalization(
 
     def export_baseline(*_args, **kwargs):
         calls.append("baseline")
+        assert _args[0] == metrics_dir
         assert kwargs["baseline_name"] == "pure_fsm"
         return baseline
 
     def export_lifecycle(*_args, **kwargs):
         calls.append("lifecycle")
+        assert _args[0] == metrics_dir
         assert tuple(key.removesuffix("_aggregate") for key in kwargs if key.endswith("_aggregate")) == FINAL_LIFECYCLE_ROLES
         assert kwargs["frozen_hashes_unchanged"] is True
         return metrics
 
     def render(*_args, **kwargs):
         calls.append("reports")
+        assert _args[0] == metrics_dir
         assert kwargs["training_orchestration_manifest"] == arguments.training_orchestration_manifest
         return reporting
 
@@ -163,7 +172,49 @@ def test_powershell_entry_invokes_only_the_strict_delivery_module() -> None:
     assert "--validation-aggregate" in script
     assert "--validation-promotion-decision" in script
     assert "--inference-actor-export-run-dir" in script
+    assert "--metrics-output-dir" in script
+    assert "$PSBoundParameters.ContainsKey('MetricsOutputDir')" in script
     assert "ppo_phase_objectives_v2.yaml" in script
     for role in FINAL_LIFECYCLE_ROLES:
         assert "--" + role.replace("_", "-") + "-aggregate" in script.lower()
     assert "wlr50_clean.ppo.cli" not in script
+
+
+@pytest.mark.parametrize("target", ["outside", "prefix_sibling", "root"])
+def test_delivery_rejects_metrics_outside_strict_output_subtree_before_export(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, target: str
+) -> None:
+    arguments = _arguments(tmp_path)
+    arguments.metrics_output_dir = {
+        "outside": tmp_path / "elsewhere",
+        "prefix_sibling": tmp_path / "delivery-other" / "metrics",
+        "root": arguments.output_root,
+    }[target]
+    monkeypatch.setattr(subject, "validate_final_lifecycle_aggregate_evidence", lambda *args, **kwargs: pytest.fail("invalid metrics path reached evidence/export work"))
+    with pytest.raises(subject.FinalizationError, match="output_root"):
+        subject.deliver(arguments)
+
+
+def test_baseline_wrapper_passes_owned_explicit_metrics_path_to_managed_export():
+    root = Path(__file__).resolve().parents[2]
+    script = (root / "scripts" / "run_fsm_baseline_eval.ps1").read_text(encoding="utf-8")
+    assert '[string]$MetricsOutputDir = "outputs\\ppo_phase_v1\\metrics"' in script
+    assert '"--metrics-output-dir", $MetricsOutputDir' in script
+    assert "MetricsOutputDir must remain below OutputRoot" in script
+    assert "ReparsePoint" in script
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows junction boundary")
+def test_delivery_rejects_metrics_junction_before_export(tmp_path, monkeypatch):
+    arguments = _arguments(tmp_path)
+    arguments.output_root.mkdir()
+    target = tmp_path / "outside-target"
+    target.mkdir()
+    link = arguments.output_root / "metrics_runtime_v2"
+    result = subprocess.run(["cmd.exe", "/d", "/c", "mklink", "/J", str(link), str(target)], capture_output=True, text=True)
+    if result.returncode:
+        pytest.skip(result.stderr or result.stdout)
+    arguments.metrics_output_dir = link
+    monkeypatch.setattr(subject, "validate_final_lifecycle_aggregate_evidence", lambda *args, **kwargs: pytest.fail("junction reached export work"))
+    with pytest.raises(EvaluationArtifactError, match="symbolic link|reparse point"):
+        subject.deliver(arguments)

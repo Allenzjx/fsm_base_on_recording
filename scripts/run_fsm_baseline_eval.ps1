@@ -3,6 +3,7 @@ param(
     [int]$Seed = 2001,
     [ValidateRange(1, 4096)][int]$NumEnvs = 1,
     [ValidateRange(5, 1000)][int]$EpisodeCount = 5,
+    [string]$MetricsOutputDir = "outputs\ppo_phase_v1\metrics",
     [Parameter(ValueFromRemainingArguments = $true)][string[]]$CliArgs = @()
 )
 
@@ -35,6 +36,32 @@ if ($EpisodeCount -ne 5) {
 }
 if ($Seed -ne 2001) {
     throw "the versioned paired baseline must use configured validation seeds 2001-2005"
+}
+if ([string]::IsNullOrWhiteSpace($MetricsOutputDir)) {
+    throw "MetricsOutputDir must name a directory under outputs\ppo_phase_v1"
+}
+$ProjectRoot = [IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
+$OutputRoot = [IO.Path]::GetFullPath((Join-Path $ProjectRoot 'outputs\ppo_phase_v1'))
+$MetricsPath = if ([IO.Path]::IsPathRooted($MetricsOutputDir)) {
+    [IO.Path]::GetFullPath($MetricsOutputDir)
+} else {
+    [IO.Path]::GetFullPath((Join-Path $ProjectRoot $MetricsOutputDir))
+}
+if (-not $MetricsPath.StartsWith($OutputRoot.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) {
+    throw "MetricsOutputDir must remain below OutputRoot: $OutputRoot"
+}
+$MetricsComponent = $MetricsPath
+while ($MetricsComponent -and $MetricsComponent -ne $ProjectRoot) {
+    if (Test-Path -LiteralPath $MetricsComponent) {
+        $MetricsItem = Get-Item -LiteralPath $MetricsComponent -Force
+        if (($MetricsItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw "MetricsOutputDir must not contain a symlink or junction: $MetricsComponent"
+        }
+        if (-not $MetricsItem.PSIsContainer) {
+            throw "MetricsOutputDir contains a non-directory component: $MetricsComponent"
+        }
+    }
+    $MetricsComponent = Split-Path -Parent $MetricsComponent
 }
 
 $EvaluationRunDirs = @()
@@ -127,7 +154,7 @@ $ExportArgs = @(
     "--training-config", $Configs[0],
     "--interface-config", $Configs[1],
     "--episode-count", [string]$EpisodeCount,
-    "--metrics-output-dir", "outputs\ppo_phase_v1\metrics"
+    "--metrics-output-dir", $MetricsOutputDir
 )
 foreach ($CanonicalEpisodeDir in $CanonicalEpisodeDirs) {
     $ExportArgs += @("--episode-dir", $CanonicalEpisodeDir)

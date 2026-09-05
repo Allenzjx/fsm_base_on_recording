@@ -35,7 +35,7 @@ $ScreenScript = Join-Path $PSScriptRoot "evaluate_ppo_checkpoint_screening.ps1"
 $BuildScript = Join-Path $PSScriptRoot "build_ppo_training_orchestration.ps1"
 $FiveSeedScript = Join-Path $PSScriptRoot "evaluate_ppo_checkpoint.ps1"
 $PairedExportScript = Join-Path $PSScriptRoot "export_paired_ppo_evaluation.ps1"
-$RequestedChunkDecisions = 10000
+. (Join-Path $PSScriptRoot '_training_cadence_plan.ps1')
 $ValidationSeeds = @(2001, 2002, 2003, 2004, 2005)
 $PromotionGates = @(
     "p01_p13_completed",
@@ -132,6 +132,8 @@ if ([string]$Matrix.schema -ne "wlr50_clean.vector_benchmark_matrix.v1" -or
     $SelectedNumEnvs -notin @(8, 16, 32)) {
     throw "Vector benchmark matrix does not expose a valid selected N"
 }
+$CadenceDescriptor = Get-TrainingCadenceDescriptor $ProjectRoot $SelectedNumEnvs
+$CadencePlan = $CadenceDescriptor.plan
 
 $HoldoutPath = [IO.Path]::GetFullPath(
     $(if ([IO.Path]::IsPathRooted($PhaseEffectiveEntryHoldoutAcceptance)) {
@@ -295,6 +297,7 @@ function Read-TrainingChunk {
         [string]$RunDirectory,
         [string]$ExpectedStage,
         [int]$ExpectedNumEnvs,
+        [object]$ExpectedPlan,
         [string]$ExpectedResumeCheckpoint,
         [long]$ExpectedResumeGlobalStep
     )
@@ -308,7 +311,10 @@ function Read-TrainingChunk {
     } catch {
         throw "Training chunk result is not valid JSON: $RunDirectory"
     }
-    $PpoBatchDecisions = [long]$ExpectedNumEnvs * [long]$Result.rollout_length
+    Assert-CadenceRecord $Result.training_cadence $ExpectedPlan 'Training result cadence'
+    Assert-CadenceRecord $Result.round_trip_infos.training_cadence $ExpectedPlan 'Round-trip cadence'
+    $RequestedChunkDecisions = [long]$ExpectedPlan.requested_policy_decisions_per_chunk
+    $PpoBatchDecisions = [long]$ExpectedNumEnvs * [long]$ExpectedPlan.rollout_length
     $ExpectedIterations = [long][Math]::Ceiling(
         [double]$RequestedChunkDecisions / [double]$PpoBatchDecisions
     )
@@ -316,6 +322,8 @@ function Read-TrainingChunk {
         [string]$Result.stage -cne $ExpectedStage -or
         [int]$Result.requested_policy_decisions -ne $RequestedChunkDecisions -or
         [int]$Result.num_envs -ne $ExpectedNumEnvs -or
+        [long]$Result.rollout_length -ne [long]$ExpectedPlan.rollout_length -or
+        [long]$Result.deterministic_validation_interval -ne $RequestedChunkDecisions -or
         [long]$Result.iterations -ne $ExpectedIterations -or
         [long]$Result.ppo_batch_policy_decisions -ne $PpoBatchDecisions -or
         [long]$Result.rounding_overrun_policy_decisions -ne (
@@ -330,7 +338,7 @@ function Read-TrainingChunk {
         ) -or
         ([long]$Result.stage_policy_decisions - $RequestedChunkDecisions) -lt 0 -or
         ([long]$Result.stage_policy_decisions - $RequestedChunkDecisions) -ge $PpoBatchDecisions) {
-        throw "Training chunk accounting differs from the requested-10k, whole-PPO-batch cadence contract: $RunDirectory"
+        throw "Training chunk accounting differs from the profile-derived whole-PPO-batch cadence contract: $RunDirectory"
     }
     if (-not [string]::IsNullOrWhiteSpace($ExpectedResumeCheckpoint)) {
         $ActualResume = [IO.Path]::GetFullPath([string]$Result.resume_checkpoint)
@@ -421,6 +429,7 @@ function Read-TrainingChunk {
         [long]$ManifestPayload.resume_global_policy_decisions -ne $ExpectedResumeGlobalStep) {
         throw "Training checkpoint manifest is not bound to its chunk"
     }
+    Assert-CadenceRecord $ManifestPayload.training_cadence $ExpectedPlan 'Checkpoint manifest cadence'
     $RuntimeBefore = [IO.Path]::GetFullPath(
         (Join-Path $RunDirectory "committed_runtime_identity.before.json")
     )
@@ -499,15 +508,16 @@ function Read-TrainingChunk {
 }
 
 function Invoke-TrainingChunk {
-    param([string]$Stage, [int]$NumEnvs)
+    param([object]$ExpectedPlan)
+
+    $Stage = [string]$ExpectedPlan.stage
+    $NumEnvs = [int]$ExpectedPlan.num_envs
 
     $Arguments = @{
         Seed = $Seed
         Stage = $Stage
         NumEnvs = $NumEnvs
-        # The request is exactly 10k.  The trainer truthfully records the
-        # smallest whole PPO batch at or above it as stage_policy_decisions.
-        CliArgs = @("--policy-decisions", [string]$RequestedChunkDecisions)
+        PolicyDecisions = [int]$ExpectedPlan.requested_policy_decisions_per_chunk
     }
     if ($null -ne $PreviousCheckpoint) {
         $Arguments.Checkpoint = $PreviousCheckpoint
@@ -528,6 +538,7 @@ function Invoke-TrainingChunk {
         -RunDirectory $RunDirectory `
         -ExpectedStage $Stage `
         -ExpectedNumEnvs $NumEnvs `
+        -ExpectedPlan $ExpectedPlan `
         -ExpectedResumeCheckpoint $PreviousCheckpoint `
         -ExpectedResumeGlobalStep $PreviousGlobalStep
     $TrainingRuns.Add($RunDirectory)
@@ -710,7 +721,7 @@ function Test-StrictPromotionForCurrentChunk {
             [int]$Decision.minimum_paired_seeds -ne 5 -or
             $Decision.frozen_hashes_unchanged -ne $true -or
             $null -ne $Decision.promotion.first_failed_gate -or
-            (Compare-Object $PromotionGates $GateNames).Count -ne 0) {
+            @(Compare-Object $PromotionGates $GateNames).Count -ne 0) {
             throw "Promotion decision cannot authorize cadence early stop"
         }
         foreach ($Gate in $PromotionGates) {
@@ -765,22 +776,18 @@ if ([string]$InitialPublication.schema -cne "wlr50_clean.initial_zero_residual_c
     throw "Initial checkpoint publication did not produce the strict canonical pair"
 }
 
-$Stages = @(
-    [pscustomobject]@{ Name = "smoke"; Chunks = 1; NumEnvs = $SelectedNumEnvs },
-    [pscustomobject]@{ Name = "phase-curriculum"; Chunks = 10; NumEnvs = 1 },
-    [pscustomobject]@{ Name = "full-episode"; Chunks = 10; NumEnvs = $SelectedNumEnvs }
-)
+$Stages = @($CadencePlan.stage_plans)
 
 $StopAfterPromotion = $false
 foreach ($StagePlan in $Stages) {
-    for ($StageChunk = 0; $StageChunk -lt $StagePlan.Chunks; $StageChunk++) {
-        $Chunk = Invoke-TrainingChunk -Stage $StagePlan.Name -NumEnvs $StagePlan.NumEnvs
+    for ($StageChunk = 0; $StageChunk -lt $StagePlan.maximum_chunk_count; $StageChunk++) {
+        $Chunk = Invoke-TrainingChunk -ExpectedPlan $StagePlan
         Invoke-FreshScreening -Chunk $Chunk
-        if ($StagePlan.Name -ceq "full-episode") {
+        if ($StagePlan.stage -ceq "full-episode") {
             Invoke-FiveSeedPairedPromotion -Chunk $Chunk
         }
         $StopAfterPromotion = Test-StrictPromotionForCurrentChunk `
-            -Stage $StagePlan.Name -Chunk $Chunk
+            -Stage $StagePlan.stage -Chunk $Chunk
         $ChunkIndex++
         if ($StopAfterPromotion) {
             break

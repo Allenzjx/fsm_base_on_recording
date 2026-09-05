@@ -80,10 +80,12 @@ def _install_chain_stubs(
     }
     specs = [("smoke", 10_000, smoke_num_envs)]
     specs += [("phase-curriculum", 10_000, phase_num_envs)] * 10
+    cadence_inputs = subject._load_profile(subject._snapshot(profile, label="test profile", cache={})) ["cadence_inputs"]
+    full_chunk = 100_000 * (full_num_envs if full_num_envs in (8, 16, 32) else selected_num_envs) // 32
     if full_requested:
-        assert full_requested % 10_000 == 0
-        specs += [("full-episode", 10_000, full_num_envs)] * (
-            full_requested // 10_000
+        assert full_requested % full_chunk == 0
+        specs += [("full-episode", full_chunk, full_num_envs)] * (
+            full_requested // full_chunk
         )
 
     initial = root / "initial.pt"
@@ -99,8 +101,14 @@ def _install_chain_stubs(
     terminal_bytes = b""
     terminal_last = root / "checkpoint_last.pt"
     for index, (stage, requested, num_envs) in enumerate(specs):
-        rollout_length = (requested + num_envs - 1) // num_envs
-        stage_decisions = num_envs * rollout_length
+        rollout_length = 128
+        iterations = (requested + num_envs * rollout_length - 1) // (num_envs * rollout_length)
+        stage_decisions = num_envs * rollout_length * iterations
+        cadence = subject.derive_stage_cadence(
+            stage=stage,
+            num_envs=1 if stage == "phase-curriculum" else (num_envs if num_envs in (8, 16, 32) else selected_num_envs),
+            **cadence_inputs,
+        )
         global_step += stage_decisions
         history = root / "history" / f"checkpoint_{index:02d}.pt"
         history.parent.mkdir(exist_ok=True)
@@ -116,7 +124,8 @@ def _install_chain_stubs(
             "stage_policy_decisions": stage_decisions,
             "global_policy_decisions": global_step,
             "resume_global_policy_decisions": global_step - stage_decisions,
-            "iterations": 1,
+            "iterations": iterations,
+            "training_cadence": cadence,
             "num_envs": num_envs,
             "rollout_length": rollout_length,
             "run_directory": str(root / f"training-{index}"),
@@ -288,7 +297,7 @@ def test_budget_exhaustion_accepts_mixed_env_chain_and_failed_screenings(
         "full-episode": 8,
     }
     assert payload["selected_vector_num_envs"] == 8
-    assert payload["chunk_count"] == 21
+    assert payload["chunk_count"] == 15
     assert all(not row["screening"]["physical_passed"] for row in payload["chunks"])
 
 
@@ -358,16 +367,16 @@ def test_true_terminal_promotion_allows_early_full_episode_stop(
     inputs = _install_chain_stubs(
         tmp_path,
         monkeypatch,
-        full_requested=10_000,
+        full_requested=25_000,
         promotion_bound_index=11,
     )
     payload = _build_from_stubs(inputs)
     assert payload["status"] == "PROMOTION_FOUND"
-    assert payload["stage_requested_policy_decisions"]["full-episode"] == 10_000
+    assert payload["stage_requested_policy_decisions"]["full-episode"] == 25_000
     assert payload["budget_accounting_basis"] == "requested_policy_decisions"
     assert payload["actual_decisions_are_whole_ppo_batches"] is True
-    assert payload["stage_actual_policy_decisions"]["full-episode"] == 10_000
-    assert payload["stage_rounding_overrun_policy_decisions"]["full-episode"] == 0
+    assert payload["stage_actual_policy_decisions"]["full-episode"] == 25_600
+    assert payload["stage_rounding_overrun_policy_decisions"]["full-episode"] == 600
     assert payload["promotion_decisions"][0]["bound_chunk_index"] == 11
     assert payload["terminal"]["promotion_bound_chunk_index"] == 11
     assert payload["terminal"]["promotion_bound_global_policy_decisions"] == (
@@ -1337,16 +1346,16 @@ def test_wrapper_uses_managed_offline_cli_module() -> None:
     assert "Remove-Item" not in text
 
 
-def test_cadence_driver_runs_21_guarded_chunks_and_fresh_screenings() -> None:
+def test_cadence_driver_runs_profile_derived_chunks_and_fresh_screenings() -> None:
     root = Path(__file__).resolve().parents[2]
     text = (root / "scripts" / "run_ppo_training_cadence.ps1").read_text(
         encoding="utf-8"
     )
-    assert "$RequestedChunkDecisions = 10000" in text
-    assert 'Name = "smoke"; Chunks = 1; NumEnvs = $SelectedNumEnvs' in text
-    assert 'Name = "phase-curriculum"; Chunks = 10; NumEnvs = 1' in text
-    assert 'Name = "full-episode"; Chunks = 10; NumEnvs = $SelectedNumEnvs' in text
-    assert 'CliArgs = @("--policy-decisions", [string]$RequestedChunkDecisions)' in text
+    assert 'Get-TrainingCadenceDescriptor $ProjectRoot $SelectedNumEnvs' in text
+    assert '$Stages = @($CadencePlan.stage_plans)' in text
+    assert '$StagePlan.maximum_chunk_count' in text
+    assert 'PolicyDecisions = [int]$ExpectedPlan.requested_policy_decisions_per_chunk' in text
+    assert 'CliArgs = @("--policy-decisions"' not in text
     assert "whole-PPO-batch cadence contract" in text
     assert "rounding_overrun_policy_decisions" in text
     assert "Invoke-TrainingChunk" in text
@@ -1384,7 +1393,7 @@ def test_cadence_driver_runs_21_guarded_chunks_and_fresh_screenings() -> None:
 
 def test_public_contract_exports_validator_error_and_constants() -> None:
     assert subject.TRAINING_ORCHESTRATION_SCHEMA == (
-        "wlr50_clean.ppo_training_orchestration.v1"
+        "wlr50_clean.ppo_training_orchestration.v2"
     )
     assert subject.TRAINING_ORCHESTRATION_FILENAME == (
         "training_orchestration_manifest.json"

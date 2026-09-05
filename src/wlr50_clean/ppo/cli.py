@@ -815,18 +815,21 @@ def _smoke_action(env: Any, decision_index: int) -> tuple[float, ...]:
         )
         setattr(env, "_bounded_smoke_phase_channels", selected_by_phase)
     selected = selected_by_phase[phase_id]
+    # The prescribed six-decision excitation has exactly zero signed mean.
+    # Keep every sample nonzero so all real phase handoffs exercise retention;
+    # a one-sided offset held through long phases is not a neutral smoke probe.
+    pulse = (0.005, 0.01, 0.005, -0.005, -0.01, -0.005)
     if phase_id == "P13":
         # A real 0.4 s bipolar pulse, then exact zero for final settling.  The
         # incoming P12 handoff does not count as P13's own actuator excitation.
-        pulse = (0.005, 0.01, 0.005, -0.005, -0.01, -0.005)
         if local_index >= len(pulse):
             return (0.0,) * 12
         bounded = pulse[local_index]
     else:
-        # Smoke-only smooth excitation stays between 0.5% and 1% of the phase
-        # cap and remains nonzero at transitions to exercise the real bridge.
-        # This deterministic pattern is never added to a trained actor's output.
-        bounded = 0.0075 + 0.0025 * math.cos(2.0 * math.pi * local_index / 30.0)
+        # Repeat the same 0.4 s bipolar probe through P01-P12, with unchanged
+        # 0.5%-1% amplitude and selected channel. This changes only the smoke
+        # waveform, never phase scales or a trained actor's output.
+        bounded = pulse[local_index % len(pulse)]
     action = [0.0] * 12
     action[selected] = math.atanh(bounded)
     for index, enabled in enumerate(mask):
@@ -2869,8 +2872,13 @@ def _construct_live_runner(
 
 def _validate_training_telemetry(
     telemetry: Mapping[str, Any], *, stage: str, expected_policy_decisions: int
-) -> None:
-    """Fail closed on incomplete rollout, reward dominance, or Stage-1 balance."""
+) -> dict[str, Any]:
+    """Validate training integrity, then describe stochastic outcomes honestly.
+
+    An unsuccessful but valid training rollout is still checkpoint evidence.
+    Deterministic physical evaluation, not sampled training success, owns
+    checkpoint qualification and promotion.
+    """
 
     decision_count = telemetry.get("policy_decision_count")
     if (
@@ -2966,19 +2974,84 @@ def _validate_training_telemetry(
             "phase-curriculum policy-decision occupancy gate failed for "
             f"{list(violations) if isinstance(violations, Sequence) else violations}"
         )
+    missing_phases = [
+        phase_id for phase_id in expected_phases if phase_counts[phase_id] <= 0
+    ]
+    warnings = []
     if stage == "full-episode":
-        missing_phases = [
-            phase_id for phase_id in expected_phases if phase_counts[phase_id] <= 0
-        ]
         if missing_phases:
-            raise CliError(
-                "full-episode training did not execute every P01-P13 phase; "
-                f"missing {missing_phases}"
-            )
+            warnings.append("FULL_EPISODE_PHASE_COVERAGE_INCOMPLETE")
         if success_count < 1:
-            raise CliError(
-                "full-episode training produced no authoritative SUCCESS episode"
-            )
+            warnings.append("NO_STOCHASTIC_FULL_EPISODE_SUCCESS_OBSERVED")
+    return {
+        "schema": "wlr50_clean.ppo_training_outcome_diagnostics.v1",
+        "stage": stage,
+        "policy_decision_count": decision_count,
+        "phase_decision_counts": dict(phase_counts),
+        "visited_phases": [phase for phase in expected_phases if phase_counts[phase] > 0],
+        "missing_phases": missing_phases,
+        "all_phases_visited": not missing_phases,
+        "authoritative_completed_episode_count": authoritative_count,
+        "authoritative_terminal_reason_counts": dict(reason_counts),
+        "authoritative_success_count": success_count,
+        "vector_batch_reset_peer_count": peer_count,
+        "completed_sample_count": completed_count,
+        "stochastic_full_episode_success_observed": (
+            success_count > 0 if stage == "full-episode" else None
+        ),
+        "diagnostic_warnings": warnings,
+        "training_integrity_verified": True,
+        "qualification_requires_deterministic_evaluation": True,
+        "checkpoint_promotion_claimed": False,
+    }
+
+
+def _training_chunk_cadence(
+    profile: Any,
+    *,
+    stage: str,
+    num_envs: int,
+    requested_policy_decisions: int | None,
+) -> tuple[dict[str, Any], int, int]:
+    """Derive and validate one stage window before constructing a live scene."""
+
+    from .rl_library_wrapper import iterations_for_policy_decisions
+    from .training_cadence import (
+        TrainingCadenceError,
+        derive_stage_cadence,
+        validate_training_chunk_cadence,
+    )
+
+    if profile.budgets[stage.replace("-", "_")] <= 0:
+        raise CliError("selected training budget is zero")
+    try:
+        cadence = derive_stage_cadence(
+            stage=stage,
+            num_envs=num_envs,
+            budgets=profile.budgets,
+            benchmark_env_counts=profile.benchmark_env_counts,
+            rollout_length=profile.rollout_length,
+            decision_hz=profile.decision_hz,
+            timeout_s=profile.timeout_s,
+            base_validation_interval=profile.deterministic_validation_interval,
+        )
+        budget = (
+            cadence["requested_policy_decisions_per_chunk"]
+            if requested_policy_decisions is None
+            else requested_policy_decisions
+        )
+        iterations = iterations_for_policy_decisions(
+            budget, num_envs=num_envs, rollout_length=profile.rollout_length
+        )
+        validate_training_chunk_cadence(
+            cadence,
+            requested_policy_decisions=budget,
+            iterations=iterations,
+            stage_policy_decisions=iterations * num_envs * profile.rollout_length,
+        )
+    except TrainingCadenceError as exc:
+        raise CliError(f"training stage cadence is invalid: {exc}") from exc
+    return dict(cadence), budget, iterations
 
 
 _ALLOWED_TRAINING_RESUME_STAGES = {
@@ -3546,17 +3619,11 @@ def _train(args: argparse.Namespace, simulation_app: Any) -> int:
         vector_benchmark_evidence = _require_training_vector_benchmark_acceptance(
             args, profile
         )
-    budget_key = {
-        "smoke": "smoke",
-        "phase-curriculum": "phase_curriculum",
-        "full-episode": "full_episode",
-        "mild-randomization": "mild_randomization",
-    }[args.stage]
-    budget = args.policy_decisions if args.policy_decisions is not None else profile.budgets[budget_key]
-    if budget <= 0:
-        raise CliError("selected training budget is zero")
-    iterations = iterations_for_policy_decisions(
-        budget, num_envs=args.num_envs, rollout_length=profile.rollout_length
+    training_cadence, budget, iterations = _training_chunk_cadence(
+        profile,
+        stage=args.stage,
+        num_envs=args.num_envs,
+        requested_policy_decisions=args.policy_decisions,
     )
     _revalidate_training_phase_effective_entry_holdout(
         args, pinned_snapshot_bundle, pinned_effective_entry_contract
@@ -3569,6 +3636,13 @@ def _train(args: argparse.Namespace, simulation_app: Any) -> int:
         pinned_snapshot_bundle=pinned_snapshot_bundle,
         pinned_effective_entry_contract=pinned_effective_entry_contract,
     )
+    if _training_chunk_cadence(
+        profile,
+        stage=args.stage,
+        num_envs=env.num_envs,
+        requested_policy_decisions=budget,
+    ) != (training_cadence, budget, iterations):
+        raise CliError("constructed training environment differs from its validated cadence")
     _revalidate_pinned_phase_contracts(
         pinned_snapshot_bundle, pinned_effective_entry_contract
     )
@@ -3693,7 +3767,7 @@ def _train(args: argparse.Namespace, simulation_app: Any) -> int:
         pinned_snapshot_bundle, pinned_effective_entry_contract
     )
     training_telemetry = dict(env.training_telemetry())
-    _validate_training_telemetry(
+    training_outcome_diagnostics = _validate_training_telemetry(
         training_telemetry,
         stage=args.stage,
         expected_policy_decisions=stage_decisions,
@@ -3728,6 +3802,9 @@ def _train(args: argparse.Namespace, simulation_app: Any) -> int:
         "entropy_anneal_planned_policy_decisions": planned_entropy_decisions,
         "entropy_anneal_global_start": starting_step,
         "entropy_anneal_global_end": actual_decisions,
+        "training_cadence": training_cadence,
+        "training_outcome_diagnostics": training_outcome_diagnostics,
+        "training_telemetry": training_telemetry,
     }
     mild_source = stage_chain_evidence.get(
         "mild_randomization_source_improved_evidence"
@@ -3748,6 +3825,12 @@ def _train(args: argparse.Namespace, simulation_app: Any) -> int:
         run_checkpoint,
         captured_bundle=saved_capture,
     )
+    if (
+        round_trip.get("training_cadence") != training_cadence
+        or round_trip.get("training_outcome_diagnostics") != training_outcome_diagnostics
+        or round_trip.get("training_telemetry") != training_telemetry
+    ):
+        raise CliError("checkpoint round trip changed training cadence, diagnostics or telemetry")
     validate_resume_checkpoint_provenance(
         run_checkpoint,
         round_trip,
@@ -3832,7 +3915,9 @@ def _train(args: argparse.Namespace, simulation_app: Any) -> int:
         "iterations": iterations,
         "num_envs": args.num_envs,
         "rollout_length": profile.rollout_length,
-        "deterministic_validation_interval": profile.deterministic_validation_interval,
+        "deterministic_validation_interval": training_cadence["requested_policy_decisions_per_chunk"],
+        "training_cadence": training_cadence,
+        "training_outcome_diagnostics": training_outcome_diagnostics,
         "early_stop_when_promotion_gate_passes": (
             profile.early_stop_when_promotion_gate_passes
         ),
@@ -5098,14 +5183,21 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "train":
             # Validate before AppLauncher so a missing/stale proof cannot even
             # start an expensive live training process.
+            from .rl_library_wrapper import load_training_profile
+
+            preflight_profile = load_training_profile(args.training_config)
+            _training_chunk_cadence(
+                preflight_profile,
+                stage=args.stage,
+                num_envs=args.num_envs,
+                requested_policy_decisions=args.policy_decisions,
+            )
             _require_training_phase_effective_entry_holdout(args)
             _require_training_phase_zero_residual_rollout(args)
             _require_training_soft_reset_acceptance(args)
             if args.num_envs > 1:
-                from .rl_library_wrapper import load_training_profile
-
                 _require_training_vector_benchmark_acceptance(
-                    args, load_training_profile(args.training_config)
+                    args, preflight_profile
                 )
             if args.stage != "smoke" and args.checkpoint is None:
                 raise CliError(

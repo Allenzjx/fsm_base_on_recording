@@ -4,6 +4,7 @@ param(
     [ValidateSet("smoke", "phase-curriculum", "full-episode", "mild-randomization")]
     [string]$Stage = "phase-curriculum",
     [ValidateRange(1, 4096)][int]$NumEnvs = 1,
+    [ValidateRange(1, 100000)][int]$PolicyDecisions,
     [string]$Checkpoint,
     [string]$CheckpointManifest,
     [string]$SoftResetAcceptance,
@@ -38,6 +39,10 @@ $BaseArgs = @(
     "--interface-config", $Configs[1],
     "--stage", $Stage
 )
+if ($PSBoundParameters.ContainsKey("PolicyDecisions")) {
+    # The budget is a wrapper-owned semantic argument, never a generic override.
+    $BaseArgs += @("--policy-decisions", [string]$PolicyDecisions)
+}
 if ($Stage -ne "smoke" -and [string]::IsNullOrWhiteSpace($Checkpoint)) {
     throw "$Stage training requires an explicit -Checkpoint; refusing to restart from the initial actor"
 }

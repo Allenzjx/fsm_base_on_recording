@@ -795,7 +795,7 @@ def test_training_gate_requires_curriculum_balance_only_for_phase_curriculum() -
         (lambda telemetry: telemetry.__setitem__("authoritative_success_count", 0), "SUCCESS"),
     ],
 )
-def test_full_episode_training_gate_requires_every_phase_and_authoritative_success(
+def test_full_episode_training_gate_rejects_inconsistent_partition_and_success_count(
     mutation,
     message: str,
 ) -> None:

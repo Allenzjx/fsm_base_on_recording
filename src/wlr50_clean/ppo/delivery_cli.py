@@ -19,13 +19,14 @@ from .evaluation_artifacts import (
     export_baseline_evaluation_artifacts,
     export_final_lifecycle_evaluation_artifacts,
     validate_final_lifecycle_aggregate_evidence,
+    _require_no_reparse_components,
 )
 from .final_reporting import (
     PLOT_FILENAMES,
     REPORT_FILENAMES,
     generate_final_reporting_bundle,
 )
-from .finalization import finalize_ppo_phase_delivery
+from .finalization import FinalizationError, _within, finalize_ppo_phase_delivery
 from .phase_action_masks_v2 import DEFAULT_PHASE_ACTION_CONFIG_V2
 from .phase_objectives import DEFAULT_PHASE_OBJECTIVES_PATH
 from .reward_migration import DEFAULT_MIGRATION_PATH
@@ -49,6 +50,11 @@ def _parser() -> argparse.ArgumentParser:
         help="export five-role metrics, render reports, and finalize manifests",
     )
     deliver.add_argument("--output-root", type=_path, required=True)
+    deliver.add_argument(
+        "--metrics-output-dir",
+        type=_path,
+        help="optional metrics directory below output-root; defaults to output-root/metrics",
+    )
     deliver.add_argument(
         "--training-orchestration-manifest", type=_path, required=True
     )
@@ -119,7 +125,18 @@ def deliver(arguments: argparse.Namespace) -> Mapping[str, Any]:
     """Run the strict delivery chain for an already captured evidence set."""
 
     root = Path(arguments.output_root)
-    metrics_directory = root / "metrics"
+    requested_metrics = getattr(arguments, "metrics_output_dir", None)
+    metrics_directory = (
+        root / "metrics" if requested_metrics is None else Path(requested_metrics)
+    )
+    # Reject lexical redirects before resolving. Alternate metric bundles must
+    # stay in the same delivery tree; exporters retain their byte-idempotent,
+    # no-conflicting-overwrite publication contract.
+    _require_no_reparse_components(root, label="delivery output root")
+    _require_no_reparse_components(metrics_directory, label="delivery metrics directory")
+    _within(metrics_directory, root, label="delivery metrics directory")
+    if metrics_directory.resolve() == root.resolve():
+        raise FinalizationError("delivery metrics directory must be strictly below output_root")
     aggregates = _lifecycle_aggregates(arguments)
 
     # Validate the pure-FSM source first, then let the five-role exporter run

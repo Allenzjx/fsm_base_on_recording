@@ -27,10 +27,14 @@ from typing import Any, Callable, Mapping, MutableMapping, Sequence
 import yaml
 
 from .artifacts import ArtifactError, atomic_write_json
+from .training_cadence import (
+    TrainingCadenceError, cadence_inputs_from_payload, derive_stage_cadence,
+    derive_training_cadence, validate_training_chunk_cadence,
+)
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
-TRAINING_ORCHESTRATION_SCHEMA = "wlr50_clean.ppo_training_orchestration.v1"
+TRAINING_ORCHESTRATION_SCHEMA = "wlr50_clean.ppo_training_orchestration.v2"
 TRAINING_ORCHESTRATION_FILENAME = "training_orchestration_manifest.json"
 TRAINING_ORCHESTRATION_RUN_KIND = "training-orchestration"
 VECTOR_BENCHMARK_MATRIX_RUN_KIND = "vector-benchmark-matrix"
@@ -950,6 +954,47 @@ def _validate_vector_matrix_binding(
     return dict(validated)
 
 
+def _validate_training_outcome_record(
+    result: Mapping[str, Any], *, stage: str, stage_decisions: int,
+) -> dict[str, Any]:
+    """Recompute diagnostics with the live integrity validator, without a scene.
+
+    JSON writers sort dictionary keys. Normalize only the already-exact key
+    sets into the validator's canonical ordering; never fill missing telemetry.
+    """
+    from .cli import CliError, _validate_training_telemetry
+
+    raw = result.get("training_telemetry")
+    if not isinstance(raw, Mapping):
+        raise TrainingOrchestrationError("training outcome telemetry is missing")
+    telemetry = dict(raw)
+    phases = tuple(f"P{index:02d}" for index in range(1, 14))
+    families = (
+        "phase_task_progress", "body_stability", "contact_motion_quality",
+        "control_smoothness", "residual_regularization",
+    )
+    counts = raw.get("phase_decision_counts")
+    rewards = raw.get("reward_family_absolute_sums_by_phase")
+    if (not isinstance(counts, Mapping) or set(counts) != set(phases)
+            or not isinstance(rewards, Mapping) or set(rewards) != set(phases)
+            or any(not isinstance(rewards[phase], Mapping)
+                   or set(rewards[phase]) != set(families) for phase in phases)):
+        raise TrainingOrchestrationError("training outcome phase/reward key sets are invalid")
+    telemetry["phase_decision_counts"] = {phase: counts[phase] for phase in phases}
+    telemetry["reward_family_absolute_sums_by_phase"] = {
+        phase: {family: rewards[phase][family] for family in families} for phase in phases
+    }
+    try:
+        expected = _validate_training_telemetry(
+            telemetry, stage=stage, expected_policy_decisions=stage_decisions,
+        )
+    except CliError as exc:
+        raise TrainingOrchestrationError(f"training outcome integrity is invalid: {exc}") from exc
+    if result.get("training_outcome_diagnostics") != expected:
+        raise TrainingOrchestrationError("training outcome diagnostics differ from rollout telemetry")
+    return expected
+
+
 def _validate_training_chunk(
     run_dir: Path | str,
     *,
@@ -997,9 +1042,19 @@ def _validate_training_chunk(
     )
     batch_decisions = num_envs * rollout
     rounding_overrun = stage_decisions - requested
+    try:
+        cadence = derive_stage_cadence(
+            stage=stage, num_envs=num_envs,
+            **_load_profile(training_config)["cadence_inputs"],
+        )
+        validate_training_chunk_cadence(
+            cadence, requested_policy_decisions=requested, iterations=iterations,
+            stage_policy_decisions=stage_decisions,
+        )
+    except TrainingCadenceError as exc:
+        raise TrainingOrchestrationError(f"training chunk cadence is invalid: {exc}") from exc
     if (
-        requested > interval
-        or requested > stage_decisions
+        requested > stage_decisions
         or stage_decisions != batch_decisions * iterations
         or iterations != (requested + batch_decisions - 1) // batch_decisions
         or rounding_overrun < 0
@@ -1007,7 +1062,10 @@ def _validate_training_chunk(
         or result.get("ppo_batch_policy_decisions") != batch_decisions
         or result.get("rounding_overrun_policy_decisions") != rounding_overrun
         or result.get("budget_accounting_basis") != "requested_policy_decisions"
-        or result.get("deterministic_validation_interval") != interval
+        or result.get("deterministic_validation_interval") != cadence["requested_policy_decisions_per_chunk"]
+        or interval != cadence["base_validation_interval_policy_decisions"]
+        or rollout != cadence["rollout_length"]
+        or result.get("training_cadence") != cadence
         or result.get("early_stop_when_promotion_gate_passes") is not True
         or result.get("save_load_round_trip") is not True
         or run["identity"].get("environment_count") != num_envs
@@ -1021,8 +1079,15 @@ def _validate_training_chunk(
         or telemetry.get("policy_decision_count") != stage_decisions
         or not isinstance(round_trip, Mapping)
         or round_trip.get("global_policy_decisions") != global_decisions
+        or round_trip.get("training_cadence") != cadence
     ):
         raise TrainingOrchestrationError("training chunk telemetry is incomplete")
+    outcome = _validate_training_outcome_record(
+        result, stage=stage, stage_decisions=stage_decisions,
+    )
+    if (round_trip.get("training_outcome_diagnostics") != outcome
+            or round_trip.get("training_telemetry") != telemetry):
+        raise TrainingOrchestrationError("training round-trip outcome telemetry is inconsistent")
     _finite_positive(result.get("wall_time_s"), label="training wall time")
 
     resume = _path_and_hash(
@@ -1072,6 +1137,9 @@ def _validate_training_chunk(
         or _absolute(str(history_manifest.get("checkpoint_path", ""))) != history.path
         or history_manifest.get("checkpoint_sha256") != history.sha256
         or history_manifest.get("stage_policy_decisions") != stage_decisions
+        or history_manifest.get("training_cadence") != cadence
+        or history_manifest.get("training_outcome_diagnostics") != outcome
+        or history_manifest.get("training_telemetry") != telemetry
         or _absolute(str(history_manifest.get("resume_checkpoint", ""))) != resume.path
         or history_manifest.get("resume_checkpoint_sha256") != resume.sha256
         or history_manifest.get("source_git_commit")
@@ -1113,6 +1181,8 @@ def _validate_training_chunk(
         raise TrainingOrchestrationError("training run does not bind the selected profile")
     return {
         "stage": stage,
+        "training_cadence": cadence,
+        "training_outcome_diagnostics": outcome,
         "requested_policy_decisions": requested,
         "stage_policy_decisions": stage_decisions,
         "global_policy_decisions": global_decisions,
@@ -2082,6 +2152,7 @@ def _load_profile(training_config: _Snapshot) -> dict[str, Any]:
         raise TrainingOrchestrationError("training profile seed contract is invalid")
     return {
         "stage_budgets": dict(STAGE_BUDGETS),
+        "cadence_inputs": cadence_inputs_from_payload(payload),
         "deterministic_validation_interval": DETERMINISTIC_VALIDATION_INTERVAL,
         "early_stop_when_promotion_gate_passes": True,
         "train_seeds": train,
@@ -2290,6 +2361,28 @@ def _build_payload(
             "full-episode chunks must use the finalized matrix selected N"
         )
 
+    try:
+        cadence_plan = derive_training_cadence(
+            selected_num_envs=selected_num_envs, **profile["cadence_inputs"]
+        )
+    except TrainingCadenceError as exc:
+        raise TrainingOrchestrationError(f"training cadence profile is invalid: {exc}") from exc
+    expected_chunks = cadence_plan["chunks"]
+    if len(chunks) > len(expected_chunks):
+        raise TrainingOrchestrationError("training history exceeds the derived cadence plan")
+    for chunk, expected in zip(chunks, expected_chunks, strict=False):
+        expected_cadence = expected["training_cadence"]
+        if chunk.get("training_cadence") != expected_cadence:
+            raise TrainingOrchestrationError("training chunk cadence differs from the matrix-bound plan")
+        try:
+            validate_training_chunk_cadence(
+                expected_cadence,
+                requested_policy_decisions=chunk["requested_policy_decisions"],
+                iterations=chunk["iterations"], stage_policy_decisions=chunk["stage_policy_decisions"],
+            )
+        except TrainingCadenceError as exc:
+            raise TrainingOrchestrationError(f"training chunk cadence is invalid: {exc}") from exc
+
     soft_binding: dict[str, Any] | None = None
     soft_raw: Any = None
     for chunk in chunks:
@@ -2380,6 +2473,7 @@ def _build_payload(
             {
                 "index": index,
                 "stage": chunk["stage"],
+                "training_cadence": chunk["training_cadence"],
                 "requested_policy_decisions": chunk["requested_policy_decisions"],
                 "stage_policy_decisions": chunk["stage_policy_decisions"],
                 "global_policy_decisions": chunk["global_policy_decisions"],
@@ -2467,7 +2561,9 @@ def _build_payload(
         "soft_reset_acceptance": soft_binding,
         "required_stages": list(STAGES),
         "stage_budgets": dict(STAGE_BUDGETS),
-        "deterministic_validation_interval": DETERMINISTIC_VALIDATION_INTERVAL,
+        "base_validation_interval_policy_decisions": DETERMINISTIC_VALIDATION_INTERVAL,
+        "base_validation_interval_scope": "smoke_and_phase_curriculum",
+        "training_cadence": cadence_plan,
         "early_stop_only_on_five_seed_promotion": True,
         "stage_requested_policy_decisions": requested_by_stage,
         "stage_actual_policy_decisions": actual_by_stage,

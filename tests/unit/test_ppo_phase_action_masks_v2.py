@@ -30,7 +30,7 @@ def test_deterministic_small_smoke_pattern_is_resolvable_and_bounded() -> None:
     )
     positive = _smoke_action(env, 0)
     repeated = _smoke_action(env, 1)
-    assert positive[0] == math.atanh(0.01)
+    assert positive[0] == math.atanh(0.005)
     assert sum(value != 0.0 for value in positive) == 1
     assert 0.005 <= math.tanh(repeated[0]) <= 0.01
     assert repeated != positive
@@ -61,7 +61,7 @@ def test_smoke_pattern_exercises_active_servo_and_disabled_mask_channels() -> No
         phase_actions=config,
     )
     armed = _smoke_action(env, 0)
-    assert armed[0] == math.atanh(0.01)
+    assert armed[0] == math.atanh(0.005)
     mask = config.mask_for("P08")
     assert all(armed[index] == math.atanh(-0.01) for index, value in enumerate(mask) if not value)
     assert all(
@@ -93,6 +93,24 @@ def test_smoke_pattern_emits_real_p13_bipolar_pulse_then_preserves_terminal_sett
     assert _smoke_action(env, 6) == ZERO12
     env.frame.phase_progress = 1.0
     assert _smoke_action(env, 7) == ZERO12
+
+
+@pytest.mark.parametrize("phase_id", tuple(f"P{index:02d}" for index in range(1, 13)))
+def test_smoke_periodic_excitation_has_no_dc_offset_and_preserves_handoff(phase_id):
+    env = SimpleNamespace(
+        frame=SimpleNamespace(
+            state_id=phase_id, phase_progress=0.0, nominal_action_full12=ZERO12
+        ),
+        phase_actions=load_phase_action_masks_v2(),
+    )
+    rows = [_smoke_action(env, index) for index in range(18)]
+    selected = env._bounded_smoke_phase_channels[phase_id]
+    waveform = [math.tanh(row[selected]) for row in rows]
+    assert waveform == pytest.approx([0.005, 0.01, 0.005, -0.005, -0.01, -0.005] * 3)
+    for first in (0, 6, 12):
+        assert math.fsum(waveform[first:first + 6]) == 0.0
+    assert all(0.005 <= abs(value) <= 0.01 for value in waveform)
+    assert all(row[selected] != 0.0 for row in rows)
 
 
 @pytest.mark.parametrize("phase_id", tuple(f"P{index:02d}" for index in range(1, 14)))

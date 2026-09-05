@@ -35,6 +35,37 @@ BASELINE = "pure_fsm"
 CANDIDATE = "candidate_checkpoint"
 
 
+@pytest.mark.parametrize("num_envs,full_request,maximum_chunks", [(8, 25000, 15), (16, 50000, 13), (32, 100000, 12)])
+def test_v2_training_report_disambiguates_base_interval_from_full_stage_cadence(
+    num_envs, full_request, maximum_chunks
+):
+    from wlr50_clean.ppo.final_reporting import _training_orchestration_section
+    from wlr50_clean.ppo.rl_library_wrapper import load_training_profile
+    from wlr50_clean.ppo.training_cadence import derive_training_cadence
+    from wlr50_clean.ppo.training_orchestration import TRAINING_ORCHESTRATION_SCHEMA
+
+    profile = load_training_profile()
+    cadence = derive_training_cadence(
+        selected_num_envs=num_envs, budgets=profile.budgets,
+        benchmark_env_counts=profile.benchmark_env_counts, rollout_length=profile.rollout_length,
+        decision_hz=profile.decision_hz, timeout_s=profile.timeout_s,
+        base_validation_interval=profile.deterministic_validation_interval,
+    )
+    text = _training_orchestration_section({
+        "schema": TRAINING_ORCHESTRATION_SCHEMA, "training_cadence": cadence,
+        "chunk_count": maximum_chunks, "selected_vector_num_envs": num_envs,
+        "base_validation_interval_policy_decisions": 10000,
+        "base_validation_interval_scope": "smoke_and_phase_curriculum",
+    })
+    assert "Base validation interval scope | smoke_and_phase_curriculum" in text
+    assert f"Selected vector environments | {num_envs}" in text
+    assert f"| full-episode | {num_envs} | {32 // num_envs} | 25 | {full_request} |" in text
+    assert "3200 |" in text
+    assert "configured maximum plan, not a claim" in text
+    assert "physical termination or synchronous peer reset" in text
+    assert "| Deterministic validation interval |" not in text
+
+
 def _write_csv(path: Path, rows: list[dict[str, object]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="", encoding="utf-8") as stream:
