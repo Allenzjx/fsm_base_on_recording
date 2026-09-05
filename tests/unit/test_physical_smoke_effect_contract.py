@@ -138,6 +138,35 @@ def test_quantized_zero_cannot_survive_real_end_to_end_effect_gate(tmp_path, raw
     assert summary["own_policy_actuator_target_effect_phases"] == []
 
 
+@pytest.mark.parametrize("phase,channel,target,fraction", (
+    ("P05", 8, 0.3, 5.0e-7),
+    ("P09", 8, -1.07, -5.0e-7),
+))
+def test_final_half_pulse_at_large_wheel_target_cannot_count_quantized_zero(
+    tmp_path, phase, channel, target, fraction,
+):
+    projector = build_action_projector_v2()
+    nominal = _channel(target, channel)
+    raw = _channel(math.atanh(fraction), channel)
+    projection = _project(projector, raw, phase=phase, nominal=nominal)
+    assert projection.safe_projected_residual_full12[channel] != 0.0
+    assert projection.applied_action_full12[channel] != nominal[channel]
+    writer = LiveStreamWriter(tmp_path / "large_wheel_quantized", seed=1001,
+                              require_actuator_target_effect_audit=True)
+    writer.start(_frame(0))
+    proof = _write_dispatch(writer, _adapter(), projector, projection, raw,
+                           phase=phase, nominal=nominal)
+    summary = _finish(writer)
+
+    assert proof["target_dtype"] == "torch.float32"
+    assert proof["actual_native_targets"] == proof["counterfactual_native_targets"]
+    assert proof["changed_target_channel_count"] == 0
+    assert proof["changed_channels_full12"][channel] is False
+    assert summary["nonzero_residual_phases"] == [phase]
+    assert summary["actuator_target_effect_audit_complete"] is True
+    assert summary["own_policy_actuator_target_effect_phases"] == []
+
+
 def test_actual_bridge_hold_is_not_new_phase_own_request_even_at_decision_boundary(tmp_path):
     projector = build_action_projector_v2()
     bridge = PhaseTransitionBridge(projector)

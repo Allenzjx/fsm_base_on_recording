@@ -51,12 +51,12 @@ def test_selection_includes_both_controller_biases_and_is_cached_with_stable_tie
     env = _env(nominal=nominal, feedback=ZERO[:8] + (0.5, -0.07, 0.0, 0.0),
                normal=ZERO[:8] + (0.0, -0.03, 0.0, 0.0))
     first = _smoke_action(env, 0)
-    assert first[9] == math.atanh(0.00005)  # nominal alone would choose 8.
+    assert first[9] == math.atanh(5.0e-7)  # nominal alone would choose 8.
     assert first[:8] == ZERO[:8]
     env.frame.info["raw_controller_frame"] = _controller(nominal=nominal)
-    assert _smoke_action(env, 1)[9] == math.atanh(0.0001)  # Do not reselect 8.
+    assert _smoke_action(env, 1)[9] == math.atanh(1.0e-6)  # Do not reselect 8.
     tied = _env()
-    assert _smoke_action(tied, 0)[8] == math.atanh(0.00005)
+    assert _smoke_action(tied, 0)[8] == math.atanh(5.0e-7)
 
 
 @pytest.mark.parametrize("phase,wheels,expected", (

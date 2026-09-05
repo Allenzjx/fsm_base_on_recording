@@ -443,3 +443,75 @@ and twelve handoffs, including P07--P08 and P10--P11. Missing or illegal bias
 metadata fails closed, both controller bias paths affect wheel selection, and
 P13 still returns exact zero after its six-decision pulse. Independent read-only
 review confirmed the actual live P01 frame supplies these required interfaces.
+
+### Wheel-channel 0.01%-peak physical result
+
+The run on `547603ddef69d609cedddc9585c820c06a731c96`,
+`20260905T032018662697Z_g547603ddef69_c5dc85cd3cb31_s1001_n1_nonzero-residual-smoke`,
+also failed the frozen P10 entry guard at 65.36666666666666 seconds, 981
+decisions and 7844 ticks. All 7844 native target audits were valid. The 7835
+qualifying own-phase target-effect ticks cover P01--P10; own-phase servo target
+deltas are zero and wheel target deltas range up to 0.000012010335922241211
+rad/s. Only nine nonzero handoffs occurred and P11--P13 were not reached, so
+Gate B remains failed. Position error was 8.602834995495328 degrees against
+the 2-degree frozen limit; signed velocity error was -28.02380171169876
+degrees/second against 3.53779995797403. Body collision, wheel-only climb,
+safety abort, Recording access and in-episode root writes remained zero.
+
+The serial orchestration stopped at this failed gate: it did not start the
+new-HEAD holdout, paired baseline, reset/vector prerequisites or PPO optimizer.
+Before any further amplitude-only probe, actual native wheel magnitudes and
+float32 rounding must be checked from the recorded streams to establish which
+phases would still have a resolvable target change. This analysis is not a
+replacement for thirteen-phase physical evidence or an improvement claim.
+
+### Quantization-resolvable lower wheel-amplitude experiment
+
+A read-only replay evaluated only the proposed normalized peak 1e-6 / half
+5e-7, without searching progressively smaller values. It reconstructed the
+actual double-precision native wheel request plus controller bias, then reused
+frozen Full12 clamping, physical sign conversion and float32 casting. The
+counterfactual exactly matched every recorded wheel target (7844 failed-wheel
+ticks and 12944 instrumented-zero ticks), and replay of the current selector
+and bridge exactly matched the original wheel-smoke actions. This does not
+claim that the new closed-loop physical trajectory will match either source.
+
+| Phase | Resolvable own-phase pulse ticks / candidate pulse ticks | Trajectory source |
+| --- | ---: | --- |
+| P01 | 1600 / 1600 | failed wheel smoke |
+| P02 | 63 / 63 | failed wheel smoke |
+| P03 | 151 / 151 | failed wheel smoke |
+| P04 | 583 / 583 | failed wheel smoke |
+| P05 | 847 / 1175 | failed wheel smoke |
+| P06 | 3071 / 3071 | failed wheel smoke |
+| P07 | 207 / 207 | failed wheel smoke |
+| P08 | 55 / 55 | failed wheel smoke |
+| P09 | 751 / 871 | failed wheel smoke |
+| P10 | 59 / 59 | failed wheel smoke |
+| P11 | 56 / 56 | instrumented zero |
+| P12 | 567 / 567 | instrumented zero |
+| P13 | 47 / 47 | instrumented zero, first six decisions only |
+
+No phase was entirely quantized to zero in these source-trajectory checks.
+Some P05/P09 pulses were invisible after float32 conversion and must not be
+counted as own-phase actuator effects. Visible differences were approximately
+2.5e-8--5.96e-8 rad/s or larger, not denormal/flush-to-zero values. The analysis
+script is `C:\robotics_sim\wlr_robot\ppo_wheel_quantization_analysis_20260905.py`;
+it completed with Python exit 0 and did not change the runtime.
+
+The next physical probe changes only the artificial waveform magnitude by
+1/100, to (5e-7, 1e-6, 5e-7, -5e-7, -1e-6, -5e-7), with the matching masked
+raw probe reduced by the same factor. This is 0.00005--0.0001 percent of the
+unchanged phase cap. Selection, phase handoffs, P13 six-decision duration,
+all physical/coverage/success gates, and the separate trained-policy activity
+threshold remain unchanged. Further reduction must not be used to evade the
+requirement for real, resolved native actuator-target changes.
+
+Before physical execution the amplitude-only revision passed 77 focused tests
+with no failures, errors or skips (JUnit:
+`C:\robotics_sim\wlr_robot\ppo_phase_final_amplitude_tests_20260905T0335100962292Z.xml`).
+Near-zero float32 representability remains checked in every phase. Additional
+large-wheel-target counterexamples run the real double-to-physical-to-float32
+adapter/audit/writer chain and require no own-policy effect when casting removes
+a nonzero logical half-pulse. The existing thirteen-phase native-effect and
+twelve-handoff regression still passes without changes to its acceptance gate.
