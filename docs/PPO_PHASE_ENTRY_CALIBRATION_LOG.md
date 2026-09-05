@@ -515,3 +515,33 @@ large-wheel-target counterexamples run the real double-to-physical-to-float32
 adapter/audit/writer chain and require no own-policy effect when casting removes
 a nonzero logical half-pulse. The existing thirteen-phase native-effect and
 twelve-handoff regression still passes without changes to its acceptance gate.
+
+### Final lower-amplitude physical result: pre-training gate still blocked
+
+The run on `7624c4044f8851f4c9a9229607ef014eab2e86a4`,
+`20260905T033652809290Z_g7624c4044f88_c5dc85cd3cb31_s1001_n1_nonzero-residual-smoke`,
+failed at the frozen P10 WAIT_ENTRY guard after 65.36666666666666 seconds,
+981 decisions and 7844 ticks. Its 7844 native audits were complete and valid;
+7387 ticks qualified as own-phase physical target effects across P01--P10.
+Measured per-phase visibility counts agree with the preceding float32 replay,
+including the excluded quantized P05/P09 ticks. Peak bounded policy fraction
+was exactly 1e-6. The largest actual wheel target difference was
+1.1920928955078125e-7 rad/s. No own-phase servo target difference was counted.
+
+The terminal entry check reports RR-knee position -43.46271267317817 degrees
+versus -50.397598397883456, an error of 6.934885724705289 degrees against the
+2-degree limit. Signed velocity was 2.280242859596301 degrees/second versus
+23.585333053160202, an error of -21.3050901935639 against
+3.53779995797403. P11--P13 were not reached, and only nine nonzero handoffs
+occurred. Body collision, wheel-only climb, safety abort, in-episode root
+writes and Recording access were all zero. The worker finalized with exit 2;
+the serial wrapper stopped with exit 1 before any subsequent prerequisite.
+
+No real Isaac PPO optimizer has run and no canonical training checkpoint has
+been produced. This is a pre-training Gate B blocker, not completed training,
+not an improvement-gate failure after budget exhaustion, and not evidence that
+every possible residual policy must fail. The tested manual probes did fail.
+The frozen controller and all safety/qualification gates remain unchanged.
+Continuation requiring a different pre-training acceptance protocol should be
+confirmed with the user, not implemented by silently treating this failed
+full-sequence test as passed. See `docs/PPO_PRETRAINING_GATE_B_BLOCKER.md`.
