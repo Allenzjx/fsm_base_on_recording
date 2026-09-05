@@ -204,3 +204,23 @@ This is a PPO-only prerequisite correction before any optimizer execution.
 The newly committed runtime must again pass holdout, zero, nonzero, reset, and
 vector gates before training. All old evidence and interrupted runs remain
 preserved; no physical or training success is inferred from this code repair.
+
+### Vector reward interface correction before first training
+
+All twelve holdout workers and twenty-four fresh/reused attempts passed on
+`a563defce132b33d0133c2baf2ee05cfefe21d7c`; the finalized acceptance run is
+`20260905T004538305299Z_ga563defce132_c5dc85cd3cb31_s1003_n1_effective-entry-holdout-aggregation`.
+
+A concurrent read-only review of the first vector-training step identified a
+missing interface update: `VectorizedRslResidualEnv` did not pass the required
+termination reason and controller-blocked flag to `ResidualEpisodeEnv._reward`.
+The single-environment path already supplied these fields. Existing vector
+fixtures replaced the reward method with its old signature, hiding the mismatch
+even in official-library optimizer tests.
+
+The vector caller now supplies its already-computed per-row termination reason
+and blocked flag, without changing reward formulas or termination decisions.
+Regressions exercise the real reward path and make remaining light-weight test
+substitutes enforce the keyword-only production interface. This repair precedes
+the first live PPO optimizer execution; a new committed-runtime prerequisite
+sequence is required before training.

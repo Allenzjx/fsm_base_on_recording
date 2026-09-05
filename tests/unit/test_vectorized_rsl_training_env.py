@@ -8,6 +8,7 @@ from typing import Mapping
 import pytest
 
 from wlr50_clean.ppo import cli
+from wlr50_clean.infrastructure.command_batch import SERVO_ORDER, WHEEL_ORDER
 from wlr50_clean.ppo.action_projection import SafetyProjection
 from wlr50_clean.ppo.phase_objectives import DENSE_FAMILIES
 from wlr50_clean.ppo.residual_direct_env import ResidualEpisodeEnv
@@ -22,6 +23,7 @@ from wlr50_clean.ppo.vectorized_residual_env import (
 
 ZERO12 = (0.0,) * 12
 NUM_ENVS = 8
+REAL_ROW_REWARD = ResidualEpisodeEnv._reward
 
 
 @dataclass(frozen=True)
@@ -130,10 +132,107 @@ def lightweight_row_kernel(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         ResidualEpisodeEnv,
         "_reward",
-        lambda self, start, end, residual: _Reward(
+        lambda self, start, end, residual, *, termination_reason, controller_blocked: _Reward(
             total=float(end.info["env_index"])
         ),
     )
+
+
+class _RealRewardVectorBackend(_FakeVectorBackend):
+    """Synthetic sensor frames with the production row reward left intact."""
+
+    def __init__(self, *, event: str | None = None):
+        super().__init__()
+        self.event = event
+
+    def _frames(self):
+        frames = super()._frames()
+        for row, frame in enumerate(frames):
+            if row == 0 and self.event == "success":
+                # Authoritative task success can only follow a P13 action.
+                frame.state_id = "P13"
+                frame.macro_phase = 13
+            wheels, contacts, bodies = {}, {}, {}
+            for index, name in enumerate(WHEEL_ORDER):
+                body = f"wheel_body_{index}"
+                wheels[name] = SimpleNamespace(
+                    body_name=body, center_w_m=(0.25, 0.10, 0.11),
+                    bottom_w_m=(0.25, 0.10, 0.06), velocity_rad_s=0.0,
+                )
+                contacts[body] = SimpleNamespace(
+                    ground=SimpleNamespace(pair_verified=True, normal_force_n=10.0),
+                    obstacle=SimpleNamespace(pair_verified=True, normal_force_n=0.0,
+                                             active=False, active_history=(False, False)),
+                )
+                bodies[body] = SimpleNamespace(linear_velocity_w_m_s=(0.0, 0.0, 0.0))
+            frame.info["raw_observation"] = SimpleNamespace(
+                wheels=wheels, contacts=contacts, bodies=bodies,
+                base=SimpleNamespace(
+                    position_w_m=(0.0, 0.0, 0.2), linear_velocity_w_m_s=(0.0, 0.0, 0.0),
+                    angular_velocity_w_rad_s=(0.0, 0.0, 0.0),
+                ),
+                obstacle=SimpleNamespace(front_x_m=0.3, top_z_m=0.05),
+                support=SimpleNamespace(support_count=4),
+                center_of_mass=SimpleNamespace(position_w_m=(0.0, 0.0, 0.2)),
+                joints={name: SimpleNamespace(position_deg=0.0) for name in SERVO_ORDER},
+                guards={},
+            )
+            if row == 0 and self.tick >= 3:
+                if self.event == "controller_blocked":
+                    frame.info["controller_task_result"] = "INCOMPLETE_CONTROLLER_BLOCKED"
+                elif self.event is not None:
+                    frame.termination_signals = TerminationSignals(**{self.event: True})
+        return frames
+
+
+@pytest.fixture
+def encoded_rows_with_real_reward(monkeypatch):
+    # Only observation encoding is replaced: the real signature, physical
+    # signal builder, reward calculator and event classification all execute.
+    monkeypatch.setattr(
+        ResidualEpisodeEnv, "_encode",
+        lambda self, frame: (float(frame.info["env_index"]),) * 125,
+    )
+    assert ResidualEpisodeEnv._reward is REAL_ROW_REWARD
+
+
+@pytest.mark.parametrize("event, expected_family, reason", (
+    (None, None, None),
+    ("success", "final_success", "SUCCESS"),
+    ("body_collision", "task_failure", "BODY_COLLISION"),
+    ("fall", "safety_abort", "FALL"),
+    ("controller_blocked", "task_failure", "CONTROLLER_BLOCKED"),
+))
+def test_vector_step_executes_real_row_reward_and_primary_terminal_event(
+    encoded_rows_with_real_reward, event, expected_family, reason
+):
+    torch = pytest.importorskip("torch")
+    backend = _RealRewardVectorBackend(event=event)
+    env = VectorizedRslResidualEnv(
+        backend, seeds=tuple(range(1001, 1017)), device="cpu"
+    )
+    assert all(row._reward.__func__ is REAL_ROW_REWARD for row in env.environments)
+
+    _, rewards, dones, extras = env.step(torch.zeros((NUM_ENVS, 12)))
+
+    assert torch.isfinite(rewards).all()
+    assert dones.tolist() == [event is not None] * NUM_ENVS
+    assert extras["time_outs"].tolist() == [False] + [event is not None] * (NUM_ENVS - 1)
+    assert env.last_step_infos[0]["termination_reason"] == reason
+    for row, info in enumerate(env.last_step_infos):
+        breakdown = info["reward"]
+        assert tuple(breakdown["weighted_dense"]) == DENSE_FAMILIES
+        assert float(rewards[row]) == pytest.approx(breakdown["total"])
+        active_events = {key for key, value in breakdown["event_components"].items() if value != 0.0}
+        assert active_events == ({expected_family} if row == 0 and expected_family else set())
+    if expected_family:
+        assert env.last_step_infos[0]["reward"]["event_components"][expected_family] == (
+            env.environments[0].reward_calculator.config.events[expected_family]
+        )
+    telemetry = env.training_telemetry()
+    assert telemetry["policy_decision_count"] == NUM_ENVS
+    assert telemetry["reward_telemetry_complete"] is True
+    assert telemetry["reward_telemetry_incomplete_count"] == 0
 
 
 def test_true_batch_step_returns_independent_observation_reward_and_done_rows(
@@ -377,3 +476,54 @@ def test_official_rsl_runner_learns_across_vector_full_batch_autoresets(
     assert sum(telemetry["phase_decision_counts"].values()) == 2 * NUM_ENVS
     assert telemetry["reward_telemetry_incomplete_count"] == 0
     assert telemetry["reward_telemetry_complete"] is True
+
+
+@pytest.mark.skipif(
+    importlib.util.find_spec("rsl_rl") is None,
+    reason="RSL-RL not installed",
+)
+@pytest.mark.parametrize("event", (None, "controller_blocked"))
+def test_official_rsl_optimizer_update_uses_real_vector_reward(
+    encoded_rows_with_real_reward, tmp_path, event
+):
+    from wlr50_clean.ppo.rl_library_wrapper import (
+        build_rsl_runner_config,
+        construct_runner,
+        initialize_zero_mean_actor,
+        learn_with_entropy_schedule,
+        load_training_profile,
+    )
+
+    torch = pytest.importorskip("torch")
+    backend = _RealRewardVectorBackend(event=event)
+    env = VectorizedRslResidualEnv(
+        backend, seeds=tuple(range(1001, 1017)), device="cpu"
+    )
+    assert all(row._reward.__func__ is REAL_ROW_REWARD for row in env.environments)
+    profile = load_training_profile()
+    config = build_rsl_runner_config(profile, seed=1001, max_iterations=1)
+    config["device"] = "cpu"
+    config["num_steps_per_env"] = 2
+    runner = construct_runner(env, config, log_dir=tmp_path / "real-reward-rsl")
+    initialize_zero_mean_actor(runner)
+    before = {key: value.detach().clone() for key, value in runner.alg.actor.state_dict().items()}
+
+    schedule = learn_with_entropy_schedule(
+        runner, num_learning_iterations=1,
+        entropy_start=profile.entropy_start, entropy_end=profile.entropy_end,
+        init_at_random_ep_len=False,
+    )
+
+    assert schedule == (profile.entropy_start,)
+    assert runner.alg.optimizer.state
+    assert all(float(state["step"]) > 0 for state in runner.alg.optimizer.state.values())
+    after = runner.alg.actor.state_dict()
+    assert all(torch.isfinite(value).all() for value in after.values())
+    assert any(not torch.equal(value, after[key]) for key, value in before.items())
+    assert len(backend.action_batches) == 2 * (3 if event else 8)
+    assert len(backend.reset_calls) == (3 if event else 1)
+    telemetry = env.training_telemetry()
+    assert telemetry["policy_decision_count"] == 2 * NUM_ENVS
+    assert telemetry["reward_telemetry_complete"] is True
+    assert telemetry["reward_telemetry_incomplete_count"] == 0
+    assert all(tuple(info["reward"]["weighted_dense"]) == DENSE_FAMILIES for info in env.last_step_infos)

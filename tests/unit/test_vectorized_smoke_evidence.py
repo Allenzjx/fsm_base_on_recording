@@ -148,7 +148,9 @@ def lightweight_row_kernel(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         ResidualEpisodeEnv,
         "_reward",
-        lambda self, start, end, residual: _Reward(total=float(end.info["env_index"])),
+        lambda self, start, end, residual, *, termination_reason, controller_blocked: _Reward(
+            total=float(end.info["env_index"])
+        ),
     )
 
 

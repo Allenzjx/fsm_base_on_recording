@@ -397,7 +397,11 @@ class VectorizedRslResidualEnv:
         ):
             projection = projections[row][-1]
             reward = row_env._reward(
-                start, end, projection.safe_projected_residual_full12
+                start,
+                end,
+                projection.safe_projected_residual_full12,
+                termination_reason=decision.reason,
+                controller_blocked=blocked,
             )
             rewards.append(reward.total)
             self.policy_decision_count += 1
