@@ -818,7 +818,7 @@ def _smoke_action(env: Any, decision_index: int) -> tuple[float, ...]:
     # The prescribed six-decision excitation has exactly zero signed mean.
     # Keep every sample nonzero so all real phase handoffs exercise retention;
     # a one-sided offset held through long phases is not a neutral smoke probe.
-    pulse = (0.005, 0.01, 0.005, -0.005, -0.01, -0.005)
+    pulse = (0.00005, 0.0001, 0.00005, -0.00005, -0.0001, -0.00005)
     if phase_id == "P13":
         # A real 0.4 s bipolar pulse, then exact zero for final settling.  The
         # incoming P12 handoff does not count as P13's own actuator excitation.
@@ -826,15 +826,17 @@ def _smoke_action(env: Any, decision_index: int) -> tuple[float, ...]:
             return (0.0,) * 12
         bounded = pulse[local_index]
     else:
-        # Repeat the same 0.4 s bipolar probe through P01-P12, with unchanged
-        # 0.5%-1% amplitude and selected channel. This changes only the smoke
-        # waveform, never phase scales or a trained actor's output.
+        # Repeat the same 0.4 s bipolar probe through P01-P12 at 0.005%-0.01%
+        # of the unchanged phase cap. Both 1%-peak probes failed the frozen P10
+        # guard; reduce only this sensitivity-test amplitude. Real float32
+        # target changes remain mandatory and are measured, never inferred
+        # from a nonzero Python value. Trained actor outputs are not modified.
         bounded = pulse[local_index % len(pulse)]
     action = [0.0] * 12
     action[selected] = math.atanh(bounded)
     for index, enabled in enumerate(mask):
         if not enabled:
-            action[index] = math.atanh(-0.01)
+            action[index] = math.atanh(-0.0001)
     return tuple(action)
 
 

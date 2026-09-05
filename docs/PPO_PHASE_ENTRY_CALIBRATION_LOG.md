@@ -307,3 +307,37 @@ the orchestration consumer. A real PowerShell AST-driven regression also checks
 the matching/missing/extra promotion gate-name branches under StrictMode;
 matching empty differences must be wrapped as an array before reading Count.
 None of these unit tests is counted as live Isaac PPO training evidence.
+
+### Bipolar 1%-peak smoke result and next amplitude-only sensitivity probe
+
+The new live run on `0d501431d5a9ed020fe09b8706bc91c1ad4239cb`,
+`20260905T023142892988Z_g0d501431d5a9_c5dc85cd3cb31_s1001_n1_nonzero-residual-smoke`,
+also failed at the frozen P10 WAIT_ENTRY guard, at 65.36666666666666 seconds,
+981 decisions and 7844 physics ticks. Its own-phase real float32 target effects
+cover P01--P10 and all tick audits are complete. Body collision, wheel-only
+climb, safety abort, in-episode root writes and Recording access remain zero.
+RR-knee entry position error was 9.157316582506134 degrees and signed velocity
+error was -27.354560140027044 degrees/second. Removing the probe's DC offset
+alone did not restore full-task success; this gate is explicitly failed.
+
+The next experiment changes only the artificial smoke amplitude by a factor
+of 1/100: the same bipolar sequence now uses 0.005--0.01% of each configured
+phase residual scale, including the masked-channel probe. PPO action scales,
+optimizer exploration, phase selection, cadence, P13 pulse duration, and all
+success/guard/audit requirements remain unchanged. Standard float32 rounding
+tests confirm representability at native target magnitudes up to a full
+revolution, but those tests do not establish an actual actuator dispatch effect;
+the live audit must still prove it separately in every phase. This is only a
+backend sensitivity probe, not the independently thresholded trained-policy
+activity requirement (which still includes 1% of the configured phase scale).
+
+Independent stream comparison found identical initial observations and exactly
+equal nominal Full12 commands through tick 7794. P09 phase/lifecycle timing was
+also identical; the first nominal/lifecycle divergence at tick 7795 followed
+the baseline entering P10 EXECUTE while the smoke remained WAIT_ENTRY. All
+7844 smoke dispatch audits verified actual mapping and setter equality, with
+the correct reset tick offset of 179. Combined actuator bias equalled frozen
+controller bias plus projected residual; the controller's bias was zero in all
+observed smoke ticks, and the P09 feedback trigger was false in both runs.
+These checks found no dropped nominal correction or command-timing bug. The
+lower-amplitude follow-up passed 188 focused tests before live execution.

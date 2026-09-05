@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import struct
 from types import SimpleNamespace
 
 import pytest
@@ -30,9 +31,9 @@ def test_deterministic_small_smoke_pattern_is_resolvable_and_bounded() -> None:
     )
     positive = _smoke_action(env, 0)
     repeated = _smoke_action(env, 1)
-    assert positive[0] == math.atanh(0.005)
+    assert positive[0] == math.atanh(0.00005)
     assert sum(value != 0.0 for value in positive) == 1
-    assert 0.005 <= math.tanh(repeated[0]) <= 0.01
+    assert 0.00005 <= math.tanh(repeated[0]) <= 0.0001
     assert repeated != positive
     assert max(abs(value) for value in positive + repeated) < 0.05
     repeated_env = SimpleNamespace(frame=env.frame, phase_actions=env.phase_actions)
@@ -61,9 +62,9 @@ def test_smoke_pattern_exercises_active_servo_and_disabled_mask_channels() -> No
         phase_actions=config,
     )
     armed = _smoke_action(env, 0)
-    assert armed[0] == math.atanh(0.005)
+    assert armed[0] == math.atanh(0.00005)
     mask = config.mask_for("P08")
-    assert all(armed[index] == math.atanh(-0.01) for index, value in enumerate(mask) if not value)
+    assert all(armed[index] == math.atanh(-0.0001) for index, value in enumerate(mask) if not value)
     assert all(
         armed[index] == 0.0
         for index, value in enumerate(mask)
@@ -72,7 +73,7 @@ def test_smoke_pattern_exercises_active_servo_and_disabled_mask_channels() -> No
 
     # The selected channel remains genuinely excited through phase boundaries.
     env.frame.phase_progress = 0.0
-    assert 0.005 <= math.tanh(_smoke_action(env, 1)[0]) <= 0.01
+    assert 0.00005 <= math.tanh(_smoke_action(env, 1)[0]) <= 0.0001
 
 
 def test_smoke_pattern_emits_real_p13_bipolar_pulse_then_preserves_terminal_settle() -> None:
@@ -87,7 +88,7 @@ def test_smoke_pattern_emits_real_p13_bipolar_pulse_then_preserves_terminal_sett
 
     pulse = [_smoke_action(env, index) for index in range(6)]
     assert [math.tanh(row[4]) for row in pulse] == pytest.approx(
-        [0.005, 0.01, 0.005, -0.005, -0.01, -0.005]
+        [0.00005, 0.0001, 0.00005, -0.00005, -0.0001, -0.00005]
     )
     assert all(sum(value != 0.0 for value in row) == 1 for row in pulse)
     assert _smoke_action(env, 6) == ZERO12
@@ -106,15 +107,15 @@ def test_smoke_periodic_excitation_has_no_dc_offset_and_preserves_handoff(phase_
     rows = [_smoke_action(env, index) for index in range(18)]
     selected = env._bounded_smoke_phase_channels[phase_id]
     waveform = [math.tanh(row[selected]) for row in rows]
-    assert waveform == pytest.approx([0.005, 0.01, 0.005, -0.005, -0.01, -0.005] * 3)
+    assert waveform == pytest.approx([0.00005, 0.0001, 0.00005, -0.00005, -0.0001, -0.00005] * 3)
     for first in (0, 6, 12):
         assert math.fsum(waveform[first:first + 6]) == 0.0
-    assert all(0.005 <= abs(value) <= 0.01 for value in waveform)
+    assert all(0.00005 <= abs(value) <= 0.0001 for value in waveform)
     assert all(row[selected] != 0.0 for row in rows)
 
 
 @pytest.mark.parametrize("phase_id", tuple(f"P{index:02d}" for index in range(1, 14)))
-def test_smoke_every_phase_has_own_one_percent_or_smaller_physical_scale_request(phase_id):
+def test_smoke_every_phase_has_own_subpercent_float32_resolvable_request(phase_id):
     env = SimpleNamespace(
         frame=SimpleNamespace(
             state_id=phase_id, phase_progress=0.0, nominal_action_full12=ZERO12
@@ -125,8 +126,14 @@ def test_smoke_every_phase_has_own_one_percent_or_smaller_physical_scale_request
     projection = _direct_project(
         build_action_projector_v2(), raw=action, state_id=phase_id
     )
-    assert max(abs(math.tanh(value)) for value in action) <= 0.01
-    assert any(abs(value) >= 0.003 for value in projection.safe_projected_residual_full12[:8])
+    assert max(abs(math.tanh(value)) for value in action) <= 0.0001
+    selected = env._bounded_smoke_phase_channels[phase_id]
+    delta_rad = math.radians(projection.safe_projected_residual_full12[selected])
+    # Representative native position magnitudes, including a full revolution.
+    # This checks float32 representability only; actual post-mapper dispatched
+    # effects are still required independently by every live Gate B phase.
+    for target in (0.0, -2 * math.pi, -math.pi, math.pi, 2 * math.pi):
+        assert struct.pack("<f", target + delta_rad) != struct.pack("<f", target)
 
 
 def _direct_project(
