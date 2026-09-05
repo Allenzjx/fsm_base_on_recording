@@ -384,3 +384,62 @@ write. A separate same-readback 1040-tick, 13-phase diagnostic found exact ACK
 and float32-buffer equality between zero fast-path and a masked nonzero raw
 request; real small residuals did not change mapper internal state under the
 same supplied readback. This is not a closed-loop physics equivalence proof.
+
+### Instrumented zero-control result and wheel-channel sensitivity probe
+
+The exact-zero diagnostic on `c910e521003a326b836624ddd60963f3c48cfdf8`,
+`20260905T030200697927Z_gc910e521003a_c5dc85cd3cb31_s1001_n1_zero-residual-live-native-audit-diagnostic`,
+completed P01--P13 with authoritative SUCCESS in 107.86666666666666 seconds,
+1618 decisions and 12944 physics ticks. Its seed was 1001, matching the failed
+smoke. All 12944 native target audits were valid, all logical commands retained
+bitwise zero-residual equivalence, and no own-policy nonzero effect was counted.
+Body collision, wheel-only climb, safety abort, Recording access and in-episode
+root writes were zero. A complete read-only line comparison found all 12945
+serialized live observation rows exactly equal to the original fresh-process
+seed-2001 baseline on `36a0d57eb96a03cb8b285f04a16602fafb15d464`, including the
+initial observation and terminal frame. Seeds differ in that historical
+comparison; the deterministic, non-randomized trajectories were nevertheless
+exactly equal. Audit instrumentation did not change this observed trajectory.
+This single train-seed diagnostic is neither five-seed Gate A nor Gate B.
+
+The next artificial smoke changes only selected actuator family/channel:
+choose a near-zero allowed wheel rather than a near-standing support servo,
+to test the response without directly exciting the servo position/tracking
+loop. Selection stays fixed inside a phase and respects both the current and
+next phase's allowed wheel set, preserving nonzero bridge handoffs. Thus P07
+must choose FL/RR wheel for P08, and P10 must choose FR/RL wheel for P11. The
+zero-residual wheel target used for ordering includes both frozen controller
+bias paths, not merely logical nominal. This rule uses declared masks and
+current controller output; it does not read future Recording commands.
+
+The six-point bipolar fraction remains 0.00005/0.0001/0.00005 and its negative
+half; P13 still receives exactly six decisions and then exact zero. All thirteen
+own-phase native target effects, twelve nonzero handoffs, full success, float32
+audit completeness, and safety conditions remain required. The existing
+disabled-channel mask-test raw values remain unchanged; following a phase
+transition within a held decision, a formerly disabled wheel can become legal,
+so this is not a claim that exactly one wheel changes on every physics tick.
+Wheel perturbations can still alter wheel-ground forces or fail the task. No
+training action scale, actor output, exploration standard deviation, reward,
+physics parameter, projection/bridge algorithm or frozen FSM file is changed.
+
+The now-instrumented zero/low-servo comparison provides direct feedback
+evidence: all twelve native mapper outputs are equal through tick 1664. At
+tick 1665 (first P03 tick), the first difference on a never-excited channel is
+RL knee. Its prior measured positions are 0.11318105703419129 degrees (zero)
+and 0.09437401109264218 (low-servo). The native targets become respectively
+-0.9054484562735303 and -0.7549920887411374 degrees, exactly -8 times those
+measured errors. Thus the 0.1504563675323929-degree target difference follows
+the frozen tracking gain applied to the preceding -0.01880704594154911-degree
+state difference; it is not a direct PPO request on RL knee. The zero run's
+actual and counterfactual float32 targets are equal on all 12944 audited ticks.
+
+The wheel-selection change passed 75 focused tests without failures or skips
+before physical execution (JUnit:
+`C:\robotics_sim\wlr_robot\ppo_phase_wheel_smoke_tests_20260905T0317393157276Z.xml`).
+Tests use the real frozen `ControllerFrame` dataclass and production
+projector/bridge/RobotAdapter/native-float32 audit/writer for thirteen phases
+and twelve handoffs, including P07--P08 and P10--P11. Missing or illegal bias
+metadata fails closed, both controller bias paths affect wheel selection, and
+P13 still returns exact zero after its six-decision pulse. Independent read-only
+review confirmed the actual live P01 frame supplies these required interfaces.

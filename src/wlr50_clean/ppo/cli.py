@@ -799,22 +799,70 @@ def _smoke_action(env: Any, decision_index: int) -> tuple[float, ...]:
     if len(mask) != 12 or len(nominal) != 12:
         raise CliError("bounded smoke action requires Full12 mask and nominal action")
 
-    active_servos = tuple(index for index in range(8) if mask[index])
-    if not active_servos:
-        raise CliError(f"bounded smoke phase {phase_id} has no active servo channel")
+    from wlr50_clean.infrastructure.command_batch import WHEEL_VELOCITY_LIMIT_RAD_S
+    from wlr50_clean.infrastructure.robot_adapter import (
+        RobotAdapterError,
+        _full12_drive_feedback_bias,
+    )
+    from .isaac_fsm_backend import (
+        IsaacFSMBackendError,
+        build_residual_actuation_plan,
+    )
+
+    # Use the same frozen controller composition and bias validation as the
+    # live adapter. Missing/stale metadata must not silently become zero bias.
+    try:
+        controller_frame = env.frame.info["raw_controller_frame"]
+        if str(controller_frame.state_id) != phase_id:
+            raise CliError("bounded smoke controller phase differs from its frame")
+        zero_plan = build_residual_actuation_plan(
+            nominal,
+            frozen_nominal_full12=controller_frame.full12,
+            drive_feedback_bias_full12=controller_frame.drive_feedback_bias_full12,
+            normal_drive_bias_full12=controller_frame.normal_drive_bias_full12,
+        )
+        if zero_plan.frozen_nominal_full12 != nominal:
+            raise CliError("bounded smoke frozen nominal differs from its frame")
+        controller_bias = _full12_drive_feedback_bias(
+            zero_plan.controller_drive_bias_full12
+        )
+    except (AttributeError, KeyError, TypeError, ValueError,
+            IsaacFSMBackendError, RobotAdapterError) as exc:
+        raise CliError(f"bounded smoke requires valid frozen controller biases: {exc}") from exc
+    zero_wheel_targets = {
+        index: max(
+            -WHEEL_VELOCITY_LIMIT_RAD_S,
+            min(WHEEL_VELOCITY_LIMIT_RAD_S, nominal[index] + controller_bias[index]),
+        )
+        for index in range(8, 12)
+    }
+    phase_number = int(phase_id[1:])
+    next_phase = f"P{phase_number + 1:02d}" if phase_number < 13 else phase_id
+    next_mask = env.phase_actions.mask_for(next_phase)
+    caps = env.phase_actions.physical_scale_for(phase_id)
+    next_caps = env.phase_actions.physical_scale_for(next_phase)
+    active_wheels = tuple(
+        index for index in range(8, 12)
+        if mask[index] and next_mask[index] and caps[index] > 0.0 and next_caps[index] > 0.0
+    )
+    if not active_wheels:
+        raise CliError(f"bounded smoke phase {phase_id} has no handoff-compatible wheel")
     counts = dict(getattr(env, "_bounded_smoke_phase_decisions", {}))
     local_index = int(counts.get(phase_id, 0))
     counts[phase_id] = local_index + 1
     setattr(env, "_bounded_smoke_phase_decisions", counts)
     selected_by_phase = dict(getattr(env, "_bounded_smoke_phase_channels", {}))
     if phase_id not in selected_by_phase:
-        # Prefer a near-standing support channel over the largest moving joint;
-        # the latter may be saturated by the mature target slew limiter.
+        # Change only the stimulated channel family. Look ahead so P07->P08
+        # and P10->P11 retain the outgoing residual instead of masking it away.
+        # Freeze the choice within each phase; equal targets use Full12 order.
         selected_by_phase[phase_id] = min(
-            active_servos, key=lambda index: abs(nominal[index])
+            active_wheels, key=lambda index: (abs(zero_wheel_targets[index]), index)
         )
         setattr(env, "_bounded_smoke_phase_channels", selected_by_phase)
     selected = selected_by_phase[phase_id]
+    if selected not in active_wheels:
+        raise CliError("bounded smoke cached wheel is not handoff-compatible")
     # The prescribed six-decision excitation has exactly zero signed mean.
     # Keep every sample nonzero so all real phase handoffs exercise retention;
     # a one-sided offset held through long phases is not a neutral smoke probe.
@@ -827,8 +875,8 @@ def _smoke_action(env: Any, decision_index: int) -> tuple[float, ...]:
         bounded = pulse[local_index]
     else:
         # Repeat the same 0.4 s bipolar probe through P01-P12 at 0.005%-0.01%
-        # of the unchanged phase cap. Both 1%-peak probes failed the frozen P10
-        # guard; reduce only this sensitivity-test amplitude. Real float32
+        # of the unchanged phase cap. Keep the prior diagnostic amplitude;
+        # only the selected channel changes in this sensitivity probe. Float32
         # target changes remain mandatory and are measured, never inferred
         # from a nonzero Python value. Trained actor outputs are not modified.
         bounded = pulse[local_index % len(pulse)]

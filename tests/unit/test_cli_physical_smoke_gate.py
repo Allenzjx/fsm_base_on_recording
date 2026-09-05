@@ -177,7 +177,9 @@ def test_real_gate_action_request_native_readonly_audit_and_writer_chain(tmp_pat
     from test_live_stream_writer import _frame
     from wlr50_clean.ppo import isaac_fsm_backend, residual_direct_env
     from wlr50_clean.ppo.actuator_target_effect import build_actuator_target_effect_audit
-    from wlr50_clean.ppo.phase_action_masks_v2 import build_action_projector_v2
+    from wlr50_clean.ppo.phase_action_masks_v2 import (
+        build_action_projector_v2, load_phase_action_masks_v2,
+    )
 
     zero = (0.0,) * 12
     adapter = _adapter()
@@ -200,6 +202,10 @@ def test_real_gate_action_request_native_readonly_audit_and_writer_chain(tmp_pat
     def frame(tick, *, terminal=False):
         value = _frame(tick, terminal=terminal)
         value.phase_progress = 0.0
+        value.info["raw_controller_frame"] = SimpleNamespace(
+            state_id=value.state_id, full12=zero, events=(),
+            drive_feedback_bias_full12=zero, normal_drive_bias_full12=zero,
+        )
         for key in ("fall", "nan_inf", "hard_joint_limit", "physics_explosion"):
             setattr(value.termination_signals, key, False)
         return value
@@ -209,7 +215,7 @@ def test_real_gate_action_request_native_readonly_audit_and_writer_chain(tmp_pat
             assert collect_trace is True
             self.backend = backend
             self.projector = build_action_projector_v2()
-            self.phase_actions = self.projector.config
+            self.phase_actions = load_phase_action_masks_v2()
             self.frame = frame(0)
             self.decision_count = 0
             self.done = False

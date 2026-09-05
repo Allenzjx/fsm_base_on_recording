@@ -20,9 +20,20 @@ ONE12 = (1,) * 12
 PRIORITY_PHASES = ("P02", "P03", "P08", "P12", "P13")
 
 
+def _smoke_frame(*, state_id, phase_progress=0.0, nominal_action_full12=ZERO12):
+    return SimpleNamespace(
+        state_id=state_id, phase_progress=phase_progress,
+        nominal_action_full12=nominal_action_full12,
+        info={"raw_controller_frame": SimpleNamespace(
+            state_id=state_id, full12=nominal_action_full12,
+            drive_feedback_bias_full12=ZERO12, normal_drive_bias_full12=ZERO12,
+        )},
+    )
+
+
 def test_deterministic_small_smoke_pattern_is_resolvable_and_bounded() -> None:
     env = SimpleNamespace(
-        frame=SimpleNamespace(
+        frame=_smoke_frame(
             state_id="P03",
             phase_progress=0.8,
             nominal_action_full12=(0.0, -22.9, 0.0, 45.9) + ZERO12[4:],
@@ -31,9 +42,9 @@ def test_deterministic_small_smoke_pattern_is_resolvable_and_bounded() -> None:
     )
     positive = _smoke_action(env, 0)
     repeated = _smoke_action(env, 1)
-    assert positive[0] == math.atanh(0.00005)
+    assert positive[8] == math.atanh(0.00005)
     assert sum(value != 0.0 for value in positive) == 1
-    assert 0.00005 <= math.tanh(repeated[0]) <= 0.0001
+    assert 0.00005 <= math.tanh(repeated[8]) <= 0.0001
     assert repeated != positive
     assert max(abs(value) for value in positive + repeated) < 0.05
     repeated_env = SimpleNamespace(frame=env.frame, phase_actions=env.phase_actions)
@@ -50,10 +61,10 @@ def test_deterministic_rate_limit_probe_uses_production_projector_off_robot() ->
     assert "residual_rate_limit" in probe["second_clipping_stages"]
 
 
-def test_smoke_pattern_exercises_active_servo_and_disabled_mask_channels() -> None:
+def test_smoke_pattern_exercises_active_wheel_and_disabled_mask_channels() -> None:
     config = load_phase_action_masks_v2()
     env = SimpleNamespace(
-        frame=SimpleNamespace(
+        frame=_smoke_frame(
             state_id="P08",
             phase_progress=0.5,
             nominal_action_full12=(1.0, -2.0, 3.0, -4.0, 5.0, -6.0, 7.0, -8.0)
@@ -62,23 +73,23 @@ def test_smoke_pattern_exercises_active_servo_and_disabled_mask_channels() -> No
         phase_actions=config,
     )
     armed = _smoke_action(env, 0)
-    assert armed[0] == math.atanh(0.00005)
+    assert armed[8] == math.atanh(0.00005)
     mask = config.mask_for("P08")
     assert all(armed[index] == math.atanh(-0.0001) for index, value in enumerate(mask) if not value)
     assert all(
         armed[index] == 0.0
         for index, value in enumerate(mask)
-        if value and index != 0
+        if value and index != 8
     )
 
     # The selected channel remains genuinely excited through phase boundaries.
     env.frame.phase_progress = 0.0
-    assert 0.00005 <= math.tanh(_smoke_action(env, 1)[0]) <= 0.0001
+    assert 0.00005 <= math.tanh(_smoke_action(env, 1)[8]) <= 0.0001
 
 
 def test_smoke_pattern_emits_real_p13_bipolar_pulse_then_preserves_terminal_settle() -> None:
     env = SimpleNamespace(
-        frame=SimpleNamespace(
+        frame=_smoke_frame(
             state_id="P13",
             phase_progress=0.0,
             nominal_action_full12=(-18.0, -31.0, 4.0, 32.0) + ZERO12[4:],
@@ -87,7 +98,7 @@ def test_smoke_pattern_emits_real_p13_bipolar_pulse_then_preserves_terminal_sett
     )
 
     pulse = [_smoke_action(env, index) for index in range(6)]
-    assert [math.tanh(row[4]) for row in pulse] == pytest.approx(
+    assert [math.tanh(row[8]) for row in pulse] == pytest.approx(
         [0.00005, 0.0001, 0.00005, -0.00005, -0.0001, -0.00005]
     )
     assert all(sum(value != 0.0 for value in row) == 1 for row in pulse)
@@ -99,7 +110,7 @@ def test_smoke_pattern_emits_real_p13_bipolar_pulse_then_preserves_terminal_sett
 @pytest.mark.parametrize("phase_id", tuple(f"P{index:02d}" for index in range(1, 13)))
 def test_smoke_periodic_excitation_has_no_dc_offset_and_preserves_handoff(phase_id):
     env = SimpleNamespace(
-        frame=SimpleNamespace(
+        frame=_smoke_frame(
             state_id=phase_id, phase_progress=0.0, nominal_action_full12=ZERO12
         ),
         phase_actions=load_phase_action_masks_v2(),
@@ -117,7 +128,7 @@ def test_smoke_periodic_excitation_has_no_dc_offset_and_preserves_handoff(phase_
 @pytest.mark.parametrize("phase_id", tuple(f"P{index:02d}" for index in range(1, 14)))
 def test_smoke_every_phase_has_own_subpercent_float32_resolvable_request(phase_id):
     env = SimpleNamespace(
-        frame=SimpleNamespace(
+        frame=_smoke_frame(
             state_id=phase_id, phase_progress=0.0, nominal_action_full12=ZERO12
         ),
         phase_actions=load_phase_action_masks_v2(),
@@ -128,12 +139,12 @@ def test_smoke_every_phase_has_own_subpercent_float32_resolvable_request(phase_i
     )
     assert max(abs(math.tanh(value)) for value in action) <= 0.0001
     selected = env._bounded_smoke_phase_channels[phase_id]
-    delta_rad = math.radians(projection.safe_projected_residual_full12[selected])
-    # Representative native position magnitudes, including a full revolution.
-    # This checks float32 representability only; actual post-mapper dispatched
-    # effects are still required independently by every live Gate B phase.
-    for target in (0.0, -2 * math.pi, -math.pi, math.pi, 2 * math.pi):
-        assert struct.pack("<f", target + delta_rad) != struct.pack("<f", target)
+    assert 8 <= selected < 12
+    delta_rad_s = projection.safe_projected_residual_full12[selected]
+    # Wheel targets retain rad/s units. Actual signed float32 dispatch is also
+    # exercised by the independent full projector/adapter/bridge regression.
+    for target in (0.0, -2.0943951023931953, -1.0, 1.0, 2.0943951023931953):
+        assert struct.pack("<f", target + delta_rad_s) != struct.pack("<f", target)
 
 
 def _direct_project(
