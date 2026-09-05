@@ -6,6 +6,7 @@ import os
 import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -391,6 +392,192 @@ def test_promotion_decision_must_be_inside_managed_runs_root(tmp_path: Path) -> 
             project_root=tmp_path.resolve(),
             cache={},
         )
+
+
+def _install_promotion_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    relative: str = "outputs/ppo_phase_v1/validation_history/step_120000/promotion_decision.json",
+) -> tuple[Path, dict[str, object], dict[str, object], list[str]]:
+    from wlr50_clean.ppo import paired_aggregate_binding
+    from wlr50_clean.ppo.checkpoint_promotion import REQUIRED_PROMOTION_GATES
+
+    root = tmp_path.resolve()
+    checkpoint = root / "outputs/ppo_phase_v1/checkpoints/checkpoint_full-episode_120000.pt"
+    checkpoint.parent.mkdir(parents=True)
+    checkpoint.write_bytes(b"trained-checkpoint")
+    manifest = checkpoint.with_name(checkpoint.stem + "_manifest.json")
+    _write_json(manifest, {"global_policy_decisions": 120000})
+    chunk = {
+        "immutable_history_checkpoint": _record(checkpoint),
+        "checkpoint_manifest": _record(manifest),
+        "global_policy_decisions": 120000,
+    }
+    worker = root / "runs/ppo_phase_v1/validation-checkpoint-evaluation/worker"
+    worker_result = worker / "checkpoint_evaluation.json"
+    _write_json(worker_result, {
+        "checkpoint": str(checkpoint),
+        "checkpoint_sha256": _record(checkpoint)["sha256"],
+        "checkpoint_infos": {"global_policy_decisions": 120000},
+    })
+    bindings = {
+        role: {
+            "path": str(root / "runs/ppo_phase_v1" / f"{role}-aggregate.json"),
+            "role": role,
+            "source_file_records": [_record(worker_result)],
+            "worker_run_dirs": [str(worker)] if role == "candidate" else [],
+        }
+        for role in ("baseline", "candidate")
+    }
+    bindings["candidate"].update({
+        "checkpoint_manifest_path": str(manifest),
+        "checkpoint_manifest_sha256": _record(manifest)["sha256"],
+    })
+    calls: list[str] = []
+
+    def capture(path, *, role, project_root, **kwargs):
+        assert project_root == root
+        assert str(path) == bindings[role]["path"]
+        if role == "candidate":
+            assert kwargs["expected_checkpoint_path"] == checkpoint
+            assert kwargs["expected_checkpoint_manifest_path"] == str(manifest)
+        calls.append(role)
+        return SimpleNamespace(as_record=lambda: bindings[role])
+
+    monkeypatch.setattr(paired_aggregate_binding, "capture_validation_aggregate", capture)
+    checks = {name: True for name in REQUIRED_PROMOTION_GATES}
+    decision = {
+        "schema": subject.PROMOTION_DECISION_SCHEMA,
+        "baseline_checkpoint": "pure_fsm",
+        "paired_seeds": list(subject.VALIDATION_SEEDS),
+        "paired_episode_count": 5,
+        "minimum_paired_seeds": 5,
+        "frozen_hashes_unchanged": True,
+        "first_failed_gate": None,
+        "candidate_checkpoint_path": str(checkpoint),
+        "candidate_checkpoint_sha256": _record(checkpoint)["sha256"],
+        "promotion": {
+            "promoted": True,
+            "first_failed_gate": None,
+            "checks": checks,
+            "global_stability_improvement_fraction": 0.06,
+            "improved_priority_phase_count": 4,
+        },
+        "checks_in_evaluation_order": [
+            {"gate": name, "passed": True} for name in REQUIRED_PROMOTION_GATES
+        ],
+        "baseline_evaluation_aggregate": bindings["baseline"],
+        "candidate_validation_aggregate": bindings["candidate"],
+    }
+    path = root / relative
+    _write_json(path, decision)
+    return path, chunk, decision, calls
+
+
+@pytest.mark.parametrize("relative", (
+    "outputs/ppo_phase_v1/validation_history/step_120000/promotion_decision.json",
+    "runs/ppo_phase_v1/cadence_validation/step_120000/promotion_decision.json",
+))
+def test_promotion_accepts_canonical_history_and_legacy_run_sources(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, relative: str
+) -> None:
+    path, chunk, _, calls = _install_promotion_source(tmp_path, monkeypatch, relative=relative)
+    result = subject._validate_promotion_decision(
+        path, chunks=(chunk,), project_root=tmp_path.resolve(), cache={}
+    )
+
+    assert result["record"] == _record(path)
+    assert result["promoted"] is True
+    assert result["bound_chunk_index"] == 0
+    assert result["bound_global_policy_decisions"] == 120000
+    assert calls == ["baseline", "candidate"]
+
+
+@pytest.mark.parametrize("relative", (
+    "outputs/ppo_phase_v1/metrics/validation_history/step_120000/promotion_decision.json",
+    "outputs/ppo_phase_v1/other/step_120000/promotion_decision.json",
+    "outputs/ppo_phase_v1/validation_history/promotion_decision.json",
+    "outputs/ppo_phase_v1/validation_history/step_120000/nested/promotion_decision.json",
+    "outputs/ppo_phase_v1/validation_history/step_120000/other.json",
+    "outputs/ppo_phase_v1/validation_history/step_0/promotion_decision.json",
+    "outputs/ppo_phase_v1/validation_history/step_0120000/promotion_decision.json",
+    "outputs/ppo_phase_v1/validation_history/step_-120000/promotion_decision.json",
+    "outputs/ppo_phase_v1/validation_history/step_120000extra/promotion_decision.json",
+))
+def test_promotion_rejects_noncanonical_output_locations(tmp_path: Path, relative: str) -> None:
+    path = tmp_path / relative
+    _write_json(path, {})
+    with pytest.raises(subject.TrainingOrchestrationError, match="must be inside|noncanonical"):
+        subject._validate_promotion_decision(
+            path, chunks=(), project_root=tmp_path.resolve(), cache={}
+        )
+
+
+def test_promotion_history_step_must_match_actual_checkpoint_step(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path, chunk, _, calls = _install_promotion_source(
+        tmp_path, monkeypatch,
+        relative="outputs/ppo_phase_v1/validation_history/step_130000/promotion_decision.json",
+    )
+    with pytest.raises(subject.TrainingOrchestrationError, match="step does not match"):
+        subject._validate_promotion_decision(
+            path, chunks=(chunk,), project_root=tmp_path.resolve(), cache={}
+        )
+    assert calls == []
+
+
+def test_promotion_history_still_requires_managed_aggregate_bindings(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path, chunk, decision, calls = _install_promotion_source(tmp_path, monkeypatch)
+    decision["candidate_validation_aggregate"] = {
+        **decision["candidate_validation_aggregate"], "forged": True
+    }
+    _write_json(path, decision)
+    with pytest.raises(subject.TrainingOrchestrationError, match="bindings differ"):
+        subject._validate_promotion_decision(
+            path, chunks=(chunk,), project_root=tmp_path.resolve(), cache={}
+        )
+    assert calls == ["baseline", "candidate"]
+
+
+def test_promotion_history_still_rechecks_source_hashes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path, chunk, decision, _ = _install_promotion_source(tmp_path, monkeypatch)
+    record = decision["candidate_validation_aggregate"]["source_file_records"][0]
+    source = Path(record["path"])
+    original = source.read_bytes()
+    source.write_bytes(original[:-1] + b" ")
+    with pytest.raises(subject.TrainingOrchestrationError, match="digest/size mismatch"):
+        subject._validate_promotion_decision(
+            path, chunks=(chunk,), project_root=tmp_path.resolve(), cache={}
+        )
+
+
+def test_promotion_history_does_not_allow_directory_redirection(tmp_path: Path) -> None:
+    root = tmp_path.resolve()
+    actual = root / "redirect_target"
+    _write_json(actual / "step_120000/promotion_decision.json", {})
+    link = root / "outputs/ppo_phase_v1/validation_history"
+    link.parent.mkdir(parents=True)
+    if os.name == "nt":
+        _create_windows_junction(link, actual)
+    else:
+        link.symlink_to(actual, target_is_directory=True)
+    try:
+        with pytest.raises(subject.TrainingOrchestrationError, match="symlink/junction"):
+            subject._validate_promotion_decision(
+                link / "step_120000/promotion_decision.json",
+                chunks=(), project_root=root, cache={},
+            )
+    finally:
+        if os.name == "nt":
+            link.rmdir()
+        else:
+            link.unlink()
 
 
 def test_initial_checkpoint_safe_load_proves_exact_zero_and_creation_identity(
@@ -1170,7 +1357,9 @@ def test_cadence_driver_runs_21_guarded_chunks_and_fresh_screenings() -> None:
     assert "-CandidateValidationAggregate $AggregatePath" in text
     assert '$FiveSeedScript = Join-Path $PSScriptRoot "evaluate_ppo_checkpoint.ps1"' in text
     assert "Invoke-FiveSeedPairedPromotion -Chunk $Chunk" in text
-    assert '"runs\\ppo_phase_v1\\cadence_validation\\step_{0}"' in text
+    assert '"outputs\\ppo_phase_v1\\validation_history\\step_{0}"' in text
+    assert '"runs\\ppo_phase_v1\\cadence_validation\\step_{0}"' not in text
+    assert '"outputs\\ppo_phase_v1\\metrics\\cadence_validation' not in text
     assert "checkpoint_evaluation_aggregate.json" in text
     assert '$PairedExportScript = Join-Path $PSScriptRoot "export_paired_ppo_evaluation.ps1"' in text
     assert "immutable_history_checkpoint" in text

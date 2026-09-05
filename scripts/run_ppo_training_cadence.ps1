@@ -636,8 +636,10 @@ function Invoke-FiveSeedPairedPromotion {
         $CandidateEpisodes[$Index] = $EpisodeDirectory
     }
 
+    # Keep immutable promotion inputs inside final delivery, but outside its
+    # metrics directory so final lifecycle export cannot overlap its sources.
     $MetricsDirectory = Join-Path $ProjectRoot (
-        "runs\ppo_phase_v1\cadence_validation\step_{0}" -f $Chunk.GlobalStep
+        "outputs\ppo_phase_v1\validation_history\step_{0}" -f $Chunk.GlobalStep
     )
     if (Test-Path -LiteralPath $MetricsDirectory) {
         throw "Refusing to overwrite cadence metrics directory: $MetricsDirectory"

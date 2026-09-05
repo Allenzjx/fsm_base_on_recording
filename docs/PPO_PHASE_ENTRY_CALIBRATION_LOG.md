@@ -145,3 +145,27 @@ snapshot and passes it to the same strict validator used by the live probe.
 Rechecking the twenty-four recorded attempts with this call passed every
 attempt, including source-proven P10. This is a software repair, not a new
 physical acceptance; a new committed-runtime holdout is still required.
+
+### Passed holdout and phase-zero rollout on 419279e
+
+The independent seed-1003 holdout passed all twelve workers and twenty-four
+fresh/reused attempts on `419279ee48d75f12aa3a09fa63579edf8311646f`. Its finalized
+acceptance run is `20260905T000510668038Z_g419279ee48d7_c5dc85cd3cb31_s1003_n1_effective-entry-holdout-aggregation`.
+The subsequent seed-1004 phase-zero run
+`20260905T000550776168Z_g419279ee48d7_c5dc85cd3cb31_s1004_n1_phase-zero-residual-rollout`
+passed all thirteen phase resets, 518 policy decisions and 4143 physics ticks,
+with no failure reasons.
+
+A pre-training delivery audit then found incompatible promotion-history roots:
+training orchestration accepted only `runs/ppo_phase_v1`, whereas finalization
+required the same immutable decision and paired artifacts below the delivery
+output root. Placing them inside the final `metrics` directory would also
+violate the input/output non-overlap guard. The new canonical history partition
+is `outputs/ppo_phase_v1/validation_history/step_<global>`, separate from final
+metrics. Hash, ancestry, managed export and path safety validation remain required.
+
+The just-started seed-2001 baseline and its external sequential driver were
+stopped before this repair. That unfinished baseline is not gate evidence.
+All existing files were retained, including the completed holdout and phase-zero
+evidence; the repaired committed runtime must obtain fresh acceptance before
+training. No PPO optimizer execution or improved checkpoint is claimed yet.

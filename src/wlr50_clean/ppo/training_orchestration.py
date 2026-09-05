@@ -14,6 +14,7 @@ import io
 import json
 import math
 import os
+import re
 import stat
 import subprocess
 import sys
@@ -60,6 +61,7 @@ STAGE_BUDGETS = {
 DETERMINISTIC_VALIDATION_INTERVAL = 10_000
 VALIDATION_SEEDS = (2001, 2002, 2003, 2004, 2005)
 _RUNS_RELATIVE = Path("runs/ppo_phase_v1")
+_VALIDATION_HISTORY_RELATIVE = Path("outputs/ppo_phase_v1/validation_history")
 _FROZEN_RELATIVE = Path("artifacts/ppo_phase_v1_start/frozen_fsm_hashes.json")
 _COMMITTED_RUNTIME_ROOTS = (
     "src/wlr50_clean",
@@ -1822,6 +1824,50 @@ def _validate_screening(
     }
 
 
+def _promotion_decision_history_step(
+    path: Path | str, *, project_root: Path
+) -> int | None:
+    """Admit managed runs or one canonical, delivery-contained history slot.
+
+    The final five-role metric export owns ``outputs/ppo_phase_v1/metrics``.
+    Keeping immutable cadence inputs in its sibling ``validation_history``
+    includes them in the delivery checksum without overlapping that output tree.
+    The returned step is subsequently bound to the actual training checkpoint.
+    """
+
+    selected = _absolute(path)
+    managed_runs_root = project_root / _RUNS_RELATIVE
+    try:
+        relative = selected.relative_to(managed_runs_root)
+    except ValueError:
+        history_root = project_root / _VALIDATION_HISTORY_RELATIVE
+        try:
+            relative = selected.relative_to(history_root)
+        except ValueError as exc:
+            raise TrainingOrchestrationError(
+                f"promotion decision must be inside {managed_runs_root} or "
+                f"{history_root / 'step_<global>' / 'promotion_decision.json'}"
+            ) from exc
+        match = (
+            re.fullmatch(r"step_([1-9][0-9]*)", relative.parts[0])
+            if relative.parts
+            else None
+        )
+        if (
+            len(relative.parts) != 2
+            or relative.parts[1] != "promotion_decision.json"
+            or match is None
+        ):
+            raise TrainingOrchestrationError(
+                "promotion decision has a noncanonical validation_history path; "
+                "expected step_<positive_global>/promotion_decision.json"
+            )
+        return int(match.group(1))
+    if not relative.parts:
+        raise TrainingOrchestrationError("promotion decision path is malformed")
+    return None
+
+
 def _validate_promotion_decision(
     path: Path | str,
     *,
@@ -1836,15 +1882,9 @@ def _validate_promotion_decision(
     )
 
     selected = _absolute(path)
-    managed_runs_root = project_root / _RUNS_RELATIVE
-    try:
-        relative = selected.relative_to(managed_runs_root)
-    except ValueError as exc:
-        raise TrainingOrchestrationError(
-            f"promotion decision must be inside {managed_runs_root}"
-        ) from exc
-    if not relative.parts:
-        raise TrainingOrchestrationError("promotion decision path is malformed")
+    history_step = _promotion_decision_history_step(
+        selected, project_root=project_root
+    )
     captured = _secure_snapshot(
         selected,
         label="promotion decision",
@@ -1922,6 +1962,13 @@ def _validate_promotion_decision(
         )
     bound_index = matches[0]
     bound_chunk = chunks[bound_index]
+    if (
+        history_step is not None
+        and history_step != bound_chunk["global_policy_decisions"]
+    ):
+        raise TrainingOrchestrationError(
+            "validation_history step does not match the bound training checkpoint global step"
+        )
     baseline_raw = decision.get("baseline_evaluation_aggregate")
     candidate_raw = decision.get("candidate_validation_aggregate")
     if not isinstance(baseline_raw, Mapping) or not isinstance(candidate_raw, Mapping):
